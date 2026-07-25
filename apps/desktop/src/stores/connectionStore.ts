@@ -47,7 +47,7 @@ import * as api from "@/lib/backend/api";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { useTunnelProfileStore } from "@/stores/tunnelProfileStore";
 import { connectionIsDorisFamilyCatalogCapable, isInternalDorisCatalog, isSchemaAware, normalizeSidebarObjectKind, sidebarObjectKindsForDatabase, usesTreeSchemaMode } from "@/lib/database/databaseCapabilities";
-import { connectionObjectTreeNodeSchema, connectionObjectTreeQuerySchema, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
+import { connectionObjectTreeNodeSchema, connectionObjectTreeQuerySchema, connectionShouldDiscoverJdbcSchemas, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { buildDatabaseTreeNodes, buildDuckDbConnectionTreeNodes, compareSidebarNames, sortSidebarDatabases, sortSidebarNames, shouldIncludeDefaultDatabaseNode } from "@/lib/database/databaseTree";
 import { buildSqlServerDatabaseTreeNodes } from "@/lib/database/sqlServerTree";
 import { collapseExpandedTreeNodes } from "@/lib/sidebar/sidebarTreeCollapse";
@@ -3148,6 +3148,13 @@ export const useConnectionStore = defineStore("connection", () => {
                 children: [],
               };
             });
+          if (schemas.length === 0 && connectionShouldDiscoverJdbcSchemas(getConfig(connectionId))) {
+            // Generic JDBC drivers vary widely: prefer schema navigation when the
+            // driver reports schemas, but keep the legacy flat object tree when it
+            // reports none so non-schema engines do not expand into an empty node.
+            await loadTables(connectionId, database, undefined, options);
+            return;
+          }
           if (isPostgresLikeForExtensions(getConfig(connectionId)?.db_type)) {
             children.push(buildExtensionManagementNode(connectionId, database));
           }
@@ -4395,7 +4402,7 @@ export const useConnectionStore = defineStore("connection", () => {
         const effectiveDbType = effectiveDatabaseTypeForConnection(config);
         if (config?.db_type === "sqlserver") {
           await loadSqlServerDatabaseObjects(node.connectionId, node.database, options);
-        } else if (usesTreeSchemaMode(effectiveDbType) && !connectionUsesDatabaseObjectTreeMode(config)) {
+        } else if ((usesTreeSchemaMode(effectiveDbType) && !connectionUsesDatabaseObjectTreeMode(config)) || connectionShouldDiscoverJdbcSchemas(config)) {
           await loadSchemas(node.connectionId, node.database, options);
         } else {
           await loadTables(node.connectionId, node.database, undefined, options);
