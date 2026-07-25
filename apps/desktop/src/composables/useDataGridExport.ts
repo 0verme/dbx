@@ -799,11 +799,6 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     await copyText(formatSelectionAsTsv({ columns: columns.value, rows }, true), { rows, includeHeader: true });
   }
 
-  async function copyColumnNames() {
-    if (columns.value.length === 0) return;
-    await copyText(columns.value.join("\t"));
-  }
-
   function rowToJsonObject(item: RowItem): Record<string, unknown> {
     if (options.databaseType.value === "mongodb" && item.sourceIndex !== undefined) {
       const original = options.mongoDocuments?.value?.[item.sourceIndex];
@@ -1547,7 +1542,6 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     selectionInsertRowCount,
     copySelectedRowsTsv,
     copySelectedRowsTsvWithHeaders,
-    copyColumnNames,
     exportCsv,
     exportCurrentPageCsv,
     exportJson,

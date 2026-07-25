@@ -180,6 +180,7 @@ import { useToast } from "@/composables/useToast";
 import { useDataGridExport, type MongoCopyUpdateTarget } from "@/composables/useDataGridExport";
 import { eventTargetAllowsNativeClipboard, isPlainClipboardShortcut, readTextFromClipboard } from "@/lib/common/clipboard";
 import { claimDataGridPaste, clearDataGridClipboardCopy, parseDataGridClipboard, planDataGridPaste } from "@/lib/dataGrid/dataGridClipboard";
+import { columnNamesForCopy } from "@/lib/dataGrid/dataGridColumnNameCopy";
 import { DATA_GRID_ROW_NUM_WIDTH, useDataGridColumnResize } from "@/composables/useDataGridColumnResize";
 import { createDataGridColumnStructureSignature } from "@/lib/dataGrid/dataGridColumnWidthState";
 import { useDataGridColumnLayout, useDataGridColumnLayoutState } from "@/composables/useDataGridColumnLayout";
@@ -229,6 +230,7 @@ const DataGridCellDetailDialog = defineAsyncComponent(() => import("@/components
 const DataGridMongoJsonPreview = defineAsyncComponent(() => import("@/components/grid/DataGridMongoJsonPreview.vue"));
 const DataGridDetailDialogs = defineAsyncComponent(() => import("@/components/grid/DataGridDetailDialogs.vue"));
 const DataGridBulkEditDialog = defineAsyncComponent(() => import("@/components/grid/DataGridBulkEditDialog.vue"));
+const DataGridCopyColumnNamesDialog = defineAsyncComponent(() => import("@/components/grid/DataGridCopyColumnNamesDialog.vue"));
 const ExportProgressDialog = defineAsyncComponent(() => import("@/components/export/ExportProgressDialog.vue"));
 const FORMATTED_JSON_EDIT_WARNING_COUNT_STORAGE_KEY = "dbx-cell-detail-formatted-json-edit-warning-count";
 const FORMATTED_JSON_EDIT_WARNING_MAX_COUNT = 3;
@@ -551,6 +553,8 @@ const contextHeaderColumnIndex = ref<number | null>(null);
 const contextHeaderVisibleColIdx = ref<number | null>(null);
 const bulkEditDialogOpen = ref(false);
 const bulkEditValue = ref("");
+const copyColumnNamesDialogOpen = ref(false);
+const copyColumnNamesDialogColumns = ref<string[]>([]);
 const generateIncrementDialogOpen = ref(false);
 const generateIncrementStartValue = ref("1");
 const generateIncrementTarget = ref<"selection" | "detail">("selection");
@@ -572,6 +576,7 @@ const imagePreviewOpen = ref(false);
 const imagePreviewSrc = ref("");
 const imagePreviewTitle = ref("");
 const bulkEditDialogMounted = useDataGridAsyncSurface(bulkEditDialogOpen);
+const copyColumnNamesDialogMounted = useDataGridAsyncSurface(copyColumnNamesDialogOpen);
 const cellDetailDialogMounted = useDataGridAsyncSurface(cellDetailDialogOpen);
 const detailDialogsMounted = useDataGridAsyncSurface(computed(() => rowDetailDialogOpen.value || columnDetailDialogOpen.value));
 const imagePreviewMounted = useDataGridAsyncSurface(imagePreviewOpen);
@@ -5079,7 +5084,6 @@ const {
   canCopySelectionAsInsert,
   copySelectedRowsTsv,
   copySelectedRowsTsvWithHeaders,
-  copyColumnNames,
   exportCsv,
   exportCurrentPageCsv,
   exportJson,
@@ -6480,6 +6484,32 @@ async function copyHeaderColumn() {
   await copyText(contextHeaderColumn.value);
 }
 
+// 显式多选的列名（按显示顺序）；仅用于表头「复制选中列名」
+const selectedColumnNamesForCopy = computed(() => {
+  return [...selectedColumnIndexes.value]
+    .sort((a, b) => a - b)
+    .map((index) => visibleColumns.value[index])
+    .filter((name): name is string => name !== undefined);
+});
+
+function openCopyColumnNamesDialog(names: string[]) {
+  if (names.length === 0) return;
+  copyColumnNamesDialogColumns.value = names;
+  copyColumnNamesDialogOpen.value = true;
+}
+
+function openCopyAllColumnNamesDialog() {
+  openCopyColumnNamesDialog(columnNamesForCopy(props.result.columns, visibleColumns.value, "all"));
+}
+
+function copyHeaderColumnOrSelected() {
+  if (selectedColumnNamesForCopy.value.length > 1) {
+    openCopyColumnNamesDialog(selectedColumnNamesForCopy.value);
+    return;
+  }
+  void copyHeaderColumn();
+}
+
 const canCopyAlterColumnSql = computed(() => {
   if (!contextHeaderColumn.value || !props.tableMeta?.columns) return false;
   if (tableStructureCapabilities.value.alterStrategy !== "direct") return false;
@@ -7425,7 +7455,7 @@ function copySubmenu(): ContextMenuItem {
     items.push({ label: labels.update, action: copyRowAsUpdate });
   }
   items.push({ label: t("grid.copyAll"), action: copyAll });
-  items.push({ label: t("grid.copyColumnNames"), action: copyColumnNames });
+  items.push({ label: t("grid.copyColumnNames"), action: openCopyAllColumnNamesDialog });
   return { label: t("grid.copy"), icon: Copy, children: items };
 }
 
@@ -7514,7 +7544,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       contextVisibleColIdx: contextHeaderVisibleColIdx.value ?? undefined,
       hasColumnSelection: hasColumnSelection.value,
       labels: {
-        copyName: t("grid.copyColumnName"),
+        copyName: selectedColumnNamesForCopy.value.length > 1 ? t("grid.copyColumnNamesSelected", { count: selectedColumnNamesForCopy.value.length }) : t("grid.copyColumnName"),
         copyNames: t("grid.copyColumnNames"),
         details: t("grid.openColumnDetailsDialog"),
         copyAlterSql: t("grid.copyAlterColumnSql"),
@@ -7529,8 +7559,8 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       },
       icons: { copy: Copy, columnDetails: TableProperties, database: Database, ascending: ArrowUp, descending: ArrowDown, clearSort: Eraser },
       actions: {
-        copyName: copyHeaderColumn,
-        copyNames: copyColumnNames,
+        copyName: copyHeaderColumnOrSelected,
+        copyNames: openCopyAllColumnNamesDialog,
         details: openContextColumnDetailDialog,
         copyAlterSql: copyAlterColumnSql,
         sort: applyContextSort,
@@ -9116,6 +9146,8 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     />
 
     <DataGridBulkEditDialog v-if="bulkEditDialogMounted" v-model:open="bulkEditDialogOpen" v-model:value="bulkEditValue" :selected-cell-count="selectedCellCount" @apply="applyBulkEditValue" />
+
+    <DataGridCopyColumnNamesDialog v-if="copyColumnNamesDialogMounted" v-model:open="copyColumnNamesDialogOpen" :column-names="copyColumnNamesDialogColumns" :database-type="resolvedDatabaseType" @copy="copyText" />
 
     <Dialog v-model:open="generateIncrementDialogOpen">
       <DialogContent class="sm:max-w-[380px]">
