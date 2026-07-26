@@ -4009,6 +4009,8 @@ export default {
     vimModeDescription: "Use Vim-style modal editing in the SQL editor",
     autoCloseBrackets: "Auto-close brackets",
     autoCloseBracketsDescription: "Automatically insert closing brackets and quotes when typing an opening one",
+    insertSpaceAfterCompletion: "Insert a space after completion",
+    insertSpaceAfterCompletionDescription: "Append a space after accepting a keyword, table, or column completion when the next character allows it",
     sqlSemanticDiagnosticsEnabled: "SQL semantic diagnostics",
     sqlSemanticDiagnosticsEnabledDescription: "When enabled, the editor reports semantic issues such as unknown tables and columns. Disable it to reduce parsing and metadata checks for large SQL.",
     confirmDangerousSqlExecution: "Confirm before dangerous SQL",
