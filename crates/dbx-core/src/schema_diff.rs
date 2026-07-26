@@ -1800,7 +1800,7 @@ mod tests {
             comment: None,
         });
 
-        let diffs = diff_indexes(&[source_index.clone()], &[target_index]);
+        let diffs = diff_indexes(std::slice::from_ref(&source_index), &[target_index]);
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].diff_type, "modified");
         assert_eq!(diffs[0].changes, vec![format!("columns: attr, attr2 → attr, attr2, {functional_key_part}")]);

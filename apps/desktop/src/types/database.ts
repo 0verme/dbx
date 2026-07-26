@@ -898,6 +898,10 @@ export interface QueryTab {
   mqInitialTab?: "topics";
   nacosNamespace?: string;
   nacosNamespaceName?: string;
+  nacosTargetDataId?: string;
+  nacosTargetGroup?: string;
+  nacosTargetKeyword?: string;
+  nacosTargetRequestId?: number;
   structureTableName?: string;
   structureInitialTab?: TableInfoTab;
   structureInitialTabRequestId?: number;
