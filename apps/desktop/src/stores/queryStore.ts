@@ -6,6 +6,7 @@ import type { ConnectionConfig, DatabaseType, IndexInfo, ObjectBrowserViewport, 
 import { orderPinnedFirst } from "@/lib/app/pinnedItems";
 import { canCancelQueryExecution } from "@/lib/sql/queryExecutionState";
 import { buildExplainSql, parseExplainResult, parseDamengExplainText, parseOracleExplainText, sqlServerExplainResult, type BuildExplainSqlResult } from "@/lib/diagram/explainPlan";
+import { mysqlExplainCompatibilityHint } from "@/lib/diagram/mysqlExplainCompatibility";
 import { allEditableColumnsWriteable, allPrimaryKeysPresent, analyzeEditableQueryEditability, resolveMetadataColumnName, sourceColumnsForResult, type EditableQueryInfo, type EditableQuerySource } from "@/lib/sql/sqlAnalysis";
 import { buildQueryWithHiddenPrimaryKeys, hiddenResultColumnIndexes, type HiddenPrimaryKeyProjection } from "@/lib/sql/editableQueryHiddenKeys";
 import { ACTIVE_TAB_STORAGE_KEY, OPEN_TABS_STORAGE_KEY, restoreOpenTabsPayload, restoreOpenTabsState, serializeOpenTabs } from "@/lib/app/openTabsPersistence";
@@ -3863,36 +3864,68 @@ export const useQueryStore = defineStore("query", () => {
         return failed;
       }
 
-      tab.explainTableSql = tableBuilt.sql;
-      tab.explainSql = jsonBuilt.sql;
+      let tableSql = tableBuilt.sql;
+      let jsonSupportedByServer: boolean | undefined;
+      tab.explainTableSql = tableSql;
+      tab.explainSql = undefined;
       // Keep the two EXPLAIN statements on the same one-connection MySQL session.
       const clientSessionId = `${tabClientSessionId(tab, "explain")}:${executionId}`;
       tab.explainClientSessionId = clientSessionId;
       try {
+        let tableResult: QueryResult | undefined;
+        let tableError: unknown;
         try {
-          const tableResult = await api.executeQuery(tab.connectionId, tab.database, tableBuilt.sql, tab.schema, executionId, {
+          tableResult = await api.executeQuery(tab.connectionId, tab.database, tableSql, tab.schema, executionId, {
             clientSessionId,
             timeoutSecs: queryTimeoutSecs,
           });
-          const current = tabs.value.find((t) => t.id === id);
-          if (current?.explainExecutionId === executionId) {
+        } catch (error: unknown) {
+          const compatibility = mysqlExplainCompatibilityHint(error, tableSql);
+          jsonSupportedByServer = compatibility?.supportsJson;
+          if (compatibility?.fallbackSql && tabs.value.find((t) => t.id === id)?.explainExecutionId === executionId) {
+            tableSql = compatibility.fallbackSql;
+            tab.explainTableSql = tableSql;
+            try {
+              tableResult = await api.executeQuery(tab.connectionId, tab.database, tableSql, tab.schema, executionId, {
+                clientSessionId,
+                timeoutSecs: queryTimeoutSecs,
+              });
+            } catch (fallbackError: unknown) {
+              tableError = fallbackError;
+            }
+          } else {
+            tableError = error;
+          }
+        }
+        const current = tabs.value.find((t) => t.id === id);
+        if (current?.explainExecutionId === executionId) {
+          if (tableResult) {
             current.explainTableResult = markQueryResultRowsRaw(tableResult);
             current.explainTableError = undefined;
-          }
-        } catch (e: any) {
-          const current = tabs.value.find((t) => t.id === id);
-          if (current?.explainExecutionId === executionId) {
+          } else if (tableError !== undefined) {
             current.explainTableResult = undefined;
-            current.explainTableError = String(e?.message || e);
+            current.explainTableError = formatError(tableError);
           }
         }
 
-        // A canceled or superseded standard request must not start the JSON request.
+        // A canceled or superseded standard request must not start a fallback or JSON request.
         if (tabs.value.find((t) => t.id === id)?.explainExecutionId !== executionId) {
-          return { ok: true as const, sql: jsonBuilt.sql };
+          return { ok: true as const, sql: tableSql };
+        }
+
+        // ADB MySQL advertises its accepted formats in the first error; avoid a second known-invalid request.
+        if (jsonSupportedByServer === false) {
+          const latest = tabs.value.find((t) => t.id === id);
+          if (latest?.explainExecutionId === executionId) {
+            latest.explainPlan = undefined;
+            latest.explainError = latest.explainTableResult ? undefined : latest.explainTableError;
+          }
+          return { ok: true as const, sql: tableSql };
         }
 
         try {
+          const latest = tabs.value.find((t) => t.id === id);
+          if (latest?.explainExecutionId === executionId) latest.explainSql = jsonBuilt.sql;
           const jsonResult = await api.executeQuery(tab.connectionId, tab.database, jsonBuilt.sql, tab.schema, executionId, {
             clientSessionId,
             timeoutSecs: queryTimeoutSecs,
@@ -3903,10 +3936,12 @@ export const useQueryStore = defineStore("query", () => {
             current.explainError = undefined;
           }
         } catch (e: any) {
-          const current = tabs.value.find((t) => t.id === id);
-          if (current?.explainExecutionId === executionId) {
-            current.explainPlan = undefined;
-            current.explainError = String(e?.message || e);
+          const latest = tabs.value.find((t) => t.id === id);
+          if (latest?.explainExecutionId === executionId) {
+            latest.explainPlan = undefined;
+            // Keep a usable tabular plan visible when the server explicitly rejects JSON.
+            const compatibility = mysqlExplainCompatibilityHint(e, jsonBuilt.sql);
+            latest.explainError = compatibility?.supportsJson === false && latest.explainTableResult ? undefined : formatError(e);
           }
         }
       } finally {
@@ -3918,7 +3953,7 @@ export const useQueryStore = defineStore("query", () => {
         if (current?.explainClientSessionId === clientSessionId) current.explainClientSessionId = undefined;
         void closeClientSessionId(tab.connectionId, tab.database, clientSessionId, { tabId: tab.id, explainExecutionId: executionId });
       }
-      return { ok: true as const, sql: jsonBuilt.sql };
+      return { ok: true as const, sql: tab.explainSql ?? tableSql };
     }
 
     if (databaseType === "sqlserver") {
