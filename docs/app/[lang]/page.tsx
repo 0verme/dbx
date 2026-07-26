@@ -10,13 +10,13 @@ import { InstallTabs } from "@/components/landing/InstallTabs";
 import { LandingLatestUpdates } from "@/components/landing/LandingLatestUpdates";
 import { RevealSection } from "@/components/landing/RevealSection";
 import { ContributorsWallContent } from "@/components/landing/ContributorsWall";
-import { fetchContributors } from "@/lib/contributors";
+import contributorSnapshot from "@/data/contributors.json";
+import type { ContributorActivityData } from "@/lib/contributorActivity";
+import { contributorsFromActivity } from "@/lib/contributors";
 import { getAppVersion } from "@/lib/appVersion";
 import { fetchChangelog } from "@/lib/changelog";
 import { fetchLatestReleaseInfo } from "@/lib/latestRelease";
 import { ArrowRight, Bot, Database, FileCode, GitCompare, Network, Search, Shield, Table, Terminal, Zap } from "lucide-react";
-
-const fallbackStarLabel = "1.3k+";
 
 function formatStars(count: number) {
   if (count >= 1000) {
@@ -24,22 +24,6 @@ function formatStars(count: number) {
   }
 
   return `${count}+`;
-}
-
-async function getGitHubStarLabel() {
-  try {
-    const response = await fetch("https://api.github.com/repos/t8y2/dbx", {
-      headers: { Accept: "application/vnd.github+json" },
-      next: { revalidate: 60 * 60 * 6 },
-    });
-
-    if (!response.ok) return fallbackStarLabel;
-
-    const data = (await response.json()) as { stargazers_count?: number };
-    return typeof data.stargazers_count === "number" ? formatStars(data.stargazers_count) : fallbackStarLabel;
-  } catch {
-    return fallbackStarLabel;
-  }
 }
 
 function metrics(starLabel: string) {
@@ -460,11 +444,12 @@ export default async function LandingPage({ params }: { params: Promise<{ lang: 
   const t = i18nText[l];
   const workflowItems = workflows[l];
   const capabilityItems = capabilities[l];
-  const starLabel = await getGitHubStarLabel();
+  const contributorData = contributorSnapshot as ContributorActivityData;
+  const starLabel = formatStars(contributorData.stars);
   const metricItems = metrics(starLabel)[l];
   const appVersion = getAppVersion();
   const [initialChangelog, initialLatestRelease] = await Promise.all([fetchChangelog(l), fetchLatestReleaseInfo()]);
-  const contributors = await fetchContributors();
+  const contributors = contributorsFromActivity(contributorData.contributors);
   const initialDownloadVersion = initialLatestRelease?.version ?? appVersion;
   const testimonialItems = testimonials[l];
 
