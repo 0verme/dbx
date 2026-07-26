@@ -39,6 +39,7 @@ import { isLocalFileTypeDb } from "@/lib/connection/connectionFile";
 import { MQ_PINNED_VERSION_OPTIONS, pinnedVersionToSelection, selectionToPinnedVersion } from "@/lib/mq/mqPinnedVersionOptions";
 import { mongodbAuthFailureHint, mongoUrlParam, mongoUrlParamIsTrue, normalizeMongoTlsFormState, setMongoUrlParam, setMongoUrlParamBoolean } from "@/lib/mongo/mongoConnectionOptions";
 import { mysqlCleartextPasswordAuthEnabled, setMysqlCleartextPasswordAuthEnabled } from "@/lib/database/mysqlConnectionOptions";
+import { applyDamengSslUrlParams, damengSslFormConfig } from "@/lib/database/damengSslOptions";
 import { copyToClipboard } from "@/lib/common/clipboard";
 import { configuredDatabaseProductName, connectionConfigFingerprint, databaseInfoCopyText, databaseInfoRows, normalizeDatabaseConnectionInfo, type DatabaseInfoField } from "@/lib/connection/connectionDatabaseInfo";
 import { agentDriverInstallKey, appendAgentDriverUpdateHint, hasAgentDriverUpdate, showAgentDriverInstallHint, type AgentDriverInstallState, type DriverStoreFocus } from "@/lib/connection/agentDriverInstallHint";
@@ -2434,7 +2435,7 @@ const sqliteExtensionPaths = computed({
     form.value.url_params = setSqliteExtensionPaths(form.value.url_params, value);
   },
 });
-const tlsCapableDatabaseTypes = new Set<DatabaseType>(["mysql", "starrocks", "postgres", "redshift", "gaussdb", "kwdb", "opengauss", "questdb", "redis", "etcd", "clickhouse", "elasticsearch", "qdrant", "milvus", "weaviate", "chromadb", "influxdb"]);
+const tlsCapableDatabaseTypes = new Set<DatabaseType>(["mysql", "starrocks", "postgres", "redshift", "gaussdb", "kwdb", "opengauss", "questdb", "dameng", "redis", "etcd", "clickhouse", "elasticsearch", "qdrant", "milvus", "weaviate", "chromadb", "influxdb"]);
 const supportsTlsToggle = computed(() => tlsCapableDatabaseTypes.has(form.value.db_type));
 const supportsCaCertificatePath = computed(() => form.value.db_type === "clickhouse");
 const supportsGenericUrlParams = computed(() => form.value.db_type !== "manticoresearch");
@@ -2445,6 +2446,37 @@ const mysqlCleartextPasswordAuth = computed({
   get: () => mysqlCleartextPasswordAuthEnabled(form.value.url_params),
   set: (value: boolean) => {
     form.value.url_params = setMysqlCleartextPasswordAuthEnabled(form.value.url_params, value);
+  },
+});
+// DM8 configures SSL through JDBC URL parameters, so the TLS form and Advanced tab share one source of truth.
+const tlsEnabled = computed({
+  get: () => !!form.value.ssl || (form.value.db_type === "dameng" && damengSslFormConfig(form.value.url_params).enabled),
+  set: (enabled: boolean) => {
+    form.value.ssl = enabled;
+    if (form.value.db_type === "dameng" && !enabled) {
+      form.value.url_params = applyDamengSslUrlParams(form.value.url_params, false, "", "", "");
+    }
+  },
+});
+const damengSslFilesPath = computed({
+  get: () => damengSslFormConfig(form.value.url_params).sslFilesPath,
+  set: (value: string) => {
+    const current = damengSslFormConfig(form.value.url_params);
+    form.value.url_params = applyDamengSslUrlParams(form.value.url_params, true, value, current.sslKeystorePassword, current.sslProtocol);
+  },
+});
+const damengSslKeystorePassword = computed({
+  get: () => damengSslFormConfig(form.value.url_params).sslKeystorePassword,
+  set: (value: string) => {
+    const current = damengSslFormConfig(form.value.url_params);
+    form.value.url_params = applyDamengSslUrlParams(form.value.url_params, true, current.sslFilesPath, value, current.sslProtocol);
+  },
+});
+const damengSslProtocol = computed({
+  get: () => damengSslFormConfig(form.value.url_params).sslProtocol,
+  set: (value: string) => {
+    const current = damengSslFormConfig(form.value.url_params);
+    form.value.url_params = applyDamengSslUrlParams(form.value.url_params, true, current.sslFilesPath, current.sslKeystorePassword, value);
   },
 });
 const mysqlTlsMode = computed({
@@ -3019,6 +3051,11 @@ function connectionConfigForSubmit(id: string, generatedName = ""): ConnectionCo
   config.keepalive_interval_secs = Number.isFinite(keepaliveInterval) && keepaliveInterval >= 0 ? keepaliveInterval : 30;
   if (config.db_type === "manticoresearch") {
     config.url_params = "";
+  }
+  if (config.db_type === "dameng") {
+    const damengSsl = damengSslFormConfig(config.url_params);
+    config.ssl = !!config.ssl || damengSsl.enabled;
+    config.url_params = applyDamengSslUrlParams(config.url_params, config.ssl, damengSsl.sslFilesPath, damengSsl.sslKeystorePassword, damengSsl.sslProtocol);
   }
   if (config.db_type === "hive") {
     if (hiveAuthMode.value === "kerberos" && !hivePrincipal.value.trim()) {
@@ -4197,6 +4234,20 @@ async function browseCaCertPath() {
     });
     if (selected && typeof selected === "string") {
       form.value.ca_cert_path = selected;
+    }
+  }
+}
+
+async function browseDamengSslFilesPath() {
+  if (isTauriRuntime()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({
+      title: t("connection.damengSslFilesPathBrowse"),
+      directory: true,
+      multiple: false,
+    });
+    if (selected && typeof selected === "string") {
+      damengSslFilesPath.value = selected;
     }
   }
 }
@@ -6044,10 +6095,45 @@ function openExternalUrl(url: string) {
                 <div v-if="!supportsPostgresTlsOptions && !supportsMysqlTlsOptions" class="grid grid-cols-4 items-center gap-4">
                   <Label :class="connectionLabelSmallClass">SSL/TLS</Label>
                   <label class="col-span-3 flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" v-model="form.ssl" class="mr-0" />
+                    <input type="checkbox" v-model="tlsEnabled" class="mr-0" />
                     <span class="text-xs text-muted-foreground">{{ t("connection.sslEnable") }}</span>
                   </label>
                 </div>
+
+                <template v-if="form.db_type === 'dameng'">
+                  <div class="grid grid-cols-4 items-start gap-4">
+                    <Label :class="connectionLabelSmallPaddedClass">{{ t("connection.damengSslFilesPath") }}</Label>
+                    <div class="col-span-3 space-y-1.5">
+                      <div class="flex items-center gap-1">
+                        <Input v-model="damengSslFilesPath" class="flex-1" :placeholder="t('connection.damengSslFilesPathPlaceholder')" :disabled="!tlsEnabled" />
+                        <Tooltip v-if="isDesktop">
+                          <TooltipTrigger as-child>
+                            <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" :disabled="!tlsEnabled" @click="browseDamengSslFilesPath">
+                              <FolderOpen class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.damengSslFilesPathBrowse") }}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p class="text-[11px] leading-4 text-muted-foreground">{{ t("connection.damengSslHint") }}</p>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label :class="connectionLabelSmallClass">{{ t("connection.damengSslKeystorePassword") }}</Label>
+                    <PasswordInput v-model="damengSslKeystorePassword" class="col-span-3" :disabled="!tlsEnabled" />
+                  </div>
+
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label :class="connectionLabelSmallClass">{{ t("connection.damengSslProtocol") }}</Label>
+                    <Input v-model="damengSslProtocol" class="col-span-3" :placeholder="t('connection.damengSslProtocolPlaceholder')" :disabled="!tlsEnabled" />
+                  </div>
+
+                  <div class="grid grid-cols-4 items-start gap-4">
+                    <span />
+                    <p class="col-span-3 text-[11px] leading-4 text-muted-foreground">{{ t("connection.damengSslVerificationHint") }}</p>
+                  </div>
+                </template>
 
                 <div v-if="form.db_type === 'redis'" class="grid grid-cols-4 items-start gap-4">
                   <Label :class="connectionLabelSmallClass">{{ t("connection.redisTlsInsecure") }}</Label>
