@@ -552,6 +552,8 @@ export interface QueryResult {
   statement_index?: number;
   /** Internal row identifiers appended to editable query results. */
   hidden_column_indexes?: number[];
+  /** Local value filters survive DataGrid component eviction when switching tabs. */
+  local_column_filters?: Record<string, string[]>;
   /**
    * Database type name for each column, parallel to `columns`. Optional and may
    * be shorter/empty when a driver cannot supply types (schemaless stores,
