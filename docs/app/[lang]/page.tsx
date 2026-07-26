@@ -392,6 +392,9 @@ const i18nText = {
     capabilitiesTitle: "Built for real database work",
     contributorsTitle: "Built by the community",
     contributorsDesc: "DBX is fully open-source. Every feature, fix, and driver starts with a contributor.",
+    sponsorLabel: "Infrastructure Sponsor",
+    sponsorDesc: "RainYun is a cloud service provider offering cloud servers, physical servers, game hosting, and developer-friendly infrastructure services.",
+    sponsorAction: "Visit RainYun",
     footerTitle: "Ready to try DBX?",
     footerDesc: "Use the desktop app for local work, or deploy the Docker version for browser-based access.",
     release: "Latest release",
@@ -414,6 +417,9 @@ const i18nText = {
     capabilitiesTitle: "面向真实数据库工作的能力",
     contributorsTitle: "社区共建",
     contributorsDesc: "DBX 因每一位贡献者而生长",
+    sponsorLabel: "基础设施赞助",
+    sponsorDesc: "雨云是面向开发者和站长的云服务提供商，提供云服务器、物理服务器、游戏云和配套基础设施服务。",
+    sponsorAction: "访问雨云",
     footerTitle: "准备试试 DBX？",
     footerDesc: "本地工作使用桌面版，需要浏览器访问时部署 Docker 版。",
     release: "最新版本",
@@ -599,6 +605,22 @@ export default async function LandingPage({ params }: { params: Promise<{ lang: 
 
       {/* Updates */}
       <LandingLatestUpdates lang={l} fallbackVersion={appVersion} initialRelease={initialChangelog.releases[0]} initialLatestRelease={initialLatestRelease} />
+
+      {/* Sponsor */}
+      <RevealSection className="max-w-[1180px] mx-auto px-7 mt-10 max-[760px]:px-[18px]">
+        <div className="flex items-center justify-between gap-5 rounded-[10px] border border-landing-line bg-landing-panel px-5 py-4 max-[760px]:block">
+          <Link href="https://www.rainyun.com/MTE5Mjc4Ng==_" target="_blank" className="flex shrink-0 items-center justify-center rounded-lg bg-white px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.08)] max-[760px]:w-max">
+            <img src="https://www.rainyun.com/img/logo.d193755d.png" alt="RainYun" className="h-10 w-auto max-w-[150px]" />
+          </Link>
+          <div className="min-w-0 flex-1 max-[760px]:mt-4">
+            <p className="m-0 text-xs font-[720] uppercase tracking-[0.18em] text-landing-blue">{t.sponsorLabel}</p>
+            <p className="mt-1.5 text-sm leading-[1.65] text-landing-muted">{t.sponsorDesc}</p>
+          </div>
+          <Link href="https://www.rainyun.com/MTE5Mjc4Ng==_" target="_blank" className="landing-final-link inline-flex shrink-0 items-center justify-center min-h-[42px] rounded-[7px] px-[15px] text-sm font-[650] max-[760px]:mt-4">
+            {t.sponsorAction}
+          </Link>
+        </div>
+      </RevealSection>
 
       {/* Final CTA */}
       <RevealSection className="flex items-center justify-between gap-6 max-w-[1180px] mx-auto px-7 border border-landing-line rounded-[10px] bg-landing-panel mt-[72px] mb-14 py-[30px] max-[760px]:block max-[760px]:px-[18px]">
