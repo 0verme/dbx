@@ -1741,6 +1741,7 @@ export default withEnglishFallback({
     tableNameFilterExcludePlaceholder: "範例：\n%_bak\ntmp_%",
     tableNameFilterLikeHint: "使用 SQL LIKE 語法：% 符合任意字元，_ 符合單一字元。比對不區分大小寫。",
     pin: "置頂",
+    reorderPinned: "拖曳調整置頂順序",
     unpin: "取消置頂",
     fixTab: "固定分頁",
     unfixTab: "取消固定分頁",

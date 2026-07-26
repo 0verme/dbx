@@ -1742,6 +1742,7 @@ export default withEnglishFallback({
     tableNameFilterExcludePlaceholder: "Exemplo:\n%_bak\ntmp_%",
     tableNameFilterLikeHint: "Use sintaxe SQL LIKE: % corresponde a qualquer texto, _ a um caractere. A comparação ignora maiúsculas.",
     pin: "Fixar",
+    reorderPinned: "Reordenar item fixado",
     unpin: "Desafixar",
     fixTab: "Fixar aba",
     unfixTab: "Desafixar aba",

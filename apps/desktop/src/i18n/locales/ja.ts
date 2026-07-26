@@ -1739,6 +1739,7 @@ export default withEnglishFallback({
     tableNameFilterExcludePlaceholder: "例：\n%_bak\ntmp_%",
     tableNameFilterLikeHint: "SQL LIKE 構文を使用します。% は任意の文字列、_ は 1 文字に一致します。大文字小文字は区別しません。",
     pin: "ピン留め",
+    reorderPinned: "ピン留め項目を並べ替え",
     unpin: "ピン留め解除",
     fixTab: "タブを固定",
     unfixTab: "タブの固定を解除",

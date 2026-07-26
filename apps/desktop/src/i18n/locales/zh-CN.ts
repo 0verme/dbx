@@ -1802,6 +1802,7 @@ export default withEnglishFallback({
     tableNameFilterExcludePlaceholder: "例如：\n%_bak\ntmp_%",
     tableNameFilterLikeHint: "使用 SQL LIKE 语法：% 匹配任意字符，_ 匹配单个字符。匹配时不区分大小写。",
     pin: "置顶",
+    reorderPinned: "拖动调整置顶顺序",
     unpin: "取消置顶",
     fixTab: "固定标签页",
     unfixTab: "取消固定标签页",

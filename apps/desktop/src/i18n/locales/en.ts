@@ -1803,6 +1803,7 @@ export default {
     tableNameFilterExcludePlaceholder: "Example:\n%_bak\ntmp_%",
     tableNameFilterLikeHint: "Use SQL LIKE syntax: % matches any characters, _ matches one character. Matching is case-insensitive.",
     pin: "Pin",
+    reorderPinned: "Reorder pinned item",
     unpin: "Unpin",
     fixTab: "Fix Tab",
     unfixTab: "Unfix Tab",
