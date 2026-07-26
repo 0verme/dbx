@@ -406,6 +406,7 @@ export const redisClusterMasterNodes = forward("redisClusterMasterNodes");
 
 // etcd
 export const etcdListPrefix = forward("etcdListPrefix");
+export const etcdSupportsTtl = forward("etcdSupportsTtl");
 export const etcdGet = forward("etcdGet");
 export const etcdPut = forward("etcdPut");
 export const etcdDelete = forward("etcdDelete");
@@ -623,6 +624,7 @@ export type {
   KvListPrefixResponse,
   KvListPrefixOptions,
   KvGetResponse,
+  KvGetOptions,
   KvWriteMode,
   KvCreateMode,
   KvPutOptions,
