@@ -53,6 +53,9 @@ importers:
       '@dbx-app/mongo-shell':
         specifier: workspace:^
         version: link:packages/mongo-shell
+      '@internationalized/date':
+        specifier: ^3.12.2
+        version: 3.12.2
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.3
