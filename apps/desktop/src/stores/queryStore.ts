@@ -623,6 +623,25 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
+  function clearResultNavigationState(tab: QueryTab) {
+    tab.resultSortedSql = undefined;
+    tab.resultSortColumn = undefined;
+    tab.resultSortColumnIndex = undefined;
+    tab.resultSortDirection = undefined;
+    tab.resultSortMode = undefined;
+    tab.resultLocalSortOriginalRows = undefined;
+    tab.resultLocalSortOriginalMongoDocuments = undefined;
+    tab.resultLocalSortOriginalMongoCopyDocuments = undefined;
+    tab.orderByInput = undefined;
+    tab.resultPageSql = undefined;
+    tab.resultPageLimit = undefined;
+    tab.resultPageOffset = undefined;
+    tab.resultCountSql = undefined;
+    tab.resultTotalRowCount = undefined;
+    tab.resultTotalRowCountLoading = false;
+    tab.resultSessionId = undefined;
+  }
+
   function clearResultRunSnapshots(tab: QueryTab) {
     for (const run of tab.resultRuns ?? []) {
       if (run.resultCacheKey) void deleteTabResultSnapshot(run.resultCacheKey);
@@ -3510,6 +3529,7 @@ export const useQueryStore = defineStore("query", () => {
         const current = tabs.value.find((item) => item.id === id);
         if (current?.executionId === executionId && openInNewResultTab && current.isCancelling && restorePendingResultRun(current, executionId)) return false;
         if (current?.executionId === executionId && allResults.length > 0) {
+          clearResultNavigationState(current);
           const errorResultIndex = allResults.findIndex((result) => result.columns.includes("Error") || elasticsearchHttpErrorStatus(result) !== undefined);
           const resultIndex = errorResultIndex >= 0 ? errorResultIndex : 0;
           current.results = allResults.length > 1 ? allResults : undefined;

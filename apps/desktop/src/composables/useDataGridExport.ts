@@ -348,7 +348,14 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     }
     const obj: Record<string, unknown> = {};
     columns.value.forEach((col, i) => {
-      obj[col] = item.data[i];
+      const value = item.data[i];
+      if (typeof value === "string" && columnTypes.value?.[i]?.trim().toLowerCase() === "json") {
+        try {
+          obj[col] = JSON.parse(value);
+          return;
+        } catch {}
+      }
+      obj[col] = value;
     });
     return obj;
   }
@@ -443,6 +450,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     allDisplayItems,
     allSourceColumns,
     visibleColumnIndexes,
+    columnTypes,
     extractorOptions: extractorOptionsOption,
     databaseType,
     tableMeta,

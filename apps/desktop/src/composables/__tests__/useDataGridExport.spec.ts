@@ -122,7 +122,7 @@ function createExportState(
     context: computed(() => "table-data"),
     sourceColumns: computed(() => columns),
     visibleColumnIndexes: computed(() => visibleColumnIndexes ?? columns.map((_, index) => index)),
-    columnTypes: computed(() => columns.map(() => "varchar")),
+    columnTypes: computed(() => columns.map((column) => tableMeta.columns?.find((item) => item.name === column)?.data_type ?? "varchar")),
     extractorOptions: computed(() => extractorOptions),
     whereInput: computed(() => undefined),
     orderBy: computed(() => undefined),
@@ -545,6 +545,37 @@ describe("useDataGridExport prepared row statements", () => {
         selectionKind: "rows",
       }),
     );
+  });
+
+  it("keeps JSON cells structured in JSON and SQL extractor requests", async () => {
+    const tableMeta: DataGridTableMeta = {
+      tableName: "events",
+      primaryKeys: ["id"],
+      columns: [
+        { name: "id", data_type: "int", is_nullable: false, is_primary_key: true },
+        { name: "payload", data_type: "json", is_nullable: true },
+      ],
+    };
+    const matrix: CellSelectionMatrix = {
+      rowIndexes: [0],
+      columnIndexes: [0, 1],
+      columns: ["id", "payload"],
+      rows: [[7, '{"name":"Ada","tags":["admin"]}']],
+    };
+    vi.mocked(extractDataGridSelection).mockResolvedValue({
+      text: "copied",
+      mimeType: "application/json",
+      fileExtension: "json",
+      rowCount: 1,
+      columnCount: 2,
+    });
+    const state = createExportState(tableMeta, ["id", "payload"], matrix, [7, '{"name":"Ada","tags":["admin"]}']);
+
+    await expect(state.copyWithExtractor("json")).resolves.toBe(true);
+    await expect(state.copyWithExtractor("sql-inserts")).resolves.toBe(true);
+
+    expect(extractDataGridSelection).toHaveBeenNthCalledWith(1, expect.objectContaining({ rows: [[7, { name: "Ada", tags: ["admin"] }]] }));
+    expect(extractDataGridSelection).toHaveBeenNthCalledWith(2, expect.objectContaining({ rows: [[7, { name: "Ada", tags: ["admin"] }]] }));
   });
 
   it("rejects SQL UPDATE instead of silently skipping a row with a null primary key", async () => {

@@ -3393,6 +3393,7 @@ async fn execute_result_set_with_text_protocol_on_conn(
             truncated: false,
             session_id: None,
             has_more: false,
+            elasticsearch_raw_body: None,
         });
     }
     let columns: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().to_string()).collect();
@@ -3417,6 +3418,7 @@ async fn execute_result_set_with_text_protocol_on_conn(
             truncated,
             session_id: None,
             has_more: false,
+            elasticsearch_raw_body: None,
         });
     }
 
@@ -3451,6 +3453,7 @@ async fn execute_result_set_with_text_protocol_on_conn(
         truncated,
         session_id: None,
         has_more: false,
+        elasticsearch_raw_body: None,
     })
 }
 
@@ -3507,6 +3510,7 @@ async fn execute_result_set_with_prepared_protocol_on_conn(
         truncated,
         session_id: None,
         has_more: false,
+        elasticsearch_raw_body: None,
     })
 }
 
@@ -3748,6 +3752,7 @@ pub async fn execute_query_on_conn_with_max_rows(
             truncated: false,
             session_id: None,
             has_more: false,
+            elasticsearch_raw_body: None,
         })
     }
 }

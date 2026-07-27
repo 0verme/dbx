@@ -32,6 +32,7 @@ interface UseDataGridExtractorOptions {
   allDisplayItems: ComputedRef<ExtractorRowItem[]>;
   allSourceColumns: ComputedRef<Array<string | undefined> | undefined>;
   visibleColumnIndexes: ComputedRef<number[]>;
+  columnTypes: ComputedRef<Array<string | undefined> | undefined>;
   extractorOptions?: ComputedRef<DataGridExtractorOptions>;
   databaseType: ComputedRef<DatabaseType | undefined>;
   tableMeta: ComputedRef<DataGridTableMeta | undefined>;
@@ -53,6 +54,15 @@ export function useDataGridExtractor(options: UseDataGridExtractorOptions) {
   const { t } = useI18n();
   const { toast } = useToast();
   const hasUnsupportedDiscreteSelection = computed(() => options.hasCellSelection.value && options.selectedCellMatrix.value === null);
+
+  function normalizeCellValue(value: unknown, columnType: string | undefined): unknown {
+    if (typeof value !== "string" || columnType?.trim().toLowerCase() !== "json") return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
 
   function selectionData(): SelectionData | null {
     if (options.hasRowSelection.value && options.selectedRowIds.value.size > 0) {
@@ -116,13 +126,14 @@ export function useDataGridExtractor(options: UseDataGridExtractorOptions) {
       }
     }
     const compactIndexBySource = new Map(requiredSourceIndexes.map((sourceIndex, compactIndex) => [sourceIndex, compactIndex]));
+    const columnTypesBySource = new Map(visibleIndexes.map((sourceIndex, visibleIndex) => [sourceIndex, options.columnTypes.value?.[visibleIndex]]));
     const columns = requiredSourceIndexes.map((sourceIndex, compactIndex) => ({
       displayName: fullColumns[sourceIndex],
       sourceName: sourceNames?.[sourceIndex],
       sourceIndex: compactIndex,
     }));
     const selectedColumnIndexes = selectedSourceIndexes.map((sourceIndex) => compactIndexBySource.get(sourceIndex)).filter((index): index is number => index !== undefined);
-    const rows = sourceRows.map((row) => requiredSourceIndexes.map((sourceIndex) => row[sourceIndex]));
+    const rows = sourceRows.map((row) => requiredSourceIndexes.map((sourceIndex) => normalizeCellValue(row[sourceIndex], columnTypesBySource.get(sourceIndex))));
     const descriptor = DATA_GRID_COPY_EXTRACTOR_DESCRIPTORS[extractor];
     const tableMeta =
       descriptor.category === "sql"
