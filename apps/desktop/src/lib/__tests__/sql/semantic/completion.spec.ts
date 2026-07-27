@@ -49,11 +49,7 @@ describe("semantic SQL completion candidates", () => {
   });
 
   it("suggests nested tables after a qualified comma", () => {
-    const { context, items } = semanticCompletion(
-      "SELECT * FROM aa.tb t WHERE EXISTS (SELECT 1 FROM aa.tb1 t1, aa.|)",
-      { tables: [{ name: "tb2", schema: "aa", type: "table" }] },
-      { databaseType: "mysql", dialect: "mysql" },
-    );
+    const { context, items } = semanticCompletion("SELECT * FROM aa.tb t WHERE EXISTS (SELECT 1 FROM aa.tb1 t1, aa.|)", { tables: [{ name: "tb2", schema: "aa", type: "table" }] }, { databaseType: "mysql", dialect: "mysql" });
 
     expect(context.contextKind).toBe("table");
     expect(items).toEqual(expect.arrayContaining([expect.objectContaining({ label: "tb2", type: "table" })]));
