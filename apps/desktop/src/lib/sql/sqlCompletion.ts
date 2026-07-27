@@ -3501,7 +3501,7 @@ function isFollowedByJoin(beforeToken: string): boolean {
 
 function isInTableListContext(beforeToken: string): boolean {
   if (isInOrderOrGroupByContext(beforeToken)) return false;
-  const cleaned = stripSqlLiterals(beforeToken).trimEnd();
+  const cleaned = activeQueryBlockSql(stripSqlLiterals(beforeToken).trimEnd());
   if (!/,\s*$/.test(cleaned)) return false;
 
   // Only commas in the active top-level table segment should continue table completion.
@@ -3521,6 +3521,32 @@ function isInTableListContext(beforeToken: string): boolean {
     lastTopLevelKeywordIndex(cleaned, "except"),
   );
   return lastBoundary < lastTableIntro;
+}
+
+function activeQueryBlockSql(sql: string): string {
+  let depth = 0;
+  const selectIndexes = new Map<number, number>();
+  const lower = sql.toLowerCase();
+
+  for (let index = 0; index < lower.length; index += 1) {
+    const ch = lower[index] ?? "";
+    if (ch === "(") {
+      depth += 1;
+      continue;
+    }
+    if (ch === ")") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (lower.startsWith("select", index) && !isIdentifierPart(lower[index - 1]) && !isIdentifierPart(lower[index + 6])) {
+      selectIndexes.set(depth, index);
+      index += 5;
+    }
+  }
+
+  const activeDepth = Math.max(...[...selectIndexes.keys()].filter((selectDepth) => selectDepth <= depth), -1);
+  const activeSelectIndex = activeDepth >= 0 ? selectIndexes.get(activeDepth) : undefined;
+  return activeSelectIndex == null ? sql : sql.slice(activeSelectIndex);
 }
 
 function collectCompletionColumns(columnsByTable: Map<string, SqlCompletionColumn[]>): Array<SqlCompletionColumn & { key: string }> {
