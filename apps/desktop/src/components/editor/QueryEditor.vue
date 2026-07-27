@@ -3246,7 +3246,7 @@ onMounted(async () => {
   if (!editorRef.value) return;
 
   const [
-    { EditorView, keymap, rectangularSelection, hoverTooltip, showTooltip, Decoration, tooltips, gutter, GutterMarker, lineNumberMarkers, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, crosshairCursor, ViewPlugin },
+    { EditorView, keymap, rectangularSelection, hoverTooltip, showTooltip, Decoration, tooltips, gutter, GutterMarker, lineNumberMarkers, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, crosshairCursor, scrollPastEnd, ViewPlugin },
     { EditorState, EditorSelection, Compartment, Prec, RangeSet, StateEffect, StateField },
     langSql,
     { autocompletion, startCompletion, acceptCompletion, closeBrackets, closeBracketsKeymap, snippetCompletion, completionStatus, completionKeymap, insertCompletionText, nextSnippetField },
@@ -3687,6 +3687,7 @@ onMounted(async () => {
       trimmedSelectionLayer(),
       selectionMatchOccurrences(),
       dropCursor(),
+      props.readOnly ? [] : scrollPastEnd(),
       EditorView.dragMovesSelection.of((event) => !event.ctrlKey && !event.metaKey),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
