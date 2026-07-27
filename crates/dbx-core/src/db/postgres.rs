@@ -3476,28 +3476,59 @@ pub async fn list_functions(pool: &Pool, schema: &str) -> Result<Vec<FunctionInf
         .collect())
 }
 
-pub async fn list_sequences(pool: &Pool, schema: &str, with_last_values: bool) -> Result<Vec<SequenceInfo>, String> {
+fn postgres_sequences_sql() -> &'static str {
+    "SELECT c.relname, \
+      COALESCE(format_type(s.seqtypid, NULL), 'bigint'), \
+      COALESCE(s.seqstart::text, '1'), \
+      COALESCE(s.seqmin::text, '1'), \
+      COALESCE(s.seqmax::text, '9223372036854775807'), \
+      COALESCE(s.seqincrement::text, '1'), \
+      CASE WHEN s.seqcycle THEN 'YES' ELSE 'NO' END \
+     FROM pg_class c \
+     JOIN pg_namespace n ON n.oid = c.relnamespace \
+     LEFT JOIN pg_sequence s ON s.seqrelid = c.oid \
+     WHERE c.relkind = 'S' AND n.nspname = $1 \
+     ORDER BY c.relname"
+}
+
+fn opengauss_sequences_sql() -> &'static str {
+    "SELECT s.sequence_name, \
+      COALESCE(s.data_type::text, 'bigint'), \
+      COALESCE(s.start_value::text, '1'), \
+      COALESCE(s.minimum_value::text, '1'), \
+      COALESCE(s.maximum_value::text, '9223372036854775807'), \
+      COALESCE(s.increment::text, '1'), \
+      COALESCE(s.cycle_option::text, 'NO') \
+     FROM information_schema.sequences s \
+     JOIN pg_namespace n ON n.nspname = s.sequence_schema \
+     JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = s.sequence_name \
+     WHERE s.sequence_schema = $1 AND c.relkind IN ('S','L','z','Z') \
+     ORDER BY s.sequence_name"
+}
+
+fn postgres_sequence_last_values_sql() -> &'static str {
+    "SELECT c.relname, pg_sequence_last_value(c.oid)::text \
+     FROM pg_class c \
+     JOIN pg_namespace n ON n.oid = c.relnamespace \
+     WHERE c.relkind = 'S' AND n.nspname = $1"
+}
+
+fn opengauss_sequence_last_values_sql() -> &'static str {
+    "SELECT c.relname, (pg_sequence_last_value(c.oid)).last_value::text \
+     FROM pg_class c \
+     JOIN pg_namespace n ON n.oid = c.relnamespace \
+     WHERE c.relkind IN ('S','L','z','Z') AND n.nspname = $1"
+}
+
+async fn list_sequences_with_sql(
+    pool: &Pool,
+    schema: &str,
+    with_last_values: bool,
+    metadata_sql: &str,
+    last_values_sql: &str,
+) -> Result<Vec<SequenceInfo>, String> {
     let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
-    // Use pg_class + pg_sequence + pg_namespace instead of pg_sequences view
-    // for better compatibility and permission handling
-    let rows = postgres_query_cached(
-        &client,
-        "SELECT c.relname, \
-          COALESCE(format_type(s.seqtypid, NULL), 'bigint'), \
-          COALESCE(s.seqstart::text, '1'), \
-          COALESCE(s.seqmin::text, '1'), \
-          COALESCE(s.seqmax::text, '9223372036854775807'), \
-          COALESCE(s.seqincrement::text, '1'), \
-          CASE WHEN s.seqcycle THEN 'YES' ELSE 'NO' END \
-         FROM pg_class c \
-         JOIN pg_namespace n ON n.oid = c.relnamespace \
-         LEFT JOIN pg_sequence s ON s.seqrelid = c.oid \
-         WHERE c.relkind = 'S' AND n.nspname = $1 \
-         ORDER BY c.relname",
-        &[&schema],
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let rows = postgres_query_cached(&client, metadata_sql, &[&schema]).await.map_err(|e| e.to_string())?;
 
     let mut sequences: Vec<SequenceInfo> = rows
         .iter()
@@ -3514,17 +3545,12 @@ pub async fn list_sequences(pool: &Pool, schema: &str, with_last_values: bool) -
         .collect();
 
     if with_last_values {
-        // Batch query: get last values for all sequences in one query
-        let sql = "SELECT c.relname, pg_sequence_last_value(c.oid) \
-                   FROM pg_class c \
-                   JOIN pg_namespace n ON n.oid = c.relnamespace \
-                   WHERE c.relkind = 'S' AND n.nspname = $1";
-        if let Ok(rows) = postgres_query_cached(&client, sql, &[&schema]).await {
+        if let Ok(rows) = postgres_query_cached(&client, last_values_sql, &[&schema]).await {
             for row in rows {
                 let name: String = pg_row_try_string(&row, 0);
-                if let Ok(val) = row.try_get::<_, i64>(1) {
+                if let Ok(Some(value)) = row.try_get::<_, Option<String>>(1) {
                     if let Some(seq) = sequences.iter_mut().find(|s| s.name == name) {
-                        seq.last_value = Some(val.to_string());
+                        seq.last_value = Some(value);
                     }
                 }
             }
@@ -3532,6 +3558,36 @@ pub async fn list_sequences(pool: &Pool, schema: &str, with_last_values: bool) -
     }
 
     Ok(sequences)
+}
+
+pub async fn list_sequences(pool: &Pool, schema: &str, with_last_values: bool) -> Result<Vec<SequenceInfo>, String> {
+    // PostgreSQL 10+ stores sequence properties in pg_sequence.
+    list_sequences_with_sql(
+        pool,
+        schema,
+        with_last_values,
+        postgres_sequences_sql(),
+        postgres_sequence_last_values_sql(),
+    )
+    .await
+}
+
+pub async fn list_opengauss_sequences(
+    pool: &Pool,
+    schema: &str,
+    with_last_values: bool,
+) -> Result<Vec<SequenceInfo>, String> {
+    // openGauss does not expose PostgreSQL 10's pg_sequence catalog. Its
+    // information_schema view contains the portable sequence properties, while
+    // pg_sequence_last_value returns a record rather than a scalar.
+    list_sequences_with_sql(
+        pool,
+        schema,
+        with_last_values,
+        opengauss_sequences_sql(),
+        opengauss_sequence_last_values_sql(),
+    )
+    .await
 }
 
 pub async fn list_rules(pool: &Pool, schema: &str) -> Result<Vec<RuleInfo>, String> {
@@ -4739,6 +4795,36 @@ mod tests {
         assert!(POSTGRES_COLUMNS_INFORMATION_SCHEMA_SQL.contains("NULL::text AS enum_values"));
         assert!(!POSTGRES_COLUMNS_INFORMATION_SCHEMA_SQL.contains("pg_attribute"));
         assert!(!POSTGRES_COLUMNS_INFORMATION_SCHEMA_SQL.contains("regclass"));
+    }
+
+    #[test]
+    fn opengauss_sequence_metadata_uses_compatible_information_schema_view() {
+        let sql = opengauss_sequences_sql();
+
+        assert!(sql.contains("information_schema.sequences"));
+        assert!(sql.contains("s.sequence_schema = $1"));
+        assert!(sql.contains("c.relkind IN ('S','L','z','Z')"));
+        assert!(sql.contains("sequence_name"));
+        assert!(sql.contains("start_value"));
+        assert!(sql.contains("minimum_value"));
+        assert!(sql.contains("maximum_value"));
+        assert!(sql.contains("increment"));
+        assert!(sql.contains("cycle_option"));
+        assert!(!sql.contains("pg_sequence s"));
+    }
+
+    #[test]
+    fn opengauss_sequence_last_values_extract_record_field_as_text() {
+        let sql = opengauss_sequence_last_values_sql();
+
+        assert!(sql.contains("(pg_sequence_last_value(c.oid)).last_value::text"));
+        assert!(sql.contains("c.relkind IN ('S','L','z','Z')"));
+        assert!(sql.contains("n.nspname = $1"));
+    }
+
+    #[test]
+    fn postgres_sequence_last_values_are_read_as_text() {
+        assert!(postgres_sequence_last_values_sql().contains("pg_sequence_last_value(c.oid)::text"));
     }
 
     #[test]
