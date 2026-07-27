@@ -176,6 +176,8 @@ export default {
     title: "New Connection",
     name: "Name",
     namePlaceholder: "Connection name, auto-generated if empty",
+    note: "Notes",
+    notePlaceholder: "Do not store passwords in plaintext in notes",
     type: "Type",
     host: "Host",
     filePath: "File Path",
