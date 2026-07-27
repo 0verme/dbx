@@ -934,7 +934,7 @@ async function fetchTableDdl() {
   tableDdlLoading.value = true;
   try {
     const schema = row.schema || selectedSchema.value || props.database;
-    const ddl = await api.getTableDdl(props.connection.id, props.database || "", schema, row.name, tableDdlObjectType(row.type), props.catalog);
+    const ddl = await api.getTableDisplayDdl(props.connection.id, props.database || "", schema, row.name, tableDdlObjectType(row.type), props.catalog);
     if (sidePanelGuard.isStale(epoch)) return;
     tableDdlContent.value = ddl;
   } catch (e: any) {

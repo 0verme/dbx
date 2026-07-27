@@ -30,6 +30,22 @@ use crate::types::{
     OwnerInfo, QueryResult, RuleInfo, SchemaInfo, SequenceInfo, TableInfo, TriggerInfo,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostgresTablePrivilegeInfo {
+    pub grantor: String,
+    pub grantee: String,
+    pub privilege_type: String,
+    pub is_grantable: bool,
+    pub column_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostgresTableAccessInfo {
+    pub owner: String,
+    pub owner_default_privileges: Vec<String>,
+    pub privileges: Vec<PostgresTablePrivilegeInfo>,
+}
+
 fn pg_temporal_to_json_value(row: &Row, idx: usize) -> Option<serde_json::Value> {
     if let Ok(v) = row.try_get::<_, DateTime<Local>>(idx) {
         return Some(serde_json::Value::String(format_pg_timestamptz(v)));
@@ -3338,6 +3354,37 @@ const POSTGRES_OWNERS_SQL: &str =
      WHERE n.nspname = $1 \
        AND c.relkind IN ('r', 'v', 'm', 'S', 'f', 'p')";
 
+const POSTGRES_TABLE_OWNER_SQL: &str = "SELECT pg_get_userbyid(c.relowner)::text, \
+            ARRAY(SELECT default_acl.privilege_type::text \
+                  FROM pg_catalog.aclexplode(pg_catalog.acldefault('r', c.relowner)) default_acl \
+                  WHERE default_acl.grantee = c.relowner \
+                  ORDER BY default_acl.privilege_type) \
+     FROM pg_catalog.pg_class c \
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'p') \
+     ORDER BY c.oid LIMIT 1";
+
+const POSTGRES_TABLE_ACL_PRIVILEGES_SQL: &str =
+    "SELECT CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END::text, \
+            acl.privilege_type::text, acl.is_grantable, pg_get_userbyid(acl.grantor)::text \
+     FROM pg_catalog.pg_class c \
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+     JOIN LATERAL pg_catalog.aclexplode(COALESCE(c.relacl, pg_catalog.acldefault('r', c.relowner))) acl ON true \
+     LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = acl.grantee \
+     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'p') \
+     ORDER BY 4, 1, 2, 3";
+
+const POSTGRES_COLUMN_ACL_PRIVILEGES_SQL: &str =
+    "SELECT CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END::text, \
+            acl.privilege_type::text, acl.is_grantable, a.attname::text, pg_get_userbyid(acl.grantor)::text \
+     FROM pg_catalog.pg_class c \
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+     JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped \
+     JOIN LATERAL pg_catalog.aclexplode(a.attacl) acl ON true \
+     LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = acl.grantee \
+     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'p') \
+     ORDER BY 5, 1, 2, 3, 4";
+
 fn postgres_owner_object_type(relkind: &str) -> &str {
     match relkind {
         "r" => "TABLE",
@@ -3813,6 +3860,53 @@ pub async fn list_owners(pool: &Pool, schema: &str) -> Result<Vec<OwnerInfo>, St
             }
         })
         .collect())
+}
+
+pub async fn get_table_access(pool: &Pool, schema: &str, table: &str) -> Result<PostgresTableAccessInfo, String> {
+    let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [&schema, &table];
+    let owner_rows =
+        postgres_query_cached(&client, POSTGRES_TABLE_OWNER_SQL, &params).await.map_err(pg_error_to_string)?;
+    let owner_row = owner_rows.first().ok_or_else(|| "Table owner not found".to_string())?;
+    let owner = pg_row_try_string(owner_row, 0);
+    if owner.is_empty() {
+        return Err("Table owner not found".to_string());
+    }
+    let owner_default_privileges = owner_row.try_get::<_, Vec<String>>(1).unwrap_or_default();
+    if owner_default_privileges.is_empty() {
+        return Err("Table owner default privileges are unavailable".to_string());
+    }
+
+    let (table_privileges, column_privileges) = tokio::try_join!(
+        postgres_query_cached(&client, POSTGRES_TABLE_ACL_PRIVILEGES_SQL, &params),
+        postgres_query_cached(&client, POSTGRES_COLUMN_ACL_PRIVILEGES_SQL, &params),
+    )
+    .map_err(pg_error_to_string)?;
+
+    let privileges = table_privileges
+        .iter()
+        .map(|row| PostgresTablePrivilegeInfo {
+            grantor: pg_row_try_string(row, 3),
+            grantee: pg_row_try_string(row, 0),
+            privilege_type: pg_row_try_string(row, 1),
+            is_grantable: pg_row_try_bool(row, 2).unwrap_or(false),
+            column_name: None,
+        })
+        .chain(column_privileges.iter().map(|row| PostgresTablePrivilegeInfo {
+            grantor: pg_row_try_string(row, 4),
+            grantee: pg_row_try_string(row, 0),
+            privilege_type: pg_row_try_string(row, 1),
+            is_grantable: pg_row_try_bool(row, 2).unwrap_or(false),
+            column_name: Some(pg_row_try_string(row, 3)),
+        }))
+        .collect::<Vec<_>>();
+    if privileges.iter().any(|privilege| {
+        privilege.grantor.is_empty() || privilege.grantee.is_empty() || privilege.privilege_type.is_empty()
+    }) {
+        return Err("Table ACL metadata is incomplete".to_string());
+    }
+
+    Ok(PostgresTableAccessInfo { owner, owner_default_privileges, privileges })
 }
 
 /// Execute multiple SQL statements in a single round-trip using batch_execute.
@@ -4615,6 +4709,19 @@ mod tests {
         // Double quotes should be doubled, not breaking out
         assert_eq!(escaped, r#""public""; DROP TABLE users; --""#);
         assert!(escaped.matches('"').count().is_multiple_of(2), "quote count should be even");
+    }
+
+    #[test]
+    fn postgres_table_access_reads_complete_catalog_acls() {
+        assert!(POSTGRES_TABLE_OWNER_SQL.contains("acldefault('r', c.relowner)"));
+        assert!(
+            POSTGRES_TABLE_ACL_PRIVILEGES_SQL.contains("COALESCE(c.relacl, pg_catalog.acldefault('r', c.relowner))")
+        );
+        assert!(POSTGRES_COLUMN_ACL_PRIVILEGES_SQL.contains("aclexplode(a.attacl)"));
+        assert!(POSTGRES_TABLE_ACL_PRIVILEGES_SQL.contains("acl.grantee = 0 THEN 'PUBLIC'"));
+        assert!(POSTGRES_COLUMN_ACL_PRIVILEGES_SQL.contains("acl.grantee = 0 THEN 'PUBLIC'"));
+        assert!(POSTGRES_TABLE_ACL_PRIVILEGES_SQL.contains("pg_get_userbyid(acl.grantor)"));
+        assert!(POSTGRES_COLUMN_ACL_PRIVILEGES_SQL.contains("pg_get_userbyid(acl.grantor)"));
     }
 
     // --- query_result_row_limit ---
