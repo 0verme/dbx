@@ -23,10 +23,13 @@ const apiMock = vi.hoisted(() => ({
 const clipboardMock = vi.hoisted(() => ({
   copyToClipboard: vi.fn(),
 }));
+const runtimeMock = vi.hoisted(() => ({ isTauri: false }));
+const dialogMock = vi.hoisted(() => ({ save: vi.fn() }));
 
 vi.mock("@/lib/backend/api", () => apiMock);
 vi.mock("@/lib/common/clipboard", () => clipboardMock);
-vi.mock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => false }));
+vi.mock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => runtimeMock.isTauri }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: dialogMock.save }));
 vi.mock("@/composables/useToast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 
@@ -79,6 +82,7 @@ function buildExportHarness(
     exportFileBaseName?: string;
     columns?: string[];
     columnTypes?: Array<string | undefined>;
+    allColumnTypes?: Array<string | undefined>;
     rows?: QueryResult["rows"];
     allExportResults?: Array<{ sheetName: string; result: QueryResult; sql?: string }>;
     completeLocalResult?: QueryResult;
@@ -109,7 +113,7 @@ function buildExportHarness(
   const fullExportResult = vi.fn(async () => {
     throw new Error("fullExportResult should not be called for streaming CSV/XLSX query exports");
   });
-  const queryResultExportRequest = vi.fn(async (options: { exportId: string; filePath: string; format: "csv" | "xlsx" | "txt"; includeSqlSheet?: boolean }) => ({
+  const queryResultExportRequest = vi.fn(async (options: { exportId: string; filePath: string; format: "csv" | "xlsx" | "txt" | "sql"; includeSqlSheet?: boolean; exportTableName?: string; exportColumnTypes?: Array<string | null | undefined> }) => ({
     exportId: options.exportId,
     connectionId: "conn-1",
     database: "db",
@@ -121,6 +125,8 @@ function buildExportHarness(
     filePath: options.filePath,
     format: options.format,
     includeSqlSheet: options.includeSqlSheet,
+    exportTableName: options.exportTableName,
+    exportColumnTypes: options.exportColumnTypes,
     pageSize: 1000,
     rowLimit: 100000,
     totalRows: 2,
@@ -142,6 +148,7 @@ function buildExportHarness(
     context: computed(() => options.context ?? "results"),
     sourceColumns: computed(() => options.sourceColumns),
     columnTypes: computed(() => options.columnTypes),
+    allColumnTypes: computed(() => options.allColumnTypes),
     whereInput: computed(() => undefined),
     orderBy: computed(() => undefined),
     exportBatchSize: computed(() => 1000),
@@ -236,6 +243,8 @@ function buildTableDataExportHarness() {
 beforeEach(() => {
   setActivePinia(createPinia());
   vi.clearAllMocks();
+  runtimeMock.isTauri = false;
+  dialogMock.save.mockResolvedValue(null);
   clipboardMock.copyToClipboard.mockResolvedValue(undefined);
   apiMock.startQueryResultExport.mockImplementation(async (_request, onProgress) => {
     onProgress({ exportId: _request.exportId, tableName: "", rowsExported: 2, totalRows: 2, status: "Done" });
@@ -428,6 +437,22 @@ test("MySQL joined query SQL export keeps result aliases instead of source colum
   } finally {
     download.restore();
   }
+});
+
+test("background SQL export keeps full result column types when visible columns are reordered", async () => {
+  runtimeMock.isTauri = true;
+  dialogMock.save.mockResolvedValue("/tmp/query-result.sql");
+  const { composable, queryResultExportRequest } = buildExportHarness({
+    columns: ["payload", "created_at"],
+    columnTypes: ["jsonb", "timestamp"],
+    allColumnTypes: ["bytea", "jsonb", "timestamp"],
+    tableMeta: { tableName: "events", primaryKeys: ["id"] },
+  });
+
+  await composable.exportSql();
+
+  assert.deepEqual(queryResultExportRequest.mock.calls[0][0].exportColumnTypes, ["bytea", "jsonb", "timestamp"]);
+  assert.deepEqual(apiMock.startQueryResultExport.mock.calls[0][0].exportColumnTypes, ["bytea", "jsonb", "timestamp"]);
 });
 
 test("table data SQL export keeps source column names", async () => {
