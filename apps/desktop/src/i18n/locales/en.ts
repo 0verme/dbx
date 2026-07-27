@@ -3122,6 +3122,7 @@ export default {
     requestEditor: "Vector request editor",
     operationSuccess: "Operation completed. The collection preview has been refreshed.",
     vectorLabel: "Vector",
+    vectorDimensionRequired: "Collection dimensions are not available yet. Enter a vector matching the collection dimension.",
   },
   history: {
     title: "History",

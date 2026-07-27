@@ -2979,6 +2979,7 @@ export default withEnglishFallback({
     requestEditor: "Editor de requisição de vetor",
     operationSuccess: "Operação concluída. A pré-visualização da coleção foi atualizada.",
     vectorLabel: "Vetor",
+    vectorDimensionRequired: "A dimensão da coleção ainda não está disponível. Insira um vetor com a dimensão correta.",
   },
   history: {
     title: "Histórico",

@@ -3122,6 +3122,7 @@ export default withEnglishFallback({
     requestEditor: "向量请求编辑器",
     operationSuccess: "操作已完成，集合预览已刷新。",
     vectorLabel: "向量",
+    vectorDimensionRequired: "暂未获取到集合维度，请先输入与集合维度一致的向量。",
   },
   history: {
     title: "历史",

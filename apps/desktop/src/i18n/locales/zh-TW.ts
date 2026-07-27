@@ -2650,6 +2650,7 @@ export default withEnglishFallback({
     requestEditor: "向量請求編輯器",
     operationSuccess: "操作已完成，集合預覽已重新整理。",
     vectorLabel: "向量",
+    vectorDimensionRequired: "尚未取得集合維度，請先輸入與集合維度一致的向量。",
   },
   history: {
     title: "歷史",

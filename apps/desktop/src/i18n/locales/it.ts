@@ -2977,6 +2977,7 @@ export default withEnglishFallback({
     requestEditor: "Editor richieste vettoriali",
     operationSuccess: "Operazione completata. L'anteprima della collezione e stata aggiornata.",
     vectorLabel: "Vettore",
+    vectorDimensionRequired: "La dimensione della collezione non è ancora disponibile. Inserisci un vettore con la dimensione corretta.",
   },
   history: {
     title: "Cronologia",

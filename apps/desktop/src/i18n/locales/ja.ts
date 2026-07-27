@@ -2978,6 +2978,7 @@ export default withEnglishFallback({
     requestEditor: "ベクターリクエストエディタ",
     operationSuccess: "操作が完了しました。コレクションプレビューが更新されました。",
     vectorLabel: "ベクトル",
+    vectorDimensionRequired: "コレクションの次元をまだ取得できません。次元が一致するベクトルを入力してください。",
   },
   history: {
     title: "履歴",
