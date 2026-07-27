@@ -2848,14 +2848,15 @@ mod tests {
         dameng_object_statistics_rows_only_sql, dameng_object_statistics_user_segments_sql, deduplicate_column_infos,
         filter_mysql_system_databases_for_config, filter_object_infos, filter_table_infos, filter_visible_schema_names,
         gbase8a_object_statistics_sql, is_agent_postgres_metadata_fallback_config, is_retryable_metadata_error,
-        mysql_object_source_sql, mysql_table_metadata_catalog, normalize_information_schema_table_type,
-        oracle_columns_from_query_result, oracle_columns_sql, oracle_object_statistics_dba_segments_sql,
-        oracle_object_statistics_from_query_result, oracle_object_statistics_rows_only_sql,
-        oracle_object_statistics_sql, oracle_object_statistics_user_segments_sql,
-        oracle_table_comment_from_query_result, oracle_table_comment_sql, oracle_table_comments_from_query_result,
-        oracle_table_comments_sql, presto_like_columns_from_query_result, presto_like_information_schema_columns_sql,
-        presto_like_information_schema_tables_sql, presto_like_tables_from_query_result,
-        should_query_oracle_columns_via_sql_first, table_name_filter_matches, visible_schema_filter, TableNameFilter,
+        mysql_object_source_ddl_column_index, mysql_object_source_sql, mysql_table_metadata_catalog,
+        normalize_information_schema_table_type, oracle_columns_from_query_result, oracle_columns_sql,
+        oracle_object_statistics_dba_segments_sql, oracle_object_statistics_from_query_result,
+        oracle_object_statistics_rows_only_sql, oracle_object_statistics_sql,
+        oracle_object_statistics_user_segments_sql, oracle_table_comment_from_query_result, oracle_table_comment_sql,
+        oracle_table_comments_from_query_result, oracle_table_comments_sql, presto_like_columns_from_query_result,
+        presto_like_information_schema_columns_sql, presto_like_information_schema_tables_sql,
+        presto_like_tables_from_query_result, should_query_oracle_columns_via_sql_first, table_name_filter_matches,
+        visible_schema_filter, TableNameFilter,
     };
     #[cfg(feature = "duckdb-bundled")]
     use super::{
@@ -2960,6 +2961,35 @@ mod tests {
             mysql_object_source_sql("", "users_view", &db::ObjectSourceKind::View),
             "SHOW CREATE VIEW `users_view`"
         );
+    }
+
+    #[test]
+    fn mysql_object_source_sql_emits_show_create_materialized_view() {
+        // Regression for the review comment: Doris / StarRocks ride on the MySQL
+        // protocol, so the MV branch of mysql_object_source_sql must produce a
+        // real statement (used at crates/dbx-core/src/schema.rs:5395-5404 by
+        // get_table_ddl_core). Returning an empty string silently broke the UI.
+        assert_eq!(
+            mysql_object_source_sql("shop", "daily_sales_mv", &db::ObjectSourceKind::MaterializedView),
+            "SHOW CREATE MATERIALIZED VIEW `shop`.`daily_sales_mv`"
+        );
+        assert_eq!(
+            mysql_object_source_sql("", "daily_sales_mv", &db::ObjectSourceKind::MaterializedView),
+            "SHOW CREATE MATERIALIZED VIEW `daily_sales_mv`"
+        );
+    }
+
+    #[test]
+    fn mysql_object_source_ddl_column_index_matches_dialect_layout() {
+        // VIEW and Doris/StarRocks MaterializedView return (Name, DDL).
+        // PROCEDURE / FUNCTION return (Name, sql_mode, DDL, …).
+        // Reading the wrong index returns the empty/no-op and surfaces as
+        // "Failed to read object source" — regression-guarded here so we
+        // don't have to spin up a real StarRocks to catch it.
+        assert_eq!(mysql_object_source_ddl_column_index(&db::ObjectSourceKind::View), 1);
+        assert_eq!(mysql_object_source_ddl_column_index(&db::ObjectSourceKind::MaterializedView), 1);
+        assert_eq!(mysql_object_source_ddl_column_index(&db::ObjectSourceKind::Procedure), 2);
+        assert_eq!(mysql_object_source_ddl_column_index(&db::ObjectSourceKind::Function), 2);
     }
 
     #[test]
@@ -6193,8 +6223,40 @@ pub fn mysql_object_source_sql(database: &str, name: &str, kind: &db::ObjectSour
         | db::ObjectSourceKind::Package
         | db::ObjectSourceKind::PackageBody
         | db::ObjectSourceKind::Type
-        | db::ObjectSourceKind::TypeBody
-        | db::ObjectSourceKind::MaterializedView => String::new(),
+        | db::ObjectSourceKind::TypeBody => String::new(),
+        // Doris and StarRocks expose materialized views via `SHOW CREATE MATERIALIZED VIEW`.
+        // MySQL itself never reaches this arm in normal use: the desktop capabilities map at
+        // apps/desktop/src/lib/database/databaseObjectCapabilities.ts has no "mysql" entry,
+        // so the UI never sends MaterializedView for a real MySQL connection. If something
+        // else forces the kind through, MySQL 8.x will surface a syntax error instead of
+        // silently returning empty, which is the desired fail-loud behaviour.
+        db::ObjectSourceKind::MaterializedView => {
+            format!("SHOW CREATE MATERIALIZED VIEW {qualified_name}")
+        }
+    }
+}
+
+/// Column index of the DDL text in the row returned by the statements generated
+/// by [`mysql_object_source_sql`].
+///
+/// The shape of the result is dialect-dependent:
+/// - `SHOW CREATE VIEW`, Doris/StarRocks `SHOW CREATE MATERIALIZED VIEW` →
+///   `(Name, DDL)` → DDL at index `1`.
+/// - `SHOW CREATE PROCEDURE`, `SHOW CREATE FUNCTION` →
+///   `(Name, sql_mode, DDL, …)` → DDL at index `2`.
+///
+/// Encoded as a function so the index can be unit-tested without a live DB.
+pub(crate) fn mysql_object_source_ddl_column_index(kind: &db::ObjectSourceKind) -> usize {
+    match kind {
+        db::ObjectSourceKind::View | db::ObjectSourceKind::MaterializedView => 1,
+        db::ObjectSourceKind::Procedure
+        | db::ObjectSourceKind::Function
+        | db::ObjectSourceKind::Trigger
+        | db::ObjectSourceKind::Sequence
+        | db::ObjectSourceKind::Package
+        | db::ObjectSourceKind::PackageBody
+        | db::ObjectSourceKind::Type
+        | db::ObjectSourceKind::TypeBody => 2,
     }
 }
 
@@ -6224,17 +6286,42 @@ async fn mysql_object_source(
     name: &str,
     kind: &db::ObjectSourceKind,
 ) -> Result<String, String> {
-    use mysql_async::prelude::*;
-    let sql = mysql_object_source_sql(database, name, kind);
+    let primary_sql = mysql_object_source_sql(database, name, kind);
+    let primary_column_index = mysql_object_source_ddl_column_index(kind);
     let mut conn = db::mysql::get_conn_with_timeout(pool, db::connection_timeout()).await?;
-    let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+
+    match read_mysql_object_source_row(&mut conn, &primary_sql, primary_column_index).await {
+        Ok(source) => Ok(source),
+        Err(primary_err) if matches!(kind, db::ObjectSourceKind::MaterializedView) => {
+            // StarRocks predating PR 73396 rejects SHOW CREATE MATERIALIZED VIEW for
+            // sync MVs. Fall back to the persistent definition exposed by
+            // information_schema.materialized_views. The fallback returns a single
+            // column (MATERIALIZED_VIEW_DEFINITION) so the column index is always 0.
+            let fallback_sql = db::mysql::mysql_materialized_view_definition_sql(database, name);
+            read_mysql_object_source_row(&mut conn, &fallback_sql, 0).await.map_err(|fallback_err| {
+                format!(
+                    "SHOW CREATE MATERIALIZED VIEW failed ({primary_err}); \
+                         fallback query against information_schema.materialized_views failed ({fallback_err})"
+                )
+            })
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn read_mysql_object_source_row(
+    conn: &mut mysql_async::Conn,
+    sql: &str,
+    ddl_column_index: usize,
+) -> Result<String, String> {
+    use mysql_async::prelude::*;
+    let result = conn.query_iter(sql).await.map_err(|e| e.to_string())?;
     let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
     let row = rows.first().ok_or("Object source not found")?;
-    let index = if matches!(kind, db::ObjectSourceKind::View) { 1 } else { 2 };
-    row.get_opt::<String, usize>(index)
+    row.get_opt::<String, usize>(ddl_column_index)
         .and_then(|result| result.ok())
         .or_else(|| {
-            row.get_opt::<Vec<u8>, usize>(index)
+            row.get_opt::<Vec<u8>, usize>(ddl_column_index)
                 .and_then(|result| result.ok())
                 .map(|b| String::from_utf8_lossy(&b).to_string())
         })
