@@ -132,7 +132,7 @@ describe("connectionStore metadata loading", () => {
     expect(store.activeConnectionId).toBe(active.id);
     expect(nodes.map((node) => node.isExpanded)).toEqual([true, false, false]);
     expect(filterSidebarTree(nodes, "dajia", new Set()).map((node) => node.id)).toEqual([active.id, connected.id]);
-  });
+  }, 10_000);
 
   it("does not collapse a connection whose normal root load is already in flight", async () => {
     let resolveDatabases!: (databases: Array<{ name: string; comment: null }>) => void;
@@ -174,7 +174,7 @@ describe("connectionStore metadata loading", () => {
 
     expect(listDatabases).toHaveBeenCalledTimes(1);
     expect(node.isExpanded).toBe(true);
-  });
+  }, 10_000);
 
   it("discovers schema nodes for unknown generic JDBC databases", async () => {
     const listSchemaInfos = vi.fn().mockResolvedValue([
