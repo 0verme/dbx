@@ -115,6 +115,31 @@ describe("normalizeEditorSettings", () => {
     expect(normalizeEditorSettings({ dataGridSearchMode: "invalid" as any }).dataGridSearchMode).toBe("filter");
   });
 
+  it("defaults the global data grid copy extractor and preserves valid choices", () => {
+    expect(normalizeEditorSettings({}).dataGridCopyExtractor).toBe("tsv");
+    expect(normalizeEditorSettings({ dataGridCopyExtractor: "sql-updates" }).dataGridCopyExtractor).toBe("sql-updates");
+    expect(normalizeEditorSettings({ dataGridCopyExtractor: "markdown" }).dataGridCopyExtractor).toBe("markdown");
+    expect(normalizeEditorSettings({ dataGridCopyExtractor: "invalid" as any }).dataGridCopyExtractor).toBe("tsv");
+  });
+
+  it("normalizes persistent extractor configuration fail-fast defaults", () => {
+    const defaults = normalizeEditorSettings({}).dataGridExtractorOptions;
+    expect(defaults.dsv).toMatchObject({ columnSeparator: ",", rowSeparator: "\n", quote: '"', quotePolicy: "minimal" });
+    expect(defaults.sql).toMatchObject({ skipComputedColumns: true, skipGeneratedColumns: true, insertMode: "merged" });
+
+    const configured = normalizeEditorSettings({
+      dataGridExtractorOptions: {
+        dsv: { ...defaults.dsv, columnSeparator: "|", quotePolicy: "always" },
+        sql: { ...defaults.sql, insertMode: "row-by-row" },
+        json: { pretty: false },
+      },
+    }).dataGridExtractorOptions;
+    expect(configured.dsv.columnSeparator).toBe("|");
+    expect(configured.dsv.quotePolicy).toBe("always");
+    expect(configured.sql.insertMode).toBe("row-by-row");
+    expect(configured.json.pretty).toBe(false);
+  });
+
   it("defaults retained result runs to tiled tabs and preserves list mode", () => {
     expect(normalizeEditorSettings({}).resultRunDisplayMode).toBe("tabs");
     expect(normalizeEditorSettings({ resultRunDisplayMode: "list" }).resultRunDisplayMode).toBe("list");
