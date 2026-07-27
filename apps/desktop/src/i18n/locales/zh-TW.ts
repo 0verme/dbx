@@ -1288,6 +1288,9 @@ export default withEnglishFallback({
     },
     cachedResultUnavailable: "快取結果缺失或不相容。",
     reexecuteQuery: "重新執行查詢",
+    numericColumnAlign: "數值列對齊",
+    numericColumnAlignLeft: "左對齊",
+    numericColumnAlignRight: "右對齊",
   },
   exportProgress: {
     title: "匯出資料表資料",

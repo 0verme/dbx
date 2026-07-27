@@ -1289,6 +1289,9 @@ export default withEnglishFallback({
     },
     cachedResultUnavailable: "Resultado en caché faltante o incompatible.",
     reexecuteQuery: "Volver a ejecutar consulta",
+    numericColumnAlign: "Alineación de columna numérica",
+    numericColumnAlignLeft: "Alineación izquierda",
+    numericColumnAlignRight: "Alineación derecha",
   },
   exportProgress: {
     title: "Exportando datos de la tabla",

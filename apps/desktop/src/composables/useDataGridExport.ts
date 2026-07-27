@@ -263,8 +263,9 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
 
   async function writeXlsxResult(outputPath: string, result: { columns: string[]; columnTypes: string[]; rows: CellValue[][] }, includeSqlSheet: boolean) {
     const sqlWorksheet = includeSqlSheet ? buildXlsxSqlWorksheet([{ sql: currentExportSql() || "" }]) : undefined;
+    const rightAlign = useSettingsStore().editorSettings.numericColumnRightAlign;
     if (!sqlWorksheet) {
-      await api.exportQueryResultXlsx(outputPath, currentXlsxSheetName(), result.columns, result.columnTypes, result.rows);
+      await api.exportQueryResultXlsx(outputPath, currentXlsxSheetName(), result.columns, result.columnTypes, result.rows, rightAlign);
       return;
     }
     await api.exportQueryResultsXlsx(outputPath, [
@@ -273,6 +274,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         columns: result.columns,
         columnTypes: result.columnTypes,
         rows: result.rows,
+        numericColumnRightAlign: rightAlign,
       },
       sqlWorksheet,
     ]);
@@ -830,11 +832,13 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         }
 
         const exportPattern = useSettingsStore().editorSettings.globalDateTimeExportFormat;
+        const rightAlign = useSettingsStore().editorSettings.numericColumnRightAlign;
         const worksheets = sheets.map((sheet) => ({
           sheetName: sheet.sheetName,
           columns: sheet.result.columns,
           columnTypes: sheet.result.column_types ?? [],
           rows: formatTemporalRowsForExport(sheet.result.rows, sheet.result.column_types ?? [], exportPattern),
+          numericColumnRightAlign: rightAlign,
         }));
         const sqlWorksheet = includeSqlSheet ? buildXlsxSqlWorksheet(sheets.map((sheet) => ({ resultName: sheet.sheetName, sql: sheet.sql || sheet.result.sourceStatement || "" }))) : undefined;
         await api.exportQueryResultsXlsx(outputPath, sqlWorksheet ? [...worksheets, sqlWorksheet] : worksheets);
@@ -915,6 +919,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
           batchSize: exportBatchSize.value,
           rowLimit,
           dateTimeFormat: editorSettings.globalDateTimeExportFormat || undefined,
+          numericColumnRightAlign: editorSettings.numericColumnRightAlign ?? true,
         },
         (progress) => {
           if (exportProgressState) {
@@ -962,7 +967,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
 
     const exportId = uuid();
     const baseRequest = await queryResultExportRequest({ exportId, filePath: outputPath, format, includeSqlSheet });
-    const request = baseRequest ? { ...baseRequest, dateTimeFormat: useSettingsStore().editorSettings.globalDateTimeExportFormat || undefined } : undefined;
+    const request = baseRequest ? { ...baseRequest, dateTimeFormat: useSettingsStore().editorSettings.globalDateTimeExportFormat || undefined, numericColumnRightAlign: useSettingsStore().editorSettings.numericColumnRightAlign ?? true } : undefined;
     if (!request) throw new Error("Unable to build query result export request");
 
     if (exportProgressState) {

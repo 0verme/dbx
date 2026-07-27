@@ -78,7 +78,7 @@ import { buildTableSelectSql, quoteTableDataIdentifier } from "@/lib/table/table
 import { tableOpenPageLimit } from "@/lib/table/tableOpenPageLimit";
 import { uuid } from "@/lib/common/utils";
 import { generateCellValues, type CellValueGenerationKind } from "@/lib/dataGrid/cellValueGeneration";
-import { compactHeaderColumnType, resolveHeaderColumnType } from "@/lib/dataGrid/dataGridColumnType";
+import { compactHeaderColumnType, isNumericColumnType, resolveHeaderColumnType, resolveResultColumnType } from "@/lib/dataGrid/dataGridColumnType";
 import {
   canDeleteExistingTdengineRows,
   canEditExistingTableRows,
@@ -138,7 +138,7 @@ import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGrid
 import { canGoNextDataGridPage, hasCompleteLocalDataGridResult, resolveDataGridPaginationTotal } from "@/lib/dataGrid/dataGridPagination";
 import { dataGridCountQueryOptions } from "@/lib/dataGrid/dataGridQueryOptions";
 import { dataGridBottomScrollTop, dataGridScrollPosition, isDataGridAtScrollBottom, isDataGridNearScrollBottom, shouldCheckInfiniteScrollAfterScroll, type DataGridScrollPosition } from "@/lib/dataGrid/dataGridInfiniteScroll";
-import { CANVAS_DATA_GRID_ROW_HEIGHT, dataGridSearchMatchKey, drawCanvasDataGrid } from "@/lib/dataGrid/canvasDataGridRenderer";
+import { CANVAS_DATA_GRID_ROW_HEIGHT, canvasDataGridActionReservedWidth, dataGridSearchMatchKey, drawCanvasDataGrid } from "@/lib/dataGrid/canvasDataGridRenderer";
 import { DATA_GRID_DARK_STRIPED_ROW_BG, DATA_GRID_LIGHT_STRIPED_ROW_BG } from "@/lib/dataGrid/dataGridPaintTheme";
 import { createRowLowerTextCache } from "@/lib/dataGrid/dataGridRowLowerText";
 import { dataGridPreviewLabelKey, dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGrid/dataGridSaveUi";
@@ -1757,13 +1757,22 @@ const tableColumnTypesByName = computed(() => {
   return map;
 });
 const visibleColumnTypes = computed(() =>
-  visibleColumnIndexes.value.map((index) => {
-    const resultColumn = props.result.columns[index]?.toLocaleLowerCase();
-    const sourceColumn = props.sourceColumns?.[index]?.toLocaleLowerCase();
-    return (sourceColumn ? tableColumnTypesByName.value.get(sourceColumn) : undefined) || (resultColumn ? tableColumnTypesByName.value.get(resultColumn) : undefined) || props.result.column_types?.[index];
-  }),
+  visibleColumnIndexes.value.map((index) =>
+    resolveResultColumnType({
+      resultColumnType: props.result.column_types?.[index],
+      resultColumnName: props.result.columns[index]?.toLocaleLowerCase(),
+      sourceColumnName: props.sourceColumns?.[index]?.toLocaleLowerCase(),
+      tableColumnTypesByName: tableColumnTypesByName.value,
+    }),
+  ),
 );
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
+
+const numericColumnRightAlign = computed(() => (settingsStore.editorSettings.numericColumnRightAlign ?? true) && !showTranspose.value);
+const columnAligns = computed<("left" | "right")[]>(() => {
+  if (!numericColumnRightAlign.value) return [];
+  return visibleColumnTypes.value.map((type) => (isNumericColumnType(type) ? "right" : "left"));
+});
 
 /** Preview actions from the result preview registry for the current result. */
 const previewActions = computed(() => {
@@ -4952,6 +4961,16 @@ const canvasDetailButtonStyle = computed(() => {
   };
 });
 
+const canvasRightAlignedActionCell = computed(() => {
+  const cell = canvasDetailButtonCell.value;
+  if (!cell || columnAligns.value[cell.visibleColIdx] !== "right") return null;
+  return {
+    rowIndex: cell.rowIndex,
+    visibleColIdx: cell.visibleColIdx,
+    reservedWidth: canvasDataGridActionReservedWidth(cell.canQuickDownload),
+  };
+});
+
 function drawCanvasGrid() {
   const canvas = canvasRef.value;
   const scroller = canvasScrollerElement();
@@ -4988,6 +5007,8 @@ function drawCanvasGrid() {
     pageSize: pageSize.value,
     currentPage: currentPage.value,
     frozenColumnCount: frozenColumnCount.value,
+    columnAligns: columnAligns.value,
+    rightAlignedActionCell: canvasRightAlignedActionCell.value,
   });
 }
 
@@ -5001,6 +5022,7 @@ watch(
   { immediate: true },
 );
 watch(showDataGridTopbar, () => nextTick(observeDataGridTopbarWidth), { immediate: true });
+watch(columnAligns, () => scheduleCanvasDraw());
 watch(
   [
     displayRowRefs,
@@ -8630,6 +8652,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                       :class="{
                         'data-grid-cell--frozen': col.visibleColIdx < frozenColumnCount,
                         'data-grid-cell--frozen-separator': frozenColumnCount > 0 && col.visibleColIdx === frozenColumnCount - 1,
+                        'text-right': columnAligns[col.visibleColIdx] === 'right',
                         'text-muted-foreground italic': isNull(item.data[col.actualColIdx]),
                         'bg-yellow-500/10 cell-dirty': item.isDirtyCol[col.actualColIdx],
                         'cell-selected': cellIsSelected(item.displayIndex, col.visibleColIdx) && !item.isDirtyCol[col.actualColIdx],
