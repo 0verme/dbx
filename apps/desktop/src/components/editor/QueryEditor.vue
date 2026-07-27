@@ -1371,6 +1371,11 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
           if (sql.trim()) emit("sendSelectionToAi", sql);
           return true;
         }),
+        ...createQueryEditorSearchKeymap({
+          openSearch,
+          openReplace,
+          isReadOnly: () => !!props.readOnly,
+        }),
       ]),
     ) ?? [],
     codeMirrorKeymap.of(
@@ -3731,11 +3736,6 @@ onMounted(async () => {
       buildResultSourceRangeExtension(),
       Prec.highest(
         keymap.of([
-          ...createQueryEditorSearchKeymap({
-            openSearch,
-            openReplace,
-            isReadOnly: () => !!props.readOnly,
-          }),
           { key: "'", run: handleSqlSingleQuote },
           { key: "Tab", run: handleTab },
           {
