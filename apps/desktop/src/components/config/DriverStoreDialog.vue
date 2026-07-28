@@ -32,12 +32,20 @@ import {
 import { PRESTOSQL_DRIVER_DB_TYPE, prestoSqlBuiltinDriverRow, prestoSqlMavenBundle } from "@/lib/database/prestoSqlBuiltinDriver";
 import type { DriverStoreFocus } from "@/lib/connection/agentDriverInstallHint";
 import { isOfflineDriverPackage, webDriverImportAccept } from "@/lib/driverStore/driverImportSelection";
+import { translateBackendError } from "@/i18n/backend-errors";
 import { DRIVER_CATEGORIES, getCategoryForAgentDriver, assertAgentDriverCategoriesComplete } from "@/lib/connection/driver-category-definitions";
 import { selectUpdatableDrivers, selectStableDrivers, hasAnyUpdatableDriverMatching } from "@/lib/connection/driverListFilter";
 
 const { t } = useI18n();
 const { toast } = useToast();
 const isWeb = !isTauriRuntime();
+
+// Backend errors arrive as plain strings, so translate them before they are
+// interpolated into an already-localized wrapper message.
+function backendError(e: unknown): string {
+  const message = e instanceof Error ? e.message : ((e as { message?: string } | null)?.message ?? String(e));
+  return translateBackendError(t, message);
+}
 
 const props = withDefaults(
   defineProps<{
@@ -166,7 +174,7 @@ async function applyDriverStoreDir(kind: DriverStoreDirKind, newDir: string | nu
     const { relaunch } = await import("@tauri-apps/plugin-process");
     relaunch();
   } catch (e: any) {
-    toast(t("driverStore.driverStoreDirMigrationFailed", { error: e?.message || String(e) }), 5000);
+    toast(t("driverStore.driverStoreDirMigrationFailed", { error: backendError(e) }), 5000);
   } finally {
     driverStoreDirMigrating.value = null;
   }
@@ -427,7 +435,7 @@ async function saveJavaRuntimeConfig() {
     customJavaPath.value = config.custom_java_path ?? "";
     toast(t("driverStore.javaRuntimeSaved"));
   } catch (e: any) {
-    toast(t("driverStore.javaRuntimeSaveFailed", { error: e }));
+    toast(t("driverStore.javaRuntimeSaveFailed", { error: backendError(e) }));
   } finally {
     savingJavaRuntime.value = false;
   }
@@ -480,7 +488,7 @@ async function runDriverInstall(dbType: string) {
     await refreshAgents();
     toast(t("driverStore.driverInstallSuccess", { label }));
   } catch (e: any) {
-    toast(t("driverStore.driverInstallFailed", { label, error: e }));
+    toast(t("driverStore.driverInstallFailed", { label, error: backendError(e) }));
   } finally {
     installing.value = null;
     activeAgentOperationId.value = null;
@@ -522,7 +530,7 @@ async function upgradeAll() {
       toast(t("driverStore.upgradeAllSuccess", { count: result.upgraded }));
     }
   } catch (e: any) {
-    toast(t("driverStore.upgradeAllFailed", { error: e }));
+    toast(t("driverStore.upgradeAllFailed", { error: backendError(e) }));
   } finally {
     upgradingAll.value = false;
     activeAgentOperationId.value = null;
@@ -548,7 +556,7 @@ async function uninstallDriver(dbType: string) {
     await refreshAgents();
     toast(t("driverStore.driverUninstallSuccess", { label }));
   } catch (e: any) {
-    toast(t("driverStore.driverUninstallFailed", { label, error: e }));
+    toast(t("driverStore.driverUninstallFailed", { label, error: backendError(e) }));
   }
 }
 
@@ -615,7 +623,7 @@ async function importOfflineZip() {
     await refreshAgents();
     toast(t("driverStore.offlineImportSuccess", { count }));
   } catch (e: any) {
-    toast(t("driverStore.offlineImportFailed", { error: e }));
+    toast(t("driverStore.offlineImportFailed", { error: backendError(e) }));
   } finally {
     importingZip.value = false;
     activeAgentOperationId.value = null;
@@ -663,7 +671,7 @@ async function importDriverFile(driver: AgentDriverInfo) {
     try {
       await installSelectedFile(file);
     } catch (e: any) {
-      toast(t("driverStore.driverImportFailed", { label, error: e }));
+      toast(t("driverStore.driverImportFailed", { label, error: backendError(e) }));
     }
     return;
   }
@@ -677,7 +685,7 @@ async function importDriverFile(driver: AgentDriverInfo) {
   try {
     await installSelectedFile(selected);
   } catch (e: any) {
-    toast(t("driverStore.driverImportFailed", { label, error: e }));
+    toast(t("driverStore.driverImportFailed", { label, error: backendError(e) }));
   }
 }
 
@@ -690,7 +698,7 @@ async function reinstallJre(jreKey: string) {
     await refreshAgents();
     toast(t("driverStore.jreReinstallSuccess", { jre: jreKey }));
   } catch (e: any) {
-    toast(t("driverStore.jreReinstallFailed", { jre: jreKey, error: e }));
+    toast(t("driverStore.jreReinstallFailed", { jre: jreKey, error: backendError(e) }));
   } finally {
     reinstallingJre.value = null;
     activeAgentOperationId.value = null;
@@ -1005,7 +1013,7 @@ async function stopRuntime(runtime: DriverRuntimeInfo) {
     await loadDriverRuntimeSummary(false);
     toast(t("driverStore.runtimeStopSuccess", { label: runtime.label }));
   } catch (e: any) {
-    toast(t("driverStore.runtimeStopFailed", { label: runtime.label, error: e }));
+    toast(t("driverStore.runtimeStopFailed", { label: runtime.label, error: backendError(e) }));
   } finally {
     runtimeBusy.value = null;
   }
@@ -1018,7 +1026,7 @@ async function restartRuntime(runtime: DriverRuntimeInfo) {
     await loadDriverRuntimeSummary(false);
     toast(t("driverStore.runtimeRestartSuccess", { label: runtime.label }));
   } catch (e: any) {
-    toast(t("driverStore.runtimeRestartFailed", { label: runtime.label, error: e }));
+    toast(t("driverStore.runtimeRestartFailed", { label: runtime.label, error: backendError(e) }));
   } finally {
     runtimeBusy.value = null;
   }
@@ -1060,7 +1068,7 @@ async function clearDownloadCache() {
     await loadDriverStoreUsage();
     toast(t("driverStore.downloadCacheClearSuccess"));
   } catch (e: any) {
-    toast(t("driverStore.downloadCacheClearFailed", { error: e?.message || String(e) }), 5000);
+    toast(t("driverStore.downloadCacheClearFailed", { error: backendError(e) }), 5000);
   } finally {
     clearingDownloadCache.value = false;
   }

@@ -23,6 +23,7 @@ import type { QueryResultExportRequest } from "@/lib/backend/api";
 import { usesSyntheticRowIdKey } from "@/lib/table/tableEditing";
 import { buildXlsxSqlWorksheet } from "@/lib/export/xlsxSqlSheet";
 import { formatTemporalRowsForExport } from "@/lib/dataGrid/columnFormatter";
+import { translateBackendError } from "@/i18n/backend-errors";
 
 /**
  * Format metadata for backend table exports. Each entry maps a format key
@@ -571,7 +572,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
             errorMessage: e?.message || String(e),
           };
         }
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -593,7 +594,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await api.exportQueryResultCsv(outputPath, result.columns, result.rows);
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -617,7 +618,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await api.exportQueryResultJson(outputPath, result.columns, result.rows);
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -639,7 +640,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await api.exportQueryResultJson(outputPath, result.columns, result.rows);
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -663,7 +664,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await api.exportQueryResultMarkdown(outputPath, result.columns, result.rows);
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -685,7 +686,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await api.exportQueryResultMarkdown(outputPath, result.columns, result.rows);
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -700,7 +701,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await saveTextFile(content, exportFileName(tableMeta.value?.tableName || "export", "txt", { preferFallback: true }), "Text", "txt");
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -713,7 +714,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await saveTextFile(content, exportFileName("export-page", "txt", { page: true }), "Text", "txt");
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -784,7 +785,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
             errorMessage: e?.message || String(e),
           };
         }
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -814,7 +815,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await writeXlsxResult(outputPath, result, includeSqlSheet);
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -857,7 +858,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await api.exportQueryResultsXlsx(outputPath, sqlWorksheet ? [...worksheets, sqlWorksheet] : worksheets);
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -1113,7 +1114,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await saveTextFile(content, exportFileName(tableMeta.value?.tableName || "export", "sql", { preferFallback: true }), "SQL", "sql");
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }
@@ -1134,7 +1135,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         await saveTextFile(content, exportFileName("export-page", "sql", { page: true }), "SQL", "sql");
         toast(t("grid.exported"));
       } catch (e: any) {
-        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+        toast(t("grid.exportFailed", { message: translateBackendError(t, e) }), 5000);
       }
     });
   }

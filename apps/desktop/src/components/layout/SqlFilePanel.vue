@@ -9,6 +9,7 @@ import { useQueryStore } from "@/stores/queryStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
+import { translateBackendError } from "@/i18n/backend-errors";
 import { resolveDefaultDatabase } from "@/lib/database/defaultDatabase";
 import { copyToClipboard } from "@/lib/common/clipboard";
 import { externalSqlFileOpenErrorMessage, formatSqlFileSize, isExternalSqlFileTooLargeError } from "@/lib/sql/sqlFileOpen";
@@ -156,7 +157,7 @@ async function revealInFileManager(path: string) {
   try {
     await api.revealPathInFileManager(path);
   } catch (e: any) {
-    toast(t("sqlFileTree.revealFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("sqlFileTree.revealFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
