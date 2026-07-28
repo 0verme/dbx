@@ -2504,27 +2504,49 @@ pub async fn list_object_statistics(pool: &Pool, schema: &str) -> Result<Vec<Obj
 }
 
 pub async fn list_schemas(pool: &Pool) -> Result<Vec<String>, String> {
-    Ok(list_schema_infos(pool).await?.into_iter().map(|schema| schema.name).collect())
+    list_schemas_with_system(pool, false).await
 }
 
 pub async fn list_schema_infos(pool: &Pool) -> Result<Vec<SchemaInfo>, String> {
+    list_schema_infos_with_system(pool, false).await
+}
+
+pub async fn list_schemas_with_system(pool: &Pool, show_system_schemas: bool) -> Result<Vec<String>, String> {
+    Ok(list_schema_infos_with_system(pool, show_system_schemas).await?.into_iter().map(|schema| schema.name).collect())
+}
+
+const POSTGRES_SCHEMA_INFOS_SQL: &str = "SELECT n.nspname AS schema_name, d.description AS schema_comment \
+     FROM pg_catalog.pg_namespace n \
+     LEFT JOIN pg_catalog.pg_description d \
+       ON d.objoid = n.oid \
+      AND d.objsubid = 0 \
+      AND d.classoid = 'pg_namespace'::regclass \
+     ORDER BY n.nspname";
+
+const POSTGRES_SCHEMA_INFOS_HIDE_SYSTEM_SQL: &str = "SELECT n.nspname AS schema_name, d.description AS schema_comment \
+     FROM pg_catalog.pg_namespace n \
+     LEFT JOIN pg_catalog.pg_description d \
+       ON d.objoid = n.oid \
+      AND d.objsubid = 0 \
+      AND d.classoid = 'pg_namespace'::regclass \
+     WHERE n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast') \
+     AND n.nspname NOT LIKE 'pg_toast_temp_%' \
+     AND n.nspname NOT LIKE 'pg_temp_%' \
+     ORDER BY n.nspname";
+
+fn postgres_schema_infos_sql(show_system_schemas: bool) -> &'static str {
+    if show_system_schemas {
+        POSTGRES_SCHEMA_INFOS_SQL
+    } else {
+        POSTGRES_SCHEMA_INFOS_HIDE_SYSTEM_SQL
+    }
+}
+
+pub async fn list_schema_infos_with_system(pool: &Pool, show_system_schemas: bool) -> Result<Vec<SchemaInfo>, String> {
     let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
-    let rows = postgres_query_cached(
-        &client,
-        "SELECT n.nspname AS schema_name, d.description AS schema_comment \
-         FROM pg_catalog.pg_namespace n \
-         LEFT JOIN pg_catalog.pg_description d \
-           ON d.objoid = n.oid \
-          AND d.objsubid = 0 \
-          AND d.classoid = 'pg_namespace'::regclass \
-         WHERE n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast') \
-         AND n.nspname NOT LIKE 'pg_toast_temp_%' \
-         AND n.nspname NOT LIKE 'pg_temp_%' \
-         ORDER BY n.nspname",
-        &[],
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let rows = postgres_query_cached(&client, postgres_schema_infos_sql(show_system_schemas), &[])
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(rows
         .iter()
@@ -5718,5 +5740,16 @@ mod tests {
         assert!(postgres_completion_routines_sql().contains("ORDER BY p.proname LIMIT $4"));
         assert!(postgres_completion_columns_sql().contains("a.attname ILIKE $3 ESCAPE '~'"));
         assert!(postgres_visible_table_schema_sql().contains("pg_catalog.pg_table_is_visible(c.oid)"));
+    }
+
+    #[test]
+    fn postgres_schema_info_sql_only_filters_system_schemas_when_disabled() {
+        let hidden_sql = postgres_schema_infos_sql(false);
+        assert!(hidden_sql.contains("information_schema"));
+        assert!(hidden_sql.contains("pg_temp_%"));
+
+        let visible_sql = postgres_schema_infos_sql(true);
+        assert!(!visible_sql.contains("NOT IN"));
+        assert!(!visible_sql.contains("NOT LIKE"));
     }
 }

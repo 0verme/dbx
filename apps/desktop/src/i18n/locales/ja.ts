@@ -657,6 +657,8 @@ export default withEnglishFallback({
     rocketmqSecretKey: "Secret Key",
     rocketmqAclAuth: "ACL",
     jdbcMissingRuntimeDependencyHint: "現在のJDBCドライバーには実行依存関係が不足しています。「ドライバ管理」でMaven座標を使用してインストールするか、ドライバーとすべての依存JARを一度にインポートしてください。",
+    showSystemSchemas: "システムスキーマを表示",
+    showSystemSchemasHint: "現在の接続で、サイドバーとスキーマセレクターに組み込み/メタデータスキーマを表示します。",
     sshHostKeyVerifyTitle: "不明なSSHホストキーの確認",
     sshHostKeyVerifyMessage: "ホスト '{host}:{port}' の正当性を確認できません。中間者攻撃を防ぐため、続行する前にサーバー管理者にホストキーのフィンガープリントを確認してください。",
     sshHostKeyVerifyKeyType: "キータイプ",

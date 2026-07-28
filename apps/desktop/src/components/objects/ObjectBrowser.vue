@@ -95,6 +95,7 @@ import { formatShortcut } from "@/lib/editor/shortcutRegistry";
 import { batchTableEmptyFeedback, buildBatchTableEmptyPlan, runBatchTableEmpty, type BatchTableEmptyPlanItem } from "@/lib/sidebar/batchTableEmpty";
 import { runBatchTableDrop } from "@/lib/table/batchTableDrop";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { filterSchemaNamesForConnection } from "@/lib/database/visibleDatabases";
 import {
   buildObjectBrowserRows,
   countObjectBrowserRowsByFilter,
@@ -415,6 +416,13 @@ watch(objectFilter, () => {
   }
   scrollObjectsToTop();
 });
+watch(
+  () => props.connection.show_system_schemas,
+  (value, oldValue) => {
+    if (value === oldValue) return;
+    void reload();
+  },
+);
 
 const showCheckboxColumn = computed(() => settingsStore.editorSettings.objectBrowserShowCheckbox || selectedTableCount.value > 0);
 
@@ -2186,9 +2194,15 @@ async function loadSchemas(epoch: number): Promise<boolean> {
   const connectionId = props.connection.id;
   const database = props.database;
   try {
-    const names = await api.listSchemas(connectionId, database);
+    const names = filterSchemaNamesForConnection(await api.listSchemas(connectionId, database), props.connection, database, {
+      showSystemSchemas: props.connection.show_system_schemas === true,
+    });
     if (!objectBrowserRowsLoadGuard.isEpochCurrent(epoch)) return false;
     schemas.value = names;
+    if (names.length === 0) {
+      selectedSchema.value = undefined;
+      return true;
+    }
     if (!selectedSchema.value || !names.includes(selectedSchema.value)) {
       selectedSchema.value = names.includes("public") ? "public" : names[0];
     }

@@ -657,6 +657,8 @@ export default withEnglishFallback({
     rocketmqSecretKey: "Secret Key",
     rocketmqAclAuth: "ACL",
     jdbcMissingRuntimeDependencyHint: "Il driver JDBC corrente manca di dipendenze runtime. Installare utilizzando le coordinate Maven in 'Gestione driver', o importare il driver e tutti i JAR delle dipendenze in una volta.",
+    showSystemSchemas: "Mostra Schema di sistema",
+    showSystemSchemasHint: "Mostra lo Schema built-in/di metadati nella barra laterale e nel selettore Schema per la connessione corrente.",
     sshHostKeyVerifyTitle: "Conferma chiave host SSH sconosciuta",
     sshHostKeyVerifyMessage: "Impossibile confermare l'autenticità dell'host '{host}:{port}'. Per prevenire attacchi man-in-the-middle, verifica l'impronta della chiave host con l'amministratore del server prima di procedere.",
     sshHostKeyVerifyKeyType: "Tipo di chiave",

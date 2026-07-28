@@ -1180,10 +1180,12 @@ async fn list_schema_infos_once(
     database: &str,
 ) -> Result<Vec<db::SchemaInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+    let db_config = connection_config(state, connection_id).await;
+    let show_system_schemas = db_config.as_ref().is_some_and(|config| config.show_system_schemas);
     {
         let connections = state.connections.read().await;
         if let Some(PoolKind::Postgres(pool)) = connections.get(&pool_key) {
-            return db::postgres::list_schema_infos(pool).await;
+            return db::postgres::list_schema_infos_with_system(pool, show_system_schemas).await;
         }
     }
 
@@ -1250,6 +1252,7 @@ async fn list_schemas_once(
 ) -> Result<Vec<String>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
     let db_config = connection_config(state, connection_id).await;
+    let show_system_schemas = db_config.as_ref().is_some_and(|config| config.show_system_schemas);
     let visible_schema_filter = visible_schema_filter(db_config.as_ref(), database, apply_visible_filter);
 
     {
@@ -1275,6 +1278,7 @@ async fn list_schemas_once(
                 .list_schemas_filtered::<Vec<String>>(
                     database,
                     visible_schema_filter.as_deref(),
+                    show_system_schemas,
                     agent_metadata_timeout(db_config.as_ref()),
                 )
                 .await
@@ -1286,9 +1290,9 @@ async fn list_schemas_once(
                     if let Some(config) = fallback_config.as_ref() {
                         match native_postgres_metadata_pool(state, connection_id, database, config).await {
                             Ok(Some(pool)) => {
-                                return db::postgres::list_schemas(&pool).await.map(|schemas| {
-                                    filter_visible_schema_names(schemas, visible_schema_filter.as_deref())
-                                })
+                                return db::postgres::list_schemas_with_system(&pool, show_system_schemas).await.map(
+                                    |schemas| filter_visible_schema_names(schemas, visible_schema_filter.as_deref()),
+                                )
                             }
                             Ok(None) => {
                                 return Ok(filter_visible_schema_names(schemas, visible_schema_filter.as_deref()))
@@ -1310,7 +1314,7 @@ async fn list_schemas_once(
                         if let Some(pool) =
                             native_postgres_metadata_pool(state, connection_id, database, config).await?
                         {
-                            return db::postgres::list_schemas(&pool)
+                            return db::postgres::list_schemas_with_system(&pool, show_system_schemas)
                                 .await
                                 .map(|schemas| filter_visible_schema_names(schemas, visible_schema_filter.as_deref()))
                                 .map_err(|fallback_error| {
@@ -1333,7 +1337,7 @@ async fn list_schemas_once(
         PoolKind::Mysql(p, mode) if *mode == MysqlMode::OceanBaseOracle => db::ob_oracle::list_schemas(p)
             .await
             .map(|schemas| filter_visible_schema_names(schemas, visible_schema_filter.as_deref())),
-        PoolKind::Postgres(p) => db::postgres::list_schemas(p)
+        PoolKind::Postgres(p) => db::postgres::list_schemas_with_system(p, show_system_schemas)
             .await
             .map(|schemas| filter_visible_schema_names(schemas, visible_schema_filter.as_deref())),
         #[cfg(feature = "duckdb-bundled")]
@@ -3034,6 +3038,7 @@ mod tests {
             database: Some("demo".to_string()),
             visible_databases: None,
             visible_schemas: None,
+            show_system_schemas: false,
             attached_databases: Vec::new(),
             init_script: None,
             color: None,
