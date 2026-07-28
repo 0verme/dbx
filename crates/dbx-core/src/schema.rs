@@ -40,6 +40,9 @@ macro_rules! try_sqlserver {
 }
 
 const ORACLE_TABLE_COMMENT_BATCH_SIZE: usize = 500;
+const TDENGINE_COMMENT_SEARCH_TIMEOUT: Duration = Duration::from_secs(5);
+const TDENGINE_COMMENT_SEARCH_CACHE_TTL: Duration = Duration::from_secs(10);
+const TDENGINE_LIKE_PATTERN_MAX_BYTES: usize = 100;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1473,6 +1476,25 @@ pub async fn get_table_comment_core(
                     let mut client = client.lock().await;
                     return client.get_table_comment::<Option<String>>(database, schema, table, timeout).await;
                 }
+                if db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::Tdengine) {
+                    let metadata_database = if schema.trim().is_empty() { database } else { schema };
+                    let sql = tdengine_table_comment_sql(metadata_database, table);
+                    let timeout = agent_metadata_timeout(db_config.as_ref());
+                    drop(connections);
+                    let mut client = client.lock().await;
+                    let result = client
+                        .execute_query_with_timeout::<db::QueryResult>(
+                            agent_execute_query_params(
+                                &sql,
+                                Some(database),
+                                (!schema.trim().is_empty()).then_some(schema),
+                                QueryExecutionOptions { max_rows: Some(2), ..Default::default() },
+                            ),
+                            timeout,
+                        )
+                        .await?;
+                    return oracle_table_comment_from_query_result(result);
+                }
             }
         }
 
@@ -1504,6 +1526,55 @@ fn oracle_table_comment_sql(schema: &str, table: &str) -> String {
     )
 }
 
+fn tdengine_table_comment_sql(database: &str, table: &str) -> String {
+    format!(
+        "SELECT table_comment FROM information_schema.ins_stables WHERE db_name = {} AND stable_name = {} \
+         UNION ALL SELECT table_comment FROM information_schema.ins_tables WHERE db_name = {} AND table_name = {}",
+        sql_string(database),
+        sql_string(table),
+        sql_string(database),
+        sql_string(table),
+    )
+}
+
+fn tdengine_table_comments_sql(database: &str, filter: &str) -> String {
+    let pattern = tdengine_table_comment_like_pattern(filter);
+    format!(
+        "SELECT stable_name, table_comment FROM information_schema.ins_stables \
+         WHERE db_name = {database} AND table_comment IS NOT NULL AND LOWER(table_comment) LIKE {pattern} \
+         UNION ALL SELECT table_name, table_comment FROM information_schema.ins_tables \
+         WHERE db_name = {database} AND table_comment IS NOT NULL AND LOWER(table_comment) LIKE {pattern}",
+        database = sql_string(database),
+        pattern = sql_string(&pattern),
+    )
+}
+
+fn tdengine_table_comment_like_pattern(filter: &str) -> String {
+    let normalized_filter = filter.trim().to_lowercase();
+    if normalized_filter.is_empty() {
+        return "%%".to_string();
+    }
+
+    let mut pattern = String::with_capacity(TDENGINE_LIKE_PATTERN_MAX_BYTES);
+    pattern.push('%');
+    for ch in normalized_filter.chars() {
+        let fragment = match ch {
+            '\\' | '%' | '_' => format!("\\{ch}"),
+            _ => ch.to_string(),
+        };
+        if pattern.len() + fragment.len() + 1 > TDENGINE_LIKE_PATTERN_MAX_BYTES {
+            break;
+        }
+        pattern.push_str(&fragment);
+        pattern.push('%');
+    }
+    pattern
+}
+
+fn tdengine_table_comment_cache_key(database: &str, schema: &str, filter: &str) -> String {
+    serde_json::json!([database, schema, filter.trim().to_lowercase()]).to_string()
+}
+
 fn oracle_table_comment_from_query_result(result: db::QueryResult) -> Result<Option<String>, String> {
     Ok(result
         .rows
@@ -1524,7 +1595,7 @@ fn oracle_table_comments_sql(schema: &str, table_names: &[String]) -> Option<Str
     ))
 }
 
-fn oracle_table_comments_from_query_result(result: db::QueryResult) -> HashMap<String, String> {
+fn table_comments_from_query_result(result: db::QueryResult) -> HashMap<String, String> {
     result
         .rows
         .into_iter()
@@ -1953,7 +2024,7 @@ fn unique_oracle_comment_names<'a>(names: impl Iterator<Item = &'a str>) -> Vec<
     unique
 }
 
-fn apply_oracle_table_comments(tables: &mut [db::TableInfo], comments: &HashMap<String, String>) {
+fn apply_table_comments(tables: &mut [db::TableInfo], comments: &HashMap<String, String>) {
     for table in tables {
         if !comment_is_blank(&table.comment) {
             continue;
@@ -2004,7 +2075,7 @@ async fn oracle_table_comments_for_names(
                 timeout_duration,
             )
             .await?;
-        comments.extend(oracle_table_comments_from_query_result(result));
+        comments.extend(table_comments_from_query_result(result));
     }
     Ok(comments)
 }
@@ -2021,7 +2092,35 @@ async fn load_oracle_table_comments_for_tables(
         return Ok(());
     }
     let comments = oracle_table_comments_for_names(client, database, schema, &table_names, timeout_duration).await?;
-    apply_oracle_table_comments(tables, &comments);
+    apply_table_comments(tables, &comments);
+    Ok(())
+}
+
+async fn load_tdengine_table_comments_for_filter(
+    client: &mut db::agent_driver::AgentDriverClient,
+    database: &str,
+    schema: &str,
+    filter: &str,
+    tables: &mut [db::TableInfo],
+) -> Result<(), String> {
+    let metadata_database = if schema.trim().is_empty() { database } else { schema };
+    let sql = tdengine_table_comments_sql(metadata_database, filter);
+    let cache_key = tdengine_table_comment_cache_key(database, schema, filter);
+    let result = client
+        .execute_query_cached_with_timeout::<db::QueryResult>(
+            cache_key,
+            TDENGINE_COMMENT_SEARCH_CACHE_TTL,
+            agent_execute_query_params(
+                &sql,
+                if database.is_empty() { None } else { Some(database) },
+                if schema.is_empty() { None } else { Some(schema) },
+                QueryExecutionOptions::default(),
+            ),
+            Some(TDENGINE_COMMENT_SEARCH_TIMEOUT),
+        )
+        .await?;
+    let comments = table_comments_from_query_result(result);
+    apply_table_comments(tables, &comments);
     Ok(())
 }
 
@@ -2275,23 +2374,28 @@ async fn list_tables_once(
         try_sqlserver!(connections, &pool_key, list_tables, schema, filter, limit, offset);
         if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
             let is_oracle = db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::Oracle);
+            let is_tdengine = db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::Tdengine);
             let use_agent_table_paging = db_config.as_ref().is_some_and(supports_agent_table_paging);
             let filter_locally_after_oracle_comments =
                 is_oracle && filter.is_some_and(|filter| !filter.trim().is_empty());
+            let filter_locally_after_tdengine_comments =
+                is_tdengine && filter.is_some_and(|filter| !filter.trim().is_empty());
+            let filter_locally_after_comments =
+                filter_locally_after_oracle_comments || filter_locally_after_tdengine_comments;
             let timeout_duration = agent_metadata_timeout(db_config.as_ref());
             let fallback_config = db_config.clone();
             drop(connections);
             let mut client = client.lock().await;
-            let agent_filter = if filter_locally_after_oracle_comments { None } else { filter };
+            let agent_filter = if filter_locally_after_comments { None } else { filter };
             let force_local_table_name_filter = table_name_filter.is_some_and(|filter| !filter.is_empty());
-            let agent_limit = if filter_locally_after_oracle_comments || force_local_table_name_filter {
+            let agent_limit = if filter_locally_after_comments || force_local_table_name_filter {
                 None
             } else if use_agent_table_paging {
                 limit
             } else {
                 None
             };
-            let agent_offset = if filter_locally_after_oracle_comments || force_local_table_name_filter {
+            let agent_offset = if filter_locally_after_comments || force_local_table_name_filter {
                 None
             } else if use_agent_table_paging {
                 offset
@@ -2321,7 +2425,29 @@ async fn list_tables_once(
                         )
                         .await?;
                     }
-                    let final_offset = if filter_locally_after_oracle_comments || force_local_table_name_filter {
+                    if filter_locally_after_tdengine_comments {
+                        if let Err(error) = load_tdengine_table_comments_for_filter(
+                            &mut client,
+                            database,
+                            schema,
+                            filter.expect("TDengine comment filtering requires a non-empty filter"),
+                            &mut tables,
+                        )
+                        .await
+                        {
+                            // TDengine 2.x can lack the information_schema views. SHOW
+                            // metadata remains usable, so preserve name filtering when
+                            // the optional comment lookup is unavailable or times out.
+                            log::warn!(
+                                "[schema][tdengine:list_tables:comment-search-failed] connection_id={} database={} schema={} error={}",
+                                connection_id,
+                                database,
+                                schema,
+                                error
+                            );
+                        }
+                    }
+                    let final_offset = if filter_locally_after_comments || force_local_table_name_filter {
                         offset
                     } else if agent_paging_likely_applied(use_agent_table_paging, limit, tables.len()) {
                         Some(0)
@@ -2855,15 +2981,16 @@ mod tests {
         dameng_object_statistics_rows_only_sql, dameng_object_statistics_user_segments_sql, deduplicate_column_infos,
         filter_mysql_system_databases_for_config, filter_object_infos, filter_table_infos, filter_visible_schema_names,
         gbase8a_object_statistics_sql, is_agent_postgres_metadata_fallback_config, is_retryable_metadata_error,
-        mysql_object_source_ddl_column_index, mysql_object_source_sql, mysql_table_metadata_catalog,
-        normalize_information_schema_table_type, oracle_columns_from_query_result, oracle_columns_sql,
-        oracle_object_statistics_dba_segments_sql, oracle_object_statistics_from_query_result,
+        metadata_name_or_comment_matches, mysql_object_source_ddl_column_index, mysql_object_source_sql,
+        mysql_table_metadata_catalog, normalize_information_schema_table_type, oracle_columns_from_query_result,
+        oracle_columns_sql, oracle_object_statistics_dba_segments_sql, oracle_object_statistics_from_query_result,
         oracle_object_statistics_rows_only_sql, oracle_object_statistics_sql,
         oracle_object_statistics_user_segments_sql, oracle_table_comment_from_query_result, oracle_table_comment_sql,
-        oracle_table_comments_from_query_result, oracle_table_comments_sql, presto_like_columns_from_query_result,
-        presto_like_information_schema_columns_sql, presto_like_information_schema_tables_sql,
-        presto_like_tables_from_query_result, should_query_oracle_columns_via_sql_first, table_name_filter_matches,
-        visible_schema_filter, TableNameFilter,
+        oracle_table_comments_sql, presto_like_columns_from_query_result, presto_like_information_schema_columns_sql,
+        presto_like_information_schema_tables_sql, presto_like_tables_from_query_result,
+        should_query_oracle_columns_via_sql_first, table_comments_from_query_result, table_name_filter_matches,
+        tdengine_table_comment_like_pattern, tdengine_table_comment_sql, tdengine_table_comments_sql,
+        visible_schema_filter, TableNameFilter, TDENGINE_COMMENT_SEARCH_TIMEOUT, TDENGINE_LIKE_PATTERN_MAX_BYTES,
     };
     #[cfg(feature = "duckdb-bundled")]
     use super::{
@@ -3725,6 +3852,69 @@ mod tests {
     }
 
     #[test]
+    fn tdengine_table_comment_sql_targets_one_name_and_escapes_literals() {
+        let sql = tdengine_table_comment_sql("dbx's", "meter's");
+
+        assert!(sql.contains("information_schema.ins_stables"));
+        assert!(sql.contains("information_schema.ins_tables"));
+        assert!(sql.contains("db_name = 'dbx''s'"));
+        assert!(sql.contains("stable_name = 'meter''s'"));
+        assert!(sql.contains("table_name = 'meter''s'"));
+    }
+
+    #[test]
+    fn tdengine_table_comments_sql_only_queries_comments_matching_the_filter() {
+        let sql = tdengine_table_comments_sql("dbx's", "s_%\\q");
+
+        assert!(sql.contains("information_schema.ins_stables"));
+        assert!(sql.contains("information_schema.ins_tables"));
+        assert!(sql.contains("db_name = 'dbx''s'"));
+        assert!(sql.contains("table_comment IS NOT NULL"));
+        assert!(sql.contains("LOWER(table_comment) LIKE '%s%\\_%\\%%\\\\%q%'"));
+        assert!(!sql.contains("LIMIT"));
+    }
+
+    #[test]
+    fn tdengine_table_comment_pattern_respects_ascii_boundary() {
+        let filter_49 = "a".repeat(49);
+        let filter_50 = format!("{filter_49}b");
+        let pattern_49 = tdengine_table_comment_like_pattern(&filter_49);
+        let pattern_50 = tdengine_table_comment_like_pattern(&filter_50);
+
+        assert_eq!(pattern_49.len(), 99);
+        assert_eq!(pattern_50, pattern_49);
+        assert!(pattern_50.len() <= TDENGINE_LIKE_PATTERN_MAX_BYTES);
+        assert!(!metadata_name_or_comment_matches("table", Some(&filter_49), &filter_50));
+    }
+
+    #[test]
+    fn tdengine_table_comment_pattern_keeps_escaped_fragments_within_limit() {
+        assert_eq!(tdengine_table_comment_like_pattern("%_\\"), r"%\%%\_%\\%");
+
+        let pattern_33 = tdengine_table_comment_like_pattern(&"%".repeat(33));
+        let pattern_34 = tdengine_table_comment_like_pattern(&"%".repeat(34));
+        assert_eq!(pattern_33.len(), TDENGINE_LIKE_PATTERN_MAX_BYTES);
+        assert_eq!(pattern_34, pattern_33);
+        assert!(pattern_34.ends_with('%'));
+    }
+
+    #[test]
+    fn tdengine_table_comment_pattern_truncates_only_at_utf8_boundaries() {
+        let pattern_24 = tdengine_table_comment_like_pattern(&"你".repeat(24));
+        let pattern_25 = tdengine_table_comment_like_pattern(&"你".repeat(25));
+
+        assert_eq!(pattern_24.len(), 97);
+        assert_eq!(pattern_25, pattern_24);
+        assert!(pattern_25.is_char_boundary(pattern_25.len()));
+        assert!(pattern_25.len() <= TDENGINE_LIKE_PATTERN_MAX_BYTES);
+    }
+
+    #[test]
+    fn tdengine_comment_search_uses_a_short_outer_deadline() {
+        assert_eq!(TDENGINE_COMMENT_SEARCH_TIMEOUT, std::time::Duration::from_secs(5));
+    }
+
+    #[test]
     fn oracle_table_comment_from_query_result_returns_optional_non_blank_comment() {
         let result = db::QueryResult {
             columns: vec!["COMMENTS".to_string()],
@@ -3770,7 +3960,7 @@ mod tests {
     }
 
     #[test]
-    fn oracle_table_comments_from_query_result_maps_non_blank_comments() {
+    fn table_comments_from_query_result_maps_non_blank_comments() {
         let result = db::QueryResult {
             columns: vec!["TABLE_NAME".to_string(), "COMMENTS".to_string()],
             column_types: Vec::new(),
@@ -3787,7 +3977,7 @@ mod tests {
             elasticsearch_raw_body: None,
         };
 
-        let comments = oracle_table_comments_from_query_result(result);
+        let comments = table_comments_from_query_result(result);
         assert_eq!(comments.get("ORDERS").map(String::as_str), Some("Orders table"));
         assert!(!comments.contains_key("PRODUCTS"));
     }
@@ -4021,7 +4211,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_oracle_table_comments_only_fills_missing_table_comments() {
+    fn apply_table_comments_only_fills_missing_table_comments() {
         let mut tables = vec![
             super::db::TableInfo {
                 name: "ORDERS".to_string(),
@@ -4043,7 +4233,7 @@ mod tests {
             ("PRODUCTS".to_string(), "Products table".to_string()),
         ]);
 
-        super::apply_oracle_table_comments(&mut tables, &comments);
+        super::apply_table_comments(&mut tables, &comments);
 
         assert_eq!(tables[0].comment.as_deref(), Some("Orders table"));
         assert_eq!(tables[1].comment.as_deref(), Some("Existing"));
