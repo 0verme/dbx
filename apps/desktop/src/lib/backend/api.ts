@@ -67,6 +67,7 @@ export const loadConnections = forward("loadConnections");
 export const loadTunnelProfiles = forward("loadTunnelProfiles");
 export const saveTunnelProfiles = forward("saveTunnelProfiles");
 export const testTunnelProfile = forward("testTunnelProfile");
+export const resolveSshPrompt = forward("resolveSshPrompt");
 export const readKeychainPassword = forward("readKeychainPassword");
 export const readKeychainPasswords = forward("readKeychainPasswords");
 export const decryptConfig = forward("decryptConfig");

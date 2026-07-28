@@ -74,6 +74,13 @@ import type { CreateDatabaseSqlOptions } from "@/lib/database/createDatabaseSql"
 import type { DatabaseNameSqlOptions, DatabasePropertyEditSqlOptions, DropTableChildObjectSqlOptions, DropObjectSqlOptions, DuplicateTableStructureSqlOptions, CopyTableDataSqlOptions, SchemaNameSqlOptions, TableAdminSqlOptions } from "@/lib/database/dbAdminSql";
 import type { BuildDatabaseSqlExportOptions, BuildExportInsertStatementsOptions } from "@/lib/export/databaseExport";
 
+export interface SshPromptResolution {
+  id: string;
+  action: "accept" | "reject" | "secret";
+  remember?: boolean;
+  secret?: string;
+}
+
 export interface AgentDriverInfo {
   db_type: string;
   label: string;
@@ -1278,6 +1285,10 @@ export async function saveTunnelProfiles(profiles: TunnelProfile[]): Promise<voi
 
 export async function testTunnelProfile(profile: TunnelProfile): Promise<string> {
   return invoke("test_tunnel_profile", { profile });
+}
+
+export async function resolveSshPrompt(resolution: SshPromptResolution): Promise<void> {
+  await invoke("resolve_ssh_prompt", { resolution });
 }
 
 export async function readKeychainPassword(service: string): Promise<string> {

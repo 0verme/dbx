@@ -121,6 +121,7 @@ import type {
   MongoGridFsFileInfo,
   AppSupportInfo,
   PromptTemplate,
+  SshPromptResolution,
 } from "@/lib/backend/tauri";
 import type { QueryEditability } from "@/lib/sql/sqlAnalysis";
 import { isTerminalTransferProgress } from "@/lib/backend/transferProgress";
@@ -318,6 +319,10 @@ export async function saveTunnelProfiles(profiles: TunnelProfile[]): Promise<voi
 
 export async function testTunnelProfile(profile: TunnelProfile): Promise<string> {
   return post("/api/tunnel-profiles/test", profile);
+}
+
+export async function resolveSshPrompt(resolution: SshPromptResolution): Promise<void> {
+  await post("/api/ssh/prompts/resolve", resolution);
 }
 
 export async function readKeychainPassword(_service: string): Promise<string> {

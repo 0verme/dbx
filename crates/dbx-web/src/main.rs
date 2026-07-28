@@ -2,6 +2,7 @@ mod auth;
 mod error;
 mod routes;
 mod sse;
+mod ssh_prompt;
 mod state;
 
 use std::collections::{HashMap, HashSet};
@@ -239,7 +240,10 @@ async fn main() {
         nacos_imports: RwLock::new(HashMap::new()),
         login_rate_limit: tokio::sync::Mutex::new(state::LoginRateLimit { fail_count: 0, locked_until: None }),
         export_files: RwLock::new(HashMap::new()),
+        ssh_prompts: Arc::new(ssh_prompt::SshPromptHub::new()),
     });
+
+    ssh_prompt::install_web_ssh_prompt_bridge(web_state.ssh_prompts.clone());
 
     // API routes
     let api = Router::new()
@@ -283,6 +287,8 @@ async fn main() {
         // System
         .route("/system/fonts", get(routes::jdbc::list_system_fonts))
         .route("/ssh/config-hosts", get(routes::ssh_config::list_ssh_config_hosts))
+        .route("/ssh/prompts", get(routes::ssh_prompt::stream_ssh_prompts))
+        .route("/ssh/prompts/resolve", post(routes::ssh_prompt::resolve_ssh_prompt))
         // Tunnel profiles
         .route("/tunnel-profiles/list", get(routes::tunnel_profiles::load_tunnel_profiles))
         .route("/tunnel-profiles/save", post(routes::tunnel_profiles::save_tunnel_profiles))

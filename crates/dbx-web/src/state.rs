@@ -35,6 +35,7 @@ pub struct WebState {
     pub login_rate_limit: Mutex<LoginRateLimit>,
     /// Table export temp files: export_id -> (file_path, format)
     pub export_files: RwLock<HashMap<String, (String, String)>>,
+    pub ssh_prompts: Arc<crate::ssh_prompt::SshPromptHub>,
 }
 
 impl WebState {
