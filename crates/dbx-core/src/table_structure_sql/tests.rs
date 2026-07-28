@@ -3324,7 +3324,7 @@ fn builds_mysql_trigger_changes() {
 }
 
 #[test]
-fn builds_oracle_multi_event_row_trigger_change() {
+fn rejects_editing_existing_oracle_trigger_without_complete_source() {
     let mut existing = trigger(
         "DBX_TRIGGER_4320_AUDIT",
         "AFTER EACH ROW",
@@ -3350,12 +3350,10 @@ fn builds_oracle_multi_event_row_trigger_change() {
         original_table_comment: None,
     });
 
-    assert_eq!(result.warnings, Vec::<String>::new());
+    assert!(result.statements.is_empty());
     assert_eq!(
-        result.statements,
-        vec![
-            "CREATE OR REPLACE TRIGGER \"APP\".\"DBX_TRIGGER_4320_AUDIT\" AFTER INSERT OR UPDATE OR DELETE ON \"APP\".\"DBX_TRIGGER_4320\"\nFOR EACH ROW\nDECLARE\n  v_event VARCHAR2(10);\nBEGIN\n  v_event := CASE WHEN INSERTING THEN 'INSERT' WHEN UPDATING THEN 'UPDATE' ELSE 'DELETE' END;\nEND;",
-        ]
+        result.warnings,
+        vec!["Editing existing Oracle trigger \"DBX_TRIGGER_4320_AUDIT\" requires its complete source definition."]
     );
 }
 
@@ -3383,14 +3381,15 @@ fn builds_oracle_statement_trigger_without_row_clause() {
 }
 
 #[test]
-fn renaming_oracle_trigger_drops_old_name_before_create() {
-    let mut existing = trigger("ORDERS_AUDIT_V2", "AFTER EACH ROW", "INSERT", "BEGIN\n  NULL;\nEND;");
+fn drops_existing_oracle_trigger_without_reconstructing_it() {
+    let mut existing = trigger("ORDERS_AUDIT", "AFTER EACH ROW", "INSERT", "BEGIN\n  NULL;\nEND;");
     existing.original = Some(TriggerInfo {
         name: "ORDERS_AUDIT".to_string(),
         event: "INSERT".to_string(),
         timing: "AFTER EACH ROW".to_string(),
         statement: Some("BEGIN\n  NULL;\nEND;".to_string()),
     });
+    existing.marked_for_drop = true;
 
     let result = build_table_structure_change_sql(TableStructureSqlOptions {
         database_type: Some(DatabaseType::Oracle),
@@ -3405,13 +3404,7 @@ fn renaming_oracle_trigger_drops_old_name_before_create() {
     });
 
     assert_eq!(result.warnings, Vec::<String>::new());
-    assert_eq!(
-        result.statements,
-        vec![
-            "DROP TRIGGER \"APP\".\"ORDERS_AUDIT\";",
-            "CREATE OR REPLACE TRIGGER \"APP\".\"ORDERS_AUDIT_V2\" AFTER INSERT ON \"APP\".\"ORDERS\"\nFOR EACH ROW\nBEGIN\n  NULL;\nEND;",
-        ]
-    );
+    assert_eq!(result.statements, vec!["DROP TRIGGER \"APP\".\"ORDERS_AUDIT\";"]);
 }
 
 #[test]
