@@ -93,6 +93,7 @@ import { isCancelSearchShortcut } from "@/lib/editor/keyboardShortcuts";
 import { executeWithProductionSqlGuard } from "@/lib/database/productionExecutionGuard";
 import { formatShortcut } from "@/lib/editor/shortcutRegistry";
 import { batchTableEmptyFeedback, buildBatchTableEmptyPlan, runBatchTableEmpty, type BatchTableEmptyPlanItem } from "@/lib/sidebar/batchTableEmpty";
+import { runBatchTableDrop } from "@/lib/table/batchTableDrop";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   buildObjectBrowserRows,
@@ -224,6 +225,8 @@ const procedureExecutionTarget = ref<ObjectBrowserRow | null>(null);
 const selectedTableIds = ref<Set<string>>(new Set());
 const expandedPartitionParentIds = ref<Set<string>>(new Set());
 const showBatchDropConfirm = ref(false);
+const batchDropExecuting = ref(false);
+const batchDropProgress = ref({ completed: 0, total: 0 });
 const batchDropPreviewSql = ref("");
 const showBatchTruncateConfirm = ref(false);
 const batchTruncatePreviewSql = ref("");
@@ -544,6 +547,7 @@ const selectedTableCount = computed(() => selectedTableRows.value.length);
 const canBatchDropCascade = computed(() => selectedTableCount.value > 0 && supportsDropTableCascade(effectiveDatabaseType.value));
 const canBatchTruncateCascade = computed(() => selectedTableCount.value > 0 && supportsTruncateTableCascade(effectiveDatabaseType.value));
 const allVisibleTablesSelected = computed(() => visibleSelectableRows.value.length > 0 && visibleSelectableRows.value.every((row) => selectedTableIds.value.has(row.id)));
+const batchDropProgressPercent = computed(() => (batchDropProgress.value.total > 0 ? Math.round((batchDropProgress.value.completed / batchDropProgress.value.total) * 100) : 0));
 
 function iconFor(row: ObjectBrowserRow) {
   if (row.type === "VIEW" || row.type === "MATERIALIZED_VIEW") return Eye;
@@ -1514,37 +1518,55 @@ async function refreshBatchDropPreviewSql() {
 function requestBatchDropTables() {
   if (selectedTableCount.value === 0) return;
   batchDropCascade.value = false;
+  batchDropProgress.value = { completed: 0, total: 0 };
   batchDropPreviewSql.value = "";
   void refreshBatchDropPreviewSql();
   showBatchDropConfirm.value = true;
 }
 
 async function confirmBatchDropTables() {
-  const targets = await fetchSortedTableRowsForDrop();
-  if (targets.length === 0) return;
+  if (batchDropExecuting.value) return;
+  batchDropExecuting.value = true;
   try {
+    const targets = await fetchSortedTableRowsForDrop();
+    if (targets.length === 0) return;
+    batchDropProgress.value = { completed: 0, total: targets.length };
     const useCascade = canBatchDropCascade.value && batchDropCascade.value;
-    const statements = await Promise.all(
-      targets.map(async (row) => ({
-        row,
-        sql: await buildDropTableSql(tableAdminSqlOptions(row, { cascade: useCascade })),
+    const plan = await Promise.all(
+      targets.map(async (target) => ({
+        target,
+        sql: await buildDropTableSql(tableAdminSqlOptions(target, { cascade: useCascade })),
       })),
     );
-    const executed = await executeObjectBrowserSqlWithProductionGuard(statements.map(({ sql }) => sql).join(";\n"), async () => {
-      for (const { row, sql } of statements) {
-        await api.executeQuery(props.connection.id, props.database, sql);
-        closeDroppedTableObjectTabsForRow(row);
-      }
-      return true;
-    });
-    if (!executed) return;
-    toast(t("objects.batchDropSuccess", { count: targets.length }));
-    removePinnedObjectBrowserRows(targets);
-    clearTableSelection();
-    await reload();
-    await connectionStore.refreshObjectListTreeNode(props.connection.id, props.database, selectedSchema.value);
+    const batchSql = plan.map(({ sql }) => sql).join(";\n");
+    const result = await executeObjectBrowserSqlWithProductionGuard(batchSql, () =>
+      runBatchTableDrop({
+        databaseType: effectiveDatabaseType.value,
+        plan,
+        executeStatement: (sql) => api.executeQuery(props.connection.id, props.database, sql),
+        executeBatch: (sql, onProgress) => api.executeMultiWithProgress(props.connection.id, props.database, sql, onProgress),
+        onProgress: (progress) => {
+          batchDropProgress.value = { completed: Math.min(progress.completed, targets.length), total: targets.length };
+        },
+      }),
+    );
+    if (!result) return;
+
+    for (const row of result.succeeded) closeDroppedTableObjectTabsForRow(row);
+    if (result.succeeded.length > 0) {
+      removePinnedObjectBrowserRows(result.succeeded);
+      await reload();
+      await connectionStore.refreshObjectListTreeNode(props.connection.id, props.database, selectedSchema.value);
+    }
+
+    if (result.failed) throw result.failed;
+    toast(t("objects.batchDropSuccess", { count: result.succeeded.length }));
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
+  } finally {
+    batchDropExecuting.value = false;
+    batchDropProgress.value = { completed: 0, total: 0 };
+    showBatchDropConfirm.value = false;
   }
 }
 
@@ -3072,9 +3094,27 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
     </template>
   </DangerConfirmDialog>
 
-  <DangerConfirmDialog v-model:open="showBatchDropConfirm" :title="t('objects.confirmBatchDropTitle')" :message="t('objects.confirmBatchDropMessage', { count: selectedTableCount })" :sql="batchDropPreviewSql" :confirm-label="t('objects.dropSelected')" @confirm="confirmBatchDropTables">
-    <template v-if="canBatchDropCascade" #options>
-      <label class="mb-3 flex items-start gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+  <DangerConfirmDialog
+    v-model:open="showBatchDropConfirm"
+    :title="t('objects.confirmBatchDropTitle')"
+    :message="t('objects.confirmBatchDropMessage', { count: selectedTableCount })"
+    :sql="batchDropPreviewSql"
+    :confirm-label="t('objects.dropSelected')"
+    :loading="batchDropExecuting"
+    :close-on-confirm="false"
+    @confirm="confirmBatchDropTables"
+  >
+    <template #options>
+      <div v-if="batchDropExecuting" class="mb-3 rounded-md border bg-muted/20 px-3 py-2.5">
+        <div class="mb-1.5 flex items-center justify-between text-xs tabular-nums text-muted-foreground">
+          <span>{{ batchDropProgress.completed }} / {{ batchDropProgress.total }}</span>
+          <span>{{ batchDropProgressPercent }}%</span>
+        </div>
+        <div class="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" :aria-valuemin="0" :aria-valuemax="batchDropProgress.total" :aria-valuenow="batchDropProgress.completed">
+          <div class="h-full bg-primary transition-[width] duration-200" :style="{ width: `${batchDropProgressPercent}%` }" />
+        </div>
+      </div>
+      <label v-if="canBatchDropCascade" class="mb-3 flex items-start gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
         <input v-model="batchDropCascade" type="checkbox" class="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary" @change="refreshBatchDropPreviewSql()" />
         <span class="grid gap-0.5">
           <span class="font-medium text-foreground">{{ t("contextMenu.dropTableCascade") }}</span>
