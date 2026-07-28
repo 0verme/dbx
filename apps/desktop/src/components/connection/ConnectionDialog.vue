@@ -2315,6 +2315,7 @@ const dbOptions: DbOption[] = [
   { value: "gbase", label: "GBase" },
   { value: "kingbase", label: "KingBase" },
   { value: "highgo", label: "瀚高 HighGo" },
+  { value: "uxdb", label: "优炫 UXDB" },
   { value: "yashandb", label: "崖山 YashanDB" },
   { value: "vastbase", label: "Vastbase" },
   { value: "redshift", label: "Redshift" },
@@ -2369,7 +2370,7 @@ const dbCategoryDefinitions: Array<{
   {
     key: "domestic",
     titleKey: "connection.databaseCategoryDomestic",
-    optionValues: ["dm", "opengauss", "gaussdb", "kwdb", "tidb", "oceanbase", "goldendb", "tdsql", "polardb", "greatsql", "gbase", "kingbase", "highgo", "yashandb", "vastbase", "sundb", "oscar", "xugu"],
+    optionValues: ["dm", "opengauss", "gaussdb", "kwdb", "tidb", "oceanbase", "goldendb", "tdsql", "polardb", "greatsql", "gbase", "kingbase", "highgo", "uxdb", "yashandb", "vastbase", "sundb", "oscar", "xugu"],
   },
   {
     key: "lightweight",
