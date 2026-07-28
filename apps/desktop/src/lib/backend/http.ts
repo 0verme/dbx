@@ -68,6 +68,9 @@ import type {
   UpdateDownloadSource,
   RedisCollectionPage,
   RedisDatabaseInfo,
+  RedisStreamConsumer,
+  RedisStreamGroup,
+  RedisStreamPendingPage,
   RedisValue,
   RedisScanResult,
   RedisCommandResult,
@@ -1997,6 +2000,18 @@ export async function redisScanValues(connectionId: string, db: number, cursor: 
 
 export async function redisGetValue(connectionId: string, db: number, keyRaw: string): Promise<RedisValue> {
   return post("/api/redis/get-value", { connectionId, db, keyRaw });
+}
+
+export async function redisGetStreamGroups(connectionId: string, db: number, keyRaw: string): Promise<RedisStreamGroup[]> {
+  return post("/api/redis/get-stream-groups", { connectionId, db, keyRaw });
+}
+
+export async function redisGetStreamConsumers(connectionId: string, db: number, keyRaw: string, groupRaw: string): Promise<RedisStreamConsumer[]> {
+  return post("/api/redis/get-stream-consumers", { connectionId, db, keyRaw, groupRaw });
+}
+
+export async function redisGetStreamPending(connectionId: string, db: number, keyRaw: string, groupRaw: string, cursor?: string, consumerRaw?: string): Promise<RedisStreamPendingPage> {
+  return post("/api/redis/get-stream-pending", { connectionId, db, keyRaw, groupRaw, cursor, ...(consumerRaw === undefined ? {} : { consumerRaw }) });
 }
 
 export async function redisSetString(connectionId: string, db: number, keyRaw: string, value: string, ttl?: number): Promise<void> {

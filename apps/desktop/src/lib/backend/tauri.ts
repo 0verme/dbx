@@ -1650,6 +1650,37 @@ export interface RedisStreamEntry {
   fields: RedisStreamField[];
 }
 
+// Redis counters above Number.MAX_SAFE_INTEGER are transported as decimal strings.
+export type RedisStreamMetric = number | string;
+
+export interface RedisStreamGroup {
+  name: RedisBlob;
+  consumers: RedisStreamMetric;
+  pending: RedisStreamMetric;
+  last_delivered_id: string;
+  entries_read?: RedisStreamMetric;
+  lag?: RedisStreamMetric;
+}
+
+export interface RedisStreamConsumer {
+  name: RedisBlob;
+  pending: RedisStreamMetric;
+  idle_ms: RedisStreamMetric;
+  inactive_ms?: RedisStreamMetric;
+}
+
+export interface RedisStreamPendingEntry {
+  id: string;
+  consumer: RedisBlob;
+  idle_ms: RedisStreamMetric;
+  deliveries: RedisStreamMetric;
+}
+
+export interface RedisStreamPendingPage {
+  entries: RedisStreamPendingEntry[];
+  next_cursor?: string;
+}
+
 export type RedisValueData =
   | { kind: "string"; content: RedisBlob }
   | { kind: "json"; value: string }
@@ -1716,6 +1747,18 @@ export async function redisScanValues(connectionId: string, db: number, cursor: 
 
 export async function redisGetValue(connectionId: string, db: number, keyRaw: string): Promise<RedisValue> {
   return invoke("redis_get_value", { connectionId, db, keyRaw });
+}
+
+export async function redisGetStreamGroups(connectionId: string, db: number, keyRaw: string): Promise<RedisStreamGroup[]> {
+  return invoke("redis_get_stream_groups", { connectionId, db, keyRaw });
+}
+
+export async function redisGetStreamConsumers(connectionId: string, db: number, keyRaw: string, groupRaw: string): Promise<RedisStreamConsumer[]> {
+  return invoke("redis_get_stream_consumers", { connectionId, db, keyRaw, groupRaw });
+}
+
+export async function redisGetStreamPending(connectionId: string, db: number, keyRaw: string, groupRaw: string, cursor?: string, consumerRaw?: string): Promise<RedisStreamPendingPage> {
+  return invoke("redis_get_stream_pending", { connectionId, db, keyRaw, groupRaw, cursor, ...(consumerRaw === undefined ? {} : { consumerRaw }) });
 }
 
 export async function redisSetString(connectionId: string, db: number, keyRaw: string, value: string, ttl?: number): Promise<void> {
