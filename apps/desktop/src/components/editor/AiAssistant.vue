@@ -57,7 +57,7 @@ import { useNavigationTargets } from "@/composables/useNavigationTargets";
 import { buildAiContext, runAgentStream, isVectorDbType, isValidActionForMode, defaultActionForMode, type AiAction, type AiAssistantMode, type AiSqlFileContext, type CustomPromptContext } from "@/lib/ai/ai";
 import { isAiConfigModelCandidate } from "@/lib/ai/aiConfigCandidates";
 import { orderAiConfigsForDisplay } from "@/lib/ai/aiConfigOrdering";
-import { effortPreferenceUpdateForCapability, effortSelectionEquals, runtimeEffortFromPreference } from "@/lib/ai/aiEffortPreference";
+import { effortSelectionEquals, runtimeEffortFromPreference } from "@/lib/ai/aiEffortPreference";
 import { useAiModelCatalog } from "@/composables/useAiModelCatalog";
 import { ACTIVE_TEMPLATES_TOTAL_MAX, promptTemplateCharacterCount } from "@/types/promptTemplate";
 
@@ -394,11 +394,6 @@ watch(providerSelectorOpen, (open) => {
 async function ensureModelEffort(config: AiConfigItem, modelId: string, force = false) {
   try {
     const capability = await resolveEffort(config, modelId, force);
-    const isActiveModel = settings.activeModel?.configId === config.id && settings.activeModel.modelId === modelId;
-    if (isActiveModel) {
-      const preferenceUpdate = effortPreferenceUpdateForCapability(capability, settings.activeEffort);
-      if (preferenceUpdate !== undefined) settings.updateActiveEffort(preferenceUpdate);
-    }
     syncEffortInputs(capability);
   } catch {
     // The effort section exposes the scoped retry state.

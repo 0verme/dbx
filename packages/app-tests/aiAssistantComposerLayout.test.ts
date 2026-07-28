@@ -59,6 +59,17 @@ test("AI effort control opens as a hoverable side submenu", () => {
   assert.doesNotMatch(selector, /v-if="effortPanelOpen"/);
 });
 
+test("AI model and effort menu refreshes do not persist effort settings", () => {
+  const loaderStart = source.indexOf("async function ensureModelEffort");
+  const loaderEnd = source.indexOf("function handleModelSelect", loaderStart);
+  const loader = source.slice(loaderStart, loaderEnd);
+
+  assert.notEqual(loaderStart, -1, "the effort capability loader should exist");
+  assert.notEqual(loaderEnd, -1, "the model selection handler should follow the effort loader");
+  assert.match(loader, /await resolveEffort\(config, modelId, force\)/);
+  assert.doesNotMatch(loader, /updateActiveEffort|persistAiChatSelection/);
+});
+
 test("AI composer template remains compilable", () => {
   const { descriptor, errors } = parse(source, { filename: aiAssistantPath });
   assert.deepEqual(errors, []);
