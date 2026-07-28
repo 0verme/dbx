@@ -2255,6 +2255,8 @@ mod tests {
         let stderr_tail = Arc::new(Mutex::new(StderrTail::default()));
         start_stderr_collector(child.stderr.take().expect("stderr should be piped"), Arc::clone(&stderr_tail));
 
+        std::thread::sleep(Duration::from_millis(200));
+
         let message = format_agent_startup_error(
             "Failed to read startup line from agent: end of stream",
             &mut child,

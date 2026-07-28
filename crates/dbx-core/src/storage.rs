@@ -105,6 +105,7 @@ pub fn maybe_import_user_data_db(
     Ok(DataDbImportResult::Imported)
 }
 
+#[derive(Clone)]
 pub struct Storage {
     db: SqliteHandle,
     /// Path to the SQLite database file (`dbx.db`). Its parent directory is the
@@ -378,6 +379,13 @@ const SCHEMA_STATEMENTS: &[&str] = &[
         config_json TEXT NOT NULL,
         is_default INTEGER NOT NULL DEFAULT 0
     )",
+    "CREATE TABLE IF NOT EXISTS state_store (
+        key TEXT PRIMARY KEY,
+        value BLOB NOT NULL,
+        content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+        version INTEGER NOT NULL DEFAULT 1,
+        payload BLOB DEFAULT x''
+    )",
     "CREATE TABLE IF NOT EXISTS prompt_templates (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
@@ -412,6 +420,7 @@ impl Storage {
             ensure_saved_sql_columns_sync(conn)?;
             ensure_tab_runtime_cache_columns_sync(conn)?;
             ensure_ai_configs_columns_sync(conn)?;
+            ensure_state_store_columns_sync(conn)?;
             Ok(())
         })
     }
@@ -580,6 +589,19 @@ fn ensure_table_columns(conn: &Connection, table_name: &str, columns: &[(&str, &
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+fn ensure_state_store_columns_sync(conn: &Connection) -> Result<(), String> {
+    conn.execute("CREATE TABLE IF NOT EXISTS state_store (key TEXT PRIMARY KEY, value BLOB NOT NULL, content_type TEXT NOT NULL DEFAULT 'application/octet-stream', version INTEGER NOT NULL DEFAULT 1)", []).map_err(|e| e.to_string())?;
+
+    // SQLite ALTER TABLE ADD COLUMN rejects parenthesized default expressions.
+    const COLUMNS: &[(&str, &str)] = &[
+        ("value", "BLOB NOT NULL DEFAULT x''"),
+        ("content_type", "TEXT NOT NULL DEFAULT 'application/octet-stream'"),
+        ("version", "INTEGER NOT NULL DEFAULT 1"),
+        ("payload", "BLOB DEFAULT x''"),
+    ];
+    ensure_table_columns(conn, "state_store", COLUMNS)
 }
 
 fn ssh_tunnel_secret_segment(index: usize, hop: &crate::models::connection::SshTunnelConfig) -> String {
@@ -2904,6 +2926,109 @@ impl Storage {
             )
             .map(|_| ())
             .map_err(|e| e.to_string())
+        })
+        .await
+    }
+
+    // State persistence store (CAS-aware key-value store for state machines)
+
+    pub async fn save_state(&self, key: &str, value: &[u8], content_type: &str) -> Result<(), String> {
+        let key = key.to_string();
+        let value = value.to_vec();
+        let content_type = content_type.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO state_store (key, value, content_type, version, payload) \
+                 VALUES (?1, ?2, ?3, 1, x'') \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, content_type = excluded.content_type, \
+                 version = version + 1, payload = excluded.payload",
+                params![key, value, content_type],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+        })
+        .await
+    }
+
+    pub async fn load_state(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, String> {
+        let key = key.to_string();
+        self.with_conn(move |conn| {
+            let mut stmt = conn
+                .prepare("SELECT value, content_type FROM state_store WHERE key = ?1")
+                .map_err(|e| e.to_string())?;
+            let result: Option<(Vec<u8>, String)> = stmt
+                .query_row(params![key], |row| Ok((row.get(0)?, row.get(1)?)))
+                .optional()
+                .map_err(|e| e.to_string())?;
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn delete_state(&self, key: &str) -> Result<(), String> {
+        let key = key.to_string();
+        self.with_conn(move |conn| {
+            conn.execute("DELETE FROM state_store WHERE key = ?1", params![key]).map(|_| ()).map_err(|e| e.to_string())
+        })
+        .await
+    }
+
+    pub async fn state_exists(&self, key: &str) -> Result<bool, String> {
+        let key = key.to_string();
+        self.with_conn(move |conn| {
+            let exists: bool = conn
+                .query_row("SELECT EXISTS(SELECT 1 FROM state_store WHERE key = ?1)", params![key], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            Ok(exists)
+        })
+        .await
+    }
+
+    pub async fn get_state_version(&self, key: &str) -> Result<Option<u64>, String> {
+        let key = key.to_string();
+        self.with_conn(move |conn| {
+            conn.prepare("SELECT version FROM state_store WHERE key = ?1")
+                .and_then(|mut stmt| stmt.query_row(params![key], |row| row.get(0)).optional())
+                .map_err(|e| e.to_string())
+        })
+        .await
+    }
+
+    pub async fn compare_and_swap_state(
+        &self,
+        key: &str,
+        expected_version: Option<u64>,
+        new_value: &[u8],
+        content_type: &str,
+    ) -> Result<bool, String> {
+        let key = key.to_string();
+        let new_value = new_value.to_vec();
+        let content_type = content_type.to_string();
+        self.with_conn(move |conn| {
+            let current: Option<u64> = conn
+                .prepare("SELECT version FROM state_store WHERE key = ?1")
+                .and_then(|mut stmt| stmt.query_row(params![&key], |row| row.get(0)).optional())
+                .map_err(|e| e.to_string())?;
+
+            match (current, expected_version) {
+                (None, None) => {
+                    conn.execute(
+                        "INSERT INTO state_store (key, value, content_type, version, payload) VALUES (?1, ?2, ?3, 1, x'')",
+                        params![key, new_value, content_type],
+                    )
+                    .map(|_| true)
+                    .map_err(|e| e.to_string())
+                }
+                (Some(v), Some(expected)) if v == expected => {
+                    conn.execute(
+                        "UPDATE state_store SET value = ?1, content_type = ?2, version = version + 1 WHERE key = ?3 AND version = ?4",
+                        params![new_value, content_type, key, expected],
+                    )
+                    .map(|rows| rows > 0)
+                    .map_err(|e| e.to_string())
+                }
+                _ => Ok(false),
+            }
         })
         .await
     }

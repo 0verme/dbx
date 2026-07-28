@@ -2133,10 +2133,13 @@ pub async fn list_indexes(pool: &SqliteHandle, schema: &str, table: &str) -> Res
                     ))
                     .map_err(|e| e.to_string())?;
                 let columns = col_stmt
-                    .query_map([], |row| row.get::<_, String>("name"))
+                    .query_map([], |row| row.get::<_, Option<String>>("name"))
                     .map_err(|e| e.to_string())?
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>();
 
                 indexes.push(IndexInfo {
                     name,
