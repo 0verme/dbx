@@ -206,7 +206,7 @@ function annotateQueryResultSources(results: QueryResult[], sql: string, databas
   return results;
 }
 
-function isOracleCurrentSchemaStatement(statement: string | undefined): boolean {
+function sqlStatementWithoutLeadingComments(statement: string | undefined): string {
   let remaining = statement?.trimStart() ?? "";
   while (remaining) {
     if (remaining.startsWith("--")) {
@@ -216,13 +216,26 @@ function isOracleCurrentSchemaStatement(statement: string | undefined): boolean 
     }
     if (remaining.startsWith("/*")) {
       const end = remaining.indexOf("*/", 2);
-      if (end < 0) return false;
+      if (end < 0) return "";
       remaining = remaining.slice(end + 2).trimStart();
       continue;
     }
     break;
   }
-  return /^ALTER\s+SESSION\s+SET\s+CURRENT_SCHEMA\s*=/i.test(remaining);
+  return remaining;
+}
+
+function isOracleCurrentSchemaStatement(statement: string | undefined): boolean {
+  return /^ALTER\s+SESSION\s+SET\s+CURRENT_SCHEMA\s*=/i.test(sqlStatementWithoutLeadingComments(statement));
+}
+
+function isSapHanaSetSchemaStatement(statement: string | undefined): boolean {
+  return /^SET\s+SCHEMA\s+(?:"(?:[^"]|"")*"|[A-Za-z_][\w$#]*)\s*;?\s*$/i.test(sqlStatementWithoutLeadingComments(statement));
+}
+
+function sapHanaCurrentSchemaFromResult(result: QueryResult): string | undefined {
+  const schema = result.rows[0]?.[0];
+  return typeof schema === "string" && schema.trim() ? schema.trim() : undefined;
 }
 
 function annotateQueryResultSource(result: QueryResult, sourceStatement: string, database?: string, databaseType?: DatabaseType, sourceRange?: { from: number; to: number }): QueryResult {
@@ -3689,6 +3702,7 @@ export const useQueryStore = defineStore("query", () => {
       }
       const results = annotateQueryResultSources(markQueryResultsRowsRaw(await withFrontendQueryTimeout(executionPromise, frontendTimeoutSecs, t("editor.queryTimeoutError", { seconds: frontendTimeoutSecs }))), queryBaseSql, sourceLabelDatabase, effectiveDbType, options?.sourceOffset);
       const successfulOracleSchemaChanges = effectiveDbType === "oracle" ? results.filter((result) => result.execution_error !== true && isOracleCurrentSchemaStatement(result.sourceStatement)).length : 0;
+      const successfulSapHanaSchemaChanges = effectiveDbType === "saphana" ? results.filter((result) => result.execution_error !== true && isSapHanaSetSchemaStatement(result.sourceStatement)).length : 0;
       if (hiddenPrimaryKeys.length > 0 && results.length === 1) {
         const hiddenIndexes = hiddenResultColumnIndexes(results[0]!.columns, hiddenPrimaryKeys);
         if (hiddenIndexes.length > 0) results[0]!.hidden_column_indexes = hiddenIndexes;
@@ -3703,11 +3717,27 @@ export const useQueryStore = defineStore("query", () => {
         columnCounts: results.map((result) => result.columns.length),
         elapsed: elapsed(),
       });
+      let resolvedSapHanaSchema: string | undefined;
+      if (successfulSapHanaSchemaChanges > 0 && tabs.value.find((item) => item.id === id)?.executionId === executionId) {
+        try {
+          const schemaResult = await api.executeQuery(tab.connectionId, executionDatabase, "SELECT CURRENT_SCHEMA FROM DUMMY", undefined, executionId, {
+            clientSessionId: tabClientSessionId(tab),
+            timeoutSecs: queryTimeoutSecs,
+          });
+          resolvedSapHanaSchema = sapHanaCurrentSchemaFromResult(schemaResult);
+        } catch (error) {
+          console.warn("[DBX] Failed to resolve SAP HANA CURRENT_SCHEMA", error);
+        }
+      }
       const current = tabs.value.find((t) => t.id === id);
       if (current?.executionId === executionId) {
         if (openInNewResultTab && current.isCancelling && restorePendingResultRun(current, executionId)) return false;
         if (successfulOracleSchemaChanges > 0) {
           current.completionContextVersion = (current.completionContextVersion ?? 0) + successfulOracleSchemaChanges;
+        }
+        if (resolvedSapHanaSchema) {
+          current.schema = resolvedSapHanaSchema;
+          current.completionContextVersion = (current.completionContextVersion ?? 0) + successfulSapHanaSchemaChanges;
         }
         const activeGroupIndex = current.activeResultIndex;
         const activeGroupResults = current.results;
