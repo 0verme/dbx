@@ -799,6 +799,8 @@ export default withEnglishFallback({
     contextMenu: {
       executeSelection: "Ejecutar seleccion",
       executeCurrent: "Ejecutar SQL",
+      export: "Exportar",
+      exportQueryResultTo: "Exportar el conjunto de resultados de la consulta actual a {format}",
       copySelection: "Copiar seleccion",
       sendToAi: "Enviar a IA",
       uppercaseSelection: "Convertir a mayusculas",
@@ -1342,6 +1344,7 @@ export default withEnglishFallback({
     rowsExported: "{count} filas exportadas",
     rowsShort: "filas",
     cancel: "Cancelar",
+    minimize: "Minimizar a segundo plano",
     openFolder: "Abrir carpeta contenedora",
     openFolderFailed: "No se pudo abrir la carpeta: {message}",
     close: "Cerrar",

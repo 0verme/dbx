@@ -819,6 +819,8 @@ export default {
     contextMenu: {
       executeSelection: "Execute selection",
       executeCurrent: "Execute SQL",
+      export: "Export",
+      exportQueryResultTo: "Export current query result to {format}",
       copySelection: "Copy selection",
       sendToAi: "Send to AI",
       uppercaseSelection: "Convert to uppercase",
@@ -1399,6 +1401,7 @@ export default {
     rowsExported: "{count} rows exported",
     rowsShort: "rows",
     cancel: "Cancel",
+    minimize: "Minimize to background",
     openFolder: "Open containing folder",
     openFolderFailed: "Failed to open folder: {message}",
     close: "Close",

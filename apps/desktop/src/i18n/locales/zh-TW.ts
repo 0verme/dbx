@@ -797,6 +797,8 @@ export default withEnglishFallback({
     contextMenu: {
       executeSelection: "執行選取 SQL",
       executeCurrent: "執行 SQL",
+      export: "匯出",
+      exportQueryResultTo: "匯出目前查詢結果集到 {format}",
       copySelection: "複製選取內容",
       sendToAi: "傳送至 AI",
       uppercaseSelection: "轉為大寫",
@@ -1341,6 +1343,7 @@ export default withEnglishFallback({
     rowsExported: "已匯出 {count} 列",
     rowsShort: "列",
     cancel: "取消",
+    minimize: "最小化到背景",
     openFolder: "開啟所在資料夾",
     openFolderFailed: "開啟資料夾失敗：{message}",
     close: "關閉",

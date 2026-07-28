@@ -820,6 +820,8 @@ export default withEnglishFallback({
     contextMenu: {
       executeSelection: "执行选中 SQL",
       executeCurrent: "执行 SQL",
+      export: "导出",
+      exportQueryResultTo: "导出当前查询结果集到 {format}",
       copySelection: "复制选中内容",
       sendToAi: "发送到 AI",
       uppercaseSelection: "转为大写",
@@ -1400,6 +1402,7 @@ export default withEnglishFallback({
     rowsExported: "已导出 {count} 行",
     rowsShort: "行",
     cancel: "取消",
+    minimize: "最小化到后台",
     openFolder: "打开所在文件夹",
     openFolderFailed: "打开文件夹失败：{message}",
     close: "关闭",

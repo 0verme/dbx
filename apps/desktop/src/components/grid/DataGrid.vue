@@ -5121,6 +5121,7 @@ const exportProgressState = ref({
   filePath: null as string | null,
 });
 const exportCancelHandler = ref<(() => Promise<void>) | null>(null);
+const exportCanMinimize = ref(false);
 
 async function cancelActiveExport() {
   await exportCancelHandler.value?.();
@@ -5196,6 +5197,7 @@ const {
   exportProgressDialog,
   exportProgressState,
   exportCancelHandler,
+  exportCanMinimize,
 });
 
 function copyExtractorLabel(extractor: DataGridCopyExtractorId): string {
@@ -9302,7 +9304,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     />
     <ImagePreviewDialog v-if="imagePreviewMounted" v-model:open="imagePreviewOpen" :src="imagePreviewSrc" :title="imagePreviewTitle" />
     <component v-if="previewDialogOpen && previewDialogConfig" :is="previewDialogConfig.component" v-model:open="previewDialogOpen" v-bind="previewDialogConfig.props" />
-    <ExportProgressDialog v-if="exportProgressDialogMounted" v-model:open="exportProgressDialog" v-bind="exportProgressState" :disable-cancel="!exportCancelHandler" @cancel="cancelActiveExport" />
+    <ExportProgressDialog v-if="exportProgressDialogMounted" v-model:open="exportProgressDialog" v-bind="exportProgressState" :disable-cancel="!exportCancelHandler" :can-minimize="exportCanMinimize" @cancel="cancelActiveExport" @minimize="exportProgressDialog = false" />
   </div>
 </template>
 
