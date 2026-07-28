@@ -41,6 +41,7 @@ import { dataTabExecutionDatabase } from "@/lib/table/dataTabExecutionDatabase";
 import { tableOpenPageLimit } from "@/lib/table/tableOpenPageLimit";
 import { getCachedTableMetadata, loadTableIndexes, loadTableMetadata, type TableMetadataRequest } from "@/lib/metadata/tableMetadataCache";
 import { buildTableSelectSql, quoteTableDataIdentifier } from "@/lib/table/tableSelectSql";
+import { applyOpenTableDefaultSortState, buildOpenTableDefaultSort } from "@/lib/table/tableDefaultSort";
 import { connectionQueryExecutionSchema, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection, metadataSchemaForConnection } from "@/lib/database/jdbcDialect";
 import { frontendQueryTimeoutSecsForSql, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
 import { queryResultNameFromPreamble, queryResultSourceLabel } from "@/lib/sql/queryResultSource";
@@ -1103,6 +1104,8 @@ export const useQueryStore = defineStore("query", () => {
       resultSortDirection: t.resultSortDirection,
       resultSortMode: t.resultSortMode,
       orderByInput: t.orderByInput,
+      openTableDefaultSortApplied: t.openTableDefaultSortApplied,
+      openTableDefaultSortOrderBy: t.openTableDefaultSortOrderBy,
       resultPageLimit: t.resultPageLimit,
       resultPageOffset: t.resultPageOffset,
       whereInput: t.whereInput,
@@ -1950,6 +1953,8 @@ export const useQueryStore = defineStore("query", () => {
       resultLocalSortOriginalMongoDocuments: undefined,
       resultLocalSortOriginalMongoCopyDocuments: undefined,
       orderByInput: undefined,
+      openTableDefaultSortApplied: undefined,
+      openTableDefaultSortOrderBy: undefined,
       resultPageSql: undefined,
       resultPageLimit: undefined,
       resultPageOffset: undefined,
@@ -2078,8 +2083,18 @@ export const useQueryStore = defineStore("query", () => {
     const effectiveDbType = effectiveDatabaseTypeForConnection(conn);
     const identifierQuote = connStore.connectionIdentifierQuote?.(tab.connectionId);
     const primaryKeys = tab.tableMeta ? tab.tableMeta.primaryKeys : tableMeta.primaryKeys;
+    const openTableDefaultSort = tab.openTableDefaultSortApplied
+      ? buildOpenTableDefaultSort({
+          mode: settingsStore.editorSettings.openTableDefaultSortMode,
+          databaseType: effectiveDbType,
+          identifierQuote,
+          primaryKeys,
+          columns: tableMeta.columns.map((column) => column.name),
+        })
+      : undefined;
+    if (tab.openTableDefaultSortApplied) applyOpenTableDefaultSortState(tab, openTableDefaultSort);
     const sortOrder = tab.resultSortColumn && tab.resultSortDirection ? `${quoteTableDataIdentifier(effectiveDbType, tab.resultSortColumn, identifierQuote)} ${tab.resultSortDirection.toUpperCase()}` : undefined;
-    const orderBy = tab.orderByInput?.trim() || sortOrder;
+    const orderBy = openTableDefaultSort?.orderBy ?? (tab.orderByInput?.trim() || sortOrder);
     const limit = tab.resultPageLimit ?? tableOpenPageLimit(settingsStore.editorSettings.tableOpenPageSize);
     const offset = tab.resultPageOffset ?? 0;
     const refreshPreparationId = uuid();
@@ -4616,8 +4631,18 @@ export const useQueryStore = defineStore("query", () => {
       const effectiveDbType = effectiveDatabaseTypeForConnection(conn);
       const identifierQuote = connStore.connectionIdentifierQuote?.(tab.connectionId);
       const primaryKeys = tab.tableMeta ? tab.tableMeta.primaryKeys : tableMeta.primaryKeys;
+      const openTableDefaultSort = tab.openTableDefaultSortApplied
+        ? buildOpenTableDefaultSort({
+            mode: settingsStore.editorSettings.openTableDefaultSortMode,
+            databaseType: effectiveDbType,
+            identifierQuote,
+            primaryKeys,
+            columns: tableMeta.columns.map((column) => column.name),
+          })
+        : undefined;
+      if (tab.openTableDefaultSortApplied) applyOpenTableDefaultSortState(tab, openTableDefaultSort);
       const sortOrder = tab.resultSortColumn && tab.resultSortDirection ? `${quoteTableDataIdentifier(effectiveDbType, tab.resultSortColumn, identifierQuote)} ${tab.resultSortDirection.toUpperCase()}` : undefined;
-      const orderBy = tab.orderByInput?.trim() || sortOrder;
+      const orderBy = openTableDefaultSort?.orderBy ?? (tab.orderByInput?.trim() || sortOrder);
       const queryTimeoutSecs = queryTimeoutSecsForConnection(conn);
       const executionDatabase = dataTabExecutionDatabase(conn, tab.database, tableMeta.catalog);
       const rows: QueryResult["rows"] = [];

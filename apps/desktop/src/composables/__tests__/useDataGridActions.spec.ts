@@ -14,7 +14,9 @@ const mocks = vi.hoisted(() => ({
   getColumns: vi.fn(),
   listIndexes: vi.fn(),
   ensureConnected: vi.fn(),
+  sortTabResultLocally: vi.fn(),
   tableOpenPageSize: 100,
+  openTableDefaultSortMode: "none" as "none" | "primary-key-asc" | "primary-key-desc",
   tabs: [] as QueryTab[],
   setTableMeta: vi.fn(),
 }));
@@ -38,6 +40,7 @@ vi.mock("@/stores/connectionStore", () => ({
   useConnectionStore: () => ({
     getConfig: mocks.getConfig,
     ensureConnected: mocks.ensureConnected,
+    connectionIdentifierQuote: () => undefined,
   }),
 }));
 
@@ -46,6 +49,7 @@ vi.mock("@/stores/queryStore", () => ({
     executeTabSql: mocks.executeTabSql,
     setExecuting: mocks.setExecuting,
     updateSql: mocks.updateSql,
+    sortTabResultLocally: mocks.sortTabResultLocally,
     tabs: mocks.tabs,
     setTableMeta: mocks.setTableMeta.mockImplementation((id: string, meta: NonNullable<QueryTab["tableMeta"]>) => {
       const tab = mocks.tabs.find((item) => item.id === id);
@@ -60,7 +64,14 @@ vi.mock("@/stores/queryStore", () => ({
 }));
 
 vi.mock("@/stores/settingsStore", () => ({
-  useSettingsStore: () => ({ editorSettings: { tableOpenPageSize: mocks.tableOpenPageSize } }),
+  useSettingsStore: () => ({
+    editorSettings: {
+      tableOpenPageSize: mocks.tableOpenPageSize,
+      openTableDefaultSortMode: mocks.openTableDefaultSortMode,
+      infiniteScroll: false,
+      infiniteScrollMaxRows: 5000,
+    },
+  }),
 }));
 
 vi.mock("@/composables/useToast", () => ({
@@ -98,6 +109,7 @@ describe("useDataGridActions", () => {
     vi.clearAllMocks();
     mocks.tabs.length = 0;
     mocks.tableOpenPageSize = 100;
+    mocks.openTableDefaultSortMode = "none";
     mocks.getConfig.mockReturnValue({ id: "postgres-1", db_type: "postgres" });
     mocks.buildTableSelectSql.mockResolvedValue("SELECT * FROM public.users LIMIT 100 OFFSET 0");
     mocks.buildSortedQuerySql.mockResolvedValue({ ok: true, sql: "SELECT sorted" });
@@ -304,5 +316,65 @@ describe("useDataGridActions", () => {
         },
       }),
     );
+  });
+
+  it("rebuilds composite primary-key ordering for toolbar refresh and pagination", async () => {
+    mocks.openTableDefaultSortMode = "primary-key-desc";
+    const tab = tableDataTab({
+      tableMeta: {
+        schema: "public",
+        tableName: "users",
+        tableType: "TABLE",
+        columns: [
+          { name: "tenant_id", data_type: "text", is_nullable: false, column_default: null, is_primary_key: true, extra: null },
+          { name: "record_id", data_type: "bigint", is_nullable: false, column_default: null, is_primary_key: true, extra: null },
+        ],
+        primaryKeys: ["tenant_id", "record_id"],
+      },
+      openTableDefaultSortApplied: true,
+      openTableDefaultSortOrderBy: '"tenant_id" ASC, "record_id" ASC',
+      orderByInput: '"tenant_id" ASC, "record_id" ASC',
+    });
+    const actions = useDataGridActions(computed(() => tab));
+
+    await actions.onReloadData(tab.sql, "", "", tab.orderByInput, 25, 50, "refresh");
+    expect(mocks.buildTableSelectSql).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        orderBy: '"tenant_id" DESC, "record_id" DESC',
+        limit: 25,
+        offset: 50,
+      }),
+    );
+
+    await actions.onPaginate(75, 25, "", tab.orderByInput);
+    expect(mocks.buildTableSelectSql).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        orderBy: '"tenant_id" DESC, "record_id" DESC',
+        limit: 25,
+        offset: 75,
+      }),
+    );
+  });
+
+  it("sorts locally without issuing a database query", async () => {
+    const tab = tableDataTab();
+    const actions = useDataGridActions(computed(() => tab));
+
+    await actions.onSort("id", 0, "asc", "", "local");
+
+    expect(mocks.sortTabResultLocally).toHaveBeenCalledWith("tab-1", "id", 0, "asc");
+    expect(mocks.buildTableSelectSql).not.toHaveBeenCalled();
+    expect(mocks.executeTabSql).not.toHaveBeenCalled();
+  });
+
+  it("sorts in the database by rebuilding and executing table SQL", async () => {
+    const tab = tableDataTab();
+    const actions = useDataGridActions(computed(() => tab));
+
+    await actions.onSort("id", 0, "desc", "", "database");
+
+    expect(mocks.sortTabResultLocally).not.toHaveBeenCalled();
+    expect(mocks.buildTableSelectSql).toHaveBeenCalledWith(expect.objectContaining({ orderBy: '"id" DESC' }));
+    expect(mocks.executeTabSql).toHaveBeenCalledWith("tab-1", expect.any(String), expect.objectContaining({ preserveResultDuringExecution: true }));
   });
 });

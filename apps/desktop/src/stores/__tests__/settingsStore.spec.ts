@@ -5,6 +5,31 @@ import { isProxy } from "vue";
 import type { AiConfigItem } from "@/types/ai";
 
 describe("normalizeEditorSettings", () => {
+  it("keeps quick sorting disabled unless current or legacy settings explicitly enable it", () => {
+    const missing = normalizeEditorSettings({});
+    expect(missing.dataGridQuickSortEnabled).toBe(false);
+    expect(missing.dataGridQuickSortMode).toBe("local");
+    expect(missing.dataGridQuickSortDirection).toBe("asc");
+
+    const legacyEnabled = normalizeEditorSettings({
+      defaultDataGridSortEnabled: true,
+      defaultDataGridSortMode: "database",
+      defaultDataGridSortDirection: "desc",
+    } as any);
+    expect(legacyEnabled.dataGridQuickSortEnabled).toBe(true);
+    expect(legacyEnabled.dataGridQuickSortMode).toBe("database");
+    expect(legacyEnabled.dataGridQuickSortDirection).toBe("desc");
+
+    const legacyDisabled = normalizeEditorSettings({
+      defaultDataGridSortEnabled: false,
+      defaultDataGridSortMode: "database",
+      defaultDataGridSortDirection: "desc",
+    } as any);
+    expect(legacyDisabled.dataGridQuickSortEnabled).toBe(false);
+    expect(legacyDisabled.dataGridQuickSortMode).toBe("database");
+    expect(legacyDisabled.dataGridQuickSortDirection).toBe("desc");
+  });
+
   it("uses aligned comments by default and preserves legacy comment visibility", () => {
     expect(normalizeEditorSettings({}).sidebarObjectInfoMode).toBe("comment-aligned");
     expect(normalizeEditorSettings({ sidebarObjectInfoMode: "comment-aligned" }).sidebarObjectInfoMode).toBe("comment-aligned");

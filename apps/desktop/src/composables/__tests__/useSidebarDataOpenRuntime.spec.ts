@@ -9,9 +9,11 @@ const mocks = vi.hoisted(() => ({
   cachedMetadata: undefined as unknown,
   ensureConnected: vi.fn(),
   executeTabSql: vi.fn(),
+  buildTableSelectSql: vi.fn(),
   loadTableMetadata: vi.fn(),
   setErrorResult: vi.fn(),
   cancelTabExecution: vi.fn(),
+  openTableDefaultSortMode: "none" as "none" | "primary-key-asc" | "primary-key-desc",
 }));
 
 vi.mock("@/stores/connectionStore", () => ({
@@ -69,7 +71,7 @@ vi.mock("@/stores/queryStore", () => ({
 }));
 
 vi.mock("@/stores/settingsStore", () => ({
-  useSettingsStore: () => ({ editorSettings: { reuseDataTab: false, pageSize: 100 } }),
+  useSettingsStore: () => ({ editorSettings: { reuseDataTab: false, tableOpenPageSize: 100, openTableDefaultSortMode: mocks.openTableDefaultSortMode } }),
 }));
 
 vi.mock("@/lib/database/jdbcDialect", () => ({
@@ -92,7 +94,10 @@ vi.mock("@/lib/backend/debugLog", () => ({ appendDebugLog: vi.fn(), isDebugLoggi
 // dataTabOpenPolicy 使用真实实现：beforeEach 清空 tabs 时无候选可复用，
 // 取消窗口测试则依赖真实 findExistingDataTabCandidate 选中同表 tab
 vi.mock("@/lib/sidebar/treeNodeContext", () => ({ hasTreeNodeDatabaseContext: () => true }));
-vi.mock("@/lib/table/tableSelectSql", () => ({ buildTableSelectSql: async () => "SELECT * FROM users" }));
+vi.mock("@/lib/table/tableSelectSql", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/table/tableSelectSql")>()),
+  buildTableSelectSql: mocks.buildTableSelectSql,
+}));
 vi.mock("@/lib/table/tableEditing", () => ({ usesSyntheticRowIdKey: () => false }));
 vi.mock("@/lib/table/tableOpenPageLimit", () => ({ tableOpenPageLimit: () => 100 }));
 vi.mock("@/lib/tabs/dataTabActivation", () => ({ canActivateExistingDataTableTab: () => false }));
@@ -114,7 +119,9 @@ describe("useSidebarDataOpenRuntime", () => {
     mocks.callOrder.length = 0;
     mocks.tabs.length = 0;
     mocks.cachedMetadata = undefined;
+    mocks.openTableDefaultSortMode = "none";
     mocks.ensureConnected.mockResolvedValue(undefined);
+    mocks.buildTableSelectSql.mockResolvedValue("SELECT * FROM users");
     mocks.executeTabSql.mockImplementation(async () => {
       mocks.callOrder.push("query");
     });
@@ -306,5 +313,44 @@ describe("useSidebarDataOpenRuntime", () => {
     expect(mocks.tabs[0]?.tableMeta?.primaryKeys).toEqual(["id"]);
     expect(mocks.tabs[0]?.tableMetaPending).toBeFalsy();
     expect(mocks.loadTableMetadata).not.toHaveBeenCalled();
+  });
+
+  it("loads composite primary-key metadata before the first query when default ordering is enabled", async () => {
+    mocks.databaseType = "postgres";
+    mocks.openTableDefaultSortMode = "primary-key-asc";
+    mocks.loadTableMetadata.mockResolvedValueOnce({
+      metadata: {
+        schema: "public",
+        tableName: "users",
+        tableType: "TABLE",
+        database: "app",
+        columns: [
+          { name: "Tenant", data_type: "text", is_nullable: false, column_default: null, is_primary_key: true, extra: null },
+          { name: "Order", data_type: "bigint", is_nullable: false, column_default: null, is_primary_key: true, extra: null },
+        ],
+        indexes: [],
+        primaryKeys: ["Tenant", "Order"],
+        cachedAt: Date.now(),
+      },
+      cacheStatus: "miss",
+      ageMs: 0,
+    });
+
+    await useSidebarDataOpenRuntime().openData(tableNode);
+
+    expect(mocks.loadTableMetadata).toHaveBeenCalledTimes(1);
+    expect(mocks.buildTableSelectSql).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryKeys: ["Tenant", "Order"],
+        orderBy: '"Tenant" ASC, "Order" ASC',
+      }),
+    );
+    expect(mocks.tabs[0]).toMatchObject({
+      resultSortColumn: "Tenant",
+      resultSortDirection: "asc",
+      resultSortMode: "database",
+      orderByInput: '"Tenant" ASC, "Order" ASC',
+      openTableDefaultSortApplied: true,
+    });
   });
 });

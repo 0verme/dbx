@@ -4,6 +4,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { buildTableSelectSql, quoteTableDataIdentifier } from "@/lib/table/tableSelectSql";
+import { applyOpenTableDefaultSortState, buildOpenTableDefaultSort, clearOpenTableDefaultSortMarker, shouldApplyOpenTableDefaultSort } from "@/lib/table/tableDefaultSort";
 import { tableOpenPageLimit } from "@/lib/table/tableOpenPageLimit";
 import { usesSyntheticRowIdKey } from "@/lib/table/tableEditing";
 import { tableMetaForDataTab } from "@/lib/table/tableDataTabMeta";
@@ -69,6 +70,31 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
       limit: options.limit ?? tab.resultPageLimit ?? tableOpenPageLimit(settingsStore.editorSettings.tableOpenPageSize),
       ...options,
     });
+  }
+
+  function openTableDefaultSortForTab(tab: QueryTab) {
+    const config = connectionStore.getConfig(tab.connectionId);
+    const tableMeta = tableMetaForDataTab(tab);
+    const primaryKeys = tab.tableMeta ? tab.tableMeta.primaryKeys : (tableMeta?.primaryKeys ?? []);
+    return buildOpenTableDefaultSort({
+      mode: settingsStore.editorSettings.openTableDefaultSortMode,
+      databaseType: effectiveDatabaseTypeForConnection(config),
+      identifierQuote: connectionStore.connectionIdentifierQuote?.(tab.connectionId),
+      primaryKeys,
+      columns: tableMeta?.columns.map((column) => column.name) ?? [],
+    });
+  }
+
+  function resolveTableOrderBy(tab: QueryTab, orderBy?: string): string | undefined {
+    if (shouldApplyOpenTableDefaultSort(tab, orderBy)) {
+      const defaultSort = openTableDefaultSortForTab(tab);
+      applyOpenTableDefaultSortState(tab, defaultSort);
+      return defaultSort?.orderBy;
+    }
+    if (orderBy?.trim() !== tab.openTableDefaultSortOrderBy?.trim()) {
+      clearOpenTableDefaultSortMarker(tab);
+    }
+    return orderBy;
   }
 
   async function refreshDataTabTableMeta(tab: QueryTab, trace?: { traceId: string; elapsed: () => string }): Promise<void> {
@@ -179,7 +205,8 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
       }
       try {
         console.info("[DBX][reloadData:build-sql:start]", { traceId, elapsed: elapsed() });
-        const nextSql = await buildTableSql(tab, { whereInput, orderBy, limit: pageLimit, offset: pageOffset });
+        const nextOrderBy = resolveTableOrderBy(tab, orderBy);
+        const nextSql = await buildTableSql(tab, { whereInput, orderBy: nextOrderBy, limit: pageLimit, offset: pageOffset });
         console.info("[DBX][reloadData:build-sql:done]", { traceId, elapsed: elapsed() });
         queryStore.updateSql(tab.id, nextSql);
         console.info("[DBX][reloadData:execute:start]", { traceId, elapsed: elapsed() });
@@ -282,7 +309,8 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
 
     if (!tableMetaForDataTab(tab)) return;
     tab.whereInput = whereInput ?? "";
-    const sql = await buildTableSql(tab, { limit, offset, whereInput, orderBy });
+    const nextOrderBy = resolveTableOrderBy(tab, orderBy);
+    const sql = await buildTableSql(tab, { limit, offset, whereInput, orderBy: nextOrderBy });
     queryStore.updateSql(tab.id, sql);
     await queryStore.executeTabSql(tab.id, sql, {
       pagination: { offset, limit },
@@ -299,6 +327,7 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
     tab.resultSortColumnIndex = direction ? columnIndex : undefined;
     tab.resultSortDirection = direction ?? undefined;
     tab.resultSortMode = direction ? mode : undefined;
+    clearOpenTableDefaultSortMarker(tab);
 
     if (mode === "local") {
       if (tab.mode === "data") {

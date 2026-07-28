@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   executeMulti: vi.fn(),
   getConnectionConfig: vi.fn(),
   saveOpenTabsState: vi.fn(),
+  openTableDefaultSortMode: "none" as "none" | "primary-key-asc" | "primary-key-desc",
 }));
 
 vi.mock("@/lib/backend/api", () => ({
@@ -22,13 +23,14 @@ vi.mock("@/stores/connectionStore", () => ({
   useConnectionStore: () => ({
     ensureConnected: vi.fn().mockResolvedValue(undefined),
     getConfig: mocks.getConnectionConfig,
+    connectionIdentifierQuote: () => undefined,
     recordConnectionLostError: vi.fn(),
   }),
 }));
 
 vi.mock("@/stores/settingsStore", () => ({
   useSettingsStore: () => ({
-    editorSettings: { pageSize: 1000 },
+    editorSettings: { pageSize: 1000, tableOpenPageSize: 100, openTableDefaultSortMode: mocks.openTableDefaultSortMode },
   }),
 }));
 
@@ -47,6 +49,7 @@ describe("queryStore table data refresh", () => {
     vi.unstubAllGlobals();
     installLocalStorage();
     setActivePinia(createPinia());
+    mocks.openTableDefaultSortMode = "none";
     mocks.getConnectionConfig.mockReturnValue({
       id: "pg-1",
       name: "Postgres",
@@ -290,5 +293,36 @@ describe("queryStore table data refresh", () => {
     expect(tab.isExecuting).toBe(false);
     expect(tab.result?.execution_error).toBe(true);
     expect(mocks.executeMulti).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds persisted default sorting with every composite primary-key column", async () => {
+    mocks.openTableDefaultSortMode = "primary-key-desc";
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("pg-1", "app", "orders", "data", "public");
+    store.setTableMeta(tabId, {
+      schema: "public",
+      tableName: "orders",
+      tableType: "TABLE",
+      columns: [
+        { name: "Tenant", data_type: "text", is_nullable: false, column_default: null, is_primary_key: true, extra: null },
+        { name: "Order", data_type: "bigint", is_nullable: false, column_default: null, is_primary_key: true, extra: null },
+      ],
+      primaryKeys: ["Tenant", "Order"],
+    });
+    const tab = store.tabs.find((candidate) => candidate.id === tabId)!;
+    tab.openTableDefaultSortApplied = true;
+    tab.openTableDefaultSortOrderBy = '"Tenant" ASC, "Order" ASC';
+    tab.orderByInput = tab.openTableDefaultSortOrderBy;
+
+    await expect(store.refreshDataTab(tabId)).resolves.toBe(true);
+
+    expect(mocks.buildTableSelectSql).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryKeys: ["Tenant", "Order"],
+        orderBy: '"Tenant" DESC, "Order" DESC',
+      }),
+    );
+    expect(tab.orderByInput).toBe('"Tenant" DESC, "Order" DESC');
   });
 });
