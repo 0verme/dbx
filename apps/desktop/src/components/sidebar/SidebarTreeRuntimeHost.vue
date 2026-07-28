@@ -90,6 +90,7 @@ import {
 import { copyNameForTreeNode, isDocumentBrowserTreeNode, objectSourceKindForTreeNode, shouldRunTreeNodeRowAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/sidebar/treeNodeClick";
 import { dataTabOpenModeFromTreeClick, type DataTabOpenMode } from "@/lib/sidebar/dataTabOpenPolicy";
 import { isCopySidebarSelectionShortcut, isEditSidebarConnectionShortcut, isPasteSidebarSelectionShortcut } from "@/lib/editor/keyboardShortcuts";
+import { handleSidebarTreeDeleteShortcut } from "@/lib/sidebar/sidebarTreeDeleteShortcut";
 import { dataTableDoubleClickAction } from "@/lib/tabs/dataTabActivation";
 import { attachedDatabaseNameFromPath, buildCreateDatabaseSql, buildDuckDbAttachDatabaseSql, buildSqliteAttachDatabaseSql, supportsCreateDatabaseCharset, uniqueAttachedDatabaseName } from "@/lib/database/createDatabaseSql";
 import { appendCreateDatabaseErrorHint } from "@/lib/database/createDatabaseErrorHints";
@@ -779,20 +780,26 @@ function onKeydown(event: KeyboardEvent) {
     event.stopPropagation();
     return;
   }
-  if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && isDeleteTreeNodeShortcut(event)) {
-    if (!requestDeleteSelectedNode()) return;
-    event.preventDefault();
-    event.stopPropagation();
+  if (
+    handleSidebarTreeDeleteShortcut(event, {
+      activeNode: activeNode.value,
+      selectedNodes: selectedTreeNodesInVisibleOrder(),
+      databaseTypeForNode,
+      requestHBaseTableDelete: () => {
+        ensureDangerDialogRouting();
+        routeTreeItemDialogController();
+        requestDeleteHBaseTable();
+        return true;
+      },
+      requestDefaultDelete: requestDeleteSelectedNode,
+    })
+  ) {
     return;
   }
   if (!isCopyTreeSelectionShortcut(event)) return;
   event.preventDefault();
   event.stopPropagation();
   copySelectedNames();
-}
-
-function isDeleteTreeNodeShortcut(event: KeyboardEvent): boolean {
-  return event.key === "Delete" || event.key === "Backspace";
 }
 
 function isPasteTreeClipboardShortcut(event: KeyboardEvent): boolean {
@@ -2936,6 +2943,26 @@ function createView() {
   });
 }
 
+function requestDeleteHBaseTable() {
+  showHBaseDeleteTableConfirm.value = true;
+}
+
+async function confirmDeleteHBaseTable() {
+  const node = sidebarDangerTarget.value ?? activeNode.value;
+  if (!node.connectionId || !node.database || connectionStore.getConfig(node.connectionId)?.db_type !== "hbase") return;
+  try {
+    await connectionStore.ensureConnected(node.connectionId);
+    await api.hbaseDeleteTable(node.connectionId, node.database, node.label);
+    closeDroppedTableObjectTabsForNode(node);
+    connectionStore.removePinnedTreeNodes([node]);
+    await connectionStore.refreshObjectListTreeNode(node.connectionId, node.database);
+    toast(t("hbase.tableDeleted", { table: node.database === "default" ? node.label : `${node.database}:${node.label}` }));
+  } catch (error: any) {
+    toast(t("contextMenu.tableOperationFailed", { message: error?.message || String(error) }), 5000);
+    throw error;
+  }
+}
+
 function createMysqlObjectTemplate() {
   const node = activeNode.value;
   if (!node.connectionId || !node.database) return;
@@ -3002,6 +3029,7 @@ const isSelected = computed(() => connectionStore.selectedTreeNodeId === activeN
 const isMultiSelected = computed(() => connectionStore.selectedTreeNodeIdsSet.has(activeNode.value.id));
 
 const dangerDialogRoutes: Array<{ flag: { value: boolean }; createRequest: () => SidebarDangerDialogRequest }> = [];
+const showHBaseDeleteTableConfirm = shallowRef(false);
 
 let stopDangerDialogRouting: (() => void) | null = null;
 
@@ -3067,6 +3095,17 @@ routeDangerDialog(showDropTableConfirm, () =>
     confirm: confirmDropTable,
   }),
 );
+
+routeDangerDialog(showHBaseDeleteTableConfirm, () => {
+  const table = activeNode.value.database && activeNode.value.database !== "default" ? `${activeNode.value.database}:${activeNode.value.label}` : activeNode.value.label;
+  return dangerRequest({
+    title: t("hbase.deleteTable"),
+    message: t("hbase.deleteTableConfirm", { table }),
+    details: table,
+    confirmLabel: t("common.delete"),
+    confirm: confirmDeleteHBaseTable,
+  });
+});
 
 routeDangerDialog(showEmptyTableConfirm, () =>
   dangerRequest({
@@ -3848,6 +3887,16 @@ function buildSpecialSidebarMenu(context: SidebarMenuFactoryContext): boolean {
       icon: RefreshCw,
       shortcut: shortcutRefresh,
     });
+    if (!connectionStore.getConfig(node.connectionId || "")?.read_only) {
+      items.push({ label: "", separator: true });
+      items.push({
+        label: t("hbase.deleteTable"),
+        action: requestDeleteHBaseTable,
+        icon: Trash2,
+        shortcut: shortcutDelete,
+        variant: "destructive" as const,
+      });
+    }
     return true;
   }
 
