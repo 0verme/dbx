@@ -1322,6 +1322,10 @@ export default withEnglishFallback({
     tablesCount: "{current} / {total} tabelle",
     statementsCount: "{done} riuscite, {failed} non riuscite",
     elapsed: "Tempo trascorso: {duration}",
+    showFailureDetails: "Dettagli errori ({count})",
+    hideFailureDetails: "Nascondi dettagli errori",
+    failureDetailTruncated: "I dettagli dell'errore sono stati troncati",
+    failureDetailsOmitted: "Altri {count} dettagli di errore non sono visualizzati",
   },
   welcome: {
     title: "Area di Lavoro Database",

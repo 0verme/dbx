@@ -1324,6 +1324,10 @@ export default withEnglishFallback({
     statementsCount: "{done} exitosas, {failed} fallidas",
     elapsed: "Transcurrido: {duration}",
     delete: "Eliminar",
+    showFailureDetails: "Detalles de fallos ({count})",
+    hideFailureDetails: "Ocultar detalles de fallos",
+    failureDetailTruncated: "Los detalles del error se han truncado",
+    failureDetailsOmitted: "No se muestran {count} detalles de fallos adicionales",
   },
   welcome: {
     title: "Espacio de trabajo de base de datos",

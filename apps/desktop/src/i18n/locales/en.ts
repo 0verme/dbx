@@ -1381,6 +1381,10 @@ export default {
     tablesCount: "{current} / {total} tables",
     statementsCount: "{done} succeeded, {failed} failed",
     elapsed: "Elapsed: {duration}",
+    showFailureDetails: "Failure details ({count})",
+    hideFailureDetails: "Hide failure details",
+    failureDetailTruncated: "Error details were truncated",
+    failureDetailsOmitted: "{count} additional failure detail(s) not shown",
   },
   welcome: {
     title: "Database Workspace",
