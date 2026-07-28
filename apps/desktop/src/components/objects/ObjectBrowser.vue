@@ -117,6 +117,8 @@ import { filterObjectBrowserTableColumns } from "@/lib/table/objectBrowserTableI
 import { createSidePanelRequestGuard } from "@/lib/table/sidePanelRequestGuard";
 import { runBatchTableTruncate } from "@/lib/table/batchTableTruncate";
 import { tableColumnDefaultDisplayValue } from "@/lib/table/tableColumnDefaultPresentation";
+import { cacheObjectBrowserRows, createObjectBrowserRowsCacheWriteToken, getCachedObjectBrowserRows, type ObjectBrowserRowsCacheScope, type ObjectBrowserRowsCacheWriteToken } from "@/lib/table/objectBrowserRowsCache";
+import { createObjectBrowserRowsLoadGuard, type ObjectBrowserRowsLoadHandle } from "@/lib/table/objectBrowserRowsLoadGuard";
 
 type ObjectFilter = ObjectBrowserFilter;
 type ObjectBrowserColumnKey = "select" | "name" | "type" | "estimatedRows" | "totalBytes" | "created_at" | "updated_at" | "comment";
@@ -244,7 +246,7 @@ const objectColumnWidths = ref<Record<ObjectBrowserColumnKey, number>>({
   updated_at: 150,
   comment: 260,
 });
-let loadId = 0;
+const objectBrowserRowsLoadGuard = createObjectBrowserRowsLoadGuard();
 let stopColumnResize: (() => void) | null = null;
 let preserveObjectFilterScrollOnce = false;
 
@@ -2151,72 +2153,104 @@ async function saveSource() {
   }
 }
 
-async function loadSchemas() {
+async function loadSchemas(epoch: number): Promise<boolean> {
+  if (!objectBrowserRowsLoadGuard.isEpochCurrent(epoch)) return false;
   if (!needsSchema.value) {
     schemas.value = [];
     selectedSchema.value = undefined;
-    return;
+    return true;
   }
   loadingSchemas.value = true;
+  const connectionId = props.connection.id;
+  const database = props.database;
   try {
-    const names = await api.listSchemas(props.connection.id, props.database);
+    const names = await api.listSchemas(connectionId, database);
+    if (!objectBrowserRowsLoadGuard.isEpochCurrent(epoch)) return false;
     schemas.value = names;
     if (!selectedSchema.value || !names.includes(selectedSchema.value)) {
       selectedSchema.value = names.includes("public") ? "public" : names[0];
     }
+    return true;
   } finally {
-    loadingSchemas.value = false;
+    if (objectBrowserRowsLoadGuard.isEpochCurrent(epoch)) loadingSchemas.value = false;
   }
 }
 
-async function loadObjects() {
-  const id = ++loadId;
-  loadingObjects.value = true;
+function objectBrowserRowsCacheScope(schema: string): ObjectBrowserRowsCacheScope {
+  return {
+    connectionId: props.connection.id,
+    database: props.database,
+    schema,
+    catalog: props.catalog,
+  };
+}
+
+function applyObjectBrowserRows(nextRows: ObjectBrowserRow[]) {
+  rows.value = nextRows;
+  const availableTableIds = new Set(rows.value.filter((row) => row.type === "TABLE").map((row) => row.id));
+  setSelectedTableIds(new Set([...selectedTableIds.value].filter((id) => availableTableIds.has(id))));
+  expandedPartitionParentIds.value = new Set([...expandedPartitionParentIds.value].filter((id) => rows.value.some((row) => row.id === id && row.partitionCount)));
+}
+
+function finishObjectBrowserRowsLoad() {
+  loadingObjects.value = false;
+  if (!userHasSelectedFilter.value && objectCounts.value.tables > 0) {
+    // The default table filter is a presentation choice, not a user query
+    // change, so preserve the tab's saved scroll offset across remounts.
+    preserveObjectFilterScrollOnce = objectFilter.value !== "tables";
+    objectFilter.value = "tables";
+  }
+  restoreObjectBrowserViewport();
+}
+
+async function loadObjects(options?: { allowCached?: boolean }) {
   error.value = "";
-  rows.value = [];
-  try {
-    const schema = needsSchema.value ? selectedSchema.value || "" : props.database;
-    const objects: ObjectInfo[] = await api.listObjects(props.connection.id, props.database, schema, undefined, undefined, undefined, undefined, props.catalog);
-    if (id !== loadId) return;
-    rows.value = buildObjectBrowserRows({
-      objects,
-      database: props.database,
-      fallbackSchema: schema,
-      rowSchema: connectionObjectTreeNodeSchema(props.connection, props.database, selectedSchema.value),
-    });
-    const availableTableIds = new Set(rows.value.filter((row) => row.type === "TABLE").map((row) => row.id));
-    setSelectedTableIds(new Set([...selectedTableIds.value].filter((id) => availableTableIds.has(id))));
-    expandedPartitionParentIds.value = new Set([...expandedPartitionParentIds.value].filter((id) => rows.value.some((row) => row.id === id && row.partitionCount)));
-    void loadObjectStatistics(id, schema);
-  } catch (e: any) {
-    if (id !== loadId) return;
-    error.value = e?.message || String(e);
-  } finally {
-    if (id === loadId) {
-      loadingObjects.value = false;
-      if (!userHasSelectedFilter.value && objectCounts.value.tables > 0) {
-        // The default table filter is a presentation choice, not a user query
-        // change, so preserve the tab's saved scroll offset across remounts.
-        preserveObjectFilterScrollOnce = objectFilter.value !== "tables";
-        objectFilter.value = "tables";
-      }
-      restoreObjectBrowserViewport();
+  const schema = needsSchema.value ? selectedSchema.value || "" : props.database;
+  const request = objectBrowserRowsLoadGuard.start(objectBrowserRowsCacheScope(schema));
+  const cacheWriteToken = createObjectBrowserRowsCacheWriteToken(request.scope);
+  if (options?.allowCached) {
+    const cachedRows = getCachedObjectBrowserRows(request.scope);
+    if (cachedRows) {
+      applyObjectBrowserRows(cachedRows);
+      finishObjectBrowserRowsLoad();
+      return;
     }
   }
+
+  loadingObjects.value = true;
+  rows.value = [];
+  try {
+    const objects: ObjectInfo[] = await api.listObjects(request.scope.connectionId, request.scope.database, request.scope.schema, undefined, undefined, undefined, undefined, request.scope.catalog);
+    if (!objectBrowserRowsLoadGuard.isCurrent(request)) return;
+    const nextRows = buildObjectBrowserRows({
+      objects,
+      database: request.scope.database,
+      fallbackSchema: request.scope.schema,
+      rowSchema: connectionObjectTreeNodeSchema(props.connection, props.database, selectedSchema.value),
+    });
+    applyObjectBrowserRows(nextRows);
+    const cachedAt = cacheObjectBrowserRows(cacheWriteToken, nextRows);
+    void loadObjectStatistics(request, cacheWriteToken, cachedAt);
+  } catch (e: any) {
+    if (!objectBrowserRowsLoadGuard.isCurrent(request)) return;
+    error.value = e?.message || String(e);
+  } finally {
+    if (objectBrowserRowsLoadGuard.isCurrent(request)) finishObjectBrowserRowsLoad();
+  }
 }
 
-async function loadObjectStatistics(id: number, schema: string) {
+async function loadObjectStatistics(request: ObjectBrowserRowsLoadHandle, cacheWriteToken: ObjectBrowserRowsCacheWriteToken, cachedAt: number | undefined) {
   if (!rows.value.some((row) => row.type === "TABLE")) return;
   try {
-    const stats = await api.listObjectStatistics(props.connection.id, props.database, schema);
-    if (id !== loadId || stats.length === 0) return;
-    mergeObjectStatistics(stats, schema);
+    const stats = await api.listObjectStatistics(request.scope.connectionId, request.scope.database, request.scope.schema);
+    if (!objectBrowserRowsLoadGuard.isCurrent(request) || stats.length === 0) return;
+    mergeObjectStatistics(stats, request.scope.schema, cacheWriteToken, cachedAt);
   } catch (e) {
     console.debug("[ObjectBrowser] table statistics unavailable", e);
   }
 }
 
-function mergeObjectStatistics(stats: ObjectStatistics[], fallbackSchema: string) {
+function mergeObjectStatistics(stats: ObjectStatistics[], fallbackSchema: string, cacheWriteToken: ObjectBrowserRowsCacheWriteToken, cachedAt: number | undefined) {
   const statsByKey = new Map(stats.map((stat) => [objectStatisticKey(stat.schema || fallbackSchema, stat.name), stat]));
   rows.value = rows.value.map((row) => {
     if (row.type !== "TABLE") return row;
@@ -2228,6 +2262,7 @@ function mergeObjectStatistics(stats: ObjectStatistics[], fallbackSchema: string
       totalBytes: normalizeStatisticNumber(stat.total_bytes),
     };
   });
+  cacheObjectBrowserRows(cacheWriteToken, rows.value, { cachedAt });
 }
 
 function objectStatisticKey(schema: string | undefined, name: string) {
@@ -2238,9 +2273,11 @@ function normalizeStatisticNumber(value: number | null | undefined): number | nu
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-async function reload() {
-  await loadSchemas();
-  await loadObjects();
+async function reload(options?: { allowCachedObjects?: boolean; contextEpoch?: number }) {
+  const epoch = options?.contextEpoch ?? objectBrowserRowsLoadGuard.invalidate();
+  if (!(await loadSchemas(epoch))) return;
+  if (!objectBrowserRowsLoadGuard.isEpochCurrent(epoch)) return;
+  await loadObjects({ allowCached: options?.allowCachedObjects });
 }
 
 function refresh(): boolean {
@@ -2305,12 +2342,14 @@ function onSearchKeydown(event: KeyboardEvent) {
 defineExpose({ focusSearch, refresh });
 
 onBeforeUnmount(() => {
+  objectBrowserRowsLoadGuard.invalidate();
   stopColumnResize?.();
 });
 
 watch(
   [() => props.connection.id, () => props.database, () => props.schema],
   async () => {
+    const contextEpoch = objectBrowserRowsLoadGuard.invalidate();
     selectedSchema.value = props.schema;
     userHasSelectedFilter.value = false;
     objectFilter.value = "all";
@@ -2329,7 +2368,8 @@ watch(
     } catch (e) {
       console.warn("[DBX] ensureConnected failed for", props.connection.id, e);
     }
-    void reload();
+    if (!objectBrowserRowsLoadGuard.isEpochCurrent(contextEpoch)) return;
+    void reload({ allowCachedObjects: true, contextEpoch });
   },
   { immediate: true },
 );
