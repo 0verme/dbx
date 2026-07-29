@@ -4642,6 +4642,7 @@ export default {
     shortcutEditSidebarConnection: "Edit sidebar connection",
     shortcutOpenDataInNewTab: "Open data in new tab (mouse click)",
     shortcutSendSelectionToAi: "Send selection to AI",
+    shortcutToggleFold: "Toggle fold",
     shortcutScopeGlobal: "Global",
     shortcutScopeEditor: "SQL editor",
     shortcutScopeGrid: "Data grid",
