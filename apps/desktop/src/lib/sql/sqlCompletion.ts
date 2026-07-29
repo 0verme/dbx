@@ -1191,6 +1191,7 @@ export interface SqlCompletionForeignKey {
 
 export interface SqlCompletionItem {
   label: string;
+  filterText?: string;
   type: "keyword" | "table" | "column" | "snippet" | "function" | "schema";
   detail?: string;
   info?: string;
@@ -3971,6 +3972,7 @@ function buildSnippetItems(prefix: string, snippets: SqlSnippet[], keywordCase?:
       const apply = applyBuiltinSnippetKeywordCase(snippet, applyBuiltinSnippetPlaceholders(snippet, resolvedBody), keywordCase);
       return {
         label: snippet.label,
+        filterText: snippet.prefix,
         type: "snippet" as const,
         detail: body,
         apply,
