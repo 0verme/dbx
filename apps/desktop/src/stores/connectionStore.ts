@@ -61,7 +61,7 @@ import * as api from "@/lib/backend/api";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { useTunnelProfileStore } from "@/stores/tunnelProfileStore";
 import { connectionIsDorisFamilyCatalogCapable, isInternalDorisCatalog, isSchemaAware, normalizeSidebarObjectKind, sidebarObjectKindsForDatabase, usesTreeSchemaMode } from "@/lib/database/databaseCapabilities";
-import { connectionObjectTreeNodeSchema, connectionObjectTreeQuerySchema, connectionShouldDiscoverJdbcSchemas, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
+import { connectionObjectTreeNodeSchema, connectionObjectTreeQuerySchema, connectionShouldDiscoverJdbcSchemas, connectionShouldLoadIdentifierQuote, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection, gaussdbIdentifierQuoteOverride } from "@/lib/database/jdbcDialect";
 import { buildDatabaseTreeNodes, buildDuckDbConnectionTreeNodes, compareSidebarNames, sortSidebarDatabases, sortSidebarNames, shouldIncludeDefaultDatabaseNode } from "@/lib/database/databaseTree";
 import { buildSqlServerDatabaseTreeNodes } from "@/lib/database/sqlServerTree";
 import { collapseExpandedTreeNodes } from "@/lib/sidebar/sidebarTreeCollapse";
@@ -499,6 +499,8 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function connectionIdentifierQuote(connectionId?: string): string | undefined {
     if (!connectionId) return undefined;
+    const override = gaussdbIdentifierQuoteOverride(getConfig(connectionId));
+    if (override != null) return override;
     return identifierQuotes.value[connectionId];
   }
 
@@ -511,7 +513,7 @@ export const useConnectionStore = defineStore("connection", () => {
 
   async function refreshConnectionIdentifierQuote(connectionId: string, config: ConnectionConfig) {
     clearConnectionIdentifierQuote(connectionId);
-    if (config.db_type !== "kingbase") return;
+    if (!connectionShouldLoadIdentifierQuote(config)) return;
     const quote = await api.connectionIdentifierQuote(connectionId).catch(() => undefined);
     if (quote != null) identifierQuotes.value = { ...identifierQuotes.value, [connectionId]: quote };
   }
