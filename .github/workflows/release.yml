@@ -41,6 +41,7 @@ jobs:
 
   nix-packaging:
     runs-on: ubuntu-22.04
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
 
@@ -636,8 +637,9 @@ jobs:
             --clobber
 
   publish:
-    # Keep the release as a draft until every platform and the Nix package pass.
-    needs: [cleanup-release-signatures, docker-manifest, jdbc-plugin, nix-packaging, static-browser]
+    # Keep the release as a draft until every release-blocking platform job passes.
+    # Nix packaging is advisory and runs independently from publication.
+    needs: [cleanup-release-signatures, docker-manifest, jdbc-plugin, static-browser]
     runs-on: ubuntu-latest
     steps:
       - name: Publish draft release

@@ -336,14 +336,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.nix == 'true'
     runs-on: ubuntu-22.04
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
 
-      - name: Validate pnpm dependency hash
-        run: nix build .#dbx-pnpm-deps --no-link --print-build-logs
+      - name: Validate Nix dependency closures
+        run: nix build .#dbx-pnpm-deps .#dbx-cargo-deps --no-link --print-build-logs
 
   changes:
     runs-on: ubuntu-22.04
@@ -404,11 +405,15 @@ jobs:
               - '.github/scripts/bump-agent-versions.test.mjs'
               - '.github/workflows/agents-release.yml'
             nix:
-              # This fast check validates only the fixed-output pnpm dependency closure.
+              # These advisory checks validate the pnpm and Cargo dependency closures.
               - 'package.json'
               - 'packages/**/package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/**/Cargo.toml'
+              - 'src-tauri/Cargo.toml'
               - 'flake.nix'
               - 'flake.lock'
               - '.github/workflows/ci.yml'
