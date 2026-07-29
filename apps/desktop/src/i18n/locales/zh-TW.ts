@@ -843,6 +843,7 @@ export default withEnglishFallback({
       currentCommand: "目前命令",
       allCommands: "全部命令",
     },
+    statementExecutionRunning: "{count} 條陳述式執行中",
     statementExecutionSucceeded: "{count} 條陳述式成功",
     statementExecutionFailed: "{count} 條陳述式失敗",
     delimitedList: {
@@ -913,7 +914,10 @@ export default withEnglishFallback({
   executionSummary: {
     empty: "無摘要",
     executing: "執行中...",
+    finished: "執行完成",
     statement: "語句",
+    sql: "SQL",
+    status: "狀態",
     type: "類型",
     rows: "列數",
     affected: "影響",
@@ -922,6 +926,16 @@ export default withEnglishFallback({
     error: "錯誤",
     returnedTable: "回傳 {count} 欄的結果表",
     noTable: "未回傳結果表",
+    noSql: "無法取得 SQL",
+    navigationHint: "按一下預覽 SQL，按兩下在編輯器中聚焦並選取。",
+    statuses: {
+      pending: "等待",
+      running: "執行中",
+      success: "成功",
+      error: "失敗",
+      skipped: "未執行",
+      cancelled: "已取消",
+    },
   },
   chart: {
     title: "圖表",

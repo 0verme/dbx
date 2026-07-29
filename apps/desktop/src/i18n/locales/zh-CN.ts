@@ -708,6 +708,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "上一条 DuckDB 查询仍在停止，请稍后重试。",
+    statementExecutionRunning: "{count} 条语句正在执行",
     statementExecutionSucceeded: "{count} 条语句成功",
     statementExecutionFailed: "{count} 条语句失败",
     pressToExecute: "按 {mod}+Enter 执行查询",
@@ -967,7 +968,10 @@ export default withEnglishFallback({
   executionSummary: {
     empty: "暂无摘要",
     executing: "正在执行...",
+    finished: "执行完成",
     statement: "语句",
+    sql: "SQL",
+    status: "状态",
     type: "类型",
     rows: "返回行",
     affected: "影响行",
@@ -976,6 +980,16 @@ export default withEnglishFallback({
     error: "错误",
     returnedTable: "返回 {count} 列结果表",
     noTable: "未返回结果表",
+    noSql: "无法获取 SQL",
+    navigationHint: "单击预览对应 SQL，双击在编辑器中聚焦并选中。",
+    statuses: {
+      pending: "等待",
+      running: "执行中",
+      success: "成功",
+      error: "失败",
+      skipped: "未执行",
+      cancelled: "已取消",
+    },
   },
   chart: {
     title: "图表",

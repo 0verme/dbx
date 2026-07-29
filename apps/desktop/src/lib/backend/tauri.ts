@@ -1071,9 +1071,13 @@ export async function executeMulti(
 
 export interface ExecuteMultiProgress {
   executionId: string;
+  statementIndex: number;
   completed: number;
   total: number;
   success: boolean;
+  executionTimeMs: number;
+  affectedRows: number;
+  error?: string;
 }
 
 export async function executeMultiWithProgress(
@@ -1093,21 +1097,16 @@ export async function executeMultiWithProgress(
     useTransaction?: boolean;
     continueOnError?: boolean;
     executionMode?: "simple";
+    executionId?: string;
   },
 ): Promise<QueryResult[]> {
-  const executionId = crypto.randomUUID();
+  const executionId = options?.executionId ?? crypto.randomUUID();
+  const { executionId: _executionId, ...invokeOptions } = options ?? {};
   const unlisten = await listen<ExecuteMultiProgress>("query-batch-progress", (event) => {
     if (event.payload.executionId === executionId) onProgress(event.payload);
   });
   try {
-    return await invoke("execute_multi", {
-      connectionId,
-      database,
-      sql,
-      schema,
-      executionId,
-      ...options,
-    });
+    return await invoke("execute_multi", { connectionId, database, sql, schema, executionId, ...invokeOptions });
   } finally {
     unlisten();
   }

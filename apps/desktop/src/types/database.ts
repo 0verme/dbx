@@ -601,6 +601,31 @@ export interface QueryResult {
   sourceTo?: number;
 }
 
+export type BatchStatementExecutionStatus = "pending" | "running" | "success" | "error" | "skipped" | "cancelled";
+
+export interface BatchStatementExecutionItem {
+  statementIndex: number;
+  sql: string;
+  from: number;
+  to: number;
+  status: BatchStatementExecutionStatus;
+  executionTimeMs?: number;
+  affectedRows?: number;
+  error?: string;
+}
+
+export interface BatchSqlExecution {
+  executionId: string;
+  submittedSql: string;
+  editorFingerprint: string;
+  sourceOffset: number;
+  completed: number;
+  total: number;
+  startedAt: number;
+  finishedAt?: number;
+  items: BatchStatementExecutionItem[];
+}
+
 export interface QueryResultRun {
   id: string;
   title: string;
@@ -610,6 +635,7 @@ export interface QueryResultRun {
   result?: QueryResult;
   results?: QueryResult[];
   activeResultIndex?: number;
+  batchSqlExecution?: BatchSqlExecution;
   resultBaseSql?: string;
   /** Fingerprint of the complete editor document when this result run started. */
   resultEditorFingerprint?: string;
@@ -917,6 +943,8 @@ export interface QueryTab {
   isExecuting: boolean;
   isCancelling?: boolean;
   queryExecutionStartedAt?: number;
+  /** Ephemeral per-statement progress for the latest multi-statement execution. */
+  batchSqlExecution?: BatchSqlExecution;
   editorViewport?: {
     scrollTop: number;
     scrollLeft: number;

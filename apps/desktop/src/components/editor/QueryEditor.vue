@@ -635,7 +635,7 @@ function requestExecuteFromView(currentView: EditorViewType, cursorPos: number, 
   if (options.bypassPicker || !settingsStore.editorSettings.showExecutionTargetPicker || !hasMultipleExecutionTargets(doc, props.databaseType, parameterOptions)) {
     const preferredKind = settingsStore.editorSettings.executeMode === "current" ? "cursor" : "all";
     const candidate = candidates.find((item) => item.kind === preferredKind) ?? candidates[0];
-    emitExecutionRequest(candidate.sql, options.openInNewResultTab);
+    emitExecutionRequest(sqlExecutionSnapshotForRange(currentView, candidate), options.openInNewResultTab);
     return true;
   }
   closePicker();
@@ -723,6 +723,22 @@ function previewStatementRange(range: { from: number; to: number } | null) {
   });
 }
 
+function focusStatementRange(range: { from: number; to: number } | null) {
+  const currentView = view.value;
+  if (!range || !currentView || !editorViewModule || !setResultSourceRangeEffect) {
+    setResultSourceRange(null);
+    return;
+  }
+  const from = Math.max(0, Math.min(range.from, currentView.state.doc.length));
+  const to = Math.max(from, Math.min(range.to, currentView.state.doc.length));
+  if (from === to) return;
+  currentView.dispatch({
+    selection: { anchor: from, head: to },
+    effects: [setResultSourceRangeEffect.of({ from, to }), editorViewModule.EditorView.scrollIntoView(from, { y: "center" })],
+  });
+  currentView.focus();
+}
+
 function onPickerActiveIndexChange(index: number) {
   pickerActiveIndex.value = index;
   const candidate = pickerCandidates.value[index];
@@ -732,8 +748,9 @@ function onPickerActiveIndexChange(index: number) {
 }
 
 function onPickerConfirm(candidate: SqlExecutionCandidate) {
+  const currentView = view.value;
   closePicker();
-  emit("execute", candidate.sql);
+  emit("execute", currentView ? sqlExecutionSnapshotForRange(currentView, candidate) : candidate.sql);
 }
 
 function closePicker() {
@@ -1257,7 +1274,7 @@ function executeSqlStatementFromGutter(currentView: EditorViewType, line: { from
   event.stopPropagation();
   // Gutter play is always scoped to the statement/command for that line, even
   // when the main editor execute action would run the full document.
-  emit("execute", statementRange.sql);
+  emitExecutionRequest(sqlExecutionSnapshotForRange(currentView, statementRange));
   currentView.focus();
   return true;
 }
@@ -1563,6 +1580,16 @@ function sqlExecutionSnapshotFromView(currentView: EditorViewType): SqlExecution
     cursorPos: selection.head,
     selectionFrom: selection.from,
     selectionTo: selection.to,
+  };
+}
+
+function sqlExecutionSnapshotForRange(currentView: EditorViewType, range: Pick<SqlExecutionCandidate, "sql" | "from" | "to">): SqlExecutionSnapshot {
+  return {
+    fullSql: currentView.state.doc.toString(),
+    selectedSql: range.sql,
+    cursorPos: currentView.state.selection.main.head,
+    selectionFrom: range.from,
+    selectionTo: range.to,
   };
 }
 
@@ -3573,7 +3600,7 @@ onMounted(async () => {
     }
 
     eq(other: import("@codemirror/view").GutterMarker): boolean {
-      return other instanceof StatementExecutionStateMarker && other.marker.status === this.marker.status && other.marker.successCount === this.marker.successCount && other.marker.errorCount === this.marker.errorCount;
+      return other instanceof StatementExecutionStateMarker && other.marker.status === this.marker.status && other.marker.successCount === this.marker.successCount && other.marker.errorCount === this.marker.errorCount && other.marker.runningCount === this.marker.runningCount;
     }
   }
 
@@ -3586,7 +3613,14 @@ onMounted(async () => {
     }
 
     eq(other: import("@codemirror/view").GutterMarker): boolean {
-      return other instanceof StatementGutterMarker && other.canExecute === this.canExecute && other.marker?.status === this.marker?.status && other.marker?.successCount === this.marker?.successCount && other.marker?.errorCount === this.marker?.errorCount;
+      return (
+        other instanceof StatementGutterMarker &&
+        other.canExecute === this.canExecute &&
+        other.marker?.status === this.marker?.status &&
+        other.marker?.successCount === this.marker?.successCount &&
+        other.marker?.errorCount === this.marker?.errorCount &&
+        other.marker?.runningCount === this.marker?.runningCount
+      );
     }
 
     toDOM() {
@@ -3601,6 +3635,7 @@ onMounted(async () => {
 
   function statementExecutionMarkerTitle(marker: StatementExecutionMarker) {
     const parts = [];
+    if ((marker.runningCount ?? 0) > 0) parts.push(t("editor.statementExecutionRunning", { count: marker.runningCount }));
     if (marker.successCount > 0) parts.push(t("editor.statementExecutionSucceeded", { count: marker.successCount }));
     if (marker.errorCount > 0) parts.push(t("editor.statementExecutionFailed", { count: marker.errorCount }));
     return parts.join(", ");
@@ -4569,6 +4604,7 @@ defineExpose({
   requestExecute,
   requestExecuteInNewResultTab,
   pasteClipboardAsSqlInCondition,
+  focusStatementRange,
   previewStatementRange,
   refreshCompletionCache,
 });
@@ -4681,6 +4717,11 @@ defineExpose({
   color: rgb(4 120 87);
 }
 
+:deep(.cm-statement-execution-marker--running) {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
 :deep(.cm-statement-execution-marker--error) {
   background: rgb(239 68 68 / 0.1);
   color: rgb(185 28 28);
@@ -4772,6 +4813,10 @@ defineExpose({
   background: rgb(5 150 105);
 }
 
+:deep(.cm-statement-execution-badge--running) {
+  background: var(--primary);
+}
+
 :deep(.cm-statement-execution-badge--error) {
   background: rgb(220 38 38);
 }
@@ -4780,6 +4825,16 @@ defineExpose({
   display: block;
   width: 75%;
   height: 75%;
+}
+
+:deep(.cm-statement-execution-spinner) {
+  animation: dbx-statement-execution-spin 0.8s linear infinite;
+}
+
+@keyframes dbx-statement-execution-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 :deep(.cm-foldMarker-svg) {

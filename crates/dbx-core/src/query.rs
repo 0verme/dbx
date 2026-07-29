@@ -80,7 +80,39 @@ pub struct ExecuteMultiResult {
     pub statement_index: Option<usize>,
 }
 
-pub type ExecuteMultiProgressCallback = Arc<dyn Fn(usize, usize, bool) + Send + Sync>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecuteMultiProgress {
+    pub statement_index: usize,
+    pub completed: usize,
+    pub total: usize,
+    pub success: bool,
+    pub execution_time_ms: u128,
+    pub affected_rows: u64,
+    pub error: Option<String>,
+}
+
+pub type ExecuteMultiProgressCallback = Arc<dyn Fn(ExecuteMultiProgress) + Send + Sync>;
+
+fn report_execute_multi_progress(
+    progress: Option<&ExecuteMultiProgressCallback>,
+    statement_index: usize,
+    total: usize,
+    result: &db::QueryResult,
+    success: bool,
+    error: Option<String>,
+) {
+    if let Some(progress) = progress {
+        progress(ExecuteMultiProgress {
+            statement_index,
+            completed: statement_index + 1,
+            total,
+            success,
+            execution_time_ms: result.execution_time_ms,
+            affected_rows: result.affected_rows,
+            error,
+        });
+    }
+}
 
 impl ExecuteMultiResult {
     fn execution_error(result: db::QueryResult) -> Self {
@@ -2213,17 +2245,21 @@ pub async fn execute_multi_core_with_options_for_client_and_progress(
         .await
         {
             Ok(r) => {
+                report_execute_multi_progress(progress.as_ref(), statement_index, statements.len(), &r, true, None);
                 results.push(ExecuteMultiResult::success_with_index(r, statement_index));
-                if let Some(progress) = progress.as_ref() {
-                    progress(statement_index + 1, statements.len(), true);
-                }
             }
             Err(e) => {
                 let action = query_pool_error_action(db_type, stmt, &e);
-                results.push(ExecuteMultiResult::execution_error_with_index(error_query_result(e), statement_index));
-                if let Some(progress) = progress.as_ref() {
-                    progress(statement_index + 1, statements.len(), false);
-                }
+                let result = error_query_result(e.clone());
+                report_execute_multi_progress(
+                    progress.as_ref(),
+                    statement_index,
+                    statements.len(),
+                    &result,
+                    false,
+                    Some(e),
+                );
+                results.push(ExecuteMultiResult::execution_error_with_index(result, statement_index));
                 if !should_continue_batch_after_error(options.continue_on_error, action) {
                     break;
                 }
@@ -2284,17 +2320,14 @@ where
 
         match executor.execute_statement(statement).await {
             Ok(result) => {
+                report_execute_multi_progress(progress, statement_index, statements.len(), &result, true, None);
                 results.push(ExecuteMultiResult::success_with_index(result, statement_index));
-                if let Some(progress) = progress {
-                    progress(statement_index + 1, statements.len(), true);
-                }
             }
             Err(err) => {
                 let action = pool_error_action(db_type, &err);
-                results.push(ExecuteMultiResult::execution_error_with_index(error_query_result(err), statement_index));
-                if let Some(progress) = progress {
-                    progress(statement_index + 1, statements.len(), false);
-                }
+                let result = error_query_result(err.clone());
+                report_execute_multi_progress(progress, statement_index, statements.len(), &result, false, Some(err));
+                results.push(ExecuteMultiResult::execution_error_with_index(result, statement_index));
                 // Statement errors are safe to collect, but connection-level failures leave
                 // the protocol state unusable and must still trigger pool cleanup.
                 if !should_continue_batch_after_error(continue_on_error, action) {
@@ -4324,7 +4357,7 @@ mod tests {
         let progress_events = Arc::new(std::sync::Mutex::new(Vec::new()));
         let progress: ExecuteMultiProgressCallback = {
             let progress_events = Arc::clone(&progress_events);
-            Arc::new(move |completed, total, success| progress_events.lock().unwrap().push((completed, total, success)))
+            Arc::new(move |event| progress_events.lock().unwrap().push(event))
         };
 
         let (results, error_action) = execute_mysql_batch_statements(
@@ -4339,7 +4372,29 @@ mod tests {
 
         assert_eq!(executor.executed, vec!["first", "fails"]);
         assert_eq!(results.len(), 2);
-        assert_eq!(*progress_events.lock().unwrap(), vec![(1, 3, true), (2, 3, false)]);
+        assert_eq!(
+            *progress_events.lock().unwrap(),
+            vec![
+                ExecuteMultiProgress {
+                    statement_index: 0,
+                    completed: 1,
+                    total: 3,
+                    success: true,
+                    execution_time_ms: 0,
+                    affected_rows: 0,
+                    error: None,
+                },
+                ExecuteMultiProgress {
+                    statement_index: 1,
+                    completed: 2,
+                    total: 3,
+                    success: false,
+                    execution_time_ms: 0,
+                    affected_rows: 0,
+                    error: Some("Duplicate entry".to_string()),
+                },
+            ]
+        );
         assert_eq!(error_action, Some(PoolErrorAction::Keep));
     }
 

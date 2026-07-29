@@ -863,9 +863,13 @@ export async function executeMulti(
 
 export interface ExecuteMultiProgress {
   executionId: string;
+  statementIndex: number;
   completed: number;
   total: number;
   success: boolean;
+  executionTimeMs: number;
+  affectedRows: number;
+  error?: string;
 }
 
 export async function executeMultiWithProgress(
@@ -885,15 +889,26 @@ export async function executeMultiWithProgress(
     useTransaction?: boolean;
     continueOnError?: boolean;
     executionMode?: "simple";
+    executionId?: string;
   },
 ): Promise<QueryResult[]> {
-  const executionId = crypto.randomUUID();
-  const results = await executeMulti(connectionId, database, sql, schema, executionId, options);
-  onProgress({
-    executionId,
-    completed: results.length,
-    total: results.length,
-    success: !results.some((result) => result.execution_error === true),
+  const executionId = options?.executionId ?? crypto.randomUUID();
+  const { executionId: _executionId, ...executeOptions } = options ?? {};
+  const results = await executeMulti(connectionId, database, sql, schema, executionId, executeOptions);
+  const total = results.length;
+  results.forEach((result, index) => {
+    const statementIndex = result.statement_index ?? index;
+    const success = result.execution_error !== true;
+    onProgress({
+      executionId,
+      statementIndex,
+      completed: index + 1,
+      total,
+      success,
+      executionTimeMs: result.execution_time_ms,
+      affectedRows: result.affected_rows,
+      error: success ? undefined : String(result.rows[0]?.[0] ?? ""),
+    });
   });
   return results;
 }

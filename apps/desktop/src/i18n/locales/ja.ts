@@ -843,6 +843,7 @@ export default withEnglishFallback({
       allCommands: "All commands",
     },
     selectDatabaseRequired: "先にデータベースを選択してください",
+    statementExecutionRunning: "{count} 件のステートメントを実行中",
     statementExecutionSucceeded: "{count} 件のステートメントが成功しました",
     statementExecutionFailed: "{count} 件のステートメントが失敗しました",
     delimitedList: {
@@ -913,7 +914,10 @@ export default withEnglishFallback({
   executionSummary: {
     empty: "サマリーはありません",
     executing: "実行中...",
+    finished: "実行完了",
     statement: "ステートメント",
+    sql: "SQL",
+    status: "状態",
     type: "タイプ",
     rows: "行数",
     affected: "影響行数",
@@ -922,6 +926,16 @@ export default withEnglishFallback({
     error: "エラー",
     returnedTable: "{count}列の結果テーブルを返しました",
     noTable: "結果テーブルは返されませんでした",
+    noSql: "SQLを取得できません",
+    navigationHint: "クリックでSQLをプレビューし、ダブルクリックでエディター内を選択します。",
+    statuses: {
+      pending: "待機中",
+      running: "実行中",
+      success: "成功",
+      error: "エラー",
+      skipped: "未実行",
+      cancelled: "キャンセル済み",
+    },
   },
   chart: {
     title: "グラフ",

@@ -12,9 +12,13 @@ use dbx_core::sql::split_sql_statements;
 #[serde(rename_all = "camelCase")]
 struct ExecuteMultiProgress {
     execution_id: String,
+    statement_index: usize,
     completed: usize,
     total: usize,
     success: bool,
+    execution_time_ms: u128,
+    affected_rows: u64,
+    error: Option<String>,
 }
 
 #[tauri::command]
@@ -99,10 +103,19 @@ pub async fn execute_multi(
     let progress = execution_id.as_ref().map(|execution_id| {
         let app = app.clone();
         let execution_id = execution_id.clone();
-        Arc::new(move |completed, total, success| {
+        Arc::new(move |progress: dbx_core::query::ExecuteMultiProgress| {
             let _ = app.emit(
                 "query-batch-progress",
-                ExecuteMultiProgress { execution_id: execution_id.clone(), completed, total, success },
+                ExecuteMultiProgress {
+                    execution_id: execution_id.clone(),
+                    statement_index: progress.statement_index,
+                    completed: progress.completed,
+                    total: progress.total,
+                    success: progress.success,
+                    execution_time_ms: progress.execution_time_ms,
+                    affected_rows: progress.affected_rows,
+                    error: progress.error,
+                },
             );
         }) as dbx_core::query::ExecuteMultiProgressCallback
     });

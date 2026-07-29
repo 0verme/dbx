@@ -707,6 +707,7 @@ export default {
   },
   editor: {
     duckdbDraining: "The previous DuckDB query is still stopping. Please try again shortly.",
+    statementExecutionRunning: "{count} statement running | {count} statements running",
     statementExecutionSucceeded: "{count} statement succeeded | {count} statements succeeded",
     statementExecutionFailed: "{count} statement failed | {count} statements failed",
     pressToExecute: "Press {mod}+Enter to execute",
@@ -966,7 +967,10 @@ export default {
   executionSummary: {
     empty: "No summary",
     executing: "Executing...",
+    finished: "Execution finished",
     statement: "Statement",
+    sql: "SQL",
+    status: "Status",
     type: "Type",
     rows: "Rows",
     affected: "Affected",
@@ -975,6 +979,16 @@ export default {
     error: "Error",
     returnedTable: "Returned a {count}-column result table",
     noTable: "No result table returned",
+    noSql: "SQL unavailable",
+    navigationHint: "Click a row to preview its SQL; double-click to focus it in the editor.",
+    statuses: {
+      pending: "Pending",
+      running: "Running",
+      success: "Success",
+      error: "Error",
+      skipped: "Not run",
+      cancelled: "Cancelled",
+    },
   },
   chart: {
     title: "Chart",

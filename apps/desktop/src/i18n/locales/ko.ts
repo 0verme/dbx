@@ -698,6 +698,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "이전 DuckDB 쿼리가 아직 중지 중입니다. 잠시 후 다시 시도해 주세요.",
+    statementExecutionRunning: "{count}개 구문 실행 중",
     statementExecutionSucceeded: "{count}개 구문 성공",
     statementExecutionFailed: "{count}개 구문 실패",
     pressToExecute: "{mod}+Enter를 눌러 실행",
@@ -955,7 +956,10 @@ export default withEnglishFallback({
   executionSummary: {
     empty: "요약 없음",
     executing: "실행 중...",
+    finished: "실행 완료",
     statement: "구문",
+    sql: "SQL",
+    status: "상태",
     type: "유형",
     rows: "행",
     affected: "영향 받은 행",
@@ -964,6 +968,16 @@ export default withEnglishFallback({
     error: "오류",
     returnedTable: "{count}열 결과 테이블을 반환했습니다",
     noTable: "반환된 결과 테이블이 없습니다",
+    noSql: "SQL을 가져올 수 없습니다",
+    navigationHint: "행을 클릭하여 SQL을 미리 보고 두 번 클릭하여 편집기에서 선택하세요.",
+    statuses: {
+      pending: "대기 중",
+      running: "실행 중",
+      success: "성공",
+      error: "오류",
+      skipped: "실행 안 됨",
+      cancelled: "취소됨",
+    },
   },
   chart: {
     title: "차트",

@@ -844,6 +844,7 @@ export default withEnglishFallback({
       currentCommand: "Current command",
       allCommands: "All commands",
     },
+    statementExecutionRunning: "{count} instrução(ões) em execução",
     statementExecutionSucceeded: "{count} instrução(ões) executada(s) com sucesso",
     statementExecutionFailed: "{count} instrução(ões) com falha",
     delimitedList: {
@@ -914,7 +915,10 @@ export default withEnglishFallback({
   executionSummary: {
     empty: "Nenhum resumo",
     executing: "Executando...",
+    finished: "Execução concluída",
     statement: "Instrução",
+    sql: "SQL",
+    status: "Status",
     type: "Tipo",
     rows: "Linhas",
     affected: "Afetadas",
@@ -923,6 +927,16 @@ export default withEnglishFallback({
     error: "Erro",
     returnedTable: "Retornou uma tabela de resultado com {count} colunas",
     noTable: "Nenhuma tabela de resultado retornada",
+    noSql: "SQL indisponível",
+    navigationHint: "Clique para visualizar o SQL; clique duas vezes para selecioná-lo no editor.",
+    statuses: {
+      pending: "Pendente",
+      running: "Executando",
+      success: "Sucesso",
+      error: "Erro",
+      skipped: "Não executada",
+      cancelled: "Cancelada",
+    },
   },
   chart: {
     title: "Gráfico",
