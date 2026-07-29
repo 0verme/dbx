@@ -1900,8 +1900,16 @@ pub fn run() {
                 if should_confirm_app_exit_request(std::env::consts::OS, *code, confirmed_exit) {
                     api.prevent_exit();
                     request_app_close(app_handle, "quit");
-                } else if let Some(state) = app_handle.try_state::<Arc<AppState>>() {
-                    tauri::async_runtime::block_on(state.shutdown_background_tasks(Duration::from_secs(3)));
+                } else {
+                    tauri::async_runtime::block_on(async {
+                        if let Some(server) = app_handle.try_state::<commands::redis_pubsub_server::PubSubServerState>()
+                        {
+                            server.shutdown(Duration::from_secs(1)).await;
+                        }
+                        if let Some(state) = app_handle.try_state::<Arc<AppState>>() {
+                            state.shutdown(Duration::from_secs(3)).await;
+                        }
+                    });
                 }
             }
 

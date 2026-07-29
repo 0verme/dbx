@@ -800,7 +800,7 @@ async fn main() {
         })
         .await
         .expect("Server error");
-    shutdown_state.shutdown_background_tasks(std::time::Duration::from_secs(3)).await;
+    shutdown_state.shutdown(std::time::Duration::from_secs(3)).await;
 }
 
 #[cfg(test)]

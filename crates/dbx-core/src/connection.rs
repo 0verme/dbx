@@ -1109,9 +1109,24 @@ impl AppState {
         }
     }
 
-    pub async fn shutdown_background_tasks(&self, deadline: Duration) {
+    pub async fn shutdown(&self, deadline: Duration) {
         self.running_queries.cancel_all();
-        self.task_supervisor.shutdown(deadline).await;
+        let removed_pools = self.drain_all_connection_pools().await;
+        self.transaction_sessions.write().await.clear();
+
+        let shutdown = async {
+            tokio::join!(
+                self.task_supervisor.shutdown(deadline),
+                close_removed_pools(removed_pools),
+                self.tunnels.stop_all_tunnels(),
+                self.proxy_tunnels.stop_all_tunnels(),
+                self.http_tunnels.stop_all_tunnels(),
+                self.agent_manager.stop_daemons(),
+            );
+        };
+        if tokio::time::timeout(deadline, shutdown).await.is_err() {
+            log::warn!("Timed out shutting down DBX runtime resources after {}ms", deadline.as_millis());
+        }
     }
 
     #[cfg(test)]
@@ -3044,6 +3059,15 @@ impl AppState {
         close_removed_pools_in_background(&self.task_supervisor, removed);
     }
 
+    async fn drain_all_connection_pools(&self) -> Vec<(String, PoolKind)> {
+        let pool_keys = self.connections.read().await.keys().cloned().collect::<Vec<_>>();
+        self.stop_keepalive_tasks(&pool_keys).await;
+        self.pool_activity.write().await.clear();
+        self.postgres_cancel_contexts.write().await.clear();
+        self.draining_pools.lock().unwrap_or_else(|error| error.into_inner()).clear();
+        self.connections.write().await.drain().collect()
+    }
+
     #[cfg(feature = "duckdb-sidecar")]
     async fn remove_duckdb_pools_detached(&self) {
         let removed = self.drain_duckdb_pools().await;
@@ -4261,6 +4285,25 @@ mod tests {
         PoolKind::Agent(std::sync::Arc::new(tokio::sync::Mutex::new(
             crate::db::agent_driver::AgentDriverClient::test_stub(),
         )))
+    }
+
+    #[tokio::test]
+    async fn shutdown_releases_connection_pools_and_agent_daemons() {
+        let (state, dir) = test_app_state().await;
+        state.connections.write().await.insert("conn".to_string(), agent_pool_stub());
+        state
+            .agent_manager
+            .daemons
+            .lock()
+            .await
+            .insert("dameng".to_string(), crate::db::agent_driver::AgentDriverClient::test_stub());
+
+        state.shutdown(Duration::from_secs(1)).await;
+
+        assert!(state.connections.read().await.is_empty());
+        assert!(state.agent_manager.active_daemon_keys().await.is_empty());
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]
