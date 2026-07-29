@@ -1337,6 +1337,7 @@ function setSidebarActivation(value: "single" | "double") {
 }
 
 const activeSettingsTab = ref("appearance");
+const settingsContentScrollRef = ref<HTMLElement | null>(null);
 const isWeb = !isTauriRuntime();
 const appSupportInfo = ref<AppSupportInfo | null>(null);
 const appSupportInfoLoading = ref(false);
@@ -1380,6 +1381,12 @@ function settingsCategoryButton(value: SettingsCategory): string {
     "settings-category-button w-auto shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition-colors lg:w-full",
     value === activeSettingsTab.value ? "settings-category-button--active bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
   ].join(" ");
+}
+
+async function resetSettingsContentScroll() {
+  await nextTick();
+  const scroller = settingsContentScrollRef.value;
+  if (scroller) scroller.scrollTop = 0;
 }
 
 function openExternalUrl(url: string) {
@@ -2024,6 +2031,7 @@ watch(snippetProvider, (provider) => {
 });
 
 watch(activeSettingsTab, async (tab) => {
+  void resetSettingsContentScroll();
   if (tab === "mcp" && !mcpStatus.value && !mcpStatusLoading.value) void refreshMcpStatus();
   if (tab === "ai" && aiIsCliProvider.value) void ensureCliMcpStatus();
   if (tab === "ai") {
@@ -3130,7 +3138,7 @@ onUnmounted(cleanupPreviewEditor);
         </nav>
 
         <div class="min-w-0 flex-1 overflow-hidden px-1 flex flex-col">
-          <div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pr-2">
+          <div ref="settingsContentScrollRef" class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pr-2">
             <section v-if="activeSettingsTab === 'editor'" class="flex flex-col gap-5 py-2">
               <div class="grid gap-4 md:grid-cols-[1fr_auto]">
                 <!-- Font Family -->
