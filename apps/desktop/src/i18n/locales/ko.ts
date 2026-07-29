@@ -2230,6 +2230,7 @@ export default withEnglishFallback({
     procedures: "프로시저",
     functions: "함수",
     sequences: "시퀀스",
+    synonyms: "동의어",
     packages: "패키지",
     types: "타입",
     gridfs: "GridFS",

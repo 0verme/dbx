@@ -2203,6 +2203,7 @@ export default withEnglishFallback({
     procedures: "Procedimientos",
     functions: "Funciones",
     sequences: "Secuencias",
+    synonyms: "Sinónimos",
     packages: "Paquetes",
     partitions: "Particiones",
     subpartitions: "Subparticiones",

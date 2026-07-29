@@ -2202,6 +2202,7 @@ export default withEnglishFallback({
     procedures: "預存程序",
     functions: "函式",
     sequences: "序列",
+    synonyms: "同義詞",
     packages: "套件",
     partitions: "分割區",
     subpartitions: "子分割區",

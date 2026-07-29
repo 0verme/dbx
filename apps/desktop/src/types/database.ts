@@ -393,7 +393,7 @@ export interface TableInfo {
   parent_name?: string | null;
 }
 
-export type DatabaseObjectType = "TABLE" | "VIEW" | "MATERIALIZED_VIEW" | "PROCEDURE" | "FUNCTION" | "TRIGGER" | "SEQUENCE" | "PACKAGE" | "PACKAGE_BODY" | "TYPE" | "TYPE_BODY";
+export type DatabaseObjectType = "TABLE" | "VIEW" | "MATERIALIZED_VIEW" | "PROCEDURE" | "FUNCTION" | "TRIGGER" | "SEQUENCE" | "SYNONYM" | "PACKAGE" | "PACKAGE_BODY" | "TYPE" | "TYPE_BODY";
 
 export interface ObjectInfo {
   name: string;
@@ -415,7 +415,7 @@ export interface ObjectStatistics {
   total_bytes?: number | null;
 }
 
-export type ObjectSourceKind = "VIEW" | "MATERIALIZED_VIEW" | "PROCEDURE" | "FUNCTION" | "TRIGGER" | "SEQUENCE" | "PACKAGE" | "PACKAGE_BODY" | "TYPE" | "TYPE_BODY";
+export type ObjectSourceKind = "VIEW" | "MATERIALIZED_VIEW" | "PROCEDURE" | "FUNCTION" | "TRIGGER" | "SEQUENCE" | "SYNONYM" | "PACKAGE" | "PACKAGE_BODY" | "TYPE" | "TYPE_BODY";
 
 export interface ObjectSource {
   name: string;
@@ -713,6 +713,7 @@ export type TreeNodeType =
   | "type"
   | "type-body"
   | "sequence"
+  | "synonym"
   | "package"
   | "package-body"
   | "group-columns"
@@ -729,6 +730,7 @@ export type TreeNodeType =
   | "group-functions"
   | "group-types"
   | "group-sequences"
+  | "group-synonyms"
   | "group-packages"
   | "group-partitions"
   | "group-extensions"

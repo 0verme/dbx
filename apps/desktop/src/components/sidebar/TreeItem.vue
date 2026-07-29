@@ -14,6 +14,7 @@ import {
   TableProperties,
   Key,
   Link,
+  Link2,
   Zap,
   ListTree,
   FileCode,
@@ -277,6 +278,8 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: Braces, colorClass: "text-amber-500" };
     case "sequence":
       return { icon: ListTree, colorClass: "text-emerald-500" };
+    case "synonym":
+      return { icon: Link2, colorClass: "text-sky-500" };
     case "package":
       return { icon: Package, colorClass: "text-cyan-500" };
     case "package-body":
@@ -297,6 +300,8 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: Braces, colorClass: "text-amber-500" };
     case "group-sequences":
       return { icon: ListTree, colorClass: "text-emerald-500" };
+    case "group-synonyms":
+      return { icon: Link2, colorClass: "text-sky-500" };
     case "group-packages":
       return { icon: Package, colorClass: "text-cyan-500" };
     case "group-types":
@@ -1178,7 +1183,15 @@ function onKeydown(event: KeyboardEvent) {
             <ProductionContextBadge v-if="showProductionBadge" compact />
             <span
               v-if="
-                (node.type === 'group-tables' || node.type === 'group-views' || node.type === 'group-materialized-views' || node.type === 'group-procedures' || node.type === 'group-functions' || node.type === 'group-sequences' || node.type === 'group-packages' || node.type === 'group-partitions') &&
+                (node.type === 'group-tables' ||
+                  node.type === 'group-views' ||
+                  node.type === 'group-materialized-views' ||
+                  node.type === 'group-procedures' ||
+                  node.type === 'group-functions' ||
+                  node.type === 'group-sequences' ||
+                  node.type === 'group-synonyms' ||
+                  node.type === 'group-packages' ||
+                  node.type === 'group-partitions') &&
                 node.objectCount != null
               "
               class="text-muted-foreground text-[10px] shrink-0"

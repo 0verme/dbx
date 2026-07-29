@@ -2261,6 +2261,7 @@ export default withEnglishFallback({
     procedures: "存储过程",
     functions: "函数",
     sequences: "序列",
+    synonyms: "同义词",
     packages: "包",
     types: "类型",
     gridfs: "GridFS",

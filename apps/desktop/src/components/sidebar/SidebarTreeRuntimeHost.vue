@@ -492,6 +492,7 @@ const groupTypes: Set<TreeNodeType> = new Set([
   "group-procedures",
   "group-functions",
   "group-sequences",
+  "group-synonyms",
   "group-packages",
   "group-types",
   "group-partitions",
