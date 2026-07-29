@@ -7,24 +7,6 @@ export interface DataGridSortState {
   direction: DataGridSortDirection;
 }
 
-export type DataGridHeaderSortAction = { kind: "menu" } | { kind: "sort"; direction: DataGridSortDirection; mode: DataGridSortMode };
-
-export function resolveDataGridHeaderSortAction(options: { enabled: boolean; configuredDirection: DataGridSortDirection; configuredMode: DataGridSortMode; currentDirection: DataGridSortDirection; currentMode: DataGridSortMode; currentColumnSorted: boolean }): DataGridHeaderSortAction {
-  if (!options.enabled) return { kind: "menu" };
-  if (options.currentColumnSorted) {
-    return {
-      kind: "sort",
-      direction: options.currentDirection === "asc" ? "desc" : "asc",
-      mode: options.currentMode,
-    };
-  }
-  return {
-    kind: "sort",
-    direction: options.configuredDirection,
-    mode: options.configuredMode,
-  };
-}
-
 export function nextDataGridSortState(current: DataGridSortState, column: string, columnIndex: number): DataGridSortState {
   if (current.column === column && current.columnIndex === columnIndex) {
     if (current.direction === "asc") {
