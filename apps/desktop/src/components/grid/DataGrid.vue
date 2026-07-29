@@ -205,7 +205,7 @@ import { useTheme } from "@/composables/useTheme";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { resolveDataGridHeaderSortAction, type DataGridSortDirection, type DataGridSortMode } from "@/lib/dataGrid/dataGridSort";
+import type { DataGridSortDirection, DataGridSortMode } from "@/lib/dataGrid/dataGridSort";
 import { DATA_GRID_COMPACT_TOPBAR_WIDTH, type DataGridReloadIntent, type DataGridToolbarActionCapability, type DataGridToolbarAutoRefreshCapability, type DataGridToolbarCopyCapability, type DataGridToolbarSaveCapability } from "@/lib/dataGrid/dataGridToolbar";
 import { getTableMetadataCapabilities } from "@/lib/table/tableMetadataCapabilities";
 import { getTableStructureCapabilities } from "@/lib/table/tableStructureCapabilities";
@@ -4148,22 +4148,6 @@ function applyColumnSort(column: string, columnIndex: number, direction: "asc" |
     syncOrderByInputWithSort(null, null);
   }
   emit("sort", column, columnIndex, direction, currentWhereInput(), mode);
-}
-
-function onHeaderSortClick(toggle: () => void, column: string, columnIndex: number) {
-  const action = resolveDataGridHeaderSortAction({
-    enabled: settingsStore.editorSettings.dataGridQuickSortEnabled,
-    configuredDirection: settingsStore.editorSettings.dataGridQuickSortDirection,
-    configuredMode: settingsStore.editorSettings.dataGridQuickSortMode,
-    currentColumnSorted: columnIsSorted(column, columnIndex),
-    currentDirection: sortDir.value,
-    currentMode: sortMode.value,
-  });
-  if (action.kind === "menu") {
-    toggle();
-    return;
-  }
-  applyColumnSort(column, columnIndex, action.direction, action.mode);
 }
 
 function selectHeaderSort(value: string, column: string, columnIndex: number) {
@@ -8190,8 +8174,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                               :title="t('grid.sort')"
                               :aria-expanded="open"
                               @mousedown.stop
-                              @click.stop="onHeaderSortClick(toggle, col.name, col.actualColIdx)"
-                              @contextmenu.prevent.stop="toggle"
+                              @click.stop="toggle"
                             >
                               <ArrowUp v-if="columnIsSorted(col.name, col.actualColIdx) && sortDir === 'asc'" class="h-3 w-3 shrink-0" />
                               <ArrowDown v-else-if="columnIsSorted(col.name, col.actualColIdx) && sortDir === 'desc'" class="h-3 w-3 shrink-0" />

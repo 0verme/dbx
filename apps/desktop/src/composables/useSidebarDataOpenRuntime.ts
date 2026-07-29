@@ -11,7 +11,6 @@ import { canApplyDataTabMetadata, dataTabMetadataNeedsRefresh, findExistingDataT
 import type { SidebarDataOpenRequest } from "@/lib/sidebar/sidebarDataOpenCoordinator";
 import { hasTreeNodeDatabaseContext } from "@/lib/sidebar/treeNodeContext";
 import { buildTableSelectSql } from "@/lib/table/tableSelectSql";
-import { applyOpenTableDefaultSortState, buildOpenTableDefaultSort } from "@/lib/table/tableDefaultSort";
 import { usesSyntheticRowIdKey } from "@/lib/table/tableEditing";
 import { tableOpenPageLimit } from "@/lib/table/tableOpenPageLimit";
 import { canActivateExistingDataTableTab } from "@/lib/tabs/dataTabActivation";
@@ -142,8 +141,6 @@ export function useSidebarDataOpenRuntime() {
       tab.resultLocalSortOriginalMongoDocuments = undefined;
       tab.resultLocalSortOriginalMongoCopyDocuments = undefined;
       tab.resultSortedSql = undefined;
-      tab.openTableDefaultSortApplied = undefined;
-      tab.openTableDefaultSortOrderBy = undefined;
       tab.resultPageSql = undefined;
       tab.resultPageLimit = undefined;
       tab.resultPageOffset = undefined;
@@ -277,48 +274,22 @@ export function useSidebarDataOpenRuntime() {
       if (!config) throw new Error("Connection config not found");
 
       const limit = tableOpenPageLimit(settingsStore.editorSettings.tableOpenPageSize);
-      const openTableDefaultSortMode = settingsStore.editorSettings.openTableDefaultSortMode;
-      let tableMetaForQuery = cachedTableMeta;
-      let shouldRefreshTableMeta = !tableMetaForQuery;
+      const shouldRefreshTableMeta = !cachedTableMeta;
       // Dameng metadata calls must remain serialized behind the table query.
       const deferTableMetaRefresh = effectiveDbType === "dameng";
-      let attemptedDefaultSortMetadataLoad = false;
-      if (openTableDefaultSortMode !== "none" && !tableMetaForQuery && !deferTableMetaRefresh) {
-        attemptedDefaultSortMetadataLoad = true;
-        try {
-          const loadedMetadata = await loadTableMetadata({
-            connectionId: node.connectionId,
-            database: node.database,
-            schema: querySchema,
-            tableName: node.label,
-            tableType,
-            databaseType: metadataDatabaseType,
-            driverProfile: config.driver_profile || config.db_type,
-            catalog: node.catalog,
-            traceLogger: isDebugLoggingEnabled() ? (event) => openDataLog("debug", "metadata:trace", { sourceTraceId: traceId, ...event }) : undefined,
-          });
-          if (!isActive() || !canApplyTableMetadata(tabId)) return;
-          tableMetaForQuery = tableMetadataToDataTabMeta(loadedMetadata.metadata, tableSchema);
-          queryStore.setTableMeta(tabId, tableMetaForQuery);
-          shouldRefreshTableMeta = false;
-          logPhase("metadata-loaded-for-default-sort", { tabId, columnCount: tableMetaForQuery.columns.length, primaryKeyCount: tableMetaForQuery.primaryKeys.length });
-        } catch (error) {
-          openDataLog("warn", "metadata:default-sort:error", { traceId, tabId, elapsed: elapsed(), error });
-        }
-      }
-      if (tableMetaForQuery) {
+      if (cachedTableMeta) {
         openDataLog("info", "metadata:cache-hit", {
           traceId,
           tabId,
-          columnCount: tableMetaForQuery.columns.length,
-          primaryKeyCount: tableMetaForQuery.primaryKeys.length,
+          columnCount: cachedTableMeta.columns.length,
+          primaryKeyCount: cachedTableMeta.primaryKeys.length,
           source: cachedTableMetaSource,
           ageMs: Math.round(cachedTableMetaAgeMs),
           elapsed: elapsed(),
         });
       } else if (deferTableMetaRefresh) {
         logPhase("metadata-deferred", { tabId });
-      } else if (!attemptedDefaultSortMetadataLoad) {
+      } else {
         void refreshTableMetaInBackground(tabId);
         logPhase("metadata-started", { tabId });
       }
@@ -329,15 +300,8 @@ export function useSidebarDataOpenRuntime() {
         return;
       }
 
-      const columns = tableMetaForQuery?.columns ?? [];
-      const primaryKeys = tableMetaForQuery?.primaryKeys ?? [];
-      const defaultSort = buildOpenTableDefaultSort({
-        mode: openTableDefaultSortMode,
-        databaseType: effectiveDbType,
-        identifierQuote: connectionStore.connectionIdentifierQuote?.(node.connectionId),
-        primaryKeys,
-        columns: columns.map((column) => column.name),
-      });
+      const columns = cachedTableMeta?.columns ?? [];
+      const primaryKeys = cachedTableMeta?.primaryKeys ?? [];
       const includeRowId = usesSyntheticRowIdKey(effectiveDbType, primaryKeys, tableType);
       const sql = await buildTableSelectSql({
         databaseType: effectiveDbType,
@@ -349,7 +313,6 @@ export function useSidebarDataOpenRuntime() {
         catalog: node.catalog,
         columns: columns.map((column) => column.name),
         primaryKeys,
-        orderBy: defaultSort?.orderBy,
         limit,
         includeRowId,
       });
@@ -376,8 +339,6 @@ export function useSidebarDataOpenRuntime() {
         skipEnsureConnected: true,
         pagination: { limit, offset: 0 },
       });
-      const currentTab = queryStore.tabs.find((item) => item.id === tabId);
-      if (currentTab) applyOpenTableDefaultSortState(currentTab, defaultSort);
       openDataLog("info", "execute:done", { traceId, tabId, elapsed: elapsed() });
       logPhase("execute-tab-sql", { tabId });
       if (shouldRefreshTableMeta && deferTableMetaRefresh && canApplyTableMetadata(tabId)) {

@@ -885,8 +885,6 @@ export interface QueryTab {
   resultLocalSortOriginalMongoDocuments?: QueryResult["mongo_documents"];
   resultLocalSortOriginalMongoCopyDocuments?: QueryResult["mongo_copy_documents"];
   orderByInput?: string;
-  openTableDefaultSortApplied?: boolean;
-  openTableDefaultSortOrderBy?: string;
   resultPageSql?: string;
   resultPageLimit?: number;
   resultPageOffset?: number;

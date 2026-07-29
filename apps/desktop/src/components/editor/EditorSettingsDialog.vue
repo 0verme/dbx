@@ -38,9 +38,6 @@ import {
   type InterfaceLayout,
   type DisconnectTabHandlingMode,
   type OpenTabsRestoreMode,
-  type OpenTableDefaultSortMode,
-  type DataGridQuickSortMode,
-  type DataGridQuickSortDirection,
   type SidebarObjectInfoMode,
   type SqlSemanticDiagnosticsMode,
   type UpdateDownloadSource,
@@ -310,10 +307,6 @@ const debugLogDownloaded = ref(false);
 const editShowColumnCommentsInHeader = ref(settingsStore.editorSettings.showColumnCommentsInHeader);
 const editShowColumnTypesInHeader = ref(settingsStore.editorSettings.showColumnTypesInHeader);
 const editCompactColumnHeaderActions = ref(settingsStore.editorSettings.compactColumnHeaderActions);
-const editOpenTableDefaultSortMode = ref<OpenTableDefaultSortMode>(settingsStore.editorSettings.openTableDefaultSortMode);
-const editDataGridQuickSortEnabled = ref(settingsStore.editorSettings.dataGridQuickSortEnabled);
-const editDataGridQuickSortMode = ref<DataGridQuickSortMode>(settingsStore.editorSettings.dataGridQuickSortMode);
-const editDataGridQuickSortDirection = ref<DataGridQuickSortDirection>(settingsStore.editorSettings.dataGridQuickSortDirection);
 const editDataGridQuickEntry = ref(settingsStore.editorSettings.dataGridQuickEntry);
 const editDataGridAutoTransposeSingleRow = ref(settingsStore.editorSettings.dataGridAutoTransposeSingleRow);
 const editTableOpenPageSize = ref(settingsStore.editorSettings.tableOpenPageSize);
@@ -455,10 +448,6 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     showColumnCommentsInHeader: editShowColumnCommentsInHeader.value,
     showColumnTypesInHeader: editShowColumnTypesInHeader.value,
     compactColumnHeaderActions: editCompactColumnHeaderActions.value,
-    openTableDefaultSortMode: editOpenTableDefaultSortMode.value,
-    dataGridQuickSortEnabled: editDataGridQuickSortEnabled.value,
-    dataGridQuickSortMode: editDataGridQuickSortMode.value,
-    dataGridQuickSortDirection: editDataGridQuickSortDirection.value,
     dataGridQuickEntry: editDataGridQuickEntry.value,
     dataGridAutoTransposeSingleRow: editDataGridAutoTransposeSingleRow.value,
     tableOpenPageSize: editTableOpenPageSize.value,
@@ -712,10 +701,6 @@ function syncEditorSettingsDraftFromStore() {
   editShowColumnCommentsInHeader.value = settingsStore.editorSettings.showColumnCommentsInHeader;
   editShowColumnTypesInHeader.value = settingsStore.editorSettings.showColumnTypesInHeader;
   editCompactColumnHeaderActions.value = settingsStore.editorSettings.compactColumnHeaderActions;
-  editOpenTableDefaultSortMode.value = settingsStore.editorSettings.openTableDefaultSortMode;
-  editDataGridQuickSortEnabled.value = settingsStore.editorSettings.dataGridQuickSortEnabled;
-  editDataGridQuickSortMode.value = settingsStore.editorSettings.dataGridQuickSortMode;
-  editDataGridQuickSortDirection.value = settingsStore.editorSettings.dataGridQuickSortDirection;
   editDataGridQuickEntry.value = settingsStore.editorSettings.dataGridQuickEntry;
   editDataGridAutoTransposeSingleRow.value = settingsStore.editorSettings.dataGridAutoTransposeSingleRow;
   editTableOpenPageSize.value = settingsStore.editorSettings.tableOpenPageSize;
@@ -944,10 +929,6 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editShowColumnCommentsInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader;
     editShowColumnTypesInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnTypesInHeader;
     editCompactColumnHeaderActions.value = DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions;
-    editOpenTableDefaultSortMode.value = DEFAULT_EDITOR_SETTINGS.openTableDefaultSortMode;
-    editDataGridQuickSortEnabled.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickSortEnabled;
-    editDataGridQuickSortMode.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickSortMode;
-    editDataGridQuickSortDirection.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickSortDirection;
     editDataGridQuickEntry.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickEntry;
     editDataGridAutoTransposeSingleRow.value = DEFAULT_EDITOR_SETTINGS.dataGridAutoTransposeSingleRow;
     editTableOpenPageSize.value = DEFAULT_EDITOR_SETTINGS.tableOpenPageSize;
@@ -1009,10 +990,6 @@ function resetAllDefaults() {
   editShowColumnCommentsInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader;
   editShowColumnTypesInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnTypesInHeader;
   editCompactColumnHeaderActions.value = DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions;
-  editOpenTableDefaultSortMode.value = DEFAULT_EDITOR_SETTINGS.openTableDefaultSortMode;
-  editDataGridQuickSortEnabled.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickSortEnabled;
-  editDataGridQuickSortMode.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickSortMode;
-  editDataGridQuickSortDirection.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickSortDirection;
   editDataGridQuickEntry.value = DEFAULT_EDITOR_SETTINGS.dataGridQuickEntry;
   editDataGridAutoTransposeSingleRow.value = DEFAULT_EDITOR_SETTINGS.dataGridAutoTransposeSingleRow;
   editTableOpenPageSize.value = DEFAULT_EDITOR_SETTINGS.tableOpenPageSize;
@@ -1243,18 +1220,6 @@ function onLocaleChange(v: any) {
 
 function onUpdateDownloadSourceChange(v: any) {
   if (v === "official" || v === "cnb") editUpdateDownloadSource.value = v;
-}
-
-function onOpenTableDefaultSortModeChange(v: any) {
-  if (v === "none" || v === "primary-key-asc" || v === "primary-key-desc") editOpenTableDefaultSortMode.value = v;
-}
-
-function onDataGridQuickSortModeChange(v: any) {
-  if (v === "database" || v === "local") editDataGridQuickSortMode.value = v;
-}
-
-function onDataGridQuickSortDirectionChange(v: any) {
-  if (v === "asc" || v === "desc") editDataGridQuickSortDirection.value = v;
 }
 
 function setSidebarObjectDisplay(value: "grouped" | "simple") {
@@ -3723,65 +3688,6 @@ onUnmounted(cleanupPreviewEditor);
                     </p>
                   </div>
                   <Switch id="compact-column-header-actions" v-model="editCompactColumnHeaderActions" />
-                </div>
-                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                  <div class="space-y-1">
-                    <Label for="open-table-default-sort-mode">
-                      {{ t("settings.openTableDefaultSortMode") }}
-                    </Label>
-                    <p class="text-xs text-muted-foreground">
-                      {{ t("settings.openTableDefaultSortModeDescription") }}
-                    </p>
-                  </div>
-                  <Select :model-value="editOpenTableDefaultSortMode" @update:model-value="onOpenTableDefaultSortModeChange">
-                    <SelectTrigger id="open-table-default-sort-mode" class="h-8 w-44">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">{{ t("settings.openTableDefaultSortModeNone") }}</SelectItem>
-                      <SelectItem value="primary-key-asc">{{ t("settings.openTableDefaultSortModePrimaryKeyAsc") }}</SelectItem>
-                      <SelectItem value="primary-key-desc">{{ t("settings.openTableDefaultSortModePrimaryKeyDesc") }}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div class="space-y-3 rounded-md border bg-muted/20 px-3 py-2">
-                  <div class="flex items-center justify-between gap-4">
-                    <div class="space-y-1">
-                      <Label for="data-grid-quick-sort-enabled">
-                        {{ t("settings.dataGridQuickSortEnabled") }}
-                      </Label>
-                      <p class="text-xs text-muted-foreground">
-                        {{ t("settings.dataGridQuickSortDescription") }}
-                      </p>
-                    </div>
-                    <Switch id="data-grid-quick-sort-enabled" v-model="editDataGridQuickSortEnabled" />
-                  </div>
-                  <div v-if="editDataGridQuickSortEnabled" class="flex justify-end gap-2">
-                    <div class="space-y-1">
-                      <Label for="data-grid-quick-sort-mode" class="text-xs text-muted-foreground">{{ t("settings.dataGridQuickSortMode") }}</Label>
-                      <Select :model-value="editDataGridQuickSortMode" @update:model-value="onDataGridQuickSortModeChange">
-                        <SelectTrigger id="data-grid-quick-sort-mode" class="h-8 w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="local">{{ t("settings.dataGridQuickSortModeCurrentPage") }}</SelectItem>
-                          <SelectItem value="database">{{ t("settings.dataGridQuickSortModeDatabase") }}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div class="space-y-1">
-                      <Label for="data-grid-quick-sort-direction" class="text-xs text-muted-foreground">{{ t("settings.dataGridQuickSortDirection") }}</Label>
-                      <Select :model-value="editDataGridQuickSortDirection" @update:model-value="onDataGridQuickSortDirectionChange">
-                        <SelectTrigger id="data-grid-quick-sort-direction" class="h-8 w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="asc">{{ t("settings.dataGridQuickSortDirectionAsc") }}</SelectItem>
-                          <SelectItem value="desc">{{ t("settings.dataGridQuickSortDirectionDesc") }}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
                 </div>
                 <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
                   <div class="space-y-1">
