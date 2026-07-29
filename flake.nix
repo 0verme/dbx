@@ -192,7 +192,7 @@
             outputHashes = {
                 "tokio-postgres-0.7.18" = "sha256-mGzfqYmo1PPcpKOlyA6ePzZA4lrNspOJ5G52meHiocY=";
                 "mysql-common-derive-0.32.2" = "sha256-8lWgsdTuLTgOmzP7tXmA9LnomOE0wjxXsCBw9NEMt2o=";
-                "mysql_async-0.37.0" = "sha256-r4+VFDmflMu7KLButuwE/lcYAlPuacXiDQN6ZdBhuwo=";
+                "mysql_async-0.37.0" = "sha256-tMFvmypIBh1GHg3cLFWmLf6N1wrwKPlzx2G/MHwtlFM=";
             };
           };
 
