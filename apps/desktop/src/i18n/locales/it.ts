@@ -2134,6 +2134,7 @@ export default withEnglishFallback({
     createProcedure: "Nuovo stored procedure",
     createFunction: "Nuova funzione",
     createTrigger: "Nuovo trigger",
+    changeOpenMode: "Modifica modalità apertura",
   },
   visibleDatabases: {
     title: "Database Visibili",
@@ -4608,6 +4609,11 @@ export default withEnglishFallback({
     dateTimeFormatAuto: "Riconoscimento automatico",
     dateTimeFormatSearchPlaceholder: "Seleziona o inserisci il formato",
     dateTimeFormatEmpty: "Inserisci un formato data/ora personalizzato",
+    routineSourceOpenMode: "Modalità apertura funzioni/procedure/viste",
+    routineSourceOpenModeQueryTab: "Scheda dati",
+    routineSourceOpenModeQueryTabDescription: "Apre il codice sorgente in una nuova scheda dati, come per l'esecuzione di query SQL.",
+    routineSourceOpenModeDialog: "Finestra a comparsa",
+    routineSourceOpenModeDialogDescription: "Apre il codice sorgente in una finestra di dialogo a comparsa per una rapida visualizzazione e modifica.",
   },
   driverStore: {
     jreDirRemoveFailed: "Impossibile rimuovere la vecchia directory JRE: {path} (errore originale: {error})",
