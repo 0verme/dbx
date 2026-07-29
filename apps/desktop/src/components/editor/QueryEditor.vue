@@ -143,7 +143,7 @@ const emit = defineEmits<{
   formatError: [message: string];
   execute: [source: SqlExecutionOverride];
   executeInNewResultTab: [source: SqlExecutionOverride];
-  exportQuery: [payload: { sql: string; format: "csv" | "xlsx" | "txt" }];
+  exportQuery: [payload: { sql: string; format: "csv" | "xlsx" | "txt"; columnComments?: (string | null)[] }];
   save: [];
   clickTable: [target: SqlObjectNavigationTarget];
   viewTableData: [target: SqlObjectNavigationTarget];
@@ -1016,7 +1016,7 @@ function executeInNewResultTabFromContextMenu() {
 function exportQueryFromContextMenu(format: "csv" | "xlsx" | "txt") {
   const sql = executableSql.value;
   if (!sql.trim()) return;
-  emit("exportQuery", { sql, format });
+  emit("exportQuery", { sql, format, columnComments: undefined });
 }
 
 async function copySelectedSqlFromContextMenu() {
