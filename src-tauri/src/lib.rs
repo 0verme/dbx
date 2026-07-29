@@ -1498,7 +1498,7 @@ pub fn run() {
             commands::query::build_search_result_where,
             commands::query::build_rename_object_sql,
             commands::query::build_create_database_sql,
-            #[cfg(feature = "duckdb-bundled")]
+            #[cfg(feature = "duckdb-sidecar")]
             commands::query::build_duckdb_attach_database_sql,
             commands::query::build_sqlite_attach_database_sql,
             commands::query::build_drop_object_sql,

@@ -10,8 +10,6 @@ use crate::models::connection::DatabaseType;
 use crate::object_source_sql::{build_executable_object_source_statements, EditableObjectSourceSqlInput};
 use crate::query::{agent_execute_query_params, pool_error_action, PoolErrorAction, QueryExecutionOptions};
 use crate::sql::split_sql_statements;
-#[cfg(feature = "duckdb-bundled")]
-use crate::sql::starts_with_executable_sql_keyword;
 use crate::sql_dialect::{qualified_transfer_table, quote_transfer_identifier};
 
 static CANCELLED: std::sync::LazyLock<RwLock<HashSet<String>>> =
@@ -3048,89 +3046,12 @@ async fn execute_on_pool_once(
             );
             client.execute_query(params).await
         }
-        #[cfg(feature = "duckdb-bundled")]
-        PoolKind::DuckDb(con) => {
-            let con = con.clone();
+        #[cfg(feature = "duckdb-sidecar")]
+        PoolKind::DuckDbWorker(client) => {
+            let client = client.clone();
             let sql = sql.to_string();
             drop(connections);
-            tokio::task::spawn_blocking(move || {
-                let con = con.lock().map_err(|e| e.to_string())?;
-                if max_rows.is_some()
-                    && starts_with_executable_sql_keyword(&sql, &["SELECT", "SHOW", "DESCRIBE", "WITH", "PRAGMA"])
-                {
-                    return crate::query::duckdb_execute_with_max_rows(&con, &sql, max_rows);
-                }
-                let start = std::time::Instant::now();
-                if starts_with_executable_sql_keyword(&sql, &["SELECT", "SHOW", "DESCRIBE", "WITH", "PRAGMA"]) {
-                    let mut stmt = con.prepare(&sql).map_err(|e| e.to_string())?;
-                    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
-                    let stmt_ref = rows.as_ref().ok_or("DuckDB statement unavailable")?;
-                    let col_count = stmt_ref.column_count();
-                    let columns: Vec<String> = (0..col_count)
-                        .map(|i| stmt_ref.column_name(i).map(|s| s.to_string()).unwrap_or_else(|_| "?".to_string()))
-                        .collect();
-                    let mut result_rows = Vec::new();
-                    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-                        let vals: Vec<serde_json::Value> = (0..col_count)
-                            .map(|i| {
-                                row.get::<_, String>(i)
-                                    .map(serde_json::Value::String)
-                                    .or_else(|_| row.get::<_, i64>(i).map(|v| serde_json::Value::Number(v.into())))
-                                    .or_else(|_| {
-                                        row.get::<_, f64>(i).map(|v| {
-                                            serde_json::Number::from_f64(v)
-                                                .map(serde_json::Value::Number)
-                                                .unwrap_or(serde_json::Value::Null)
-                                        })
-                                    })
-                                    .or_else(|_| row.get::<_, bool>(i).map(serde_json::Value::Bool))
-                                    .unwrap_or(serde_json::Value::Null)
-                            })
-                            .collect();
-                        result_rows.push(vals);
-                    }
-                    Ok(db::QueryResult {
-                        columns,
-                        column_types: Vec::new(),
-                        column_sortables: vec![],
-                        rows: result_rows,
-                        affected_rows: 0,
-                        execution_time_ms: start.elapsed().as_millis(),
-                        truncated: false,
-                        session_id: None,
-                        has_more: false,
-                        elasticsearch_raw_body: None,
-                    })
-                } else {
-                    let affected = con.execute(&sql, []).map_err(|e| e.to_string())?;
-                    Ok(db::QueryResult {
-                        columns: vec![],
-                        column_types: Vec::new(),
-                        column_sortables: vec![],
-                        rows: vec![],
-                        affected_rows: affected as u64,
-                        execution_time_ms: start.elapsed().as_millis(),
-                        truncated: false,
-                        session_id: None,
-                        has_more: false,
-                        elasticsearch_raw_body: None,
-                    })
-                }
-            })
-            .await
-            .map_err(|e| e.to_string())?
-        }
-        #[cfg(feature = "duckdb-bundled")]
-        PoolKind::ExternalTabular(ext_pool) => {
-            let con = ext_pool.cache.clone();
-            let sql = sql.to_string();
-            drop(connections);
-            tokio::task::spawn_blocking(move || {
-                let con = con.lock().map_err(|e| e.to_string())?;
-                crate::query::duckdb_execute_with_max_rows(&con, &sql, max_rows)
-            })
-            .await
-            .map_err(|e| e.to_string())?
+            client.execute(None, sql, max_rows, None, None).await
         }
         _ => Err("Unsupported database type for transfer".to_string()),
     }
@@ -3161,32 +3082,14 @@ pub async fn get_columns_for_transfer(
 ) -> Result<Vec<db::ColumnInfo>, String> {
     let connections = state.connections.read().await;
 
-    #[cfg(feature = "duckdb-bundled")]
-    if let Some(PoolKind::DuckDb(con)) = connections.get(pool_key) {
-        let con = con.clone();
-        drop(connections);
-        let table = table.to_string();
+    #[cfg(feature = "duckdb-sidecar")]
+    if let Some(PoolKind::DuckDbWorker(client)) = connections.get(pool_key) {
+        let client = client.clone();
+        let database = database.to_string();
         let schema = schema.to_string();
-        return tokio::task::spawn_blocking(move || {
-            let con = con.lock().map_err(|e| e.to_string())?;
-            crate::schema::duckdb_query_columns_in_database(&con, "main", &schema, &table)
-        })
-        .await
-        .map_err(|e| e.to_string())?;
-    }
-
-    #[cfg(feature = "duckdb-bundled")]
-    if let Some(PoolKind::ExternalTabular(ext_pool)) = connections.get(pool_key) {
-        let con = ext_pool.cache.clone();
-        drop(connections);
         let table = table.to_string();
-        let schema = schema.to_string();
-        return tokio::task::spawn_blocking(move || {
-            let con = con.lock().map_err(|e| e.to_string())?;
-            crate::schema::duckdb_query_columns_in_database(&con, "main", &schema, &table)
-        })
-        .await
-        .map_err(|e| e.to_string())?;
+        drop(connections);
+        return client.list_columns(database, schema, table).await;
     }
 
     if let Some(PoolKind::ClickHouse(client)) = connections.get(pool_key) {
@@ -5029,73 +4932,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "duckdb-bundled")]
-    use crate::connection::{AppState, PoolKind};
-    #[cfg(feature = "duckdb-bundled")]
-    use crate::models::connection::default_redis_key_separator;
-    #[cfg(feature = "duckdb-bundled")]
-    use crate::storage::Storage;
     use serde_json::json;
-    #[cfg(feature = "duckdb-bundled")]
-    use std::sync::Arc;
-
-    #[cfg(feature = "duckdb-bundled")]
-    fn duckdb_test_config(id: &str) -> crate::models::connection::ConnectionConfig {
-        crate::models::connection::ConnectionConfig {
-            id: id.to_string(),
-            name: id.to_string(),
-            note: String::new(),
-            db_type: DatabaseType::DuckDb,
-            driver_profile: None,
-            driver_label: None,
-            url_params: None,
-            agent_java_options: Vec::new(),
-            host: ":memory:".to_string(),
-            port: 0,
-            username: String::new(),
-            password: String::new(),
-            database: None,
-            visible_databases: None,
-            visible_schemas: None,
-            show_system_schemas: false,
-            attached_databases: Vec::new(),
-            init_script: None,
-            color: None,
-            transport_layers: Vec::new(),
-            connect_timeout_secs: 5,
-            query_timeout_secs: 30,
-            idle_timeout_secs: 60,
-            keepalive_interval_secs: 0,
-            ssl: false,
-            ca_cert_path: String::new(),
-            client_cert_path: String::new(),
-            client_key_path: String::new(),
-            sysdba: false,
-            oracle_connection_type: None,
-            connection_string: None,
-            redis_connection_mode: None,
-            redis_sentinel_master: String::new(),
-            redis_sentinel_nodes: String::new(),
-            redis_sentinel_username: String::new(),
-            redis_sentinel_password: String::new(),
-            redis_sentinel_tls: false,
-            redis_cluster_nodes: String::new(),
-            redis_key_separator: default_redis_key_separator(),
-            redis_scan_page_size: None,
-            redis_database_aliases: Default::default(),
-            etcd_endpoints: String::new(),
-            gbase_server: String::new(),
-            informix_server: String::new(),
-            external_config: None,
-            jdbc_driver_class: None,
-            jdbc_driver_paths: Vec::new(),
-            one_time: false,
-            read_only: false,
-            is_production: false,
-            production_databases: vec![],
-            database_info: None,
-        }
-    }
 
     fn test_column(name: &str, data_type: &str) -> db::ColumnInfo {
         db::ColumnInfo {
@@ -6861,26 +6698,6 @@ SELECT 1 FROM dual"#
 
         assert_eq!(statements.len(), 1);
         assert!(statements[0].contains("ON DUPLICATE KEY UPDATE"));
-    }
-
-    #[cfg(feature = "duckdb-bundled")]
-    #[tokio::test]
-    async fn duckdb_transfer_columns_use_requested_schema() {
-        let dir = std::env::temp_dir().join(format!("dbx-transfer-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
-        let con = duckdb::Connection::open_in_memory().unwrap();
-        con.execute_batch("CREATE SCHEMA analytics; CREATE TABLE analytics.items(id INTEGER);").unwrap();
-
-        let state = AppState::new(storage);
-        let con = Arc::new(crate::db::duckdb_driver::DuckDbConnection::new(con));
-        state.connections.write().await.insert("duckdb-1".to_string(), PoolKind::DuckDb(con));
-        state.configs.write().await.insert("duckdb-1".to_string(), duckdb_test_config("duckdb-1"));
-
-        let columns =
-            get_columns_for_transfer(&state, "duckdb-1", "duckdb-1", "main", "analytics", "items").await.unwrap();
-
-        assert_eq!(columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["id"]);
     }
 
     #[test]

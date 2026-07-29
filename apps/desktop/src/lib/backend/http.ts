@@ -483,8 +483,8 @@ export async function upgradeAllAgents(_source?: UpdateDownloadSource, operation
   return post("/api/agents/upgrade-all", { operationId });
 }
 
-export async function checkAgentUpdateBlockers(_dbTypes: string[]): Promise<AgentUpdateBlocker[]> {
-  return [];
+export async function checkAgentUpdateBlockers(dbTypes: string[]): Promise<AgentUpdateBlocker[]> {
+  return post("/api/agents/update-blockers", { dbTypes });
 }
 
 export async function uninstallAgent(dbType: string): Promise<void> {
@@ -505,7 +505,7 @@ export async function invalidateAgentRegistryCache(): Promise<void> {
 
 export async function importAgentsFromZip(fileOrPath: string | File, operationId?: string): Promise<number> {
   if (typeof fileOrPath === "string") {
-    throw new Error("Offline ZIP import in web mode requires a File object, not a file path");
+    throw new Error("Offline package import in web mode requires a File object, not a file path");
   }
   const formData = new FormData();
   if (operationId) formData.append("operationId", operationId);

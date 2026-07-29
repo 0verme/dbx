@@ -328,6 +328,7 @@ async fn main() {
         .route("/agents/runtime/restart", post(routes::agents::restart_driver_runtime))
         .route("/agents/install", post(routes::agents::install_agent))
         .route("/agents/upgrade-all", post(routes::agents::upgrade_all_agents))
+        .route("/agents/update-blockers", post(routes::agents::check_agent_update_blockers))
         .route("/agents/uninstall", post(routes::agents::uninstall_agent))
         .route("/agents/import-offline", post(routes::agents::import_agents_from_zip))
         .route("/agents/import-driver", post(routes::agents::import_agent_driver_file))
@@ -747,8 +748,8 @@ async fn main() {
         .route("/cloud-sync/snippet/upload", post(routes::cloud_sync::snippet_sync_upload))
         .route("/cloud-sync/snippet/download", post(routes::cloud_sync::snippet_sync_download));
 
-    // Do not expose DuckDB-only handlers from builds that intentionally omit bundled DuckDB.
-    #[cfg(feature = "duckdb-bundled")]
+    // Do not expose DuckDB-only handlers from builds that omit DuckDB sidecar support.
+    #[cfg(feature = "duckdb-sidecar")]
     let api =
         api.route("/query/build-duckdb-attach-database-sql", post(routes::query::build_duckdb_attach_database_sql));
 

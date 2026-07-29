@@ -25,7 +25,7 @@ help:
 	@printf '%s\n' 'App:'
 	@printf '  %-23s %s\n' 'make' 'Start the local desktop development environment'
 	@printf '  %-23s %s\n' 'make dev' 'Start the local desktop development environment'
-	@printf '  %-23s %s\n' 'make dev-fast' 'Start Tauri dev without default Rust features'
+	@printf '  %-23s %s\n' 'make dev-fast' 'Start lightweight Tauri dev with DuckDB sidecar support'
 	@printf '  %-23s %s\n' 'make dev-web' 'Start the web frontend development server'
 	@printf '  %-23s %s\n' 'make dev-backend' 'Start the web backend development server'
 	@printf '  %-23s %s\n' 'make build' 'Run type checks and build the desktop frontend'
@@ -75,7 +75,7 @@ dev: node_modules/.modules.yaml check-tauri-dev-port
 	$(PNPM) dev:tauri
 
 dev-fast: node_modules/.modules.yaml check-tauri-dev-port
-	$(PNPM) tauri dev -- --no-default-features
+	$(PNPM) tauri dev -- --no-default-features --features duckdb-sidecar
 
 dev-web: node_modules/.modules.yaml
 	$(PNPM) dev:web

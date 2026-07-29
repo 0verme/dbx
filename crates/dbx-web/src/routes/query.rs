@@ -142,7 +142,7 @@ pub struct BuildCreateDatabaseSqlRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg(feature = "duckdb-bundled")]
+#[cfg(feature = "duckdb-sidecar")]
 pub struct BuildDuckDbAttachDatabaseSqlRequest {
     pub options: dbx_core::db_admin_sql::DuckDbAttachDatabaseSqlOptions,
 }
@@ -647,7 +647,7 @@ pub async fn build_create_database_sql(
     dbx_core::db_admin_sql::build_create_database_sql(req.options).map(Json).map_err(AppError::from)
 }
 
-#[cfg(feature = "duckdb-bundled")]
+#[cfg(feature = "duckdb-sidecar")]
 pub async fn build_duckdb_attach_database_sql(Json(req): Json<BuildDuckDbAttachDatabaseSqlRequest>) -> Json<String> {
     Json(dbx_core::db_admin_sql::build_duckdb_attach_database_sql(req.options))
 }

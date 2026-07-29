@@ -2465,7 +2465,7 @@ fn sqlserver_existing_column_identity_change_warns_without_unchanged_foreign_key
     );
 }
 
-#[cfg(feature = "duckdb-bundled")]
+#[cfg(feature = "duckdb-sidecar")]
 #[test]
 fn builds_duckdb_create_table_statements() {
     let mut name = column("name");
