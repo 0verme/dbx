@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JdbcConnectionPoolingTest {
@@ -110,6 +112,31 @@ class JdbcConnectionPoolingTest {
 
             assertEquals(2, physicalOpens.get());
             assertEquals(2, registry.poolCount());
+        }
+    }
+
+    @Test
+    void registrySurfacesInitialPhysicalConnectionFailureWithoutWaitingForBorrowTimeout() {
+        JdbcConnectionPoolRegistry.PoolSettings settings = new JdbcConnectionPoolRegistry.PoolSettings(
+            1,
+            0,
+            5_000L,
+            1_000L,
+            10_000L,
+            30_000L,
+            60_000L
+        );
+        long startedAtMillis = System.currentTimeMillis();
+        try (JdbcConnectionPoolRegistry registry = new JdbcConnectionPoolRegistry(settings)) {
+            SQLException error = assertThrows(
+                SQLException.class,
+                () -> registry.borrow("failing", () -> {
+                    throw new SQLException("auth failed");
+                })
+            );
+            long elapsedMillis = System.currentTimeMillis() - startedAtMillis;
+            assertTrue(elapsedMillis < 1_000L, () -> "initial failure took " + elapsedMillis + "ms");
+            assertTrue(error.getMessage().contains("auth failed"), error::toString);
         }
     }
 
@@ -439,6 +466,12 @@ class JdbcConnectionPoolingTest {
         assertTrue(JdbcConnectionAffinity.requiresSessionAffinity("CREATE TEMPORARY TABLE t(id int)"));
         assertTrue(JdbcConnectionAffinity.requiresSessionAffinity("CREATE TABLE #session_rows(id int)"));
         assertTrue(JdbcConnectionAffinity.requiresSessionAffinity("SELECT * INTO #session_rows FROM users"));
+        assertTrue(JdbcConnectionAffinity.requiresSessionAffinity(
+            "WITH source_rows AS (SELECT * FROM users) SELECT * INTO #session_rows FROM source_rows"
+        ));
+        assertTrue(JdbcConnectionAffinity.requiresSessionAffinity(
+            "WITH source_rows AS (SELECT * FROM users) SELECT * INTO [#session_rows] FROM source_rows"
+        ));
         assertTrue(JdbcConnectionAffinity.requiresSessionAffinity("CREATE MULTISET VOLATILE TABLE vt(id int)"));
         assertTrue(JdbcConnectionAffinity.requiresSessionAffinity("DATABASE analytics"));
         assertTrue(JdbcConnectionAffinity.requiresSessionAffinity("UNSET current_namespace"));
@@ -453,6 +486,8 @@ class JdbcConnectionPoolingTest {
         assertFalse(JdbcConnectionAffinity.requiresSessionAffinity("SELECT 'SET ROLE app_user; CREATE TEMP TABLE t(id int)'"));
         assertFalse(JdbcConnectionAffinity.requiresSessionAffinity("SELECT $$SET ROLE app_user$$"));
         assertFalse(JdbcConnectionAffinity.requiresSessionAffinity("SELECT '# SET ROLE app_user'"));
+        assertFalse(JdbcConnectionAffinity.requiresSessionAffinity("SELECT '#session_rows'"));
+        assertFalse(JdbcConnectionAffinity.requiresSessionAffinity("SELECT payload #>> '{path}' FROM events"));
     }
 
     private static MultiSessionJsonRpcServer server(String url, AtomicInteger physicalOpens, int maximumPoolSize) {

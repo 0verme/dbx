@@ -17,6 +17,9 @@ final class JdbcConnectionAffinity {
         "(?is)\\b(?:SET_CONFIG|PG_ADVISORY_(?:XACT_)?LOCK|GET_LOCK|RELEASE_LOCK|SP_GETAPPLOCK|DBMS_LOCK)\\s*\\("
     );
     private static final Pattern USER_VARIABLE_ASSIGNMENT = Pattern.compile("(?is)(?:SET\\s+)?@[A-Z0-9_$]+\\s*(?::=|=)");
+    private static final Pattern TEMPORARY_TABLE_REFERENCE = Pattern.compile(
+        "(?is)(?:^|[^A-Z0-9_$])(?:#{1,2}|\\[#{1,2})[A-Z0-9_$]+"
+    );
 
     private JdbcConnectionAffinity() {
     }
@@ -31,7 +34,8 @@ final class JdbcConnectionAffinity {
         }
         return STATEFUL_STATEMENT.matcher(normalized).find()
             || STATEFUL_FUNCTION.matcher(normalized).find()
-            || USER_VARIABLE_ASSIGNMENT.matcher(normalized).find();
+            || USER_VARIABLE_ASSIGNMENT.matcher(normalized).find()
+            || TEMPORARY_TABLE_REFERENCE.matcher(normalized).find();
     }
 
     private static String sanitizeSql(String sql) {
@@ -141,7 +145,11 @@ final class JdbcConnectionAffinity {
             }
             index += 1;
         }
-        appendSanitized(sanitized, sql, start, index);
+        if (closing == ']' && start + 1 < sql.length() && sql.charAt(start + 1) == '#') {
+            sanitized.append(sql, start, index);
+        } else {
+            appendSanitized(sanitized, sql, start, index);
+        }
         return index;
     }
 

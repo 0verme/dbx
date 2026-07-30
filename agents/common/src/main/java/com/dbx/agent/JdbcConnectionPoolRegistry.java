@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 final class JdbcConnectionPoolRegistry implements AutoCloseable {
@@ -68,10 +69,16 @@ final class JdbcConnectionPoolRegistry implements AutoCloseable {
     }
 
     private PoolEntry createPoolEntry(String key, ConnectionFactory connectionFactory) {
+        ConnectionFactoryDataSource factoryDataSource = null;
         try {
+            Connection initialConnection = Objects.requireNonNull(
+                connectionFactory.open(),
+                "JDBC connection factory returned null"
+            );
+            factoryDataSource = new ConnectionFactoryDataSource(connectionFactory, initialConnection);
             HikariConfig config = new HikariConfig();
             config.setPoolName("dbx-jdbc-" + key.substring(0, 12));
-            config.setDataSource(new ConnectionFactoryDataSource(connectionFactory));
+            config.setDataSource(factoryDataSource);
             config.setMaximumPoolSize(settings.maximumPoolSize);
             config.setMinimumIdle(settings.minimumIdle);
             config.setConnectionTimeout(settings.connectionTimeoutMillis);
@@ -81,8 +88,11 @@ final class JdbcConnectionPoolRegistry implements AutoCloseable {
             config.setInitializationFailTimeout(-1L);
             config.setIsolateInternalQueries(true);
             config.setThreadFactory(daemonThreadFactory("dbx-jdbc-pool-" + key.substring(0, 8)));
-            return new PoolEntry(new HikariDataSource(config), settings.poolRetireMillis);
-        } catch (RuntimeException error) {
+            return new PoolEntry(new HikariDataSource(config), factoryDataSource, settings.poolRetireMillis);
+        } catch (Exception error) {
+            if (factoryDataSource != null) {
+                factoryDataSource.closeUnusedInitialConnection();
+            }
             throw new PoolCreationException(error);
         }
     }
@@ -332,14 +342,20 @@ final class JdbcConnectionPoolRegistry implements AutoCloseable {
 
     private static final class PoolEntry implements AutoCloseable {
         private final HikariDataSource dataSource;
+        private final ConnectionFactoryDataSource factoryDataSource;
         private final long retireMillis;
         private int activeLeases;
         private boolean retired;
         private boolean dataSourceClosed;
         private volatile long lastReleasedAtMillis = System.currentTimeMillis();
 
-        private PoolEntry(HikariDataSource dataSource, long retireMillis) {
+        private PoolEntry(
+            HikariDataSource dataSource,
+            ConnectionFactoryDataSource factoryDataSource,
+            long retireMillis
+        ) {
             this.dataSource = dataSource;
+            this.factoryDataSource = factoryDataSource;
             this.retireMillis = retireMillis;
         }
 
@@ -391,6 +407,7 @@ final class JdbcConnectionPoolRegistry implements AutoCloseable {
                 }
                 dataSourceClosed = true;
             }
+            factoryDataSource.closeUnusedInitialConnection();
             dataSource.close();
         }
 
@@ -411,19 +428,36 @@ final class JdbcConnectionPoolRegistry implements AutoCloseable {
 
     private static final class ConnectionFactoryDataSource implements DataSource {
         private final ConnectionFactory connectionFactory;
+        private final AtomicReference<Connection> initialConnection;
 
-        private ConnectionFactoryDataSource(ConnectionFactory connectionFactory) {
+        private ConnectionFactoryDataSource(ConnectionFactory connectionFactory, Connection initialConnection) {
             this.connectionFactory = connectionFactory;
+            this.initialConnection = new AtomicReference<>(initialConnection);
         }
 
         @Override
         public Connection getConnection() throws SQLException {
+            Connection opened = initialConnection.getAndSet(null);
+            if (opened != null) {
+                return opened;
+            }
             try {
                 return connectionFactory.open();
             } catch (SQLException error) {
                 throw error;
             } catch (Exception error) {
                 throw new SQLException("Failed to open JDBC connection", error);
+            }
+        }
+
+        private void closeUnusedInitialConnection() {
+            Connection opened = initialConnection.getAndSet(null);
+            if (opened == null) {
+                return;
+            }
+            try {
+                opened.close();
+            } catch (Exception ignored) {
             }
         }
 
@@ -470,7 +504,7 @@ final class JdbcConnectionPoolRegistry implements AutoCloseable {
     }
 
     private static final class PoolCreationException extends RuntimeException {
-        private PoolCreationException(RuntimeException cause) {
+        private PoolCreationException(Exception cause) {
             super(cause);
         }
 

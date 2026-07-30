@@ -321,7 +321,7 @@ impl Drop for ClientSessionPoolCleanupGuard {
         let postgres_cancel_contexts = self.postgres_cancel_contexts.clone();
         let task_supervisor = self.task_supervisor.clone();
         task_supervisor.stop(&format!("keepalive:{pool_key}"));
-        task_supervisor.spawn_replace(format!("client-session-cleanup:{pool_key}"), move |_| async move {
+        task_supervisor.spawn_once(format!("client-session-cleanup:{pool_key}"), move |_| async move {
             pool_activity.write().await.remove(&pool_key);
             postgres_cancel_contexts.write().await.remove(&pool_key);
             let removed = connections.write().await.remove(&pool_key);
@@ -5393,6 +5393,13 @@ for line in sys.stdin:
         }
         assert!(!state.connections.read().await.contains_key(pool_key));
         assert!(!state.pool_activity.read().await.contains_key(pool_key));
+        for _ in 0..100 {
+            if state.supervised_task_count() == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(state.supervised_task_count(), 0);
 
         let _ = std::fs::remove_dir_all(dir);
     }
