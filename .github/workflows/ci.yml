@@ -404,6 +404,7 @@ jobs:
               - '.github/scripts/bump-agent-versions.mjs'
               - '.github/scripts/bump-agent-versions.test.mjs'
               - '.github/workflows/agents-release.yml'
+              - '.github/workflows/ci.yml'
             nix:
               # These advisory checks validate the pnpm and Cargo dependency closures.
               - 'package.json'
