@@ -277,6 +277,15 @@ pub struct PoolActivityTouch {
     task_supervisor: TaskSupervisor,
 }
 
+pub(crate) struct ClientSessionPoolCleanupGuard {
+    pool_key: String,
+    connections: Arc<RwLock<HashMap<String, PoolKind>>>,
+    pool_activity: Arc<RwLock<HashMap<String, PoolActivity>>>,
+    postgres_cancel_contexts: Arc<RwLock<HashMap<String, db::postgres::PostgresCancelContext>>>,
+    task_supervisor: TaskSupervisor,
+    armed: bool,
+}
+
 impl Drop for PoolActivityTouch {
     fn drop(&mut self) {
         let pool_key = self.pool_key.clone();
@@ -291,6 +300,34 @@ impl Drop for PoolActivityTouch {
                 return;
             }
             pool_activity.write().await.insert(pool_key, PoolActivity::now());
+        });
+    }
+}
+
+impl ClientSessionPoolCleanupGuard {
+    pub(crate) fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ClientSessionPoolCleanupGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let pool_key = self.pool_key.clone();
+        let connections = self.connections.clone();
+        let pool_activity = self.pool_activity.clone();
+        let postgres_cancel_contexts = self.postgres_cancel_contexts.clone();
+        let task_supervisor = self.task_supervisor.clone();
+        task_supervisor.stop(&format!("keepalive:{pool_key}"));
+        task_supervisor.spawn_replace(format!("client-session-cleanup:{pool_key}"), move |_| async move {
+            pool_activity.write().await.remove(&pool_key);
+            postgres_cancel_contexts.write().await.remove(&pool_key);
+            let removed = connections.write().await.remove(&pool_key);
+            if let Some(pool) = removed {
+                close_pool_kind_with_timeout(pool_key, pool).await;
+            }
         });
     }
 }
@@ -2334,7 +2371,10 @@ impl AppState {
                 PoolKind::Agent(client) => {
                     let client = client.clone();
                     drop(connections);
-                    let mut agent = client.lock().await;
+                    let Ok(mut agent) = client.try_lock() else {
+                        log::debug!("Agent connection pool '{pool_key}' is busy; skipping health probe");
+                        return false;
+                    };
                     let timeout = crate::db::connection_timeout();
                     match agent.validate_connection(Some(timeout)).await {
                         Ok(_) => false,
@@ -2418,6 +2458,32 @@ impl AppState {
         };
         close_pool_kind_with_timeout(pool_key, pool).await;
         Ok(true)
+    }
+
+    pub(crate) async fn client_session_pool_cleanup_guard(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        client_session_id: &str,
+    ) -> Option<ClientSessionPoolCleanupGuard> {
+        let config = {
+            let configs = self.configs.read().await;
+            configs.get(connection_id).cloned()
+        };
+        let db_type = config.as_ref().map(|config| config.db_type);
+        let base_pool_key = base_pool_key_for(db_type, connection_id, database, false);
+        let pool_key = session_scoped_pool_key_for(config.as_ref(), base_pool_key.clone(), Some(client_session_id));
+        if pool_key == base_pool_key {
+            return None;
+        }
+        Some(ClientSessionPoolCleanupGuard {
+            pool_key,
+            connections: self.connections.clone(),
+            pool_activity: self.pool_activity.clone(),
+            postgres_cancel_contexts: self.postgres_cancel_contexts.clone(),
+            task_supervisor: self.task_supervisor.clone(),
+            armed: true,
+        })
     }
 
     /// Removes a session-scoped pool immediately and schedules the potentially slow driver
@@ -5171,6 +5237,22 @@ for line in sys.stdin:
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[tokio::test]
+    async fn busy_agent_pool_skips_health_probe_without_waiting() {
+        let (state, dir) = test_app_state().await;
+        let client =
+            std::sync::Arc::new(tokio::sync::Mutex::new(crate::db::agent_driver::AgentDriverClient::test_stub()));
+        state.connections.write().await.insert("conn".to_string(), PoolKind::Agent(client.clone()));
+        let _busy = client.lock().await;
+
+        let started = Instant::now();
+        assert!(!state.remove_stale_connection_pool("conn").await);
+        assert!(started.elapsed() < Duration::from_millis(100));
+        assert!(state.connections.read().await.contains_key("conn"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn detects_database_connection_slot_exhaustion_errors() {
         assert!(super::is_connection_slot_exhausted_error(
@@ -5281,6 +5363,34 @@ for line in sys.stdin:
         state.pool_activity.write().await.insert(pool_key.to_string(), super::PoolActivity::now());
 
         assert!(state.detach_client_session_pool("conn", None, "import-1").await.unwrap());
+        assert!(!state.connections.read().await.contains_key(pool_key));
+        assert!(!state.pool_activity.read().await.contains_key(pool_key));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn client_session_cleanup_guard_detaches_pool_when_request_is_dropped() {
+        let (state, dir) = test_app_state().await;
+        let mut config = mysql_config(None);
+        config.id = "conn".to_string();
+        state.configs.write().await.insert(config.id.clone(), config);
+
+        let pool_key = "conn:session:completion-objects_request-1";
+        let pool = crate::db::sqlite::connect_path(":memory:").await.unwrap();
+        state.connections.write().await.insert(pool_key.to_string(), PoolKind::Sqlite(pool));
+        state.pool_activity.write().await.insert(pool_key.to_string(), super::PoolActivity::now());
+
+        let guard =
+            state.client_session_pool_cleanup_guard("conn", None, "completion-objects:request-1").await.unwrap();
+        drop(guard);
+
+        for _ in 0..100 {
+            if !state.connections.read().await.contains_key(pool_key) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         assert!(!state.connections.read().await.contains_key(pool_key));
         assert!(!state.pool_activity.read().await.contains_key(pool_key));
 
