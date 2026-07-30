@@ -77,6 +77,8 @@ export default withEnglishFallback({
     windows7ManualUpdate: "Windows 7은 전용 WebView2 109 오프라인 설치 프로그램이 필요합니다. 릴리스 페이지를 열어 Windows 7 패키지를 다운로드하여 업데이트하세요.",
     downloading: "다운로드 중 {progress}%",
     downloadFailed: "업데이트 다운로드에 실패했습니다: {error}",
+    downloadCanceled: "업데이트 다운로드가 취소되었습니다.",
+    networkOrMirrorFailed: "네트워크 연결 시간이 초과되었거나 다운로드 미러에 연결할 수 없습니다. 네트워크를 확인하거나 '릴리스 열기'를 클릭하여 수동으로 다운로드하세요.",
     installing: "업데이트 설치 중...",
     installFailed: "업데이트 설치에 실패했습니다: {error}",
     restart: "종료 후 다시 시작",

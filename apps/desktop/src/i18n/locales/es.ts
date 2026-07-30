@@ -77,6 +77,8 @@ export default withEnglishFallback({
     windows7ManualUpdate: "Windows 7 requiere el instalador sin conexión dedicado de WebView2 109. Abre la página de lanzamiento y descarga el paquete para Windows 7.",
     downloading: "Descargando {progress}%",
     downloadFailed: "Error al descargar la actualización: {error}",
+    downloadCanceled: "Descarga de actualización cancelada.",
+    networkOrMirrorFailed: "El tiempo de espera de la conexión de red se ha agotado o los espejos de descarga no están disponibles. Compruebe su red o haga clic en 'Abrir lanzamiento' para descargar manualmente.",
     installing: "Instalando actualización...",
     installFailed: "Error al instalar la actualización: {error}",
     restart: "Salir y reiniciar",

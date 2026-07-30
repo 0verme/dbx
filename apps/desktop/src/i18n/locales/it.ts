@@ -76,6 +76,8 @@ export default withEnglishFallback({
     windows7ManualUpdate: "Windows 7 richiede il programma di installazione offline dedicato WebView2 109. Apri la pagina della release e scarica il pacchetto per Windows 7.",
     downloading: "Download in corso {progress}%",
     downloadFailed: "Download dell'aggiornamento non riuscito: {error}",
+    downloadCanceled: "Download dell'aggiornamento annullato.",
+    networkOrMirrorFailed: "Connessione di rete scaduta o server mirror temporaneamente non disponibili. Controlla la rete o fai clic su 'Apri Release' per scaricare manualmente.",
     installing: "Installazione dell'aggiornamento...",
     installFailed: "Installazione dell'aggiornamento non riuscita: {error}",
     restart: "Esci e Riavvia",

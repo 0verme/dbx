@@ -77,6 +77,8 @@ export default withEnglishFallback({
     windows7ManualUpdate: "Windows 7 需要使用专用的 WebView2 109 离线安装包更新。请打开下载页并下载 Windows 7 安装包。",
     downloading: "下载中 {progress}%",
     downloadFailed: "更新下载失败：{error}",
+    downloadCanceled: "已取消更新下载。",
+    networkOrMirrorFailed: "网络连接超时或所有镜像源暂不可用。请检查网络状态，或点击“打开下载页”手动下载。",
     installing: "正在安装更新...",
     installFailed: "更新安装失败：{error}",
     restart: "退出并重启",

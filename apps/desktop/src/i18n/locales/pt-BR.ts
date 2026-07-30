@@ -77,6 +77,8 @@ export default withEnglishFallback({
     windows7ManualUpdate: "O Windows 7 requer o instalador offline dedicado do WebView2 109. Abra a página da versão e baixe o pacote para Windows 7.",
     downloading: "Baixando {progress}%",
     downloadFailed: "Falha ao baixar a atualização: {error}",
+    downloadCanceled: "Download da atualização cancelado.",
+    networkOrMirrorFailed: "O tempo de conexão esgotou ou os espelhos de download estão indisponíveis. Verifique sua rede ou clique em 'Abrir Lançamento' para baixar manualmente.",
     installing: "Instalando atualização...",
     installFailed: "Falha ao instalar a atualização: {error}",
     restart: "Sair e Reiniciar",

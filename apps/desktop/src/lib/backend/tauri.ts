@@ -1885,6 +1885,10 @@ export async function downloadUpdate(source: UpdateDownloadSource, latestVersion
   return invoke("download_update", { source, latestVersion });
 }
 
+export async function cancelUpdateDownload(): Promise<void> {
+  return invoke("cancel_update_download");
+}
+
 export async function installDownloadedUpdate(): Promise<void> {
   return invoke("install_downloaded_update");
 }

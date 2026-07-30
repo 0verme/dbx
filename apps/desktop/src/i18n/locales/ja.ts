@@ -77,6 +77,8 @@ export default withEnglishFallback({
     windows7ManualUpdate: "Windows 7 では専用の WebView2 109 オフラインインストーラーが必要です。リリースページから Windows 7 用パッケージをダウンロードして更新してください。",
     downloading: "ダウンロード中 {progress}%",
     downloadFailed: "アップデートのダウンロードに失敗しました: {error}",
+    downloadCanceled: "アップデートのダウンロードがキャンセルされました。",
+    networkOrMirrorFailed: "ネットワーク接続がタイムアウトしたか、ミラーサーバーにアクセスできません。ネットワークを確認するか、「リリースページを開く」をクリックして手動でダウンロードしてください。",
     installing: "アップデートをインストール中...",
     installFailed: "アップデートのインストールに失敗しました: {error}",
     restart: "終了して再起動",

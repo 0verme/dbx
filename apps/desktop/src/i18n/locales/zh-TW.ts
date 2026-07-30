@@ -77,6 +77,8 @@ export default withEnglishFallback({
     windows7ManualUpdate: "Windows 7 需要使用專用的 WebView2 109 離線安裝套件更新。請開啟下載頁並下載 Windows 7 安裝套件。",
     downloading: "下載中 {progress}%",
     downloadFailed: "更新下載失敗：{error}",
+    downloadCanceled: "已取消更新下載。",
+    networkOrMirrorFailed: "網路連接超時或所有鏡像源暫不可用。請檢查網路狀態，或點擊“開啟下載頁”手動下載。",
     installing: "正在安裝更新...",
     installFailed: "更新安裝失敗：{error}",
     restart: "結束並重新啟動",

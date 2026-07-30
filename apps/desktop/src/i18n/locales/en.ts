@@ -75,6 +75,8 @@ export default {
     windows7ManualUpdate: "Windows 7 requires the dedicated WebView2 109 offline installer. Open the release page and download the Windows 7 package to update.",
     downloading: "Downloading {progress}%",
     downloadFailed: "Update download failed: {error}",
+    downloadCanceled: "Update download canceled.",
+    networkOrMirrorFailed: "Network connection timed out or download mirrors are currently unreachable. Please check your connection or click 'Open Release' to download manually.",
     installing: "Installing update...",
     installFailed: "Update installation failed: {error}",
     restart: "Exit & Restart",

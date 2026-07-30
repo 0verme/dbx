@@ -2054,6 +2054,7 @@ pub fn run() {
             commands::update::fetch_changelog,
             commands::update::get_system_proxy_url,
             commands::update::download_update,
+            commands::update::cancel_update_download,
             commands::update::install_downloaded_update,
             commands::transfer::start_transfer,
             commands::transfer::preview_transfer_ownership,
