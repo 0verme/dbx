@@ -12,6 +12,7 @@ export type DatabaseType =
   | "mongodb"
   | "oracle"
   | "elasticsearch"
+  | "easysearch"
   | "hbase"
   | "qdrant"
   | "milvus"
@@ -66,6 +67,10 @@ export type DatabaseType =
   | "jdbc"
   | "mq"
   | "nacos";
+
+export function isElasticsearchCompatibleDatabaseType(dbType?: DatabaseType): boolean {
+  return dbType === "elasticsearch" || dbType === "easysearch";
+}
 
 export interface SqlSnippet {
   id: string;

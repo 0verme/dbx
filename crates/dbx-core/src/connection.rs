@@ -98,6 +98,7 @@ pub enum PoolKind {
     ClickHouse(db::clickhouse_driver::ChClient),
     SqlServer(Arc<tokio::sync::Mutex<db::sqlserver::SqlServerClient>>),
     Elasticsearch(db::elasticsearch_driver::EsClient),
+    Easysearch(db::easysearch_driver::EasysearchClient),
     HBase(db::hbase_driver::HBaseClient),
     VectorDb(db::vector_driver::VectorClient),
     InfluxDb(db::influxdb_driver::InfluxdbClient),
@@ -1475,6 +1476,19 @@ impl AppState {
                 db::elasticsearch_driver::test_connection(&mut client, connect_timeout).await?;
                 PoolKind::Elasticsearch(client)
             }
+            DatabaseType::Easysearch => {
+                let mut client = db::easysearch_driver::EasysearchClient::from_config(
+                    &url,
+                    Some(&db_config.username),
+                    Some(&db_config.password),
+                    db_config.ssl,
+                    db_config.url_params.as_deref(),
+                    db_config.external_config.as_ref(),
+                    connect_timeout,
+                );
+                db::easysearch_driver::test_connection(&mut client, connect_timeout).await?;
+                PoolKind::Easysearch(client)
+            }
             DatabaseType::Hbase => {
                 let client = db::hbase_driver::HBaseClient::new(
                     &url,
@@ -2317,6 +2331,18 @@ impl AppState {
                         }
                     }
                 }
+                PoolKind::Easysearch(client) => {
+                    let mut client = client.clone();
+                    drop(connections);
+                    let timeout = crate::db::connection_timeout();
+                    match db::easysearch_driver::test_connection(&mut client, timeout).await {
+                        Ok(()) => false,
+                        Err(err) => {
+                            log::warn!("Easysearch connection pool '{pool_key}' is stale: {err}");
+                            true
+                        }
+                    }
+                }
                 PoolKind::HBase(client) => {
                     let client = client.clone();
                     drop(connections);
@@ -3005,6 +3031,16 @@ impl AppState {
                         }
                     }
                 }
+                PoolKind::Easysearch(client) => {
+                    let mut client = client.clone();
+                    match db::easysearch_driver::test_connection(&mut client, timeout).await {
+                        Ok(()) => true,
+                        Err(e) => {
+                            log::warn!("Easysearch connection pool '{key}' is unhealthy: {e}");
+                            false
+                        }
+                    }
+                }
                 PoolKind::HBase(client) => match db::hbase_driver::test_connection(client, timeout).await {
                     Ok(_) => true,
                     Err(e) => {
@@ -3260,6 +3296,7 @@ enum KeepaliveTarget {
     ClickHouse(db::clickhouse_driver::ChClient),
     SqlServer(Arc<tokio::sync::Mutex<db::sqlserver::SqlServerClient>>),
     Elasticsearch(db::elasticsearch_driver::EsClient),
+    Easysearch(db::easysearch_driver::EasysearchClient),
     HBase(db::hbase_driver::HBaseClient),
     VectorDb(db::vector_driver::VectorClient),
     InfluxDb(db::influxdb_driver::InfluxdbClient),
@@ -3279,6 +3316,7 @@ fn keepalive_target_from_pool(pool: &PoolKind, config: &ConnectionConfig) -> Opt
         PoolKind::ClickHouse(client) => Some(KeepaliveTarget::ClickHouse(client.clone())),
         PoolKind::SqlServer(client) => Some(KeepaliveTarget::SqlServer(client.clone())),
         PoolKind::Elasticsearch(client) => Some(KeepaliveTarget::Elasticsearch(client.clone())),
+        PoolKind::Easysearch(client) => Some(KeepaliveTarget::Easysearch(client.clone())),
         PoolKind::HBase(client) => Some(KeepaliveTarget::HBase(client.clone())),
         PoolKind::VectorDb(client) => Some(KeepaliveTarget::VectorDb(client.clone())),
         PoolKind::InfluxDb(client) => Some(KeepaliveTarget::InfluxDb(client.clone())),
@@ -3310,6 +3348,7 @@ async fn ping_keepalive_target(target: &mut KeepaliveTarget, timeout: Duration) 
             db::sqlserver::test_connection(&mut client).await
         }
         KeepaliveTarget::Elasticsearch(client) => db::elasticsearch_driver::test_connection(client, timeout).await,
+        KeepaliveTarget::Easysearch(client) => db::easysearch_driver::test_connection(client, timeout).await,
         KeepaliveTarget::HBase(client) => db::hbase_driver::test_connection(client, timeout).await.map(|_| ()),
         KeepaliveTarget::VectorDb(client) => db::vector_driver::test_connection(client, timeout).await,
         KeepaliveTarget::InfluxDb(client) => db::influxdb_driver::test_connection(client, timeout).await,
@@ -3499,6 +3538,7 @@ fn clone_pool_kind(pool: &PoolKind) -> PoolKind {
         PoolKind::ClickHouse(client) => PoolKind::ClickHouse(client.clone()),
         PoolKind::SqlServer(client) => PoolKind::SqlServer(client.clone()),
         PoolKind::Elasticsearch(client) => PoolKind::Elasticsearch(client.clone()),
+        PoolKind::Easysearch(client) => PoolKind::Easysearch(client.clone()),
         PoolKind::HBase(client) => PoolKind::HBase(client.clone()),
         PoolKind::VectorDb(client) => PoolKind::VectorDb(client.clone()),
         PoolKind::InfluxDb(client) => PoolKind::InfluxDb(client.clone()),
@@ -3541,6 +3581,9 @@ pub async fn close_pool_kind(pool: PoolKind) {
             drop(client);
         }
         PoolKind::Elasticsearch(client) => {
+            drop(client);
+        }
+        PoolKind::Easysearch(client) => {
             drop(client);
         }
         PoolKind::HBase(client) => {
@@ -3644,6 +3687,7 @@ fn base_pool_key_for_with_catalog(
                 && matches!(
                     db_type,
                     DatabaseType::Elasticsearch
+                        | DatabaseType::Easysearch
                         | DatabaseType::Qdrant
                         | DatabaseType::Milvus
                         | DatabaseType::Weaviate
@@ -5076,6 +5120,7 @@ mod tests {
             DatabaseType::ClickHouse,
             DatabaseType::SqlServer,
             DatabaseType::Elasticsearch,
+            DatabaseType::Easysearch,
             DatabaseType::Kwdb,
         ] {
             let mut config = mysql_config(Some("app"));

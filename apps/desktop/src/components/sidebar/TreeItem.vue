@@ -382,6 +382,7 @@ function connectionTooltipScheme(config: Pick<ConnectionConfig, "db_type" | "ssl
     case "sqlserver":
       return "mssql";
     case "elasticsearch":
+    case "easysearch":
     case "qdrant":
     case "milvus":
     case "weaviate":

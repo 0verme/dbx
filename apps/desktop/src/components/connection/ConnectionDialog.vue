@@ -839,6 +839,13 @@ const driverProfiles: Record<
     label: "Elasticsearch",
     icon: "elasticsearch",
   },
+  easysearch: {
+    type: "easysearch",
+    port: 9200,
+    user: "",
+    label: "Easysearch",
+    icon: "easysearch",
+  },
   hbase: { type: "hbase", port: 8080, user: "", label: "Apache HBase", icon: "hbase" },
   qdrant: { type: "qdrant", port: 6333, user: "", label: "Qdrant", icon: "qdrant" },
   milvus: { type: "milvus", port: 19530, user: "root", label: "Milvus", icon: "milvus" },
@@ -2225,6 +2232,7 @@ const iconTypeMap: Record<string, string> = {
   sqlserver: "sqlserver",
   oracle: "oracle",
   elasticsearch: "elasticsearch",
+  easysearch: "easysearch",
   hbase: "hbase",
   qdrant: "qdrant",
   milvus: "milvus",
@@ -2305,6 +2313,7 @@ const dbOptions: DbOption[] = [
   { value: "sqlite", label: "SQLite" },
   { value: "sqlserver", label: "SQL Server" },
   { value: "elasticsearch", label: "Elasticsearch" },
+  { value: "easysearch", label: "Easysearch" },
   { value: "hbase", label: "Apache HBase" },
   { value: "qdrant", label: "Qdrant" },
   { value: "milvus", label: "Milvus" },
@@ -2407,7 +2416,7 @@ const dbCategoryDefinitions: Array<{
   {
     key: "document",
     titleKey: "connection.databaseCategoryDocument",
-    optionValues: ["mongodb", "redis", "elasticsearch", "hbase", "manticoresearch", "cassandra"],
+    optionValues: ["mongodb", "redis", "elasticsearch", "easysearch", "hbase", "manticoresearch", "cassandra"],
   },
   {
     key: "graph_ai",
@@ -2522,7 +2531,7 @@ const sqliteExtensionPaths = computed({
     form.value.url_params = setSqliteExtensionPaths(form.value.url_params, value);
   },
 });
-const tlsCapableDatabaseTypes = new Set<DatabaseType>(["mysql", "starrocks", "postgres", "redshift", "gaussdb", "kwdb", "opengauss", "questdb", "dameng", "redis", "etcd", "clickhouse", "elasticsearch", "hbase", "qdrant", "milvus", "weaviate", "chromadb", "influxdb"]);
+const tlsCapableDatabaseTypes = new Set<DatabaseType>(["mysql", "starrocks", "postgres", "redshift", "gaussdb", "kwdb", "opengauss", "questdb", "dameng", "redis", "etcd", "clickhouse", "elasticsearch", "easysearch", "hbase", "qdrant", "milvus", "weaviate", "chromadb", "influxdb"]);
 const supportsTlsToggle = computed(() => tlsCapableDatabaseTypes.has(form.value.db_type));
 const supportsCaCertificatePath = computed(() => form.value.db_type === "clickhouse");
 const supportsGenericUrlParams = computed(() => form.value.db_type !== "manticoresearch" && form.value.db_type !== "hbase");
