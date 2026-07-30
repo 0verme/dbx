@@ -34,6 +34,7 @@ import { useVisibilityChange } from "@/composables/useVisibilityChange";
 import { useWebDavAutoUpload } from "@/composables/useWebDavAutoUpload";
 import { useScheduledDatabaseBackups } from "@/composables/useScheduledDatabaseBackups";
 import { shouldDrawDesktopWindowFrame } from "@/composables/useWindowControls";
+import { createOpenTabsRestorationBarrier, initializeDesktopOpenTabs, type OpenTabsRestorationBarrier } from "@/lib/app/openTabsStartup";
 import { useSaveSqlFolderSelection } from "@/composables/useSaveSqlFolderSelection";
 import "@/i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
@@ -1126,9 +1127,15 @@ function pasteClipboardAsSqlInCondition() {
   void contentAreaRef.value?.pasteClipboardAsSqlInCondition?.();
 }
 
+// Cold-start file arguments can arrive while persisted tabs are still being
+// restored. Keep external SQL tabs behind that phase only, so unrelated
+// initialization cannot permanently block files opened from the OS.
+let desktopOpenTabsRestorationBarrier: OpenTabsRestorationBarrier | null = null;
+
 async function openSqlFilePath(path: string) {
   if (!isTauriRuntime()) return;
   try {
+    await desktopOpenTabsRestorationBarrier?.settled;
     const content = await api.readExternalSqlFile(path);
     const connectionId = connectionStore.activeConnectionId || activeTab.value?.connectionId || connectionStore.connections[0]?.id || "";
     const connection = connectionId ? connectionStore.getConfig(connectionId) : undefined;
@@ -1991,14 +1998,27 @@ function onLoginSuccess() {
 async function initApp() {
   const t0 = performance.now();
   console.log("[STARTUP] initApp begin");
-  await settingsStore.initAiConfigs();
-  try {
+  const restoreOpenTabs = async () => {
     await settingsStore.initEditorSettings();
     console.log(`[STARTUP]   settingsStore.initEditorSettings: ${(performance.now() - t0).toFixed(0)}ms`);
     await connectionStore.initFromDisk();
     console.log(`[STARTUP]   connectionStore.initFromDisk: ${(performance.now() - t0).toFixed(0)}ms`);
     await queryStore.initOpenTabs({ validConnectionIds: connectionStore.connections.map((connection) => connection.id) });
     console.log(`[STARTUP]   queryStore.initOpenTabs: ${(performance.now() - t0).toFixed(0)}ms`);
+  };
+
+  if (!desktopOpenTabsRestorationBarrier) await settingsStore.initAiConfigs();
+  try {
+    if (desktopOpenTabsRestorationBarrier) {
+      await initializeDesktopOpenTabs({
+        barrier: desktopOpenTabsRestorationBarrier,
+        initializeOptionalState: () => settingsStore.initAiConfigs(),
+        restoreOpenTabs,
+        onOptionalStateError: (error) => console.error("[STARTUP] settingsStore.initAiConfigs failed", error),
+      });
+    } else {
+      await restoreOpenTabs();
+    }
     await settingsStore.initDesktopSettings().catch(() => {});
 
     void promptTemplateStore.init();
@@ -2129,6 +2149,7 @@ onMounted(async () => {
       .catch(() => {});
     return;
   }
+  desktopOpenTabsRestorationBarrier = createOpenTabsRestorationBarrier();
   void initApp();
   setupFileDrop().catch(() => {});
   setTimeout(() => {
