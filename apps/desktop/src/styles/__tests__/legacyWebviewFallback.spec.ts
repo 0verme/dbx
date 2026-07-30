@@ -6,6 +6,8 @@ const dialogContentSource = readFileSync(new URL("../../components/ui/dialog/Dia
 const dialogScrollContentSource = readFileSync(new URL("../../components/ui/dialog/DialogScrollContent.vue", import.meta.url), "utf8");
 const dialogOverlaySource = readFileSync(new URL("../../components/ui/dialog/DialogOverlay.vue", import.meta.url), "utf8");
 const connectionDialogSource = readFileSync(new URL("../../components/connection/ConnectionDialog.vue", import.meta.url), "utf8");
+const dialogBackdropSource = readFileSync(new URL("../../lib/app/dialogBackdrop.ts", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("../../App.vue", import.meta.url), "utf8");
 const desktopIndexSource = readFileSync(new URL("../../../index.html", import.meta.url), "utf8");
 const connectionDialogLegacyCss = readFileSync(new URL("../../../public/connection-dialog-legacy.css", import.meta.url), "utf8");
 
@@ -44,9 +46,15 @@ describe("legacy WebView CSS fallbacks", () => {
     expect(connectionDialogSource).toContain("max-height: calc(var(--dbx-viewport-height) - 2rem);");
   });
 
-  it("avoids full-window backdrop filters that can blank WebKit after a dialog closes", () => {
+  it("blurs the stable app root instead of the transient dialog overlay", () => {
     expect(dialogOverlaySource).not.toContain("backdrop-filter");
     expect(dialogOverlaySource).toContain("bg-black/10");
+    expect(globalsCss).toContain("html.dbx-dialog-backdrop-active #root");
+    expect(globalsCss).toContain("filter: blur(4px);");
+    expect(dialogBackdropSource).toContain("dialogBackdropObserver.observe(document.body, { childList: true })");
+    expect(dialogBackdropSource).not.toContain("subtree: true");
+    expect(appSource).toContain("startDialogBackdropSync();");
+    expect(appSource).toContain("stopDialogBackdropSync();");
   });
 
   it("keeps legacy tab triggers connected to the configured corner style", () => {

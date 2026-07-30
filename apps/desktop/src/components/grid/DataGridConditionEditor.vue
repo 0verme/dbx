@@ -570,15 +570,15 @@ defineExpose({ focus, dismiss: editor.dismiss, rememberHistory: editor.rememberH
     0 1px color-mix(in oklab, var(--background) 96%, var(--muted) 4%);
 }
 
-:global(.dark) .data-grid-topbar-condition-label--where {
+:global(.dark .data-grid-topbar-condition-label--where) {
   color: rgb(96 165 250);
 }
 
-:global(.dark) .data-grid-topbar-condition-label--order {
+:global(.dark .data-grid-topbar-condition-label--order) {
   color: rgb(251 146 60);
 }
 
-:global(.dark) .data-grid-topbar-condition-label--floating {
+:global(.dark .data-grid-topbar-condition-label--floating) {
   text-shadow:
     -1px 0 rgb(24, 24, 27),
     1px 0 rgb(24, 24, 27),
@@ -617,7 +617,7 @@ defineExpose({ focus, dismiss: editor.dismiss, rememberHistory: editor.rememberH
   line-height: 1.5rem;
 }
 
-:global(.dark) .data-grid-topbar-condition-input {
+:global(.dark .data-grid-topbar-condition-input) {
   color: rgb(244, 244, 245);
   background-color: transparent !important;
 }
@@ -657,7 +657,7 @@ defineExpose({ focus, dismiss: editor.dismiss, rememberHistory: editor.rememberH
   --data-grid-condition-suffix-width: 0px;
 }
 
-:global(.dark) .data-grid-topbar-condition-pane--expanded {
+:global(.dark .data-grid-topbar-condition-pane--expanded) {
   background: rgb(24, 24, 27) !important;
   color: rgb(244, 244, 245);
   box-shadow:
@@ -706,11 +706,11 @@ defineExpose({ focus, dismiss: editor.dismiss, rememberHistory: editor.rememberH
   color: rgb(249 115 22 / 70%);
 }
 
-:global(.dark) .data-grid-topbar-condition-input--where.data-grid-topbar-condition-input--compact::placeholder {
+:global(.dark .data-grid-topbar-condition-input--where.data-grid-topbar-condition-input--compact::placeholder) {
   color: rgb(147 197 253 / 70%);
 }
 
-:global(.dark) .data-grid-topbar-condition-input--order.data-grid-topbar-condition-input--compact::placeholder {
+:global(.dark .data-grid-topbar-condition-input--order.data-grid-topbar-condition-input--compact::placeholder) {
   color: rgb(253 186 116 / 70%);
 }
 </style>

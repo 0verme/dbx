@@ -124,6 +124,14 @@ describe("DataGridConditionEditor quote completion", () => {
     expect(floatingLabelCss).not.toContain("box-shadow:");
   });
 
+  it("keeps dark condition styles scoped to their target elements", () => {
+    const source = readFileSync(resolve(process.cwd(), "apps/desktop/src/components/grid/DataGridConditionEditor.vue"), "utf8");
+
+    expect(source).not.toContain(":global(.dark) .data-grid");
+    expect(source).toContain(":global(.dark .data-grid-topbar-condition-label--floating)");
+    expect(source).toContain(":global(.dark .data-grid-topbar-condition-pane--expanded)");
+  });
+
   it("scrolls the caret into view after accepting a long completion", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/desktop/src/components/grid/DataGridConditionEditor.vue"), "utf8");
 
