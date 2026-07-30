@@ -2272,6 +2272,7 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function invalidateCompletionCache(connectionId: string, database?: string) {
     invalidateMetadataCaches({ connectionId, database });
+    if (database == null) delete completionDatabasesCache.value[connectionId];
     const cachePrefix = database == null ? `${connectionId}:` : `${connectionId}:${database}:`;
     const exactCacheKey = database == null ? null : `${connectionId}:${database}`;
     for (const key of Object.keys(completionTablesCache.value)) {
