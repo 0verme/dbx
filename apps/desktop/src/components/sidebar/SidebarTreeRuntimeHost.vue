@@ -1083,8 +1083,8 @@ async function openSavedSqlFile() {
   if (node.type !== "saved-sql-file" || !node.savedSqlId) return;
   const file = await savedSqlStore.ensureFileContent(node.savedSqlId);
   if (!file) return;
-  queryStore.openSavedSql(file);
-  connectionStore.activeConnectionId = file.connectionId;
+  const tabId = queryStore.openSavedSql(file);
+  connectionStore.activeConnectionId = queryStore.tabs.find((tab) => tab.id === tabId)?.connectionId ?? file.connectionId;
   void savedSqlStore.recordFileUsage(file.id);
 }
 
@@ -3744,8 +3744,8 @@ function savedSqlHistoryScopeForNode(node: TreeNode): SavedSqlHistoryScope | nul
 async function openSavedSqlHistoryFile(fileId: string) {
   const file = await savedSqlStore.ensureFileContent(fileId);
   if (!file) return;
-  queryStore.openSavedSql(file);
-  connectionStore.activeConnectionId = file.connectionId;
+  const tabId = queryStore.openSavedSql(file);
+  connectionStore.activeConnectionId = queryStore.tabs.find((tab) => tab.id === tabId)?.connectionId ?? file.connectionId;
   void savedSqlStore.recordFileUsage(file.id);
 }
 
