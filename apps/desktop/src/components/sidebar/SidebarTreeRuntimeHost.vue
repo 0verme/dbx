@@ -1138,7 +1138,7 @@ async function openServerDashboard() {
     connectionStore.activeConnectionId = node.connectionId;
     if (currentDatabaseType() === "nacos") {
       queryStore.openNacosDashboard(node.connectionId);
-    } else if (currentDatabaseType() === "postgres") {
+    } else if (connectionSupportsPgServerDashboard(connectionStore.getConfig(node.connectionId))) {
       queryStore.openPostgresDashboard(node.connectionId);
     } else {
       queryStore.openMysqlDashboard(node.connectionId);
