@@ -1817,6 +1817,7 @@ async fn list_tables_once(
         }
         try_sqlserver!(connections, &pool_key, list_tables, schema, filter, limit, offset);
         if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
+            let use_mongodb_collection_listing = uses_mongodb_agent_collection_listing(db_config.as_ref());
             let is_oracle = db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::Oracle);
             let is_tdengine = db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::Tdengine);
             let use_agent_table_paging = db_config.as_ref().is_some_and(supports_agent_table_paging);
@@ -1830,6 +1831,17 @@ async fn list_tables_once(
             let fallback_config = db_config.clone();
             drop(connections);
             let mut client = client.lock().await;
+            if use_mongodb_collection_listing {
+                let collection_names = client.mongo_list_collections::<Vec<String>>(database).await?;
+                return Ok(filter_mongodb_agent_collections(
+                    collection_names,
+                    filter,
+                    limit,
+                    offset,
+                    object_types,
+                    table_name_filter,
+                ));
+            }
             let agent_filter = if filter_locally_after_comments { None } else { filter };
             let force_local_table_name_filter = table_name_filter.is_some_and(|filter| !filter.is_empty());
             let agent_limit = if filter_locally_after_comments || force_local_table_name_filter {
@@ -2078,6 +2090,24 @@ fn collection_names_to_tables(names: Vec<String>, table_type: &str) -> Vec<db::T
         .collect()
 }
 
+fn filter_mongodb_agent_collections(
+    names: Vec<String>,
+    filter: Option<&str>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    object_types: Option<&[String]>,
+    table_name_filter: Option<&TableNameFilter>,
+) -> Vec<db::TableInfo> {
+    filter_table_infos(
+        collection_names_to_tables(names, "COLLECTION"),
+        filter,
+        limit,
+        offset,
+        object_types,
+        table_name_filter,
+    )
+}
+
 fn filter_table_infos(
     tables: Vec<db::TableInfo>,
     filter: Option<&str>,
@@ -2181,6 +2211,10 @@ fn normalize_table_info_object_type(value: &str) -> String {
 
 fn uses_presto_like_information_schema_tables(db_type: &DatabaseType) -> bool {
     matches!(db_type, DatabaseType::PrestoSql | DatabaseType::Trino)
+}
+
+fn uses_mongodb_agent_collection_listing(config: Option<&ConnectionConfig>) -> bool {
+    config.is_some_and(|config| config.db_type == DatabaseType::MongoDb)
 }
 
 async fn external_driver_presto_like_tables(
@@ -2427,19 +2461,20 @@ mod tests {
     use super::{
         clickhouse_metadata_database, dameng_object_statistics_dba_segments_sql,
         dameng_object_statistics_rows_only_sql, dameng_object_statistics_user_segments_sql, deduplicate_column_infos,
-        ephemeral_agent_metadata_session_id, filter_mysql_system_databases_for_config, filter_object_infos,
-        filter_table_infos, filter_visible_schema_names, gbase8a_object_statistics_sql,
-        is_agent_postgres_metadata_fallback_config, is_retryable_metadata_error, metadata_name_or_comment_matches,
-        mysql_object_source_ddl_column_index, mysql_object_source_sql, mysql_table_metadata_catalog,
-        normalize_information_schema_table_type, oracle_columns_from_query_result, oracle_columns_sql,
-        oracle_object_statistics_dba_segments_sql, oracle_object_statistics_from_query_result,
+        ephemeral_agent_metadata_session_id, filter_mongodb_agent_collections,
+        filter_mysql_system_databases_for_config, filter_object_infos, filter_table_infos, filter_visible_schema_names,
+        gbase8a_object_statistics_sql, is_agent_postgres_metadata_fallback_config, is_retryable_metadata_error,
+        metadata_name_or_comment_matches, mysql_object_source_ddl_column_index, mysql_object_source_sql,
+        mysql_table_metadata_catalog, normalize_information_schema_table_type, oracle_columns_from_query_result,
+        oracle_columns_sql, oracle_object_statistics_dba_segments_sql, oracle_object_statistics_from_query_result,
         oracle_object_statistics_rows_only_sql, oracle_object_statistics_sql,
         oracle_object_statistics_user_segments_sql, oracle_table_comment_from_query_result, oracle_table_comment_sql,
         oracle_table_comments_sql, presto_like_columns_from_query_result, presto_like_information_schema_columns_sql,
         presto_like_information_schema_tables_sql, presto_like_tables_from_query_result,
         should_query_oracle_columns_via_sql_first, table_comments_from_query_result, table_name_filter_matches,
         tdengine_table_comment_like_pattern, tdengine_table_comment_sql, tdengine_table_comments_sql,
-        visible_schema_filter, TableNameFilter, TDENGINE_COMMENT_SEARCH_TIMEOUT, TDENGINE_LIKE_PATTERN_MAX_BYTES,
+        uses_mongodb_agent_collection_listing, visible_schema_filter, TableNameFilter, TDENGINE_COMMENT_SEARCH_TIMEOUT,
+        TDENGINE_LIKE_PATTERN_MAX_BYTES,
     };
     use crate::models::connection::{ConnectionConfig, DatabaseType};
     use std::collections::HashMap;
@@ -2752,6 +2787,40 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].name, "audit_record");
+    }
+
+    #[test]
+    fn mongodb_agent_collection_listing_only_applies_to_mongodb() {
+        let mongodb = test_connection_config(DatabaseType::MongoDb);
+        let postgres = test_connection_config(DatabaseType::Postgres);
+
+        assert!(uses_mongodb_agent_collection_listing(Some(&mongodb)));
+        assert!(!uses_mongodb_agent_collection_listing(Some(&postgres)));
+        assert!(!uses_mongodb_agent_collection_listing(None));
+    }
+
+    #[test]
+    fn mongodb_agent_collections_preserve_table_list_constraints() {
+        let collection_types = vec!["COLLECTION".to_string()];
+        let names = vec!["audit_log".to_string(), "users".to_string(), "audit_record".to_string()];
+
+        let filtered = filter_mongodb_agent_collections(
+            names.clone(),
+            Some("audit"),
+            Some(1),
+            Some(1),
+            Some(&collection_types),
+            None,
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "audit_record");
+        assert_eq!(filtered[0].table_type, "COLLECTION");
+
+        let table_types = vec!["TABLE".to_string()];
+        let filtered = filter_mongodb_agent_collections(names, None, None, None, Some(&table_types), None);
+
+        assert!(filtered.is_empty());
     }
 
     #[test]
