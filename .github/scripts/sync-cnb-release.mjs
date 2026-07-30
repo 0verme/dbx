@@ -164,6 +164,23 @@ export class CnbClient {
     );
   }
 
+  async listReleases(pageSize = 100) {
+    const releases = [];
+    for (let page = 1; ; page++) {
+      const batch = await this.request(
+        "GET",
+        `/${this.repository}/-/releases?page=${page}&page_size=${pageSize}`,
+      );
+      if (!Array.isArray(batch)) throw new Error("CNB release list response must be an array.");
+      releases.push(...batch);
+      if (batch.length < pageSize) return releases;
+    }
+  }
+
+  async deleteRelease(releaseId) {
+    await this.request("DELETE", `/${this.repository}/-/releases/${encodeURIComponent(releaseId)}`);
+  }
+
   async request(method, path, body = null, allow404 = false) {
     const response = await fetch(`${this.apiBase}${path}`, {
       method,

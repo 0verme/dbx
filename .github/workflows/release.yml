@@ -681,6 +681,18 @@ jobs:
             --github-release "$RUNNER_TEMP/github-release/release.json" \
             --assets-dir "$RUNNER_TEMP/release-assets"
 
+      - name: Keep latest five app releases in CNB
+        continue-on-error: true
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CURRENT_TAG: ${{ github.ref_name }}
+        run: |
+          node .github/scripts/cleanup-cnb-releases.mjs \
+            --current-tag "$CURRENT_TAG" \
+            --tag-pattern '^v[0-9]+[.][0-9]+[.][0-9]+([.-][0-9A-Za-z.-]+)?$' \
+            --retain 5 \
+            --apply
+
   docker:
     runs-on: ubuntu-latest
     strategy:

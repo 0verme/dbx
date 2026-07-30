@@ -779,3 +779,16 @@ jobs:
             args+=(--overwrite-existing --prune-assets)
           fi
           node .github/scripts/sync-cnb-release.mjs "${args[@]}"
+
+      - name: Keep latest five versioned agent releases in CNB
+        if: ${{ matrix.tag != 'agents-latest' }}
+        continue-on-error: true
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CURRENT_TAG: ${{ matrix.tag }}
+        run: |
+          node .github/scripts/cleanup-cnb-releases.mjs \
+            --current-tag "$CURRENT_TAG" \
+            --tag-pattern '^agents-v[0-9]+[.][0-9]+[.][0-9]+$' \
+            --retain 5 \
+            --apply

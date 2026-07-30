@@ -181,3 +181,42 @@ test("deleteAsset accepts CNB's empty successful response", async (t) => {
     },
   ]);
 });
+
+test("listReleases paginates and deleteRelease accepts an empty response", async (t) => {
+  const requests = [];
+  const server = createServer((request, response) => {
+    requests.push({ method: request.method, url: request.url });
+    if (request.method === "GET" && request.url?.includes("page=1")) {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify([{ id: "1" }, { id: "2" }]));
+      return;
+    }
+    if (request.method === "GET" && request.url?.includes("page=2")) {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify([{ id: "3" }]));
+      return;
+    }
+    response.statusCode = 204;
+    response.end();
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))));
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const client = new CnbClient({
+    apiBase: `http://127.0.0.1:${address.port}`,
+    repository: "dbxio.com/dbx",
+    token: "test-token",
+  });
+
+  assert.deepEqual(await client.listReleases(2), [{ id: "1" }, { id: "2" }, { id: "3" }]);
+  await client.deleteRelease("release/old");
+
+  assert.deepEqual(requests, [
+    { method: "GET", url: "/dbxio.com/dbx/-/releases?page=1&page_size=2" },
+    { method: "GET", url: "/dbxio.com/dbx/-/releases?page=2&page_size=2" },
+    { method: "DELETE", url: "/dbxio.com/dbx/-/releases/release%2Fold" },
+  ]);
+});
