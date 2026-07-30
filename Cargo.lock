@@ -1747,6 +1747,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "unicode-ident",
  "unicode-width",
  "utoipa",
  "uuid",
