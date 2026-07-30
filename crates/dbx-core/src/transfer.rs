@@ -495,6 +495,20 @@ pub(crate) fn is_identity_column_extra(extra: Option<&str>) -> bool {
     })
 }
 
+pub(crate) fn is_mysql_generated_column_extra(extra: Option<&str>) -> bool {
+    extra.is_some_and(|value| {
+        let mut parts = value.split_whitespace();
+        let Some(first) = parts.next() else {
+            return false;
+        };
+        if first.eq_ignore_ascii_case("generated") {
+            return true;
+        }
+        matches!(first.to_ascii_lowercase().as_str(), "virtual" | "stored" | "persistent")
+            && parts.next().is_some_and(|part| part.eq_ignore_ascii_case("generated"))
+    })
+}
+
 pub(crate) fn selected_columns_include_identity_extras(columns: &[String], column_extras: &[Option<String>]) -> bool {
     columns
         .iter()
@@ -523,6 +537,10 @@ fn is_sqlserver_non_insertable_transfer_column(
         && is_sqlserver_rowversion_type(&column.data_type)
 }
 
+fn is_mysql_non_insertable_transfer_column(column: &db::ColumnInfo, source_db_type: &DatabaseType) -> bool {
+    *source_db_type == DatabaseType::Mysql && is_mysql_generated_column_extra(column.extra.as_deref())
+}
+
 fn writable_transfer_columns(
     columns: &[db::ColumnInfo],
     source_db_type: &DatabaseType,
@@ -530,7 +548,10 @@ fn writable_transfer_columns(
 ) -> Vec<db::ColumnInfo> {
     columns
         .iter()
-        .filter(|column| !is_sqlserver_non_insertable_transfer_column(column, source_db_type, target_db_type))
+        .filter(|column| {
+            !is_sqlserver_non_insertable_transfer_column(column, source_db_type, target_db_type)
+                && !is_mysql_non_insertable_transfer_column(column, source_db_type)
+        })
         .cloned()
         .collect()
 }
@@ -5340,6 +5361,49 @@ mod tests {
         let writable = writable_transfer_columns(&columns, &DatabaseType::SqlServer, &DatabaseType::SqlServer);
 
         assert_eq!(writable.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(), vec!["id", "name"]);
+    }
+
+    #[test]
+    fn mysql_writable_transfer_columns_skip_only_generated_columns() {
+        let columns = vec![
+            test_column("id", "int"),
+            db::ColumnInfo { extra: Some("DEFAULT_GENERATED".to_string()), ..test_column("created_at", "timestamp") },
+            db::ColumnInfo { extra: Some("auto_increment".to_string()), ..test_column("sequence_id", "bigint") },
+            db::ColumnInfo {
+                extra: Some("VIRTUAL GENERATED".to_string()),
+                ..test_column("virtual_total", "decimal(10,2)")
+            },
+            db::ColumnInfo { extra: Some("stored generated".to_string()), ..test_column("stored_hash", "varchar(64)") },
+            db::ColumnInfo {
+                extra: Some("PERSISTENT GENERATED".to_string()),
+                ..test_column("persistent_total", "decimal(10,2)")
+            },
+            db::ColumnInfo { extra: Some("GENERATED ALWAYS".to_string()), ..test_column("explicit_generated", "int") },
+            db::ColumnInfo {
+                extra: Some("on update CURRENT_TIMESTAMP".to_string()),
+                ..test_column("updated_at", "timestamp")
+            },
+        ];
+
+        let writable = writable_transfer_columns(&columns, &DatabaseType::Mysql, &DatabaseType::Mysql);
+
+        assert_eq!(
+            writable.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+            vec!["id", "created_at", "sequence_id", "updated_at"]
+        );
+        assert_eq!(columns.len(), 8, "DDL metadata must retain generated columns");
+    }
+
+    #[test]
+    fn non_mysql_transfer_columns_keep_generated_markers() {
+        let columns = vec![
+            test_column("id", "int"),
+            db::ColumnInfo { extra: Some("STORED GENERATED".to_string()), ..test_column("computed", "int") },
+        ];
+
+        let writable = writable_transfer_columns(&columns, &DatabaseType::Postgres, &DatabaseType::Postgres);
+
+        assert_eq!(writable.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(), vec!["id", "computed"]);
     }
 
     #[test]
