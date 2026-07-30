@@ -1797,32 +1797,36 @@ pub async fn connect_bare_with_pool_limit_and_setup_database(
     result
 }
 
+const SHOW_DATABASES_SQL: &str = "SHOW DATABASES";
+const INFORMATION_SCHEMA_DATABASES_SQL: &str =
+    "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
+const DATABASE_LIST_QUERY_PLAN: [(&str, bool); 2] =
+    [(SHOW_DATABASES_SQL, true), (INFORMATION_SCHEMA_DATABASES_SQL, false)];
+
 pub async fn list_databases(pool: &MySqlPool) -> Result<Vec<DatabaseInfo>, String> {
-    let mut conn = get_conn_with_timeout(pool, super::connection_timeout()).await?;
-    let result = match conn.query_iter("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME").await
-    {
-        Ok(result) => result,
+    let [(primary_sql, primary_catalogless), (fallback_sql, fallback_catalogless)] = DATABASE_LIST_QUERY_PLAN;
+    match list_databases_with_query(pool, primary_sql, primary_catalogless).await {
+        Ok(databases) => Ok(databases),
         Err(err) => {
-            log::debug!("Falling back to SHOW DATABASES after information_schema.SCHEMATA failed: {err}");
-            return list_databases_show(pool).await;
+            log::debug!("Falling back to information_schema.SCHEMATA after SHOW DATABASES failed: {err}");
+            list_databases_with_query(pool, fallback_sql, fallback_catalogless).await
         }
-    };
-    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
-    let databases = database_infos_from_names(rows.iter().map(|row| get_str(row, 0)), false);
-
-    if databases.is_empty() {
-        log::debug!("Falling back to SHOW DATABASES after information_schema.SCHEMATA returned no named databases");
-        return list_databases_show(pool).await;
     }
+}
 
-    Ok(databases)
+async fn list_databases_with_query(
+    pool: &MySqlPool,
+    sql: &str,
+    include_catalogless_when_blank: bool,
+) -> Result<Vec<DatabaseInfo>, String> {
+    let mut conn = get_conn_with_timeout(pool, super::connection_timeout()).await?;
+    let result = conn.query_iter(sql).await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
+    Ok(database_infos_from_names(rows.iter().map(|row| get_str(row, 0)), include_catalogless_when_blank))
 }
 
 pub async fn list_databases_show(pool: &MySqlPool) -> Result<Vec<DatabaseInfo>, String> {
-    let mut conn = get_conn_with_timeout(pool, super::connection_timeout()).await?;
-    let result = conn.query_iter("SHOW DATABASES").await.map_err(|e| e.to_string())?;
-    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
-    Ok(database_infos_from_names(rows.iter().map(|row| get_str(row, 0)), true))
+    list_databases_with_query(pool, SHOW_DATABASES_SQL, true).await
 }
 
 pub(super) fn database_infos_from_names(
@@ -4826,6 +4830,17 @@ mod tests {
 
         let no_marker = database_infos_from_names(vec!["".to_string()], false);
         assert!(no_marker.is_empty());
+    }
+
+    #[test]
+    fn mysql_database_listing_prefers_show_databases() {
+        assert_eq!(
+            DATABASE_LIST_QUERY_PLAN,
+            [
+                ("SHOW DATABASES", true),
+                ("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME", false),
+            ]
+        );
     }
 
     #[test]
