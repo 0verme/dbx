@@ -2929,6 +2929,7 @@ export default withEnglishFallback({
     noPendingEntries: "保留中のエントリはありません",
     entryId: "エントリ ID",
     deliveries: "配信回数",
+    loadMoreEntries: "さらにエントリを読み込む",
     loadMorePending: "保留中のエントリをさらに読み込む",
     noExpiry: "期限なし",
     expiry: "有効期限",

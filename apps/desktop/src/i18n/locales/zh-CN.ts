@@ -3069,6 +3069,7 @@ export default withEnglishFallback({
     noPendingEntries: "暂无待处理条目",
     entryId: "条目 ID",
     deliveries: "投递次数",
+    loadMoreEntries: "加载更多条目",
     loadMorePending: "加载更多待处理条目",
     noExpiry: "永不过期",
     expiry: "过期时间",

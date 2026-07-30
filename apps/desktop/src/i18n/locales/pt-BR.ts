@@ -2930,6 +2930,7 @@ export default withEnglishFallback({
     noPendingEntries: "Nenhuma entrada pendente",
     entryId: "ID da entrada",
     deliveries: "Entregas",
+    loadMoreEntries: "Carregar mais entradas",
     loadMorePending: "Carregar mais entradas pendentes",
     noExpiry: "sem expiração",
     expiry: "Expiração",

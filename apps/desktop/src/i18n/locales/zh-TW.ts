@@ -2601,6 +2601,7 @@ export default withEnglishFallback({
     noPendingEntries: "暫無待處理項目",
     entryId: "項目 ID",
     deliveries: "投遞次數",
+    loadMoreEntries: "載入更多項目",
     loadMorePending: "載入更多待處理項目",
     noExpiry: "永不過期",
     expiry: "到期時間",

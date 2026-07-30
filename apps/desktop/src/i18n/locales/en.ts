@@ -3069,6 +3069,7 @@ export default {
     noPendingEntries: "No pending entries",
     entryId: "Entry ID",
     deliveries: "Deliveries",
+    loadMoreEntries: "Load more entries",
     loadMorePending: "Load more pending entries",
     noExpiry: "no expiry",
     expiry: "Expiration",

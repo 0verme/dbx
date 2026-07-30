@@ -2928,6 +2928,7 @@ export default withEnglishFallback({
     noPendingEntries: "Nessuna voce in sospeso",
     entryId: "ID voce",
     deliveries: "Consegne",
+    loadMoreEntries: "Carica altre voci",
     loadMorePending: "Carica altre voci in sospeso",
     noExpiry: "nessuna scadenza",
     expiry: "Scadenza",
