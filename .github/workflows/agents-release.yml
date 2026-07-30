@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: dbx-release-main
+  group: agents-release
   cancel-in-progress: false
 
 jobs:
@@ -58,15 +58,66 @@ jobs:
 
           node .github/scripts/bump-agent-versions.mjs "${ARGS[@]}"
 
-          if ! git diff --quiet -- agents/versions.json; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add agents/versions.json
-            git commit -m "chore: bump module versions [skip ci]"
+      - name: Create agent version patch
+        run: git diff --binary -- agents/versions.json > agent-version-bump.patch
+
+      - name: Upload agent version patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-version-bump
+          path: agent-version-bump.patch
+          retention-days: 1
+
+  commit-versions:
+    name: Commit agent version bump
+    needs: bump-versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download agent version patch
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-version-bump
+
+      - name: Apply and push agent version bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --no-tags
+          git switch --detach origin/main
+
+          if [ ! -s agent-version-bump.patch ]; then
+            echo "Agent versions are unchanged."
+            exit 0
+          fi
+
+          if git apply --check agent-version-bump.patch; then
+            git apply --index agent-version-bump.patch
+          elif git apply --reverse --check agent-version-bump.patch; then
+            echo "Agent version bump is already present on main."
+            exit 0
+          else
+            echo "::error::Agent version patch no longer applies cleanly to main."
+            exit 1
+          fi
+
+          git commit -m "chore: bump module versions [skip ci]"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Unable to push agent version bump after ${attempt} attempts."
+              exit 1
+            fi
             git fetch origin main --no-tags
             git rebase origin/main
-            git push origin HEAD:main
-          fi
+          done
 
   build-agents:
     needs: [bump-versions]
@@ -385,7 +436,7 @@ jobs:
           path: "dbx-jre-*.tar.zst"
 
   release:
-    needs: [bump-versions, build-agents, build-oracle-native, build-xugu-native, build-kingbase-native, build-duckdb-native, build-jre]
+    needs: [bump-versions, commit-versions, build-agents, build-oracle-native, build-xugu-native, build-kingbase-native, build-duckdb-native, build-jre]
     runs-on: ubuntu-latest
     steps:
       - name: Create DBX bot release token
