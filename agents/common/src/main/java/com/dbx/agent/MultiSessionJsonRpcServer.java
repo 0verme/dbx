@@ -26,6 +26,7 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
     private static final long MAINTENANCE_INTERVAL_MILLIS = 60_000L;
 
     private final Supplier<? extends DatabaseAgent> agentFactory;
+    private final Supplier<? extends SessionRpcHandler> sessionHandlerFactory;
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final ExecutorService requests = Executors.newCachedThreadPool();
     private final JdbcConnectionPoolRegistry poolRegistry;
@@ -52,7 +53,19 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
         JdbcConnectionPoolRegistry poolRegistry
     ) {
         this.agentFactory = agentFactory;
+        this.sessionHandlerFactory = null;
         this.poolRegistry = poolRegistry;
+    }
+
+    private MultiSessionJsonRpcServer(Supplier<? extends SessionRpcHandler> sessionHandlerFactory, boolean customHandler) {
+        this.agentFactory = null;
+        this.sessionHandlerFactory = sessionHandlerFactory;
+        this.poolRegistry = new JdbcConnectionPoolRegistry();
+    }
+
+    /** Creates a protocol v2 server for a non-JDBC, session-scoped agent. */
+    public static MultiSessionJsonRpcServer forSessionHandlers(Supplier<? extends SessionRpcHandler> sessionHandlerFactory) {
+        return new MultiSessionJsonRpcServer(sessionHandlerFactory, true);
     }
 
     public void run() {
@@ -94,7 +107,7 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
         try {
             Object result;
             if (AgentProtocol.METHOD_HANDSHAKE.equals(method)) {
-                result = AgentProtocol.multiSessionHandshakeResult();
+                result = sessionHandlerFactory == null ? AgentProtocol.multiSessionHandshakeResult() : customHandshake();
             } else if (AgentProtocol.METHOD_OPEN_SESSION.equals(method)) {
                 result = openSession(requiredSessionId(params), params);
             } else if (AgentProtocol.METHOD_CLOSE_SESSION.equals(method)) {
@@ -105,7 +118,9 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
                 session(requiredSessionId(params)).cancel();
                 result = Collections.singletonMap("ok", true);
             } else if (AgentProtocol.METHOD_TEST_CONNECTION.equals(method)) {
-                result = new JsonRpcServer(agentFactory.get()).dispatchForRuntime(method, params);
+                result = sessionHandlerFactory == null
+                    ? new JsonRpcServer(agentFactory.get()).dispatchForRuntime(method, params)
+                    : testSession(params);
             } else if (AgentProtocol.METHOD_CONNECT.equals(method)) {
                 closeSession(LEGACY_SESSION_ID);
                 result = openSession(LEGACY_SESSION_ID, params);
@@ -131,18 +146,23 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
         if (sessions.size() >= MAX_SESSIONS && !sessions.containsKey(sessionId)) {
             throw new IllegalStateException("Agent session limit reached: " + MAX_SESSIONS);
         }
-        DatabaseAgent agent = agentFactory.get();
-        if (poolRegistry.isEnabled() && agent instanceof AbstractJdbcAgent jdbcAgent) {
-            jdbcAgent.attachConnectionPoolRegistry(poolRegistry);
-            ensureMaintenanceStarted();
+        Session session;
+        if (sessionHandlerFactory != null) {
+            session = new Session(sessionHandlerFactory.get());
+        } else {
+            DatabaseAgent agent = agentFactory.get();
+            if (poolRegistry.isEnabled() && agent instanceof AbstractJdbcAgent jdbcAgent) {
+                jdbcAgent.attachConnectionPoolRegistry(poolRegistry);
+                ensureMaintenanceStarted();
+            }
+            session = new Session(new JsonRpcServer(agent));
         }
-        Session session = new Session(new JsonRpcServer(agent));
         Session existing = sessions.putIfAbsent(sessionId, session);
         if (existing != null) {
             throw new IllegalStateException("Agent session already exists: " + sessionId);
         }
         try {
-            return session.handle(AgentProtocol.METHOD_CONNECT, params);
+            return session.connect(params);
         } catch (Exception error) {
             sessions.remove(sessionId, session);
             session.close();
@@ -156,6 +176,24 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
             session.close();
         }
         return Collections.singletonMap("ok", true);
+    }
+
+    private Object testSession(JsonObject params) throws Exception {
+        Session session = new Session(sessionHandlerFactory.get());
+        try {
+            return session.connect(params);
+        } finally {
+            session.close();
+        }
+    }
+
+    private Object customHandshake() {
+        SessionRpcHandler handler = sessionHandlerFactory.get();
+        try {
+            return handler.handshake();
+        } finally {
+            handler.close();
+        }
     }
 
     private Session session(String sessionId) {
@@ -253,16 +291,34 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
 
     private static final class Session {
         private final JsonRpcServer server;
+        private final SessionRpcHandler handler;
         private final ReentrantLock lock = new ReentrantLock();
 
         private Session(JsonRpcServer server) {
             this.server = server;
+            this.handler = null;
+        }
+
+        private Session(SessionRpcHandler handler) {
+            this.server = null;
+            this.handler = handler;
         }
 
         private Object handle(String method, JsonObject params) throws Exception {
             lock.lock();
             try {
-                return server.dispatchForRuntime(method, params);
+                return handler == null ? server.dispatchForRuntime(method, params) : handler.handle(method, params);
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        private Object connect(JsonObject params) throws Exception {
+            lock.lock();
+            try {
+                return handler == null
+                    ? server.dispatchForRuntime(AgentProtocol.METHOD_CONNECT, params)
+                    : handler.connect(params);
             } finally {
                 lock.unlock();
             }
@@ -271,7 +327,11 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
         private void close() {
             lock.lock();
             try {
-                server.dispatchForRuntime(AgentProtocol.METHOD_DISCONNECT, new JsonObject());
+                if (handler != null) {
+                    handler.close();
+                } else {
+                    server.dispatchForRuntime(AgentProtocol.METHOD_DISCONNECT, new JsonObject());
+                }
             } catch (Exception ignored) {
             } finally {
                 lock.unlock();
@@ -279,10 +339,17 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
         }
 
         private void cancel() {
-            server.cancelActiveStatements();
+            if (handler == null) {
+                server.cancelActiveStatements();
+            } else {
+                handler.cancel();
+            }
         }
 
         private void expireIdleResources() {
+            if (handler != null) {
+                return;
+            }
             if (!lock.tryLock()) {
                 return;
             }
@@ -294,6 +361,9 @@ public final class MultiSessionJsonRpcServer implements AutoCloseable {
         }
 
         private void expireIdleResources(long nowMillis, long idleTimeoutMillis) {
+            if (handler != null) {
+                return;
+            }
             if (!lock.tryLock()) {
                 return;
             }
