@@ -2119,6 +2119,16 @@ async fn execute_multi_sqlserver(
     Ok(all_results)
 }
 
+async fn execute_multi_agent(
+    client: &mut db::agent_driver::AgentDriverClient,
+    database: Option<&str>,
+    statements: &[String],
+    schema: Option<&str>,
+    timeout_secs: Option<u64>,
+) -> Result<db::QueryResult, String> {
+    client.execute_batch(database, statements, schema, resolve_query_timeout(timeout_secs)).await
+}
+
 pub async fn execute_statements(
     state: &AppState,
     connection_id: &str,
@@ -2162,9 +2172,7 @@ pub async fn execute_statements(
         };
         let mut client = client.lock().await;
         let database = if database.trim().is_empty() { None } else { Some(database) };
-        let timeout_duration = timeout_secs.map(Duration::from_secs);
-        let result: Result<db::QueryResult, String> =
-            client.execute_batch(database, statements, execution_schema, timeout_duration).await;
+        let result = execute_multi_agent(&mut client, database, statements, execution_schema, timeout_secs).await;
         match result {
             Ok(result) => return Ok(db::QueryResult { execution_time_ms: start.elapsed().as_millis(), ..result }),
             Err(err) => {
@@ -3535,12 +3543,86 @@ pub async fn rollback_manual_transaction(state: &AppState, txn_session_id: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use crate::db::agent_driver::{AgentDriverClient, AgentLaunchSpec};
     use crate::models::connection::{default_redis_key_separator, ConnectionConfig, DatabaseType};
     #[cfg(unix)]
     use crate::plugins::{
         InstalledPlugin, PluginDriverManifest, PluginDriverSession, PluginManifest, PluginRuntimeEnv,
     };
     use crate::storage::Storage;
+
+    #[cfg(unix)]
+    async fn spawn_agent_batch_timeout_test_client() -> (AgentDriverClient, tempfile::NamedTempFile) {
+        use std::io::Write;
+
+        let mut script = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            script,
+            r#"import json
+import sys
+import time
+
+print(json.dumps({{"ready": True}}), flush=True)
+for line in sys.stdin:
+    request = json.loads(line)
+    statements = request.get("params", {{}}).get("statements", [])
+    time.sleep(1.2 if statements == ["slow"] else 0.05)
+    result = {{
+        "columns": [],
+        "column_types": [],
+        "column_sortables": [],
+        "rows": [],
+        "affected_rows": 1,
+        "execution_time_ms": 50,
+        "truncated": False,
+        "session_id": None,
+        "has_more": False
+    }}
+    print(json.dumps({{"jsonrpc": "2.0", "id": request["id"], "result": result}}), flush=True)
+"#
+        )
+        .unwrap();
+        script.flush().unwrap();
+
+        let client = AgentDriverClient::spawn(
+            AgentLaunchSpec::new("python3").with_args([script.path().to_string_lossy().to_string()]),
+        )
+        .await
+        .unwrap();
+        (client, script)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn execute_multi_agent_zero_timeout_waits_for_response() {
+        let (mut client, _script) = spawn_agent_batch_timeout_test_client().await;
+
+        let result = execute_multi_agent(&mut client, None, &["fast".to_string()], None, Some(0)).await.unwrap();
+
+        assert_eq!(result.affected_rows, 1);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn execute_multi_agent_positive_timeout_still_expires() {
+        let (mut client, _script) = spawn_agent_batch_timeout_test_client().await;
+
+        let error = execute_multi_agent(&mut client, None, &["slow".to_string()], None, Some(1)).await.unwrap_err();
+
+        assert_eq!(error, "Agent RPC call timed out (1s)");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn execute_multi_agent_default_timeout_keeps_normal_execution() {
+        let (mut client, _script) = spawn_agent_batch_timeout_test_client().await;
+
+        let result = execute_multi_agent(&mut client, None, &["fast".to_string()], None, None).await.unwrap();
+
+        assert_eq!(result.affected_rows, 1);
+        assert_eq!(resolve_query_timeout(None), Some(QUERY_TIMEOUT));
+    }
 
     #[test]
     fn external_catalog_queries_do_not_bind_database_during_pool_creation() {
