@@ -766,22 +766,21 @@ jobs:
             --endpoint-url "$R2_ENDPOINT"
           echo "Uploaded agent-registry.json"
 
-          # Upload all single-driver packages.
-          for f in release/dbx-agent-*.tar.zst; do
-            [ -f "$f" ] || continue
-            aws s3 cp "$f" \
-              "$R2_BUCKET/agents/drivers/$(basename $f)" \
-              --endpoint-url "$R2_ENDPOINT"
-            echo "Uploaded $(basename $f)"
-          done
+          # Upload all single-driver packages concurrently.
+          aws s3 cp release/ "$R2_BUCKET/agents/drivers/" \
+            --recursive \
+            --exclude "*" \
+            --include "dbx-agent-*.tar.zst" \
+            --endpoint-url "$R2_ENDPOINT"
+          echo "Uploaded single-driver packages"
 
-          # Upload JRE — always overwrite to ensure latest modules
-          for f in release/dbx-jre-*.tar.zst; do
-            [ ! -f "$f" ] && continue
-            key="agents/jre/$(basename $f)"
-            aws s3 cp "$f" "$R2_BUCKET/$key" --endpoint-url "$R2_ENDPOINT"
-            echo "Uploaded $(basename $f)"
-          done
+          # Upload JRE packages concurrently, always overwriting the stable names.
+          aws s3 cp release/ "$R2_BUCKET/agents/jre/" \
+            --recursive \
+            --exclude "*" \
+            --include "dbx-jre-*.tar.zst" \
+            --endpoint-url "$R2_ENDPOINT"
+          echo "Uploaded JRE packages"
 
   sync-release-to-cnb:
     name: Sync agents releases to CNB
