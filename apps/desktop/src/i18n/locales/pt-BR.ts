@@ -3343,6 +3343,10 @@ export default withEnglishFallback({
     searchConnection: "Pesquisar conexões...",
     searchDatabase: "Pesquisar bancos de dados...",
     searchSchema: "Pesquisar schemas...",
+    sourceCatalog: "Catalog de origem",
+    targetCatalog: "Catalog de destino",
+    selectCatalog: "Por favor, selecione Catalog...",
+    searchCatalog: "Buscar Catalog...",
   },
   tableImport: {
     title: "Importar Dados da Tabela",

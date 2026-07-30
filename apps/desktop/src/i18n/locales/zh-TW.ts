@@ -3014,6 +3014,10 @@ export default withEnglishFallback({
     searchConnection: "搜尋連線...",
     searchDatabase: "搜尋資料庫...",
     searchSchema: "搜尋結構描述...",
+    sourceCatalog: "源 Catalog",
+    targetCatalog: "目標 Catalog",
+    selectCatalog: "請選擇 Catalog...",
+    searchCatalog: "搜尋 Catalog...",
   },
   tableImport: {
     title: "匯入資料表資料",

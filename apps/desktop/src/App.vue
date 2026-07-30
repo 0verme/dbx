@@ -1553,6 +1553,7 @@ function changeActiveSchema(schema: string | undefined) {
   const tab = activeTab.value;
   if (tab) queryStore.updateSchema(tab.id, schema);
 }
+
 function openGitHub() {
   openUrl("https://github.com/t8y2/dbx");
 }

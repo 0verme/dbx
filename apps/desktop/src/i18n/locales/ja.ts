@@ -3342,6 +3342,10 @@ export default withEnglishFallback({
     searchConnection: "接続を検索...",
     searchDatabase: "データベースを検索...",
     searchSchema: "スキーマを検索...",
+    sourceCatalog: "ソースCatalog",
+    targetCatalog: "ターゲットCatalog",
+    selectCatalog: "Catalogを選択してください...",
+    searchCatalog: "Catalogを検索...",
   },
   tableImport: {
     title: "テーブルデータをインポート",
