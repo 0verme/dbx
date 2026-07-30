@@ -1991,7 +1991,7 @@ pub fn generate_create_table_ddl(
     };
 
     let create_prefix = match target_db {
-        DatabaseType::SqlServer => "CREATE TABLE",
+        DatabaseType::SqlServer | DatabaseType::Dameng => "CREATE TABLE",
         _ => "CREATE TABLE IF NOT EXISTS",
     };
 
@@ -5459,6 +5459,64 @@ mod tests {
         assert!(!ddl.contains("`age` INT COMMENT")); // no comment for age
         assert!(ddl.contains("`name` VARCHAR(100) NOT NULL COMMENT '用户姓名'"));
         assert!(ddl.contains("PRIMARY KEY (`id`)"));
+    }
+
+    #[test]
+    fn dameng_create_table_omits_if_not_exists_without_changing_other_prefixes() {
+        let cols = vec![test_column("id", "int")];
+
+        let dameng = generate_create_table_ddl(
+            &cols,
+            "users",
+            "source",
+            "SYSDBA",
+            &DatabaseType::Dameng,
+            &DatabaseType::Mysql,
+            None,
+            None,
+        );
+        let mysql = generate_create_table_ddl(
+            &cols,
+            "users",
+            "",
+            "app",
+            &DatabaseType::Mysql,
+            &DatabaseType::Mysql,
+            None,
+            None,
+        );
+        let postgres = generate_create_table_ddl(
+            &cols,
+            "users",
+            "",
+            "public",
+            &DatabaseType::Postgres,
+            &DatabaseType::Mysql,
+            None,
+            None,
+        );
+        let sqlserver = generate_create_table_ddl(
+            &cols,
+            "users",
+            "",
+            "dbo",
+            &DatabaseType::SqlServer,
+            &DatabaseType::Mysql,
+            None,
+            None,
+        );
+
+        assert!(dameng.starts_with("CREATE TABLE \"SYSDBA\".\"users\" ("), "ddl: {dameng}");
+        assert!(!dameng.contains("IF NOT EXISTS"), "ddl: {dameng}");
+        assert!(dameng.contains("\"id\" INTEGER"), "ddl: {dameng}");
+        assert!(mysql.starts_with("CREATE TABLE IF NOT EXISTS `users` ("), "ddl: {mysql}");
+        assert!(postgres.starts_with("CREATE TABLE IF NOT EXISTS \"public\".\"users\" ("), "ddl: {postgres}");
+        assert!(
+            sqlserver.starts_with(
+                "IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'users')\nCREATE TABLE [dbo].[users] ("
+            ),
+            "ddl: {sqlserver}"
+        );
     }
 
     #[test]
