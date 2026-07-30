@@ -1613,7 +1613,7 @@ export const useConnectionStore = defineStore("connection", () => {
     const tableNameFilter = activeTableNameFilterForScope({
       connectionId: options.node.connectionId,
       database: options.node.database,
-      schema: options.effectiveSchema ?? options.querySchema,
+      schema: options.node.schema,
       nodeKind: options.node.type,
       catalog: options.node.catalog,
     });
@@ -4033,7 +4033,7 @@ export const useConnectionStore = defineStore("connection", () => {
           const tableNameFilter = activeTableNameFilterForScope({
             connectionId,
             database,
-            schema: effectiveSchema ?? querySchema,
+            schema,
             nodeKind: simpleObjectDisplay ? "simple-tables" : "group-tables",
           });
           const isSidebarTableSearch = !!options?.sidebarTableSearchParentId;
@@ -4167,7 +4167,7 @@ export const useConnectionStore = defineStore("connection", () => {
           const tableNameFilter = activeTableNameFilterForScope({
             connectionId: node.connectionId,
             database: node.database,
-            schema: effectiveSchema ?? querySchema,
+            schema: node.schema,
             nodeKind: node.type,
             catalog: node.catalog,
           });
