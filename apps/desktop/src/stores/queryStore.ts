@@ -3850,6 +3850,21 @@ export const useQueryStore = defineStore("query", () => {
         pageOffset = plan.pageOffset;
         countSql = plan.countSql;
         useAgentResultSession = plan.useAgentResultSession;
+        const hasBoundedPagination = typeof pageLimit === "number" && typeof pageOffset === "number";
+        if (options?.appendResult && !hasBoundedPagination && !useAgentResultSession) {
+          const current = tabs.value.find((item) => item.id === id);
+          if (current?.executionId === executionId && current.result) {
+            current.result.has_more = false;
+            const activeResultIndex = current.activeResultIndex;
+            if (Array.isArray(current.results) && typeof activeResultIndex === "number" && activeResultIndex >= 0 && activeResultIndex < current.results.length) {
+              current.results[activeResultIndex]!.has_more = false;
+            }
+            touchResult(current);
+            syncDisplayedResultRun(current, queryBaseSql, openInNewResultTab);
+          }
+          queryExecutionLog("info", "append-result:pagination-unsupported", { traceId, elapsed: elapsed() });
+          return false;
+        }
       } else if (tab.mode === "data") {
         pageLimit = options?.pagination?.limit ?? tableOpenPageLimit(settingsStore.editorSettings.tableOpenPageSize);
         pageOffset = options?.pagination?.offset ?? 0;

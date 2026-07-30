@@ -930,4 +930,41 @@ describe("queryStore hidden primary key editing", () => {
     await vi.waitFor(() => expect(tab.resultTotalRowCount).toBe(123));
     expect(tab.resultTotalRowCountLoading).toBe(false);
   });
+
+  it("stops appending when a SQL Server query has no bounded next-page plan", async () => {
+    getConnectionConfig.mockReturnValue({ id: "sqlserver-1", name: "SQL Server", db_type: "sqlserver", database: "app", query_timeout_secs: 30 });
+    analyzeEditableQueryEditability.mockResolvedValue({ editable: false, reason: "complex-query" });
+    const rows = Array.from({ length: 28 }, (_, index) => [index + 1]);
+    executeMulti.mockResolvedValueOnce([
+      {
+        columns: ["id"],
+        rows,
+        affected_rows: 28,
+        execution_time_ms: 1,
+        has_more: true,
+      },
+    ]);
+
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("sqlserver-1", "app", "Query");
+    const sql = "SELECT a.id, b.* FROM orders a JOIN order_details b ON b.order_id = a.id";
+
+    await store.executeTabSql(tabId, sql);
+    expect(executeMulti).toHaveBeenCalledTimes(1);
+
+    await store.executeTabSql(tabId, sql, {
+      resultBaseSql: sql,
+      pagination: { limit: 25, offset: 28 },
+      appendResult: { maxRows: 10_000 },
+      preserveResultDuringExecution: true,
+      preserveTotalRowCountDuringExecution: true,
+      replaceActiveResultInGroup: true,
+    });
+
+    const tab = store.tabs.find((item) => item.id === tabId)!;
+    expect(executeMulti).toHaveBeenCalledTimes(1);
+    expect(tab.result?.rows).toEqual(rows);
+    expect(tab.result?.has_more).toBe(false);
+  });
 });
