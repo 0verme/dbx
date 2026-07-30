@@ -4184,6 +4184,35 @@ mod tests {
     }
 
     #[test]
+    fn prepares_sqlserver_cross_database_update() {
+        let result = prepare_data_grid_save(DataGridSaveStatementOptions {
+            database_type: Some(DatabaseType::SqlServer),
+            identifier_quote: None,
+            table_meta: DataGridTableMeta {
+                catalog: Some("BarDB".to_string()),
+                database: Some("BarDB".to_string()),
+                schema: Some("dbo".to_string()),
+                table_name: "TUser".to_string(),
+                primary_keys: vec!["ID".to_string()],
+                columns: Some(vec![column("ID", "int", false, None), column("UserId", "bigint", false, None)]),
+            },
+            columns: vec!["ID".to_string(), "UserId".to_string()],
+            source_columns: None,
+            rows: vec![vec![json!(1), json!(10279)]],
+            dirty_rows: vec![(0, vec![(1, json!(10280))])],
+            deleted_rows: vec![],
+            new_rows: vec![],
+        });
+
+        assert_eq!(result.validation_error, None);
+        assert_eq!(result.statements, vec!["UPDATE [BarDB].[dbo].[TUser] SET [UserId] = 10280 WHERE [ID] = 1;"]);
+        assert_eq!(
+            result.rollback_statements,
+            vec!["UPDATE [BarDB].[dbo].[TUser] SET [UserId] = 10279 WHERE [ID] = 1 AND [UserId] = 10280;"]
+        );
+    }
+
+    #[test]
     fn prepares_kingbase_update_when_source_primary_key_case_differs() {
         let result = prepare_data_grid_save(DataGridSaveStatementOptions {
             database_type: Some(DatabaseType::Kingbase),
