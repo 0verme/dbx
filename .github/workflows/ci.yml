@@ -499,8 +499,7 @@ jobs:
           node --test ../.github/scripts/bump-agent-versions.test.mjs
 
       - name: DuckDB driver tests
-        working-directory: ..
-        run: cargo test --manifest-path agents/drivers/duckdb/Cargo.toml --locked
+        run: cargo test --manifest-path drivers/duckdb/Cargo.toml --locked
 
       - name: Agent validation
         run: python3 scripts/validate_agents.py

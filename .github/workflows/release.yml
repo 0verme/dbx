@@ -451,7 +451,7 @@ jobs:
     # Fully static musl builds of the browser (dbx-web) variant. No glibc
     # dependency, so the tarball runs on any Linux distribution (verified in
     # the oldest pullable Ubuntu container for each arch).
-    needs: build
+    needs: release-ready
     strategy:
       fail-fast: false
       matrix:
