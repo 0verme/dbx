@@ -3720,6 +3720,11 @@ export default withEnglishFallback({
       error: "エラー",
       cancelled: "キャンセル済み",
     },
+    fileProgress: "ファイル {current}/{total}",
+    fileColumn: "ファイル",
+    totalFiles: "{count} ファイル",
+    expandSummary: "展開統計表",
+    restoreSummary: "復元統計表",
   },
   diff: {
     title: "スキーマを比較",

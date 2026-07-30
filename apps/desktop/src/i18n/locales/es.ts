@@ -3721,6 +3721,9 @@ export default withEnglishFallback({
       error: "Error",
       cancelled: "Cancelado",
     },
+    fileProgress: "Archivo {current} de {total}",
+    fileColumn: "Archivo",
+    totalFiles: "{count} archivos",
   },
   diff: {
     title: "Comparar esquemas",
