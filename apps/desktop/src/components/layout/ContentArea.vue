@@ -19,6 +19,7 @@ import QueryLoadingState from "@/components/common/QueryLoadingState.vue";
 import QueryErrorActions from "@/components/common/QueryErrorActions.vue";
 import QueryResultToolbarActions from "@/components/layout/QueryResultToolbarActions.vue";
 import QueryResultViewSwitcher from "@/components/layout/QueryResultViewSwitcher.vue";
+import DataGridCopyFormatControl from "@/components/grid/DataGridCopyFormatControl.vue";
 import DataGridFontFamilyControl from "@/components/grid/DataGridFontFamilyControl.vue";
 import type { ColumnInfo } from "@/components/editor/ColumnInfoPanel.vue";
 let dataGridComponentPromise: Promise<typeof import("@/components/grid/DataGrid.vue")> | undefined;
@@ -112,6 +113,11 @@ type DataGridHandle = {
   allNullColumnCount: number;
   canToggleAllNullColumns: boolean;
   toggleAllNullColumns: () => void;
+  defaultCopyExtractor: string;
+  defaultCopyExtractorLabel: string;
+  copyExtractorMenuItems: Array<{ value: string; label: string; disabled?: boolean; separatorBefore?: boolean }>;
+  setDefaultCopyExtractor: (value: string) => void;
+  openExtractorConfiguration: () => void;
   showDdl: boolean;
   toggleDdl: (tab?: TableInfoTab) => void;
   multiRowTranspose: boolean;
@@ -211,6 +217,7 @@ const standaloneResultToolbarRef = ref<HTMLElement | null>(null);
 const standaloneResultToolbarWidth = ref(0);
 const resultTabsScrollerRef = ref<HTMLElement | null>(null);
 const columnVisibilitySearch = ref("");
+const dataGridViewOptionsOpen = ref(false);
 const columnVisibilityOptions = computed(() => dataGridRef.value?.filteredColumnVisibilityOptions(columnVisibilitySearch.value) ?? []);
 const dataGridRenderMode = computed(() => settingsStore.editorSettings.dataGridRenderMode);
 const dataGridSearchMode = computed(() => settingsStore.editorSettings.dataGridSearchMode);
@@ -219,6 +226,11 @@ const columnWidthDensity = computed(() => settingsStore.editorSettings.columnWid
 const tableFontSize = computed(() => settingsStore.editorSettings.tableFontSize);
 const redisKeyBrowserRef = ref<SearchableBrowserHandle>();
 const documentBrowserRef = ref<SearchableBrowserHandle>();
+
+function openDataGridExtractorConfiguration() {
+  dataGridViewOptionsOpen.value = false;
+  void nextTick(() => dataGridRef.value?.openExtractorConfiguration());
+}
 
 const etcdKeyBrowserRef = ref<SearchableBrowserHandle>();
 const etcdDashboardRef = ref<{ refresh?: () => boolean }>();
@@ -1080,7 +1092,7 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
                 </div>
               </template>
               <div class="ml-auto flex shrink-0 items-center gap-1">
-                <Popover v-if="activeOutputView === 'result' && activeTab.result && hasTabularResult && !activeElasticsearchJsonResponse">
+                <Popover v-if="activeOutputView === 'result' && activeTab.result && hasTabularResult && !activeElasticsearchJsonResponse" v-model:open="dataGridViewOptionsOpen">
                   <PopoverTrigger as-child>
                     <Button variant="ghost" size="icon" class="h-6 w-7 shrink-0 text-foreground hover:bg-accent" :title="t('grid.viewOptions')" :aria-label="t('grid.viewOptions')">
                       <Wrench class="h-4 w-4" />
@@ -1270,6 +1282,13 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
                       </span>
                       <Switch size="sm" :model-value="!!dataGridRef?.nullColumnsHidden" :disabled="!dataGridRef?.canToggleAllNullColumns" :aria-label="t('grid.hideNullColumns')" @update:model-value="dataGridRef?.toggleAllNullColumns()" />
                     </div>
+                    <DataGridCopyFormatControl
+                      :current-label="dataGridRef?.defaultCopyExtractorLabel ?? '-'"
+                      :current-value="dataGridRef?.defaultCopyExtractor ?? ''"
+                      :items="dataGridRef?.copyExtractorMenuItems ?? []"
+                      @select="dataGridRef?.setDefaultCopyExtractor($event)"
+                      @configure="openDataGridExtractorConfiguration"
+                    />
                   </PopoverContent>
                 </Popover>
                 <LightTooltip :text="t('editor.hideResultsPane')" side="bottom" :delay="0" :close-delay="0" nowrap>
@@ -1592,7 +1611,7 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Popover v-if="activeTab.result?.columns.length">
+          <Popover v-if="activeTab.result?.columns.length" v-model:open="dataGridViewOptionsOpen">
             <PopoverTrigger as-child>
               <Button variant="ghost" size="icon" class="h-6 w-7 shrink-0 text-foreground hover:bg-accent" :title="t('grid.viewOptions')" :aria-label="t('grid.viewOptions')">
                 <Wrench class="h-4 w-4" />
@@ -1758,6 +1777,13 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
                 </span>
                 <Switch size="sm" :model-value="!!dataGridRef?.nullColumnsHidden" :disabled="!dataGridRef?.canToggleAllNullColumns" :aria-label="t('grid.hideNullColumns')" @update:model-value="dataGridRef?.toggleAllNullColumns()" />
               </div>
+              <DataGridCopyFormatControl
+                :current-label="dataGridRef?.defaultCopyExtractorLabel ?? '-'"
+                :current-value="dataGridRef?.defaultCopyExtractor ?? ''"
+                :items="dataGridRef?.copyExtractorMenuItems ?? []"
+                @select="dataGridRef?.setDefaultCopyExtractor($event)"
+                @configure="openDataGridExtractorConfiguration"
+              />
             </PopoverContent>
           </Popover>
         </div>

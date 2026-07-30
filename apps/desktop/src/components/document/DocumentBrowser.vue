@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ErrorBanner from "@/components/ui/ErrorBanner.vue";
 import DataGrid from "@/components/grid/DataGrid.vue";
+import DataGridCopyFormatControl from "@/components/grid/DataGridCopyFormatControl.vue";
 import QueryLoadingState from "@/components/common/QueryLoadingState.vue";
 import * as api from "@/lib/backend/api";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -116,6 +117,7 @@ const sortInput = ref("");
 const filterInputRef = ref<HTMLTextAreaElement>();
 const sortInputRef = ref<HTMLTextAreaElement>();
 const dataGridRef = ref<InstanceType<typeof DataGrid>>();
+const viewOptionsOpen = ref(false);
 const mongoUpdateTarget = computed(() => (props.databaseType === "mongodb" && mongoCopyDocumentsAvailable.value ? { collection: props.collection, idColumn: "_id" as const } : undefined));
 const documentViewerRef = ref<HTMLElement>();
 const documentSearchInputRef = ref<HTMLInputElement>();
@@ -126,6 +128,11 @@ const documentSearchHasNavigated = ref(false);
 const documentViewerSearchActive = ref(false);
 const columnVisibilitySearch = ref("");
 const columnVisibilityOptions = computed(() => dataGridRef.value?.filteredColumnVisibilityOptions(columnVisibilitySearch.value) ?? []);
+
+function openDataGridExtractorConfiguration() {
+  viewOptionsOpen.value = false;
+  void nextTick(() => dataGridRef.value?.openExtractorConfiguration());
+}
 const tableSearchSplitContainerRef = ref<HTMLDivElement>();
 const tableFindPaneWidth = ref<number | null>(null);
 const isResizingTableSearchSplit = ref(false);
@@ -1571,7 +1578,7 @@ defineExpose({ focusSearch });
         </PopoverContent>
       </Popover>
 
-      <Popover v-if="viewMode === 'table' && gridResult.columns.length">
+      <Popover v-if="viewMode === 'table' && gridResult.columns.length" v-model:open="viewOptionsOpen">
         <PopoverTrigger as-child>
           <Button variant="ghost" size="icon" class="h-6 w-7 shrink-0 text-foreground hover:bg-accent" :class="{ 'bg-accent text-foreground': dataGridRef?.nullColumnsHidden }" :title="t('grid.viewOptions')" :aria-label="t('grid.viewOptions')">
             <Wrench class="h-4 w-4" />
@@ -1588,6 +1595,13 @@ defineExpose({ focusSearch });
               <span v-if="(dataGridRef?.allNullColumnCount ?? 0) > 0" class="text-muted-foreground tabular-nums"> ({{ dataGridRef?.allNullColumnCount }}) </span>
             </span>
           </label>
+          <DataGridCopyFormatControl
+            :current-label="dataGridRef?.defaultCopyExtractorLabel ?? '-'"
+            :current-value="dataGridRef?.defaultCopyExtractor ?? ''"
+            :items="dataGridRef?.copyExtractorMenuItems ?? []"
+            @select="dataGridRef?.setDefaultCopyExtractor($event)"
+            @configure="openDataGridExtractorConfiguration"
+          />
         </PopoverContent>
       </Popover>
     </div>
