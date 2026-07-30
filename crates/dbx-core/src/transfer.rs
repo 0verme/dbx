@@ -2036,7 +2036,9 @@ pub fn generate_comment_ddl(
     target_db: &DatabaseType,
     table_comment: Option<&str>,
 ) -> Vec<String> {
-    if !matches!(target_db, DatabaseType::Postgres | DatabaseType::Oracle | DatabaseType::ClickHouse) {
+    if !(is_postgres_transfer_dialect(target_db)
+        || matches!(target_db, DatabaseType::Oracle | DatabaseType::ClickHouse))
+    {
         return Vec::new();
     }
 
@@ -2044,7 +2046,7 @@ pub fn generate_comment_ddl(
     let mut statements = Vec::new();
 
     // Table-level comment first (PostgreSQL/Oracle only; ClickHouse doesn't support COMMENT ON TABLE)
-    if matches!(target_db, DatabaseType::Postgres | DatabaseType::Oracle) {
+    if is_postgres_transfer_dialect(target_db) || matches!(target_db, DatabaseType::Oracle) {
         if let Some(comment) = table_comment {
             let trimmed = comment.trim();
             if !trimmed.is_empty() {
@@ -2064,7 +2066,7 @@ pub fn generate_comment_ddl(
             let qcol = quote_identifier(&c.name, target_db);
 
             match target_db {
-                DatabaseType::Postgres | DatabaseType::Oracle => {
+                target_db if is_postgres_transfer_dialect(target_db) || matches!(target_db, DatabaseType::Oracle) => {
                     statements.push(format!("COMMENT ON COLUMN {full_table}.{qcol} IS '{escaped}'"));
                 }
                 DatabaseType::ClickHouse => {
@@ -5578,6 +5580,37 @@ mod tests {
         assert!(stmts[0].contains("COMMENT ON TABLE \"public\".\"items\" IS '项目表'"));
         assert!(stmts[1].contains("COMMENT ON COLUMN \"public\".\"items\".\"id\" IS '主键'"));
         assert!(stmts[2].contains("COMMENT ON COLUMN \"public\".\"items\".\"name\" IS '名称'"));
+    }
+
+    #[test]
+    fn kingbase_comment_ddl_generates_and_escapes_comments() {
+        let cols = vec![
+            db::ColumnInfo { comment: Some("owner's id".to_string()), ..test_column("id", "int") },
+            db::ColumnInfo { comment: Some("display name".to_string()), ..test_column("name", "varchar(100)") },
+        ];
+
+        let stmts = generate_comment_ddl(&cols, "items", "public", &DatabaseType::Kingbase, Some("team's items"));
+
+        assert_eq!(
+            stmts,
+            vec![
+                "COMMENT ON TABLE \"public\".\"items\" IS 'team''s items'".to_string(),
+                "COMMENT ON COLUMN \"public\".\"items\".\"id\" IS 'owner''s id'".to_string(),
+                "COMMENT ON COLUMN \"public\".\"items\".\"name\" IS 'display name'".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn kingbase_comment_ddl_skips_empty_comments() {
+        let cols = vec![
+            db::ColumnInfo { comment: None, ..test_column("id", "int") },
+            db::ColumnInfo { comment: Some("  ".to_string()), ..test_column("name", "varchar(100)") },
+        ];
+
+        let stmts = generate_comment_ddl(&cols, "items", "public", &DatabaseType::Kingbase, Some("  "));
+
+        assert!(stmts.is_empty());
     }
 
     #[test]
