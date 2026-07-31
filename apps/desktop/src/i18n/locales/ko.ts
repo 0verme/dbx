@@ -437,7 +437,7 @@ export default withEnglishFallback({
     mqVirtualHostPlaceholder: "/",
     mqRabbitmqAdminUrl: "관리 URL",
     mqRabbitmqAdminUrlPlaceholder: "http://192.168.1.1:15672",
-    mqRabbitmqAdminUrlHint: "AMQP 주소에서 자동 유추하려면 비워 두세요. https://proxy/rmq 같은 역방향 프록시 경로 접두사를 지원합니다",
+    mqRabbitmqAdminUrlHint: "기본 AMQP 포트에서만 비워 둘 수 있습니다. 사용자 지정 AMQP 포트는 별도로 구성된 Management API URL이 필요합니다. https://proxy/rmq 같은 역방향 프록시 경로도 지원합니다",
     mqRabbitmqUsernamePlaceholder: "기본값 guest",
     mqRabbitmqPasswordPlaceholder: "기본값 guest",
     mqSecurity: "보안",

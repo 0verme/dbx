@@ -19,6 +19,7 @@ import (
 const (
 	defaultManagementPort    = 15672
 	defaultManagementTLSPort = 15671
+	defaultAMQPTLSPort       = 5671
 	managementPageSize       = 100
 	managementConnectTimeout = 10 * time.Second
 	managementRequestTimeout = 20 * time.Second
@@ -90,8 +91,23 @@ func managementRequestOnce(baseURL string, connection jsonObject, method, path s
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+	connectOverride, err := endpointOverride(connection, "management_connect_override")
+	if err != nil {
+		return nil, err
+	}
+	dialer := &net.Dialer{Timeout: managementConnectTimeout}
+	dialContext := dialer.DialContext
+	if connectOverride != nil {
+		dialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(
+				ctx,
+				network,
+				net.JoinHostPort(connectOverride.Host, strconv.Itoa(connectOverride.Port)),
+			)
+		}
+	}
 	transport := &http.Transport{
-		DialContext:           (&net.Dialer{Timeout: managementConnectTimeout}).DialContext,
+		DialContext:           dialContext,
 		TLSHandshakeTimeout:   managementConnectTimeout,
 		ResponseHeaderTimeout: managementConnectTimeout,
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: tlsSkipVerify(connection)},
@@ -161,10 +177,21 @@ func managementBaseURLs(connection jsonObject) ([]string, error) {
 		return []string{normalizeManagementURL(*explicit)}, nil
 	}
 	tlsEnabled := managementTLS(connection)
-	port := managementPort(connection, tlsEnabled)
 	addresses, err := resolveAddresses(connection)
 	if err != nil {
 		return nil, err
+	}
+	port, configured := configuredManagementPort(connection, tlsEnabled)
+	if !configured {
+		for _, endpoint := range addresses {
+			isDefaultAMQPPort := endpoint.Port == defaultAMQPPort || (tlsEnabled && endpoint.Port == defaultAMQPTLSPort)
+			if !isDefaultAMQPPort {
+				return nil, fmt.Errorf(
+					"RabbitMQ Management API URL is required when AMQP uses non-default port %d because the Management listener port is configured independently",
+					endpoint.Port,
+				)
+			}
+		}
 	}
 	baseURLs := make([]string, 0, len(addresses))
 	for _, endpoint := range addresses {
@@ -190,13 +217,18 @@ func managementTLS(connection jsonObject) bool {
 }
 
 func managementPort(connection jsonObject, tlsEnabled bool) int {
+	port, _ := configuredManagementPort(connection, tlsEnabled)
+	return port
+}
+
+func configuredManagementPort(connection jsonObject, tlsEnabled bool) (int, bool) {
 	if configured, ok := integerProperty(objectOrNil(connection, "properties"), "management_port"); ok {
-		return configured
+		return configured, true
 	}
 	if tlsEnabled {
-		return defaultManagementTLSPort
+		return defaultManagementTLSPort, false
 	}
-	return defaultManagementPort
+	return defaultManagementPort, false
 }
 
 func credentialOrGuest(connection jsonObject, key string) string {

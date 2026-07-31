@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 func mustObject(t *testing.T, source string) jsonObject {
@@ -133,6 +135,53 @@ func TestTLSAndManagementConfiguration(t *testing.T) {
 	}
 	if managementPort(mustObject(t, `{"properties":{"management_port":55672}}`), false) != 55672 {
 		t.Fatal("management port override ignored")
+	}
+	override, err := endpointOverride(mustObject(t, `{"connect_override":{"host":"127.0.0.1","port":45672}}`), "connect_override")
+	if err != nil || override == nil || override.Host != "127.0.0.1" || override.Port != 45672 {
+		t.Fatalf("unexpected endpoint override %#v, %v", override, err)
+	}
+	if _, err := endpointOverride(mustObject(t, `{"connect_override":{"host":"","port":0}}`), "connect_override"); err == nil {
+		t.Fatal("invalid endpoint override was accepted")
+	}
+}
+
+func TestDialAddressUsesConnectOverride(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	accepted := make(chan string, 1)
+	go func() {
+		connection, acceptError := listener.Accept()
+		if acceptError != nil {
+			accepted <- ""
+			return
+		}
+		defer connection.Close()
+		header := make([]byte, 8)
+		read, _ := connection.Read(header)
+		accepted <- string(header[:read])
+	}()
+
+	localPort := listener.Addr().(*net.TCPAddr).Port
+	config := jsonObject{
+		"connect_override": jsonObject{"host": "127.0.0.1", "port": localPort},
+		"properties": jsonObject{
+			"connection_timeout_ms": 1000,
+			"handshake_timeout_ms":  1000,
+		},
+	}
+	if _, err := dialAddress(config, address{Host: "rabbit.invalid", Port: 5672}); err == nil {
+		t.Fatal("fake AMQP endpoint unexpectedly completed the handshake")
+	}
+	select {
+	case header := <-accepted:
+		if !strings.HasPrefix(header, "AMQP") {
+			t.Fatalf("tunnel endpoint did not receive the AMQP protocol header: %q", header)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("AMQP connection did not reach the tunnel endpoint")
 	}
 }
 

@@ -601,7 +601,7 @@ export default withEnglishFallback({
     mqVirtualHostPlaceholder: "/",
     mqRabbitmqAdminUrl: "Management URL",
     mqRabbitmqAdminUrlPlaceholder: "http://192.168.1.1:15672",
-    mqRabbitmqAdminUrlHint: "空欄の場合は AMQP アドレスから派生します。https://proxy/rmq のようなリバースプロキシのパスプレフィックスに対応しています",
+    mqRabbitmqAdminUrlHint: "空欄から派生できるのは既定の AMQP ポートだけです。カスタム AMQP ポートでは個別に設定した Management API URL が必要です。https://proxy/rmq のようなリバースプロキシパスにも対応しています",
     mqRabbitmqUsernamePlaceholder: "デフォルトは guest",
     mqRabbitmqPasswordPlaceholder: "デフォルトは guest",
     mqSecurity: "Security",

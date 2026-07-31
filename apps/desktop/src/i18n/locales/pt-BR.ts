@@ -602,7 +602,7 @@ export default withEnglishFallback({
     mqVirtualHostPlaceholder: "/",
     mqRabbitmqAdminUrl: "Management URL",
     mqRabbitmqAdminUrlPlaceholder: "http://192.168.1.1:15672",
-    mqRabbitmqAdminUrlHint: "Deixe vazio para derivar dos endereços AMQP; suporta prefixos de caminho de proxy reverso como https://proxy/rmq",
+    mqRabbitmqAdminUrlHint: "Deixe vazio apenas com a porta AMQP padrão; portas AMQP personalizadas exigem a URL da API de gerenciamento configurada separadamente. Suporta caminhos de proxy reverso como https://proxy/rmq",
     mqRabbitmqUsernamePlaceholder: "Padrão guest",
     mqRabbitmqPasswordPlaceholder: "Padrão guest",
     mqSecurity: "Security",

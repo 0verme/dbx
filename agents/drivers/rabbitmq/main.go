@@ -356,6 +356,10 @@ func openConnection(config jsonObject) (*amqp.Connection, error) {
 
 func dialAddress(config jsonObject, endpoint address) (*amqp.Connection, error) {
 	properties := objectOrNil(config, "properties")
+	connectOverride, err := endpointOverride(config, "connect_override")
+	if err != nil {
+		return nil, err
+	}
 	connectionTimeout := durationMilliseconds(config, "request_timeout_ms", defaultRequestTimeout)
 	if configured, ok := integerProperty(properties, "connection_timeout_ms"); ok {
 		connectionTimeout = time.Duration(configured) * time.Millisecond
@@ -385,6 +389,9 @@ func dialAddress(config jsonObject, endpoint address) (*amqp.Connection, error) 
 		ChannelMax: defaultChannelMax,
 		Heartbeat:  time.Duration(heartbeat) * time.Second,
 		Dial: func(network, target string) (net.Conn, error) {
+			if connectOverride != nil {
+				target = net.JoinHostPort(connectOverride.Host, strconv.Itoa(connectOverride.Port))
+			}
 			dialer := net.Dialer{Timeout: connectionTimeout}
 			connection, err := dialer.Dial(network, target)
 			if err != nil {

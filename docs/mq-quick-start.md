@@ -457,6 +457,8 @@ docker run -d --name dbx-rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-managem
 
 说明：RabbitMQ 适配器将 topic 映射为队列（queue），支持队列列表/声明/删除、清空队列（purge）、消费者列表、消息预览（basic.get + requeue）与发送（basic.publish）；vhost 映射为 namespace，可在控制台查看/创建/删除。AMQP 操作按 vhost 透传（agent 侧 per-vhost 通道缓存），tenant 语义不适用（固定合成 `_rabbitmq`）。
 
+RabbitMQ 的 AMQP 监听端口与 Management HTTP 监听端口是独立配置。使用默认 AMQP 端口时可将 `adminUrl` 留空，由 DBX 使用默认 Management 端口；使用非默认 AMQP 端口时必须填写实际的 Management API URL，例如 AMQP 为 `127.0.0.1:5673`、Management 为 `http://127.0.0.1:15673`。SSH、SOCKS 或 HTTP 隧道会分别转发 AMQP 与 Management 两个端点。
+
 ### Kafka 适配器参考
 
 1. 实现 `MessageQueueAdmin` trait：

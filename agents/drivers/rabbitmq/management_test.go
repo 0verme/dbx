@@ -21,9 +21,17 @@ func TestManagementBaseURLs(t *testing.T) {
 	if err != nil || withoutAddresses[0] != "http://mgmt:15672" {
 		t.Fatalf("unexpected URL %#v, %v", withoutAddresses, err)
 	}
-	derived, err := managementBaseURLs(mustObject(t, `{"addresses":"mq1:5672,mq2:5673"}`))
+	derived, err := managementBaseURLs(mustObject(t, `{"addresses":"mq1:5672,mq2:5672"}`))
 	if err != nil || len(derived) != 2 || derived[0] != "http://mq1:15672" || derived[1] != "http://mq2:15672" {
 		t.Fatalf("unexpected derived URLs %#v, %v", derived, err)
+	}
+	_, err = managementBaseURLs(mustObject(t, `{"addresses":"mq1:5673"}`))
+	if err == nil || !strings.Contains(err.Error(), "Management API URL is required") || !strings.Contains(err.Error(), "5673") {
+		t.Fatalf("unexpected custom AMQP port error %v", err)
+	}
+	customPort, err := managementBaseURLs(mustObject(t, `{"addresses":"mq1:5673","properties":{"management_port":15673}}`))
+	if err != nil || len(customPort) != 1 || customPort[0] != "http://mq1:15673" {
+		t.Fatalf("unexpected custom management URL %#v, %v", customPort, err)
 	}
 	tlsDerived, err := managementBaseURLs(mustObject(t, `{"addresses":"mq1","tls":{}}`))
 	if err != nil || tlsDerived[0] != "https://mq1:15671" {
@@ -32,6 +40,40 @@ func TestManagementBaseURLs(t *testing.T) {
 	skipVerify, err := managementBaseURLs(mustObject(t, `{"addresses":"mq1","tls_skip_verify":true}`))
 	if err != nil || skipVerify[0] != "http://mq1:15672" {
 		t.Fatalf("unexpected skip-verify URLs %#v, %v", skipVerify, err)
+	}
+}
+
+func TestManagementRequestUsesConnectOverride(t *testing.T) {
+	var observedHost string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		observedHost = request.Host
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"items":[]}`))
+	}))
+	defer server.Close()
+
+	localAddress := strings.TrimPrefix(server.URL, "http://")
+	localHost, localPortText, err := net.SplitHostPort(localAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localPort, err := strconv.Atoi(localPortText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managementURL := "http://rabbit.internal:" + localPortText
+	connection := jsonObject{
+		"management_url": managementURL,
+		"management_connect_override": jsonObject{
+			"host": localHost,
+			"port": localPort,
+		},
+	}
+	if _, err := managementGet(connection, "/api/queues"); err != nil {
+		t.Fatal(err)
+	}
+	if observedHost != "rabbit.internal:"+localPortText {
+		t.Fatalf("management Host header changed to %q", observedHost)
 	}
 }
 

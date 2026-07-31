@@ -244,6 +244,19 @@ func integerProperty(properties jsonObject, key string) (int, bool) {
 	return *value, true
 }
 
+func endpointOverride(config jsonObject, key string) (*address, error) {
+	override := objectOrNil(config, key)
+	if override == nil {
+		return nil, nil
+	}
+	host := strings.TrimSpace(stringOrEmpty(override, "host"))
+	port := integerOrNull(override, "port")
+	if host == "" || port == nil || *port < 1 || *port > 65535 {
+		return nil, fmt.Errorf("%s must include a host and a port between 1 and 65535", key)
+	}
+	return &address{Host: host, Port: *port}, nil
+}
+
 func boolProperty(config jsonObject, key string) bool {
 	return boolOrDefault(objectOrNil(config, "properties"), key, false)
 }

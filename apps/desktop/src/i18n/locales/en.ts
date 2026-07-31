@@ -441,7 +441,7 @@ export default {
     mqVirtualHostPlaceholder: "/",
     mqRabbitmqAdminUrl: "Management URL",
     mqRabbitmqAdminUrlPlaceholder: "http://192.168.1.1:15672",
-    mqRabbitmqAdminUrlHint: "Leave empty to derive from AMQP addresses; reverse-proxy path prefixes like https://proxy/rmq are supported",
+    mqRabbitmqAdminUrlHint: "Leave empty only for the default AMQP port; custom AMQP ports require the independently configured Management API URL. Reverse-proxy paths like https://proxy/rmq are supported",
     mqRabbitmqUsernamePlaceholder: "Defaults to guest",
     mqRabbitmqPasswordPlaceholder: "Defaults to guest",
     mqSecurity: "Security",

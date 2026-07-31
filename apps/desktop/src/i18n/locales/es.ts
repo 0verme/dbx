@@ -603,7 +603,7 @@ export default withEnglishFallback({
     mqVirtualHostPlaceholder: "/",
     mqRabbitmqAdminUrl: "Management URL",
     mqRabbitmqAdminUrlPlaceholder: "http://192.168.1.1:15672",
-    mqRabbitmqAdminUrlHint: "Déjalo vacío para derivarlo de las direcciones AMQP; admite prefijos de ruta de proxy inverso como https://proxy/rmq",
+    mqRabbitmqAdminUrlHint: "Déjalo vacío solo con el puerto AMQP predeterminado; los puertos AMQP personalizados requieren la URL de la API de administración configurada por separado. Admite rutas de proxy inverso como https://proxy/rmq",
     mqRabbitmqUsernamePlaceholder: "Por defecto guest",
     mqRabbitmqPasswordPlaceholder: "Por defecto guest",
     mqSecurity: "Security",

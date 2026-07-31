@@ -601,7 +601,7 @@ export default withEnglishFallback({
     mqVirtualHostPlaceholder: "/",
     mqRabbitmqAdminUrl: "Management URL",
     mqRabbitmqAdminUrlPlaceholder: "http://192.168.1.1:15672",
-    mqRabbitmqAdminUrlHint: "留空則按 AMQP 位址派生；支援反代路徑前綴，如 https://proxy/rmq",
+    mqRabbitmqAdminUrlHint: "僅預設 AMQP 連接埠可留空派生；非預設 AMQP 連接埠必須填寫獨立設定的管理 API 位址。支援反代路徑前綴，如 https://proxy/rmq",
     mqRabbitmqUsernamePlaceholder: "預設 guest",
     mqRabbitmqPasswordPlaceholder: "預設 guest",
     mqSecurity: "Security",
