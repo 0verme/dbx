@@ -135,7 +135,7 @@ import { applyColumnFormatter, buildColumnFormatterKey, getSupportedTimeZoneOpti
 import { temporalCellEditorConfig, type TemporalCellEditorConfig } from "@/lib/dataGrid/dataGridTemporalEditor";
 import { isCancelSearchShortcut, isCopyCurrentRowShortcut, isDeleteCurrentRowShortcut, isFocusSearchShortcut, isModRShortcut, isSaveShortcut, isToggleTransposeShortcut } from "@/lib/editor/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGrid/dataGridScrollGutter";
-import { canFetchNextDataGridSegment, canGoNextDataGridPage, hasCompleteLocalDataGridResult, resolveDataGridPaginationTotal } from "@/lib/dataGrid/dataGridPagination";
+import { canFetchNextDataGridSegment, canGoNextDataGridPage, dataGridTotalRowCountLabelKey, hasCompleteLocalDataGridResult, resolveDataGridPaginationTotal, type DataGridInexactTotalRowCountMode } from "@/lib/dataGrid/dataGridPagination";
 import { dataGridCountQueryOptions } from "@/lib/dataGrid/dataGridQueryOptions";
 import { dataGridBottomScrollTop, dataGridScrollPosition, isDataGridAtScrollBottom, isDataGridNearScrollBottom, shouldCheckInfiniteScrollAfterScroll, type DataGridScrollPosition } from "@/lib/dataGrid/dataGridInfiniteScroll";
 import { CANVAS_DATA_GRID_ROW_HEIGHT, canvasDataGridActionReservedWidth, dataGridSearchMatchKey, drawCanvasDataGrid } from "@/lib/dataGrid/canvasDataGridRenderer";
@@ -184,7 +184,7 @@ import { eventTargetAllowsNativeClipboard, isPlainClipboardShortcut, readTextFro
 import { claimDataGridPaste, clearDataGridClipboardCopy, parseDataGridClipboard, planDataGridPaste } from "@/lib/dataGrid/dataGridClipboard";
 import { DATA_GRID_COPY_EXTRACTOR_DESCRIPTORS, DATA_GRID_COPY_EXTRACTOR_IDS, extractorUnavailableForDatabase, type DataGridCopyExtractorId } from "@/lib/dataGrid/dataGridCopyExtractor";
 import { columnNamesForCopy } from "@/lib/dataGrid/dataGridColumnNameCopy";
-import { DATA_GRID_ROW_NUM_WIDTH, useDataGridColumnResize } from "@/composables/useDataGridColumnResize";
+import { DATA_GRID_ROW_NUM_WIDTH, dataGridRowNumberColumnWidth, resolveDataGridMaxRowNumber, useDataGridColumnResize } from "@/composables/useDataGridColumnResize";
 import { createDataGridColumnStructureSignature } from "@/lib/dataGrid/dataGridColumnWidthState";
 import { useDataGridColumnLayout, useDataGridColumnLayoutState } from "@/composables/useDataGridColumnLayout";
 import { useDataGridCanvasRuntime, type DataGridCanvasRuntime } from "@/composables/useDataGridCanvasRuntime";
@@ -245,6 +245,7 @@ const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
 const tableFontSize = computed(() => settingsStore.editorSettings.tableFontSize);
+const rowNumberWidth = ref(DATA_GRID_ROW_NUM_WIDTH);
 const multiRowTranspose = computed(() => settingsStore.editorSettings.dataGridMultiRowTranspose);
 const hideNullColumns = computed(() => settingsStore.editorSettings.dataGridHideNullColumns);
 const { isDark, themePalette } = useTheme();
@@ -300,9 +301,12 @@ interface DataGridProps {
   countSql?: string;
   totalRowCount?: number;
   totalRowCountIsExact?: boolean;
+  inexactTotalRowCountMode?: DataGridInexactTotalRowCountMode;
   paginationTotalRowCount?: number;
   paginationEnabled?: boolean;
   totalRowCountLoading?: boolean;
+  /** Document stores (e.g. MongoDB) count exactly on demand without SQL tableMeta/countSql. */
+  countTotalRows?: () => Promise<number | undefined>;
   loading?: boolean;
   cacheKey?: string;
   exportSql?: string;
@@ -322,6 +326,7 @@ const props = withDefaults(defineProps<DataGridProps>(), {
   // Vue casts absent Boolean props to false unless a default is explicit.
   // Regular grids have exact totals; document stores opt into lower-bound totals.
   totalRowCountIsExact: true,
+  inexactTotalRowCountMode: "at-least",
   paginationEnabled: true,
   // Omitted row-action limits must keep normal table-data editing.
   allowInsertRows: undefined,
@@ -1898,6 +1903,7 @@ const { initColumnWidths, onResizeStart, autoFitColumn, renderedColumnWidths, to
   columnStructureSignature,
   measureHeaderText: measureColumnHeaderText,
   headerMeasurementKey: columnHeaderMeasurementKey,
+  rowNumberWidth,
 });
 const gridStyle = computed(() => ({
   ...columnVars.value,
@@ -1932,7 +1938,7 @@ const {
   renderedColumnWidths,
   scrollLeft: gridHorizontalScrollLeft,
   viewportWidth: gridViewportWidth,
-  rowNumberWidth: DATA_GRID_ROW_NUM_WIDTH,
+  rowNumberWidth,
   headerRef,
   orderedColumnIndexes: orderedDisplayableColumnIndexes,
   hiddenColumnIndexes,
@@ -2453,9 +2459,10 @@ const inferredBackendTotalRowCount = computed(() => {
   if (affected <= props.result.rows.length) return undefined;
   return affected;
 });
-const serverKnownTotalRowCount = computed(() => props.totalRowCount ?? manualTotalRowCount.value);
+const serverKnownTotalRowCount = computed(() => (typeof manualTotalRowCount.value === "number" ? manualTotalRowCount.value : props.totalRowCount));
 const displayedTotalRowCount = computed(() => serverKnownTotalRowCount.value ?? inferredBackendTotalRowCount.value);
-const totalRowCountIsExact = computed(() => props.totalRowCountIsExact !== false);
+const totalRowCountIsExact = computed(() => typeof manualTotalRowCount.value === "number" || props.totalRowCountIsExact !== false);
+const totalRowCountLabelKey = computed(() => dataGridTotalRowCountLabelKey(totalRowCountIsExact.value, props.inexactTotalRowCountMode));
 // A backend can expose an exact display total while deliberately restricting
 // offset pagination to a smaller safe range.
 const paginationTotalRowCount = computed(() =>
@@ -2506,9 +2513,36 @@ const canFetchNextInfiniteScrollSegment = computed(() =>
     allRowsLoaded: allRowsLoaded.value,
   }),
 );
-const canJumpLastPage = computed(() => canGoNextPage.value && (hasKnownPaginationTotalRowCount.value || allRowsLoaded.value || !!props.tableMeta || !!props.countSql));
+const canJumpLastPage = computed(() => canGoNextPage.value && (hasKnownPaginationTotalRowCount.value || allRowsLoaded.value || !!props.tableMeta || !!props.countSql || !!props.countTotalRows));
 const totalRowCountBusy = computed(() => props.totalRowCountLoading === true || manualTotalRowCountLoading.value);
-const canCalculateTotalRowCount = computed(() => !!props.connectionId && (!!props.tableMeta || !!props.countSql));
+/** Full-grid busy state: query loading or on-demand COUNT (e.g. jump to last page). */
+const gridSurfaceBusy = computed(() => props.loading === true || totalRowCountBusy.value);
+const canCalculateTotalRowCount = computed(() => !!props.countTotalRows || (!!props.connectionId && (!!props.tableMeta || !!props.countSql)));
+const showExactTotalCountAction = computed(() => canCalculateTotalRowCount.value && (totalRowCountIsExact.value === false || typeof displayedTotalRowCount.value !== "number"));
+watch(
+  [
+    () =>
+      resolveDataGridMaxRowNumber({
+        infiniteScroll: infiniteScrollEnabled.value,
+        allRowsLoaded: allRowsLoaded.value,
+        currentPage: currentPage.value,
+        pageSize: pageSize.value,
+        rowCount: props.result.rows.length,
+      }),
+    tableFontSize,
+    tableFontFamily,
+  ],
+  ([maxRowNumber, fontSize, fontFamily]) => {
+    rowNumberWidth.value = dataGridRowNumberColumnWidth(maxRowNumber, fontSize, (text) => {
+      if (typeof document === "undefined") return undefined;
+      if (columnHeaderMeasureContext === undefined) columnHeaderMeasureContext = document.createElement("canvas").getContext("2d");
+      if (!columnHeaderMeasureContext) return undefined;
+      columnHeaderMeasureContext.font = `400 ${fontSize}px ${fontFamily}`;
+      return Math.ceil(columnHeaderMeasureContext.measureText(text).width);
+    });
+  },
+  { immediate: true },
+);
 // When a refresh/rollback completes and the current page exceeds the last
 // available page (e.g. data was deleted while viewing), auto-navigate to the
 // last available page instead of showing an empty page.
@@ -2582,7 +2616,7 @@ function currentOrderBy(): string | undefined {
 }
 
 watch(
-  () => [props.countSql ?? "", props.tableMeta?.schema ?? "", props.tableMeta?.tableName ?? "", currentWhereInput() ?? "", props.database ?? "", props.connectionId ?? "", props.result],
+  () => [props.countSql ?? "", props.tableMeta?.schema ?? "", props.tableMeta?.tableName ?? "", currentWhereInput() ?? "", props.database ?? "", props.connectionId ?? ""],
   () => {
     manualTotalRowCount.value = undefined;
     // Reset infinite-scroll allLoaded when query context changes
@@ -2684,42 +2718,73 @@ function applyCustomPageSize() {
   changePageSize(normalizeResultPageSize(customPageSizeInput.value, pageSize.value));
 }
 
+function jumpToCountedLastPage(total: number) {
+  if (total <= 0) return;
+  const lastPageNum = Math.max(1, Math.ceil(total / pageSize.value));
+  if (lastPageNum <= currentPage.value) return;
+  // Do not bump currentPage before the new page loads — otherwise stale rows
+  // briefly render with last-page indexes (e.g. 12001-13000) and flash a fake full page.
+  resetGridVerticalScroll(true);
+  emit("paginate", (lastPageNum - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
+}
+
+async function beginManualTotalRowCount(): Promise<boolean> {
+  if (manualTotalRowCountLoading.value) return false;
+  manualTotalRowCountLoading.value = true;
+  // Flush busy UI (overlay / spinner) before the slow COUNT starts.
+  await nextTick();
+  return true;
+}
+
 async function lastPage() {
   if (infiniteScrollEnabled.value) return;
-  if (hasKnownPaginationTotalRowCount.value) {
-    const total = paginationTotalRowCount.value ?? 0;
-    if (total <= 0) return;
-    const lastPageNum = Math.ceil(total / pageSize.value);
-    if (lastPageNum <= currentPage.value) return;
-    currentPage.value = lastPageNum;
-    resetGridVerticalScroll(true);
-    emit("paginate", (lastPageNum - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
-    return;
-  }
   if (allRowsLoaded.value) {
     const total = props.result.rows.length;
     if (total <= 0) return;
-    const lastPageNum = Math.ceil(total / pageSize.value);
+    const lastPageNum = Math.max(1, Math.ceil(total / pageSize.value));
     if (lastPageNum <= currentPage.value) return;
     currentPage.value = lastPageNum;
     resetGridVerticalScroll(true);
     return;
   }
-  if (!props.connectionId) return;
-  const countTarget = await buildCurrentCountTarget();
-  const sql = countTarget?.sql;
-  if (!sql) return;
-  try {
-    const result = await api.executeQuery(props.connectionId, props.executionDatabase ?? props.database ?? "", sql, countTarget.schema, undefined, dataGridCountQueryOptions(connectionStore.getConfig(props.connectionId)));
-    const total = Number(result.rows?.[0]?.[0] ?? 0);
-    if (total <= 0) return;
-    const lastPageNum = Math.ceil(total / pageSize.value);
-    if (lastPageNum <= currentPage.value) return;
-    currentPage.value = lastPageNum;
-    resetGridVerticalScroll(true);
-    emit("paginate", (lastPageNum - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
-  } catch {
-    // COUNT query failed — ignore silently
+  // Navicat-style: always re-COUNT when jumping to the last page.
+  if (props.countTotalRows) {
+    if (!(await beginManualTotalRowCount())) return;
+    try {
+      const total = await props.countTotalRows();
+      if (typeof total !== "number" || !Number.isFinite(total) || total < 0) return;
+      manualTotalRowCount.value = total;
+      jumpToCountedLastPage(total);
+      // Keep the busy overlay until the parent query loading flag can take over.
+      await nextTick();
+    } catch (e: any) {
+      toast(t("grid.calculateTotalRowsFailed", { message: e?.message || String(e) }), 5000);
+    } finally {
+      manualTotalRowCountLoading.value = false;
+    }
+    return;
+  }
+  if (props.connectionId && (props.countSql || props.tableMeta)) {
+    if (!(await beginManualTotalRowCount())) return;
+    try {
+      const countTarget = await buildCurrentCountTarget();
+      const sql = countTarget?.sql;
+      if (!sql) return;
+      const result = await api.executeQuery(props.connectionId, props.executionDatabase ?? props.database ?? "", sql, countTarget.schema, undefined, dataGridCountQueryOptions(connectionStore.getConfig(props.connectionId)));
+      const total = Number(result.rows?.[0]?.[0] ?? 0);
+      if (!Number.isFinite(total) || total < 0) return;
+      manualTotalRowCount.value = total;
+      jumpToCountedLastPage(total);
+      await nextTick();
+    } catch {
+      // COUNT query failed — ignore silently
+    } finally {
+      manualTotalRowCountLoading.value = false;
+    }
+    return;
+  }
+  if (hasKnownPaginationTotalRowCount.value) {
+    jumpToCountedLastPage(paginationTotalRowCount.value ?? 0);
   }
 }
 
@@ -2741,9 +2806,16 @@ async function buildCurrentCountTarget(): Promise<{ sql: string; schema?: string
 }
 
 async function calculateTotalRowCount() {
-  if (!props.connectionId || manualTotalRowCountLoading.value) return;
-  manualTotalRowCountLoading.value = true;
+  if (!(await beginManualTotalRowCount())) return;
   try {
+    if (props.countTotalRows) {
+      const total = await props.countTotalRows();
+      if (typeof total === "number" && Number.isFinite(total) && total >= 0) {
+        manualTotalRowCount.value = total;
+      }
+      return;
+    }
+    if (!props.connectionId) return;
     const countTarget = await buildCurrentCountTarget();
     if (!countTarget?.sql) return;
     const result = await api.executeQuery(props.connectionId, props.executionDatabase ?? props.database ?? "", countTarget.sql, countTarget.schema, undefined, dataGridCountQueryOptions(connectionStore.getConfig(props.connectionId)));
@@ -4385,10 +4457,16 @@ function formatCellCached(value: CellValue, columnIndex?: number): string {
   return rememberPrimitiveCellFormat(key, formatCell(value, columnIndex));
 }
 
+function rowNumberPageOffset(): number {
+  if (infiniteScrollEnabled.value) return 0;
+  if (typeof props.pageOffset === "number" && props.pageOffset >= 0) return props.pageOffset;
+  return (currentPage.value - 1) * pageSize.value;
+}
+
 function rowNumberText(item: RowItem | undefined): string {
   if (!item) return "";
   if (item.isDraft) return "*";
-  return String(infiniteScrollEnabled.value ? item.displayIndex + 1 : item.displayIndex + 1 + (currentPage.value - 1) * pageSize.value);
+  return String(item.displayIndex + 1 + rowNumberPageOffset());
 }
 
 function draftCellPlaceholder(item: RowItem | undefined, columnIndex: number): string | null {
@@ -4546,12 +4624,12 @@ function dataGridCellFromClientPoint(clientX: number, clientY: number): { rowInd
   const scroller = dataGridSelectionScroller();
   if (!scroller) return null;
   const rect = scroller.getBoundingClientRect();
-  const clampedX = Math.min(rect.right - 1, Math.max(rect.left + DATA_GRID_ROW_NUM_WIDTH + 1, clientX));
+  const clampedX = Math.min(rect.right - 1, Math.max(rect.left + rowNumberWidth.value + 1, clientX));
   const clampedY = Math.min(rect.bottom - 1, Math.max(rect.top + 1, clientY));
 
   if (useCanvasGridRows.value) {
     const rowIndex = Math.floor((scroller.scrollTop + clampedY - rect.top) / CANVAS_DATA_GRID_ROW_HEIGHT);
-    const visibleColIdx = canvasColumnAt(scroller.scrollLeft + clampedX - rect.left - DATA_GRID_ROW_NUM_WIDTH);
+    const visibleColIdx = canvasColumnAt(scroller.scrollLeft + clampedX - rect.left - rowNumberWidth.value);
     if (rowIndex < 0 || rowIndex >= displayRowCount.value || visibleColIdx < 0) return null;
     const item = displayItemAt(rowIndex);
     return item ? { rowIndex: item.displayIndex, colIndex: visibleColIdx } : null;
@@ -4578,7 +4656,7 @@ function dataGridRowFromClientPoint(_clientX: number, clientY: number): number |
     return item?.displayIndex ?? null;
   }
 
-  const target = document.elementFromPoint(rect.left + Math.min(DATA_GRID_ROW_NUM_WIDTH / 2, rect.width / 2), clampedY);
+  const target = document.elementFromPoint(rect.left + Math.min(rowNumberWidth.value / 2, rect.width / 2), clampedY);
   const row = target instanceof Element ? target.closest<HTMLElement>("[data-row-index]") : null;
   const rowIndex = Number(row?.dataset.rowIndex);
   return Number.isInteger(rowIndex) ? rowIndex : null;
@@ -4681,14 +4759,14 @@ function canvasHitTest(event: MouseEvent): { rowIndex: number; visibleColIdx: nu
   const y = event.clientY - rect.top;
   const rowIndex = Math.floor((scroller.scrollTop + y) / CANVAS_DATA_GRID_ROW_HEIGHT);
   if (rowIndex < 0 || rowIndex >= displayRowCount.value) return null;
-  if (x < DATA_GRID_ROW_NUM_WIDTH) return { rowIndex, visibleColIdx: -1, rowNumber: true };
+  if (x < rowNumberWidth.value) return { rowIndex, visibleColIdx: -1, rowNumber: true };
   // 冻结列区域不受 scrollLeft 影响，需要特殊处理
   const frozenWidth = frozenColumnCount.value > 0 ? (renderedColumnOffsets.value[frozenColumnCount.value] ?? 0) : 0;
   let contentX: number;
-  if (frozenWidth > 0 && x - DATA_GRID_ROW_NUM_WIDTH < frozenWidth) {
-    contentX = x - DATA_GRID_ROW_NUM_WIDTH;
+  if (frozenWidth > 0 && x - rowNumberWidth.value < frozenWidth) {
+    contentX = x - rowNumberWidth.value;
   } else {
-    contentX = scroller.scrollLeft + x - DATA_GRID_ROW_NUM_WIDTH;
+    contentX = scroller.scrollLeft + x - rowNumberWidth.value;
   }
   const visibleColIdx = canvasColumnAt(contentX);
   if (visibleColIdx < 0) return null;
@@ -4908,7 +4986,7 @@ function canvasCellViewportRect(rowIndex: number, visibleColIdx: number) {
   if (colWidth === undefined) return null;
   // 冻结列不受 scrollLeft 影响
   const isFrozen = visibleColIdx < frozenColumnCount.value;
-  const left = DATA_GRID_ROW_NUM_WIDTH + (renderedColumnOffsets.value[visibleColIdx] ?? 0) - (isFrozen ? 0 : gridHorizontalScrollLeft.value);
+  const left = rowNumberWidth.value + (renderedColumnOffsets.value[visibleColIdx] ?? 0) - (isFrozen ? 0 : gridHorizontalScrollLeft.value);
   return {
     left,
     top: rowIndex * CANVAS_DATA_GRID_ROW_HEIGHT - canvasScrollTop.value,
@@ -4931,7 +5009,7 @@ function canvasEditingCellIsVisible() {
   if (!rect) return false;
   const viewportWidth = canvasEffectiveViewportWidth();
   const viewportHeight = canvasEffectiveViewportHeight();
-  const clippedLeft = Math.max(DATA_GRID_ROW_NUM_WIDTH, rect.left);
+  const clippedLeft = Math.max(rowNumberWidth.value, rect.left);
   const clippedRight = viewportWidth > 0 ? Math.min(viewportWidth, rect.left + rect.width) : rect.left + rect.width;
   return rect.top + rect.height > 0 && rect.top < viewportHeight && clippedRight - clippedLeft > 0;
 }
@@ -4974,7 +5052,7 @@ const canvasEditingCellStyle = computed(() => {
   const cell = canvasEditingCell.value;
   if (!cell) return {};
   const viewportWidth = canvasEffectiveViewportWidth();
-  const clippedLeft = Math.max(DATA_GRID_ROW_NUM_WIDTH, cell.rect.left);
+  const clippedLeft = Math.max(rowNumberWidth.value, cell.rect.left);
   const clippedRight = viewportWidth > 0 ? Math.min(viewportWidth, cell.rect.left + cell.rect.width) : cell.rect.left + cell.rect.width;
   return {
     left: `${clippedLeft}px`,
@@ -4996,7 +5074,7 @@ const canvasDetailButtonCell = computed(() => {
   if (!rect) return null;
   const viewportWidth = canvasEffectiveViewportWidth();
   const viewportHeight = canvasEffectiveViewportHeight();
-  const visibleLeft = Math.max(DATA_GRID_ROW_NUM_WIDTH, rect.left);
+  const visibleLeft = Math.max(rowNumberWidth.value, rect.left);
   const visibleRight = viewportWidth > 0 ? Math.min(viewportWidth, rect.left + rect.width) : rect.left + rect.width;
   const canQuickDownload = canQuickDownloadCellValue(target.rowIndex, target.col);
   const minWidth = canQuickDownload ? 46 : 24;
@@ -5010,7 +5088,7 @@ const canvasDetailButtonStyle = computed(() => {
   const actionWidth = cell.canQuickDownload ? 44 : 22;
   const edgeGap = 6;
   return {
-    left: `${Math.max(DATA_GRID_ROW_NUM_WIDTH, cell.rect.left + cell.rect.width - actionWidth - edgeGap)}px`,
+    left: `${Math.max(rowNumberWidth.value, cell.rect.left + cell.rect.width - actionWidth - edgeGap)}px`,
     top: `${cell.rect.top + cell.rect.height / 2}px`,
   };
 });
@@ -5045,7 +5123,7 @@ function drawCanvasGrid() {
     columnPreviewOffsets: columnHeaderPreviewOffsets.value,
     columnPreviewSourceVisibleIndex: columnHeaderPreviewSourceVisibleIndex.value,
     visibleColumnIndexes: visibleColumnIndexes.value,
-    rowNumberWidth: DATA_GRID_ROW_NUM_WIDTH,
+    rowNumberWidth: rowNumberWidth.value,
     hoverCell: canvasHoverCell.value,
     isScrolling: isScrolling.value,
     editingCell: editingCell.value,
@@ -5058,8 +5136,7 @@ function drawCanvasGrid() {
     cellIsSelected,
     cellCanHover: canEditCellItem,
     infiniteScrollEnabled: infiniteScrollEnabled.value,
-    pageSize: pageSize.value,
-    currentPage: currentPage.value,
+    pageOffset: rowNumberPageOffset(),
     frozenColumnCount: frozenColumnCount.value,
     columnAligns: columnAligns.value,
     rightAlignedActionCell: canvasRightAlignedActionCell.value,
@@ -5924,11 +6001,11 @@ function scrollGridColumnIntoView(visibleColIdx: number) {
   const colLeft = columnContentOffsetLeft(visibleColIdx);
   const colRight = colLeft + (renderedColumnWidths.value[visibleColIdx] ?? 0);
   const frozenWidth = frozenColumnCount.value > 0 ? (renderedColumnOffsets.value[frozenColumnCount.value] ?? 0) : 0;
-  const viewportLeft = scroller.scrollLeft + DATA_GRID_ROW_NUM_WIDTH + frozenWidth;
+  const viewportLeft = scroller.scrollLeft + rowNumberWidth.value + frozenWidth;
   const viewportRight = scroller.scrollLeft + scroller.clientWidth;
 
   if (colLeft < viewportLeft) {
-    scroller.scrollLeft = Math.max(0, colLeft - DATA_GRID_ROW_NUM_WIDTH - frozenWidth);
+    scroller.scrollLeft = Math.max(0, colLeft - rowNumberWidth.value - frozenWidth);
   } else if (colRight > viewportRight) {
     scroller.scrollLeft = Math.max(0, colRight - scroller.clientWidth);
   }
@@ -7470,45 +7547,40 @@ function stopLoadingElapsedTimer() {
 
 function startLoadingElapsedTimer() {
   stopLoadingElapsedTimer();
-  if (!dataGridIsActive || !props.loading) return;
+  if (!dataGridIsActive || !gridSurfaceBusy.value) return;
   _loadingStart = Date.now();
   loadingElapsed.value = 0;
   const updateOnNextFrame = () => {
-    if (!dataGridIsActive || !props.loading) return;
+    if (!dataGridIsActive || !gridSurfaceBusy.value) return;
     loadingElapsed.value = Date.now() - _loadingStart;
     _loadingFrame = window.requestAnimationFrame(updateOnNextFrame);
   };
   _loadingFrame = window.requestAnimationFrame(updateOnNextFrame);
 }
 
-watch(
-  () => props.loading,
-  (isLoading) => {
-    stopLoadingElapsedTimer();
-    if (isDebugLoggingEnabled()) {
-      logDataGridTiming(isLoading ? "[DBX][DataGrid:loading:start]" : "[DBX][DataGrid:loading:stop]", {
-        traceId: dataGridTraceId,
-        cacheKey: props.cacheKey,
-        elapsedSinceSetup: dataGridElapsed(),
-      });
-    }
-    if (isLoading) {
-      startLoadingElapsedTimer();
-    } else {
-      if (isDebugLoggingEnabled()) {
-        nextTick(() => {
-          requestAnimationFrame(() => {
-            logDataGridTiming("[DBX][DataGrid:loading:stop:first-frame]", {
-              traceId: dataGridTraceId,
-              cacheKey: props.cacheKey,
-              elapsedSinceSetup: dataGridElapsed(),
-            });
-          });
+watch(gridSurfaceBusy, (isLoading) => {
+  stopLoadingElapsedTimer();
+  if (isDebugLoggingEnabled()) {
+    logDataGridTiming(isLoading ? "[DBX][DataGrid:loading:start]" : "[DBX][DataGrid:loading:stop]", {
+      traceId: dataGridTraceId,
+      cacheKey: props.cacheKey,
+      elapsedSinceSetup: dataGridElapsed(),
+    });
+  }
+  if (isLoading) {
+    startLoadingElapsedTimer();
+  } else if (isDebugLoggingEnabled()) {
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        logDataGridTiming("[DBX][DataGrid:loading:stop:first-frame]", {
+          traceId: dataGridTraceId,
+          cacheKey: props.cacheKey,
+          elapsedSinceSetup: dataGridElapsed(),
         });
-      }
-    }
-  },
-);
+      });
+    });
+  }
+});
 
 onActivated(() => {
   startLoadingElapsedTimer();
@@ -8949,7 +9021,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </template>
               </RecycleScroller>
               <!-- Infinite scroll loading indicator for RecycleScroller -->
-              <div v-if="infiniteScrollEnabled && infiniteScrollLoading && !loading" class="flex items-center justify-center py-2 text-xs text-muted-foreground">
+              <div v-if="infiniteScrollEnabled && infiniteScrollLoading && !gridSurfaceBusy" class="flex items-center justify-center py-2 text-xs text-muted-foreground">
                 <Loader2 class="w-3 h-3 animate-spin mr-1" />
                 {{ t("grid.loadingMore") }}
               </div>
@@ -8959,7 +9031,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               <div v-if="hasGridVerticalOverflow" ref="gridVerticalScrollbarTrackRef" class="data-grid-vertical-scrollbar" @pointerdown="startGridVerticalScrollbarDrag">
                 <div ref="gridVerticalScrollbarThumbRef" class="data-grid-vertical-scrollbar__thumb" />
               </div>
-              <div v-if="loading" class="absolute inset-0 z-20 bg-background/50 flex items-center justify-center">
+              <div v-if="gridSurfaceBusy" class="absolute inset-0 z-20 bg-background/50 flex items-center justify-center">
                 <div class="flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
                   <Loader2 class="w-3.5 h-3.5 animate-spin" />
                   <span>{{ formatElapsedSeconds(loadingElapsed) }}s</span>
@@ -9349,11 +9421,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       <div class="flex min-w-0 items-center gap-2 overflow-hidden">
         <span v-if="hasData" class="shrink-0">
           {{ t(showTruncationWarning ? "grid.loadedRows" : "grid.totalRows", { count: result.rows.length }) }}
-          <span v-if="typeof displayedTotalRowCount === 'number' && displayedTotalRowCount >= 0" class="text-muted-foreground/70">{{ t(totalRowCountIsExact === false ? "grid.totalRowCountAtLeast" : "grid.totalRowCount", { count: displayedTotalRowCount }) }}</span>
-          <span v-else-if="totalRowCountBusy" class="text-muted-foreground/70">
+          <span v-if="typeof displayedTotalRowCount === 'number' && displayedTotalRowCount >= 0" class="text-muted-foreground/70">{{ t(totalRowCountLabelKey, { count: displayedTotalRowCount }) }}</span>
+          <span v-if="totalRowCountBusy" class="text-muted-foreground/70">
             {{ t("grid.totalRowCountLoading") }}
           </span>
-          <button v-else-if="canCalculateTotalRowCount" type="button" class="text-muted-foreground/70 hover:text-foreground hover:underline underline-offset-2 disabled:pointer-events-none" :disabled="manualTotalRowCountLoading" @click="calculateTotalRowCount">
+          <button v-else-if="showExactTotalCountAction" type="button" class="text-muted-foreground/70 hover:text-foreground hover:underline underline-offset-2 disabled:pointer-events-none" :disabled="manualTotalRowCountLoading" @click="calculateTotalRowCount">
             {{ t("grid.calculateTotalRowsInline") }}
           </button>
         </span>
@@ -9385,7 +9457,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
         :pagination-enabled="paginationEnabled"
         :selection-summary="selectionSummary"
         :selection-summary-sum-text="selectionSummarySumText"
-        :loading="loading"
+        :loading="gridSurfaceBusy"
         :infinite-scroll-enabled="infiniteScrollEnabled"
         :infinite-scroll-all-loaded="infiniteScrollAllLoaded"
         :page-size="pageSize"

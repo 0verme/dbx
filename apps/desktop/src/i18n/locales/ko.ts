@@ -1006,6 +1006,7 @@ export default withEnglishFallback({
     loadedRows: "{count}행 로드됨",
     totalRowCount: "(전체 {count})",
     totalRowCountAtLeast: "(최소 {count})",
+    totalRowCountEstimated: "(약 {count})",
     totalRowCountLoading: "(집계 중...)",
     loadingMore: "데이터를 더 불러오는 중...",
     allLoaded: "모두 로드됨",

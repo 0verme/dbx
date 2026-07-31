@@ -1018,6 +1018,7 @@ export default {
     loadedRows: "Loaded {count} rows",
     totalRowCount: "({count} total)",
     totalRowCountAtLeast: "(at least {count} total)",
+    totalRowCountEstimated: "(~{count})",
     totalRowCountLoading: "(counting...)",
     loadingMore: "Loading more data...",
     allLoaded: "all loaded",

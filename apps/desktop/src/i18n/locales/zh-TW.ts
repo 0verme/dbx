@@ -965,6 +965,7 @@ export default withEnglishFallback({
     loadedRows: "已載入 {count} 筆",
     totalRowCount: "（總計 {count} 筆）",
     totalRowCountAtLeast: "（至少 {count} 筆）",
+    totalRowCountEstimated: "（約 {count} 筆）",
     totalRowCountLoading: "（統計中...）",
     loadingMore: "載入更多資料...",
     allLoaded: "已全部載入",
