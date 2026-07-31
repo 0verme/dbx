@@ -98,6 +98,26 @@ test("recognizes conventional titles with a full-width colon", () => {
   assert.deepEqual(result.labels, ["area/core", "bug"]);
 });
 
+test("collapses broad area and database changes", () => {
+  const result = evaluatePullRequestLabels({
+    title: "feat: add cross-runtime geometry support",
+    changedFiles: [
+      "agents/drivers/mysql/build.gradle",
+      "apps/desktop/src/components/grid/GeometryViewer.vue",
+      "crates/dbx-core/src/db/postgres.rs",
+      "crates/dbx-mcp/src/main.rs",
+      "crates/dbx-web/src/main.rs",
+      "docs/content/docs/geometry.mdx",
+      "plugins/dialects/sqlite.yaml",
+      "plugins/dialects/sqlserver.yaml",
+    ],
+    knownDatabaseTypes,
+  });
+
+  assert.deepEqual(result.labels, ["area/multiple", "db/multiple", "enhancement", "ui-change"]);
+  assert.deepEqual(result.databaseTypes, ["mysql", "postgres", "sqlite", "sqlserver"]);
+});
+
 test("detects only newly added package dependencies", () => {
   const result = inferAddedDependencies(
     ["package.json"],

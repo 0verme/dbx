@@ -22,6 +22,8 @@ export const STATIC_LABEL_SPECS = {
   "area/docs": { color: "0075ca", description: "Documentation site or repository documentation" },
   "area/ci": { color: "e99695", description: "GitHub Actions or repository automation" },
   "area/deploy": { color: "fef2c0", description: "Deployment, packaging, or distribution" },
+  "area/multiple": { color: "ededed", description: "Touches more than three repository areas" },
+  "db/multiple": { color: "ededed", description: "Touches more than three database integrations" },
   "ui-change": { color: "c5def5", description: "Changes user-visible interface, text, or visual assets" },
   "dependencies/frontend": { color: "0366d6", description: "Adds a frontend dependency" },
   "dependencies/backend": { color: "5319e7", description: "Adds a backend dependency" },
@@ -381,14 +383,19 @@ export function evaluatePullRequestLabels({
   readHeadFile = () => null,
 }) {
   const files = normalizeChangedFiles(changedFiles);
-  const labels = new Set(inferAreaLabels(files));
+  const areaLabels = inferAreaLabels(files);
+  const labels = new Set(areaLabels.length > 3 ? ["area/multiple"] : areaLabels);
   const typeLabel = inferTypeLabel(title, files);
   if (typeLabel) labels.add(typeLabel);
   if (files.some(isUiChangeFile)) labels.add("ui-change");
   if (files.length > 0 && files.every(isTestFile)) labels.add("tests-only");
 
   const databaseTypes = inferDatabaseTypes(files, knownDatabaseTypes);
-  for (const databaseType of databaseTypes) labels.add(`${DATABASE_LABEL_PREFIX}${databaseType}`);
+  if (databaseTypes.length > 3) {
+    labels.add("db/multiple");
+  } else {
+    for (const databaseType of databaseTypes) labels.add(`${DATABASE_LABEL_PREFIX}${databaseType}`);
+  }
 
   const addedDependencies = inferAddedDependencies(files, readBaseFile, readHeadFile);
   if (addedDependencies.frontend.size > 0) labels.add("dependencies/frontend");
