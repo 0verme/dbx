@@ -111,6 +111,7 @@ import { createMetadataLoadTrace, logMetadataLoadTrace, MetadataLoadCoordinator,
 import type { MetadataScopeInput } from "@/lib/metadata/metadataLoadScope";
 import { MetadataResultCache, type MetadataCacheInvalidation } from "@/lib/metadata/metadataResultCache";
 import { invalidateTableMetadataCache } from "@/lib/metadata/tableMetadataCache";
+import { invalidateObjectDdlCache } from "@/lib/metadata/objectDdlCache";
 import { invalidateObjectBrowserRowsCache } from "@/lib/table/objectBrowserRowsCache";
 import { MetadataTaskLimiter } from "@/lib/metadata/metadataTaskLimiter";
 import { TreeNodeLoadRegistry, type TreeNodeLoadHandle } from "@/lib/metadata/treeNodeLoadHandle";
@@ -1517,16 +1518,20 @@ export const useConnectionStore = defineStore("connection", () => {
   function invalidateMetadataCachesForNode(node: TreeNode) {
     if (!node.connectionId) return;
     const tableName = node.tableName || (node.type === "table" || node.type === "view" || node.type === "materialized_view" || node.type === "mongo-collection" ? node.label : undefined);
-    invalidateMetadataCaches({
+    const match = {
       connectionId: node.connectionId,
       database: node.database || undefined,
       schema: node.schema || undefined,
       tableName,
-    });
+    };
+    invalidateMetadataCaches(match);
+    void invalidateObjectDdlCache(match);
   }
 
   function invalidateMetadataCache(connectionId: string, database?: string, schema?: string, tableName?: string) {
-    invalidateMetadataCaches({ connectionId, database, schema, tableName });
+    const match = { connectionId, database, schema, tableName };
+    invalidateMetadataCaches(match);
+    void invalidateObjectDdlCache(match);
   }
 
   function buildLoadMoreNode(parent: TreeNode, offset: number, pageSize: number): TreeNode {
@@ -2367,6 +2372,7 @@ export const useConnectionStore = defineStore("connection", () => {
     if (treeSelectionAnchorId.value && removedIds.has(treeSelectionAnchorId.value)) treeSelectionAnchorId.value = null;
     for (const id of removedIds) {
       invalidateCompletionCache(id);
+      void invalidateObjectDdlCache({ connectionId: id });
       clearLoadedChildrenCache(id);
       void deleteTabResultSnapshotsForOwner(id);
     }
@@ -2391,6 +2397,7 @@ export const useConnectionStore = defineStore("connection", () => {
     clearConnectionIdentifierQuote(config.id);
     clearConnectionHealthCheck(config.id);
     invalidateCompletionCache(config.id);
+    void invalidateObjectDdlCache({ connectionId: config.id });
     clearLoadedChildrenCache(config.id);
     const node = findConnectionNode(config.id);
     if (node?.isExpanded) {
@@ -5183,7 +5190,9 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   async function refreshObjectListTreeNode(connectionId: string, database: string, schema?: string, catalog?: string) {
-    invalidateMetadataCaches({ connectionId, database, schema });
+    const match = { connectionId, database, schema };
+    invalidateMetadataCaches(match);
+    void invalidateObjectDdlCache(match);
     const shouldRefreshSchemaNode = !!schema && !catalog;
     const node = shouldRefreshSchemaNode ? findNode(treeNodes.value, `${connectionId}:${database}:${schema}`) : null;
     if (node) {
