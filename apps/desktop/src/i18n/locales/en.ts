@@ -1091,6 +1091,7 @@ export default {
     copyColumnNamesTitle: "Copy Column Names ({count})",
     copyColumnNamesSeparator: "Column Separator",
     copyColumnNamesQuote: "Quote Column Names",
+    copyColumnNamesShowComment: "Show by Comment",
     copyColumnNamesPreview: "Preview",
     copyAll: "Copy All (TSV)",
     selectionSum: "SUM: {value}",
