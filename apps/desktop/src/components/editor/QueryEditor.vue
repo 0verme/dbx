@@ -84,6 +84,7 @@ import { loadTableMetadata, type TableMetadataLoadResult } from "@/lib/metadata/
 import { queryContextObjectActions, queryContextObjectRoute, queryTableCandidateAtSqlPosition, resolveQueryContextCandidateDatabase, resolveQueryContextObjectTarget, type QueryContextObjectAction } from "@/lib/sql/queryCursorTableTarget";
 import * as api from "@/lib/backend/api";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
+import { isMacOS } from "@/lib/backend/platform";
 import {
   areSqlSemanticDiagnosticsEqual,
   buildSqlParserErrorDiagnostic,
@@ -863,6 +864,9 @@ function registerEditorScrollbarPointerGuard(currentView: EditorViewType) {
     if (!isEditorScrollbarPointerEvent(currentView, event)) return;
     clearTableNavigationHover();
     event.stopPropagation();
+    if (isTauriRuntime() && isMacOS() && !currentView.contentDOM.contains(event.target as Node | null)) {
+      event.preventDefault();
+    }
   };
   currentView.scrollDOM.addEventListener("mousedown", onPointerDown, true);
   editorScrollbarPointerCleanup = () => {
