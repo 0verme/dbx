@@ -1443,7 +1443,9 @@ class SqlCompletionProvider {
       for (const item of this.items) {
         // Alias snippets reuse the prefix as a label while applying alias SQL, so they are not exact name matches.
         const isAliasSnippet = item.type === "snippet" && item.apply === formatAliasCompletionApply(item.label, this.databaseType);
-        if (!isAliasSnippet && item.label.toLowerCase() === context.prefix.toLowerCase()) {
+        const isExactLabelMatch = !isAliasSnippet && item.label.toLowerCase() === context.prefix.toLowerCase();
+        const isExactSnippetPrefixMatch = item.type === "snippet" && item.filterText?.toLowerCase() === context.prefix.toLowerCase();
+        if (isExactLabelMatch || isExactSnippetPrefixMatch) {
           item.exactMatch = true;
           item.boost += EXACT_LABEL_MATCH_BOOST;
         }
