@@ -99,7 +99,7 @@ function normalizeChangedFiles(changedFiles) {
 
 function conventionalType(title) {
   const normalized = String(title || "").trim().replace(/^[^\p{L}\p{N}]+/u, "");
-  return /^([a-z]+)(?:\([^)]*\))?!?:/i.exec(normalized)?.[1]?.toLowerCase() || null;
+  return /^([a-z]+)(?:\([^)]*\))?!?[:：]/i.exec(normalized)?.[1]?.toLowerCase() || null;
 }
 
 export function isDocumentationFile(file) {

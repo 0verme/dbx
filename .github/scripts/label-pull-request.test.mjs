@@ -88,6 +88,16 @@ test("does not treat component tests or MCP server code as UI or deploy changes"
   assert.deepEqual(result.labels, ["area/desktop", "area/mcp", "bug"]);
 });
 
+test("recognizes conventional titles with a full-width colon", () => {
+  const result = evaluatePullRequestLabels({
+    title: "Fix：补全 GaussDB M 模式 SQL 生成",
+    changedFiles: ["crates/dbx-core/src/db/mod.rs"],
+    knownDatabaseTypes,
+  });
+
+  assert.deepEqual(result.labels, ["area/core", "bug"]);
+});
+
 test("detects only newly added package dependencies", () => {
   const result = inferAddedDependencies(
     ["package.json"],
