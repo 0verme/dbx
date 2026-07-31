@@ -236,6 +236,55 @@ pub async fn list_sqlserver_linked_servers_core(
     Ok(vec![])
 }
 
+pub async fn get_sqlserver_completion_context_core(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+) -> Result<db::sqlserver::SqlServerCompletionContext, String> {
+    retry_metadata_connection(state, connection_id, Some(database), || async {
+        let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+        let db_config = connection_config(state, connection_id).await;
+        let connections = state.connections.read().await;
+        if let Some(PoolKind::ExternalDriver { config, session, .. }) = connections.get(&pool_key) {
+            let config = config.clone();
+            let session = session.clone();
+            drop(connections);
+            let result: db::QueryResult = session
+                .invoke_with_timeout(
+                    "executeQuery",
+                    serde_json::json!({
+                        "connection": config.as_ref(),
+                        "database": database,
+                        "sql": db::sqlserver::completion_context_sql(),
+                        "maxRows": 1
+                    }),
+                    agent_metadata_timeout(Some(config.as_ref())),
+                )
+                .await?;
+            return db::sqlserver::completion_context_from_query_result(result);
+        }
+        try_sqlserver!(connections, &pool_key, get_completion_context);
+        if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
+            drop(connections);
+            let mut client = client.lock().await;
+            let result = client
+                .execute_query_with_timeout::<db::QueryResult>(
+                    agent_execute_query_params(
+                        db::sqlserver::completion_context_sql(),
+                        if database.is_empty() { None } else { Some(database) },
+                        None,
+                        QueryExecutionOptions { max_rows: Some(1), ..Default::default() },
+                    ),
+                    agent_metadata_timeout(db_config.as_ref()),
+                )
+                .await?;
+            return db::sqlserver::completion_context_from_query_result(result);
+        }
+        Err("SQL Server completion context requires a SQL Server connection".to_string())
+    })
+    .await
+}
+
 pub async fn list_sqlserver_linked_server_catalogs_core(
     state: &AppState,
     connection_id: &str,

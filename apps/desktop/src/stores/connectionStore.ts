@@ -10,6 +10,7 @@ import type {
   DatabaseType,
   DatabaseConnectionInfo,
   DatabaseStorageInfo,
+  SqlServerCompletionContext,
   CatalogInfo,
   ForeignKeyInfo,
   ObjectInfo,
@@ -340,6 +341,7 @@ export const useConnectionStore = defineStore("connection", () => {
   const completionColumnsCache = ref<Record<string, ColumnInfo[]>>({});
   const completionForeignKeysCache = ref<Record<string, ForeignKeyInfo[]>>({});
   const completionDatabasesCache = ref<Record<string, string[]>>({});
+  const sqlServerCompletionContextCache = ref<Record<string, SqlServerCompletionContext>>({});
   const elasticsearchCompletionIndicesCache = ref<Record<string, string[]>>({});
   const redisCompletionKeysCache = ref<Record<string, string[]>>({});
   const mongoCompletionCollectionsCache = ref<Record<string, string[]>>({});
@@ -2309,6 +2311,9 @@ export const useConnectionStore = defineStore("connection", () => {
     }
     for (const key of Object.keys(schemaListCache.value)) {
       if (key === exactCacheKey || key.startsWith(cachePrefix)) delete schemaListCache.value[key];
+    }
+    for (const key of Object.keys(sqlServerCompletionContextCache.value)) {
+      if (key === exactCacheKey || key.startsWith(cachePrefix)) delete sqlServerCompletionContextCache.value[key];
     }
     for (const key of Object.keys(elasticsearchCompletionIndicesCache.value)) {
       if (key === exactCacheKey || key.startsWith(cachePrefix)) delete elasticsearchCompletionIndicesCache.value[key];
@@ -5417,8 +5422,8 @@ export const useConnectionStore = defineStore("connection", () => {
   ): Promise<SqlCompletionObject[]> {
     const databaseType = getConfig(connectionId)?.db_type;
     const oracleAssistant = databaseType === "oracle";
-    const requestedSchema = currentSchema?.trim() || schema?.trim() || undefined;
-    const preferredSchema = oracleAssistant ? completionPreferredSchema(connectionId, currentSchema) : requestedSchema || (databaseType === "sqlserver" ? "dbo" : databaseType === "postgres" ? "public" : databaseType === "mysql" ? database : undefined);
+    const requestedSchema = schema?.trim() || currentSchema?.trim() || undefined;
+    const preferredSchema = oracleAssistant ? completionPreferredSchema(connectionId, currentSchema) : requestedSchema || (databaseType === "postgres" ? "public" : databaseType === "mysql" ? database : undefined);
     const response = await completionAssistantSearch({
       connection_id: connectionId,
       database,
@@ -5664,6 +5669,20 @@ export const useConnectionStore = defineStore("connection", () => {
       },
       { scope: completionLimiterScope(connectionId), kind: "databases" },
     );
+  }
+
+  async function getSqlServerCompletionContext(connectionId: string, database: string): Promise<SqlServerCompletionContext> {
+    const cacheKey = `${connectionId}:${database}`;
+    if (sqlServerCompletionContextCache.value[cacheKey]) {
+      return sqlServerCompletionContextCache.value[cacheKey];
+    }
+    return withCompletionInFlight(`${cacheKey}:sqlserver-completion-context`, async () => {
+      await ensureConnected(connectionId);
+      const context = await api.getSqlServerCompletionContext(connectionId, database);
+      sqlServerCompletionContextCache.value[cacheKey] = context;
+      evictOldestCacheEntries(sqlServerCompletionContextCache.value, COMPLETION_CACHE_MAX);
+      return context;
+    });
   }
 
   async function listCompletionSchemas(connectionId: string, database: string): Promise<string[]> {
@@ -6776,6 +6795,7 @@ export const useConnectionStore = defineStore("connection", () => {
     listCompletionForeignKeys,
     listCompletionSchemas,
     listCompletionDatabases,
+    getSqlServerCompletionContext,
     lookupLocalCompletionTables,
     lookupLocalCompletionObjects,
     lookupLocalCompletionColumns,

@@ -370,6 +370,11 @@ export interface DatabaseStorageInfo {
   size_bytes: number | null;
 }
 
+export interface SqlServerCompletionContext {
+  default_schema: string;
+  supports_session_database_switch: boolean;
+}
+
 export interface SchemaInfo {
   name: string;
   comment?: string | null;
