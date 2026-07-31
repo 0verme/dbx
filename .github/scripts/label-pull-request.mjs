@@ -24,9 +24,9 @@ export const STATIC_LABEL_SPECS = {
   "area/deploy": { color: "fef2c0", description: "Deployment, packaging, or distribution" },
   "area/multiple": { color: "ededed", description: "Touches more than three repository areas" },
   "db/multiple": { color: "ededed", description: "Touches more than three database integrations" },
-  "ui-change": { color: "c5def5", description: "Changes user-visible interface, text, or visual assets" },
-  "dependencies/frontend": { color: "0366d6", description: "Adds a frontend dependency" },
-  "dependencies/backend": { color: "5319e7", description: "Adds a backend dependency" },
+  "ui-change": { color: "f9d0c4", description: "Changes user-visible interface, text, or visual assets" },
+  "dependencies/frontend": { color: "fbca04", description: "Adds a frontend dependency" },
+  "dependencies/backend": { color: "c2e0c6", description: "Adds a backend dependency" },
   "tests-only": { color: "bfd4f2", description: "Changes only tests, fixtures, or snapshots" },
 };
 
