@@ -82,6 +82,38 @@ describe("sqlCompletionLookupTarget", () => {
     });
   });
 
+  it("routes a SQL Server double-dot qualifier to the database's dbo schema", () => {
+    const sql = "select * from BarDB..ord";
+    const completionContext = getSqlCompletionContext(sql, sql.length, { databaseType: "sqlserver" });
+
+    expect(completionContext).toMatchObject({
+      prefix: "ord",
+      qualifier: "BarDB.dbo",
+      qualifierParts: ["BarDB", "dbo"],
+    });
+    expect(
+      resolveSqlCompletionTableLookupTarget({
+        currentDatabase: "FooDB",
+        currentSchema: "sales",
+        supportsDatabaseQualifier: false,
+        supportsDatabaseSchemaQualifier: true,
+        knownDatabases: ["FooDB", "BarDB"],
+        completionContext,
+      }),
+    ).toEqual({
+      database: "BarDB",
+      schema: "dbo",
+      filter: "ord",
+      qualifierDatabase: "BarDB",
+    });
+  });
+
+  it.each(["postgres", "trino", "prestosql"] as const)("does not apply SQL Server double-dot semantics to %s", (databaseType) => {
+    const sql = "select * from BarDB..ord";
+
+    expect(getSqlCompletionContext(sql, sql.length, { databaseType }).qualifierParts).toBeUndefined();
+  });
+
   it("keeps PostgreSQL schema completion in the current database", () => {
     const target = resolveSqlCompletionTableLookupTarget({
       currentDatabase: "app",

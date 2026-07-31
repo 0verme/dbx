@@ -25,6 +25,7 @@ const ALIAS_BLACKLIST = new Set([...FROM_CLAUSE_BOUNDARIES, "on", "join", "strai
 const TABLE_TARGET_MODIFIERS = new Set(["lateral", "only"]);
 const TABLE_FUNCTION_INTRODUCERS = new Set(["from", "join", "straight_join", "apply"]);
 const TOP_LEVEL_STATEMENT_WORDS = new Set(["select", "insert", "delete", "merge", "create", "alter", "drop", "truncate", "call", "exec", "execute", "grant", "revoke"]);
+const SQLSERVER_DEFAULT_SCHEMA = "dbo";
 const SQLSERVER_UPDATE_STATISTICS_SCOPES = new Set(["all", "index", "table"]);
 
 interface ParseState {
@@ -91,10 +92,12 @@ function readQualifiedName(tokens: readonly SqlSemanticToken[], startIndex: numb
       break;
     }
     index += 2;
-    if (!tokenIsIdentifier(tokens[index]) && !(dialect.id === "sqlserver" && tokens[index]?.text === ".")) return null;
-    if (dialect.id === "sqlserver") {
+    if (dialect.id === "sqlserver" && tokens[index]?.text === ".") {
+      const omittedSchema = tokens[index];
+      parts.push({ raw: "", name: SQLSERVER_DEFAULT_SCHEMA, span: omittedSchema.span });
       while (tokens[index]?.text === ".") index += 1;
     }
+    if (!tokenIsIdentifier(tokens[index])) return null;
   }
   if (parts.length === 0) return null;
   return {
