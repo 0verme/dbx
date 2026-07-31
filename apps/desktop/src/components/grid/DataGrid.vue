@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  ArrowUpRight,
   Upload,
   Trash2,
   ChevronDown,
@@ -138,7 +139,7 @@ import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGrid
 import { canFetchNextDataGridSegment, canGoNextDataGridPage, dataGridTotalRowCountLabelKey, hasCompleteLocalDataGridResult, resolveDataGridPaginationTotal, type DataGridInexactTotalRowCountMode } from "@/lib/dataGrid/dataGridPagination";
 import { dataGridCountQueryOptions } from "@/lib/dataGrid/dataGridQueryOptions";
 import { dataGridBottomScrollTop, dataGridScrollPosition, isDataGridAtScrollBottom, isDataGridNearScrollBottom, shouldCheckInfiniteScrollAfterScroll, type DataGridScrollPosition } from "@/lib/dataGrid/dataGridInfiniteScroll";
-import { CANVAS_DATA_GRID_ROW_HEIGHT, canvasDataGridActionReservedWidth, dataGridSearchMatchKey, drawCanvasDataGrid } from "@/lib/dataGrid/canvasDataGridRenderer";
+import { CANVAS_DATA_GRID_ROW_HEIGHT, canvasDataGridActionOverlayWidth, canvasDataGridActionReservedWidth, dataGridSearchMatchKey, drawCanvasDataGrid } from "@/lib/dataGrid/canvasDataGridRenderer";
 import { DATA_GRID_DARK_STRIPED_ROW_BG, DATA_GRID_LIGHT_STRIPED_ROW_BG, dataGridActiveRowBackground } from "@/lib/dataGrid/dataGridPaintTheme";
 import { createRowLowerTextCache } from "@/lib/dataGrid/dataGridRowLowerText";
 import { dataGridPreviewLabelKey, dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGrid/dataGridSaveUi";
@@ -177,8 +178,10 @@ import {
   dataGridSelectedSortMenuValue,
   type DataGridColumnSortState,
 } from "@/lib/dataGrid/dataGridContextMenu";
+import { buildColumnForeignKeyMap, combineForeignKeyConditions, foreignKeyAssociationCells, foreignKeyMetadataRequestCurrent, foreignKeyNavigationTarget, foreignKeySourceColumnName, foreignKeyTableIdentity, type ForeignKeyAssociation } from "@/lib/dataGrid/dataGridForeignKeyNavigation";
 
 import { useToast } from "@/composables/useToast";
+import { useNavigationTargets } from "@/composables/useNavigationTargets";
 import { useDataGridExport, type MongoCopyUpdateTarget } from "@/composables/useDataGridExport";
 import { eventTargetAllowsNativeClipboard, isPlainClipboardShortcut, readTextFromClipboard } from "@/lib/common/clipboard";
 import { claimDataGridPaste, clearDataGridClipboardCopy, parseDataGridClipboard, planDataGridPaste } from "@/lib/dataGrid/dataGridClipboard";
@@ -250,6 +253,12 @@ const multiRowTranspose = computed(() => settingsStore.editorSettings.dataGridMu
 const hideNullColumns = computed(() => settingsStore.editorSettings.dataGridHideNullColumns);
 const { isDark, themePalette } = useTheme();
 const { toast } = useToast();
+// 外键单元格跳转复用导航入口；对话框引用传 stub（同 AiAssistant 模式）
+const { openTableTarget } = useNavigationTargets({
+  showFieldLineageDialog: ref(false),
+  showDatabaseSearchDialog: ref(false),
+  showDiagramDialog: ref(false),
+});
 const { highlight } = useSqlHighlighter();
 const binaryCellDownloadMenuItems = computed(() =>
   BINARY_CELL_DOWNLOAD_MODES.map((mode) => ({
@@ -5077,15 +5086,16 @@ const canvasDetailButtonCell = computed(() => {
   const visibleLeft = Math.max(rowNumberWidth.value, rect.left);
   const visibleRight = viewportWidth > 0 ? Math.min(viewportWidth, rect.left + rect.width) : rect.left + rect.width;
   const canQuickDownload = canQuickDownloadCellValue(target.rowIndex, target.col);
-  const minWidth = canQuickDownload ? 46 : 24;
+  const foreignKey = canvasCellForeignKey(target.rowIndex, target.col);
+  const minWidth = canvasDataGridActionOverlayWidth(canQuickDownload, !!foreignKey) + 2;
   if (rect.top < 0 || rect.top > viewportHeight - 1 || visibleRight - visibleLeft < minWidth) return null;
-  return { rowIndex: target.rowIndex, visibleColIdx, actualColIdx: target.col, rect, canQuickDownload };
+  return { rowIndex: target.rowIndex, visibleColIdx, actualColIdx: target.col, rect, canQuickDownload, foreignKey };
 });
 
 const canvasDetailButtonStyle = computed(() => {
   const cell = canvasDetailButtonCell.value;
   if (!cell) return {};
-  const actionWidth = cell.canQuickDownload ? 44 : 22;
+  const actionWidth = canvasDataGridActionOverlayWidth(cell.canQuickDownload, !!cell.foreignKey);
   const edgeGap = 6;
   return {
     left: `${Math.max(rowNumberWidth.value, cell.rect.left + cell.rect.width - actionWidth - edgeGap)}px`,
@@ -5099,7 +5109,7 @@ const canvasRightAlignedActionCell = computed(() => {
   return {
     rowIndex: cell.rowIndex,
     visibleColIdx: cell.visibleColIdx,
-    reservedWidth: canvasDataGridActionReservedWidth(cell.canQuickDownload),
+    reservedWidth: canvasDataGridActionReservedWidth(cell.canQuickDownload, !!cell.foreignKey),
   };
 });
 
@@ -7202,6 +7212,16 @@ const foreignKeys = ref<ForeignKeyInfo[]>([]);
 const foreignKeysLoaded = ref(false);
 const foreignKeysLoading = ref(false);
 const foreignKeysError = ref("");
+const currentForeignKeyTableIdentity = computed(() =>
+  foreignKeyTableIdentity({
+    connectionId: props.connectionId,
+    database: props.database,
+    catalog: props.tableMeta?.catalog,
+    schema: props.tableMeta?.schema,
+    tableName: props.tableMeta?.tableName,
+  }),
+);
+let foreignKeysRequestGeneration = 0;
 const triggers = ref<TriggerInfo[]>([]);
 const triggersLoaded = ref(false);
 const triggersLoading = ref(false);
@@ -7394,16 +7414,26 @@ async function reloadIndexes() {
 }
 
 async function fetchForeignKeys() {
-  if (!props.connectionId || !props.tableMeta || foreignKeysLoaded.value || foreignKeysLoading.value) return;
+  const requestIdentity = currentForeignKeyTableIdentity.value;
+  if (!props.connectionId || !props.tableMeta || !requestIdentity || foreignKeysLoaded.value || foreignKeysLoading.value) return;
+  const connectionId = props.connectionId;
+  const database = props.database || "";
+  const schema = props.tableMeta.schema || props.database || "";
+  const tableName = props.tableMeta.tableName;
+  const catalog = props.tableMeta.catalog;
+  const requestGeneration = ++foreignKeysRequestGeneration;
   foreignKeysLoading.value = true;
   foreignKeysError.value = "";
   try {
-    foreignKeys.value = await api.listForeignKeys(props.connectionId, props.database || "", props.tableMeta.schema || props.database || "", props.tableMeta.tableName, props.tableMeta.catalog);
+    const nextForeignKeys = await api.listForeignKeys(connectionId, database, schema, tableName, catalog);
+    if (!foreignKeyMetadataRequestCurrent({ requestGeneration, currentGeneration: foreignKeysRequestGeneration, requestIdentity, currentIdentity: currentForeignKeyTableIdentity.value })) return;
+    foreignKeys.value = nextForeignKeys;
     foreignKeysLoaded.value = true;
   } catch (e: any) {
+    if (!foreignKeyMetadataRequestCurrent({ requestGeneration, currentGeneration: foreignKeysRequestGeneration, requestIdentity, currentIdentity: currentForeignKeyTableIdentity.value })) return;
     foreignKeysError.value = String(e?.message || e);
   } finally {
-    foreignKeysLoading.value = false;
+    if (foreignKeyMetadataRequestCurrent({ requestGeneration, currentGeneration: foreignKeysRequestGeneration, requestIdentity, currentIdentity: currentForeignKeyTableIdentity.value })) foreignKeysLoading.value = false;
   }
 }
 
@@ -7430,13 +7460,123 @@ watch(
     indexesError.value = "";
     foreignKeys.value = [];
     foreignKeysLoaded.value = false;
+    foreignKeysLoading.value = false;
     foreignKeysError.value = "";
+    foreignKeysRequestGeneration += 1;
     triggers.value = [];
     triggersLoaded.value = false;
     triggersError.value = "";
     if (showTableInfo.value) selectTableInfoTab(activeTableInfoTab.value);
   },
 );
+
+// ---- 外键单元格跳转 ----
+const columnForeignKeyMap = computed(() => buildColumnForeignKeyMap(foreignKeys.value));
+const foreignKeyNavigationEnabled = computed(() => !!props.connectionId && !!props.tableMeta?.tableName && tableMetadataCapabilities.value.foreignKeys);
+
+function cellForeignKeyAssociation(actualColIdx: number): ForeignKeyAssociation | null {
+  if (!foreignKeyNavigationEnabled.value) return null;
+  const columnName = foreignKeySourceColumnName({
+    context: props.context,
+    resultColumns: props.result.columns,
+    sourceColumns: props.sourceColumns,
+    columnIndex: actualColIdx,
+  });
+  if (!columnName) return null;
+  return columnForeignKeyMap.value.get(columnName.toLowerCase()) ?? null;
+}
+
+function canvasCellForeignKey(rowIndex: number, actualColIdx: number): ForeignKeyInfo | null {
+  const association = cellForeignKeyAssociation(actualColIdx);
+  if (!association) return null;
+  const item = displayItems.value[rowIndex];
+  if (!item) return null;
+  const cells = foreignKeyAssociationCells({
+    association,
+    context: props.context,
+    resultColumns: props.result.columns,
+    sourceColumns: props.sourceColumns,
+    row: item.data,
+  });
+  return cells ? association.foreignKey : null;
+}
+
+// 外键跳转按钮需要 FK 元数据：表身份就绪即后台加载（fetchForeignKeys 自带去重，
+// 上方 reset watch 先清旧表状态）
+watch(
+  () => [props.connectionId, props.database, props.tableMeta?.catalog, props.tableMeta?.schema, props.tableMeta?.tableName],
+  () => {
+    if (foreignKeyNavigationEnabled.value) void fetchForeignKeys();
+  },
+  { immediate: true },
+);
+
+async function navigateToForeignKeyCell(rowIndex: number, actualColIdx: number) {
+  const association = cellForeignKeyAssociation(actualColIdx);
+  const item = displayItems.value[rowIndex];
+  if (!association || !item || !props.connectionId) return;
+  const cells = foreignKeyAssociationCells({
+    association,
+    context: props.context,
+    resultColumns: props.result.columns,
+    sourceColumns: props.sourceColumns,
+    row: item.data,
+  });
+  if (!cells) return;
+  try {
+    const conditions = await Promise.all(
+      cells.map(({ foreignKey, value }) =>
+        buildColumnValueFilterCondition({
+          databaseType: resolvedDatabaseType.value,
+          identifierQuote: connectionStore.connectionIdentifierQuote?.(props.connectionId),
+          columnName: foreignKey.ref_column,
+          columnInfo: props.tableMeta?.columns.find((column) => column.name.toLowerCase() === foreignKey.column.toLowerCase()),
+          rawValue: String(value),
+        }),
+      ),
+    );
+    const condition = combineForeignKeyConditions(conditions);
+    if (!condition) return;
+    await openTableTarget(
+      foreignKeyNavigationTarget({
+        connectionId: props.connectionId,
+        database: props.database || props.tableMeta?.database || "",
+        currentSchema: props.tableMeta?.schema || props.schema,
+        fk: association.foreignKey,
+        whereInput: condition,
+      }),
+    );
+  } catch (e: any) {
+    toast(String(e?.message || e), 5000);
+  }
+}
+
+function contextForeignKeyMenuItem(): ContextMenuItem | null {
+  const cell = contextCell.value;
+  if (!cell || cell.col < 0) return null;
+  const association = cellForeignKeyAssociation(cell.col);
+  const item = contextRowItem.value;
+  if (
+    !association ||
+    !item ||
+    !foreignKeyAssociationCells({
+      association,
+      context: props.context,
+      resultColumns: props.result.columns,
+      sourceColumns: props.sourceColumns,
+      row: item.data,
+    })
+  )
+    return null;
+  const fk = association.foreignKey;
+  return {
+    label: t("grid.foreignKeyNavigate", { table: fk.ref_table }),
+    icon: ArrowUpRight,
+    action: () => {
+      void navigateToForeignKeyCell(cell.rowIndex, cell.col);
+    },
+  };
+}
 
 if (showTableInfo.value && props.tableMeta && props.connectionId) {
   selectTableInfoTab(activeTableInfoTab.value);
@@ -7950,6 +8090,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       icons: { cellDetails: Maximize2, columnDetails: TableProperties, rowDetails: ListTree, setNull: X, bulkEdit: Pencil, transpose: Rows3 },
       actions: { cellDetails: openContextCellDetailDialog, columnDetails: openContextColumnDetailDialog, rowDetails: openContextRowDetailDialog, setNull: setSelectionNull, bulkEdit: openBulkEditDialog, transpose: openContextTranspose },
       downloadItem: binaryDownloadSubmenu(contextCellDetail.value),
+      foreignKeyItem: contextForeignKeyMenuItem(),
       copySubmenu: copySubmenu(),
       clearSelectionItem: { label: t("grid.clearSelection"), action: clearCellSelection, icon: SquareDashed },
       generateSubmenu: {
@@ -8842,6 +8983,15 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           </button>
                         </template>
                       </LightDropdownMenu>
+                      <button
+                        v-if="canvasDetailButtonCell.foreignKey"
+                        class="flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground"
+                        :title="t('grid.foreignKeyNavigate', { table: canvasDetailButtonCell.foreignKey.ref_table })"
+                        @mousedown.stop
+                        @click.stop="navigateToForeignKeyCell(canvasDetailButtonCell.rowIndex, canvasDetailButtonCell.actualColIdx)"
+                      >
+                        <ArrowUpRight class="h-3 w-3" />
+                      </button>
                       <button
                         class="flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground"
                         :title="t('grid.cellDetails')"

@@ -1399,6 +1399,7 @@ export default {
     tableInfoColumns: "Columns",
     tableInfoIndexes: "Indexes",
     tableInfoForeignKeys: "Foreign Keys",
+    foreignKeyNavigate: "Go to {table}",
     tableInfoTriggers: "Triggers",
     tableInfoNullable: "Nullable",
     tableInfoEmpty: "No metadata",
