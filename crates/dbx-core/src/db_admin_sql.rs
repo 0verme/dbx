@@ -162,6 +162,8 @@ pub struct DuplicateTableStructureSqlOptions {
     pub schema: Option<String>,
     pub source_name: String,
     pub target_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table_comment: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub column_comments: Vec<DuplicateTableColumnComment>,
 }
@@ -609,20 +611,26 @@ pub fn build_duplicate_table_structure_sql(options: DuplicateTableStructureSqlOp
         format!("CREATE TABLE {target} AS SELECT * FROM {source} WHERE 0;")
     };
 
-    if options.database_type != Some(DatabaseType::Dameng) {
-        return structure_sql;
+    let mut comment_sql = Vec::new();
+    if let Some(database_type) =
+        options.database_type.filter(|database_type| supports_duplicate_table_comment(*database_type))
+    {
+        if let Some(comment) = options.table_comment.as_deref().filter(|comment| !comment.trim().is_empty()) {
+            comment_sql.push(format!(
+                "COMMENT ON TABLE {target} IS {}",
+                quote_duplicate_table_comment(database_type, comment)
+            ));
+        }
     }
-    let comment_sql = options
-        .column_comments
-        .iter()
-        .filter_map(|column| {
+    if options.database_type == Some(DatabaseType::Dameng) {
+        comment_sql.extend(options.column_comments.iter().filter_map(|column| {
             if column.comment.trim().is_empty() {
                 return None;
             }
             let column_name = quote_table_identifier(options.database_type, &column.name);
             Some(format!("COMMENT ON COLUMN {target}.{column_name} IS {}", quote_sql_string(&column.comment)))
-        })
-        .collect::<Vec<_>>();
+        }));
+    }
     if comment_sql.is_empty() {
         return structure_sql;
     }
@@ -768,6 +776,17 @@ fn is_postgres_like_structure_copy(database_type: DatabaseType) -> bool {
     )
 }
 
+fn supports_duplicate_table_comment(database_type: DatabaseType) -> bool {
+    matches!(
+        database_type,
+        DatabaseType::Postgres
+            | DatabaseType::Redshift
+            | DatabaseType::Gaussdb
+            | DatabaseType::Kwdb
+            | DatabaseType::OpenGauss
+    )
+}
+
 fn uses_false_predicate_duplicate_structure(database_type: DatabaseType) -> bool {
     matches!(database_type, DatabaseType::Oracle | DatabaseType::Dameng | DatabaseType::Iris)
 }
@@ -831,6 +850,36 @@ fn clean_sql_option(value: Option<&str>) -> String {
 
 fn quote_sql_string(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn quote_duplicate_table_comment(database_type: DatabaseType, value: &str) -> String {
+    if !value.contains('\\') && !value.chars().any(|character| character.is_ascii_control()) {
+        return quote_sql_string(value);
+    }
+
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\x08' => escaped.push_str("\\b"),
+            '\x0c' => escaped.push_str("\\f"),
+            '\'' => escaped.push_str("\\'"),
+            character if character.is_ascii_control() => {
+                const HEX: &[u8; 16] = b"0123456789ABCDEF";
+                let byte = character as u8;
+                escaped.push_str("\\x");
+                escaped.push(HEX[(byte >> 4) as usize] as char);
+                escaped.push(HEX[(byte & 0x0F) as usize] as char);
+            }
+            character => escaped.push(character),
+        }
+    }
+
+    let prefix = if database_type == DatabaseType::Redshift { "" } else { "E" };
+    format!("{prefix}'{escaped}'")
 }
 
 fn comment_literal(value: Option<&str>) -> String {
@@ -1481,6 +1530,7 @@ mod tests {
                 schema: None,
                 source_name: "users".to_string(),
                 target_name: "users_copy".to_string(),
+                table_comment: None,
                 column_comments: vec![],
             }),
             "CREATE TABLE `users_copy` LIKE `users`;"
@@ -1491,9 +1541,21 @@ mod tests {
                 schema: Some("public".to_string()),
                 source_name: "users".to_string(),
                 target_name: "users_copy".to_string(),
+                table_comment: None,
                 column_comments: vec![],
             }),
             "CREATE TABLE \"public\".\"users_copy\" (LIKE \"public\".\"users\" INCLUDING ALL);"
+        );
+        assert_eq!(
+            build_duplicate_table_structure_sql(DuplicateTableStructureSqlOptions {
+                database_type: Some(DatabaseType::Postgres),
+                schema: Some("public".to_string()),
+                source_name: "customer_orders".to_string(),
+                target_name: "customer_orders_copy".to_string(),
+                table_comment: Some("  Customer's orders; archive  ".to_string()),
+                column_comments: vec![],
+            }),
+            "CREATE TABLE \"public\".\"customer_orders_copy\" (LIKE \"public\".\"customer_orders\" INCLUDING ALL);\nCOMMENT ON TABLE \"public\".\"customer_orders_copy\" IS '  Customer''s orders; archive  ';"
         );
         assert_eq!(
             build_duplicate_table_structure_sql(DuplicateTableStructureSqlOptions {
@@ -1501,6 +1563,7 @@ mod tests {
                 schema: Some("public".to_string()),
                 source_name: "users".to_string(),
                 target_name: "users_copy".to_string(),
+                table_comment: None,
                 column_comments: vec![],
             }),
             "CREATE TABLE \"public\".\"users_copy\" (LIKE \"public\".\"users\" INCLUDING ALL);"
@@ -1511,6 +1574,7 @@ mod tests {
                 schema: Some("dbo".to_string()),
                 source_name: "users".to_string(),
                 target_name: "users_copy".to_string(),
+                table_comment: None,
                 column_comments: vec![],
             }),
             "SELECT TOP 0 * INTO [dbo].[users_copy] FROM [dbo].[users];"
@@ -1521,6 +1585,7 @@ mod tests {
                 schema: Some("HR".to_string()),
                 source_name: "USERS".to_string(),
                 target_name: "USERS_COPY".to_string(),
+                table_comment: None,
                 column_comments: vec![],
             }),
             "CREATE TABLE \"HR\".\"USERS_COPY\" AS SELECT * FROM \"HR\".\"USERS\" WHERE 1=0"
@@ -1530,6 +1595,7 @@ mod tests {
             schema: Some("APP".to_string()),
             source_name: "USERS".to_string(),
             target_name: "USERS_COPY".to_string(),
+            table_comment: None,
             column_comments: vec![
                 DuplicateTableColumnComment {
                     name: "DISPLAY\"NAME".to_string(),
@@ -1552,12 +1618,42 @@ mod tests {
                 "COMMENT ON COLUMN \"APP\".\"USERS_COPY\".\"STATUS\" IS 'active  '".to_string(),
             ]
         );
+        for database_type in [
+            DatabaseType::Postgres,
+            DatabaseType::Redshift,
+            DatabaseType::Gaussdb,
+            DatabaseType::Kwdb,
+            DatabaseType::OpenGauss,
+        ] {
+            let sql = build_duplicate_table_structure_sql(DuplicateTableStructureSqlOptions {
+                database_type: Some(database_type),
+                schema: Some("public".to_string()),
+                source_name: "source".to_string(),
+                target_name: "copy".to_string(),
+                table_comment: Some("owner\\'s; archive".to_string()),
+                column_comments: vec![],
+            });
+            let expected_literal = if database_type == DatabaseType::Redshift {
+                "'owner\\\\\\'s; archive'"
+            } else {
+                "E'owner\\\\\\'s; archive'"
+            };
+            assert!(sql.ends_with(&format!("COMMENT ON TABLE \"public\".\"copy\" IS {expected_literal};")));
+            assert_eq!(
+                crate::sql::split_sql_statements_for_database(&sql, database_type),
+                vec![
+                    "CREATE TABLE \"public\".\"copy\" (LIKE \"public\".\"source\" INCLUDING ALL)".to_string(),
+                    format!("COMMENT ON TABLE \"public\".\"copy\" IS {expected_literal}"),
+                ]
+            );
+        }
         assert_eq!(
             build_duplicate_table_structure_sql(DuplicateTableStructureSqlOptions {
                 database_type: Some(DatabaseType::Iris),
                 schema: Some("SQLUSER".to_string()),
                 source_name: "tb_a".to_string(),
                 target_name: "tb_a_copy".to_string(),
+                table_comment: None,
                 column_comments: vec![],
             }),
             "CREATE TABLE \"SQLUSER\".\"tb_a_copy\" AS SELECT * FROM \"SQLUSER\".\"tb_a\" WHERE 1=0"
@@ -1568,6 +1664,7 @@ mod tests {
                 schema: None,
                 source_name: "users".to_string(),
                 target_name: "users_copy".to_string(),
+                table_comment: Some("ignored by QuestDB".to_string()),
                 column_comments: vec![],
             }),
             "CREATE TABLE `users_copy` (LIKE `users`);"
