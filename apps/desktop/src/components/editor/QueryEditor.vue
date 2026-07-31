@@ -3857,7 +3857,9 @@ onMounted(async () => {
     { decorations: (v) => v.decorations },
   );
 
-  const tooltipParent = editorRef.value.closest<HTMLElement>("#root") ?? editorRef.value;
+  const editorElement = editorRef.value;
+  if (!editorElement) return;
+  const tooltipParent = editorElement.closest<HTMLElement>("#root")?.querySelector<HTMLElement>("#dbx-query-editor-tooltip-root") ?? editorElement;
   const state = EditorState.create({
     doc: props.modelValue,
     selection: normalizedEditorSelection(props.initialSelection, props.modelValue.length),
@@ -4189,7 +4191,7 @@ onMounted(async () => {
     ],
   });
 
-  view.value = new EditorView({ state, parent: editorRef.value });
+  view.value = new EditorView({ state, parent: editorElement });
   registerEditorScrollbarPointerGuard(view.value);
   view.value.scrollDOM.addEventListener("scroll", scheduleEditorViewportEmit, {
     passive: true,
