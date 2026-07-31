@@ -190,15 +190,19 @@ pub struct CopyTableDataSqlOptions {
     pub sqlserver_identity_insert: bool,
 }
 
-const MYSQL_COMPATIBLE_PROFILES: &[&str] =
-    &["mysql", "mariadb", "tidb", "oceanbase", "doris", "starrocks", "custom_mysql"];
+const MYSQL_COMPATIBLE_PROFILES: &[&str] = &["mysql", "mariadb", "tidb", "oceanbase", "custom_mysql"];
+const CREATE_DATABASE_CHARSET_UNSUPPORTED_PROFILES: &[&str] = &["doris", "selectdb", "starrocks"];
 
 pub fn supports_create_database_charset(database_type: Option<DatabaseType>, driver_profile: Option<&str>) -> bool {
     let normalized_profile = driver_profile.map(str::to_ascii_lowercase);
-    matches!(
-        database_type,
-        Some(DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Goldendb)
-    ) || normalized_profile.as_deref().is_some_and(|profile| MYSQL_COMPATIBLE_PROFILES.contains(&profile))
+    if normalized_profile
+        .as_deref()
+        .is_some_and(|profile| CREATE_DATABASE_CHARSET_UNSUPPORTED_PROFILES.contains(&profile))
+    {
+        return false;
+    }
+    matches!(database_type, Some(DatabaseType::Mysql | DatabaseType::Goldendb))
+        || normalized_profile.as_deref().is_some_and(|profile| MYSQL_COMPATIBLE_PROFILES.contains(&profile))
 }
 
 pub fn build_create_database_sql(options: CreateDatabaseSqlOptions) -> Result<String, String> {
@@ -882,6 +886,31 @@ mod tests {
     }
 
     #[test]
+    fn omits_create_database_charset_for_doris_family() {
+        for (database_type, driver_profile) in [
+            (DatabaseType::Doris, None),
+            (DatabaseType::StarRocks, None),
+            (DatabaseType::Mysql, Some("doris")),
+            (DatabaseType::Mysql, Some("selectdb")),
+            (DatabaseType::Mysql, Some("starrocks")),
+        ] {
+            assert_eq!(
+                build_create_database_sql(CreateDatabaseSqlOptions {
+                    database_type: Some(database_type),
+                    driver_profile: driver_profile.map(str::to_string),
+                    target: None,
+                    parent: None,
+                    name: "analytics".to_string(),
+                    charset: Some("utf8mb4".to_string()),
+                    collation: Some("utf8mb4_unicode_ci".to_string()),
+                })
+                .unwrap(),
+                "CREATE DATABASE `analytics`;"
+            );
+        }
+    }
+
+    #[test]
     fn omits_create_database_charset_for_non_mysql_types() {
         assert_eq!(
             build_create_database_sql(CreateDatabaseSqlOptions {
@@ -1097,8 +1126,10 @@ mod tests {
     #[test]
     fn recognizes_mysql_compatible_create_database_profiles() {
         assert!(supports_create_database_charset(Some(DatabaseType::Mysql), Some("oceanbase")));
-        assert!(supports_create_database_charset(Some(DatabaseType::Mysql), Some("doris")));
         assert!(supports_create_database_charset(Some(DatabaseType::Goldendb), Some("goldendb")));
+        assert!(!supports_create_database_charset(Some(DatabaseType::Mysql), Some("doris")));
+        assert!(!supports_create_database_charset(Some(DatabaseType::Doris), None));
+        assert!(!supports_create_database_charset(Some(DatabaseType::StarRocks), None));
         assert!(!supports_create_database_charset(Some(DatabaseType::Postgres), None));
     }
 
