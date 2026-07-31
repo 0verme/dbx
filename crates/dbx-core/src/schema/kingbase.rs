@@ -195,6 +195,8 @@ mod tests {
             ],
             column_types: Vec::new(),
             column_sortables: Vec::new(),
+            spatial_columns: vec![],
+            spatial_values: vec![],
             rows: vec![vec![
                 serde_json::json!("kdb_utils"),
                 serde_json::json!("1.0"),

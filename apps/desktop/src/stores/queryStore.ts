@@ -157,7 +157,7 @@ function exactTotalFromIncompletePage(result: QueryResult, pageLimit: number | u
   return (pageOffset ?? 0) + result.rows.length;
 }
 
-function appendQueryResultSegment(previous: QueryResult, segment: QueryResult, maxRows: number): QueryResult {
+export function appendQueryResultSegment(previous: QueryResult, segment: QueryResult, maxRows: number): QueryResult {
   if (segment.execution_error) throw new Error(String(segment.rows[0]?.[0] ?? "Failed to load the next result segment"));
   if (previous.columns.length !== segment.columns.length || previous.columns.some((column, index) => column !== segment.columns[index])) {
     throw new Error("Result columns changed while loading the next segment");
@@ -169,12 +169,25 @@ function appendQueryResultSegment(previous: QueryResult, segment: QueryResult, m
     if (existing.length !== previous.rows.length || next.length !== segment.rows.length) return undefined;
     return [...existing, ...next.slice(0, appendedRowCount)];
   };
+  const sridByColumn = new Map<number, number | null>();
+  for (const column of previous.spatial_columns ?? []) {
+    sridByColumn.set(column.column_index, column.srid);
+  }
+  for (const column of segment.spatial_columns ?? []) {
+    const existing = sridByColumn.get(column.column_index) ?? null;
+    sridByColumn.set(column.column_index, existing ?? column.srid);
+  }
+  const spatial_columns = Array.from(sridByColumn.entries())
+    .map(([column_index, srid]) => ({ column_index, srid }))
+    .sort((a, b) => a.column_index - b.column_index);
   // Keep prior row objects intact so source-index based dirty/new/deleted state
   // remains valid, while bounding the in-memory result by the configured cap.
   return markQueryResultRowsRaw({
     ...segment,
     appended_from_row_count: previous.rows.length,
     rows: [...previous.rows, ...segment.rows.slice(0, appendedRowCount)],
+    spatial_columns: spatial_columns.length > 0 ? spatial_columns : undefined,
+    spatial_values: appendParallelValues(previous.spatial_values, segment.spatial_values),
     mongo_documents: appendParallelValues(previous.mongo_documents, segment.mongo_documents),
     mongo_copy_documents: appendParallelValues(previous.mongo_copy_documents, segment.mongo_copy_documents),
     execution_time_ms: (previous.execution_time_ms ?? 0) + (segment.execution_time_ms ?? 0),

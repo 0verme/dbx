@@ -4427,6 +4427,8 @@ mod tests {
             columns: vec!["datcompatibility".to_string()],
             column_types: vec!["text".to_string()],
             column_sortables: vec![true],
+            spatial_columns: vec![],
+            spatial_values: vec![],
             rows: vec![vec![serde_json::json!("M")]],
             affected_rows: 0,
             execution_time_ms: 1,

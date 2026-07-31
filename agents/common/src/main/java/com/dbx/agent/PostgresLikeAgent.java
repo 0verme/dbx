@@ -84,9 +84,9 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
             if (isPostgisGeometryTypeName(columnTypeName)) {
                 Object raw = rs.getObject(index);
                 if (rs.wasNull() || raw == null) {
-                    return null;
+                    return new SpatialValue(null, null);
                 }
-                return EwkbWktDecoder.decode(raw);
+                return EwkbWktDecoder.decodeSpatial(raw);
             }
             return resultValue(rs, index, sqlType, columnTypeName);
         };
