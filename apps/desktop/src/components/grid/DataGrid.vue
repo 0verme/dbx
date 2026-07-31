@@ -5890,6 +5890,18 @@ function currentSelectedCellPosition() {
 }
 
 function scrollCellIntoView(rowIndex: number, colIndex: number) {
+  if (isTransposeMode.value) {
+    nextTick(() => {
+      const scroller = transposeScrollRef.value;
+      if (scroller && !(scroller instanceof HTMLElement)) {
+        (scroller as { scrollToItem?: (index: number) => void }).scrollToItem?.(colIndex);
+      } else if (scroller instanceof HTMLElement) {
+        scroller.scrollTop = colIndex * 30;
+      }
+      scrollTransposeRecordIntoView(rowIndex);
+    });
+    return;
+  }
   nextTick(() => {
     scrollGridColumnIntoView(colIndex);
     if (useCanvasGridRows.value) {
@@ -5961,9 +5973,22 @@ function scrollGridRowIntoView(rowIndex: number) {
   });
 }
 
-function currentTransposeRequestedRowIndex(): number {
+function selectedTransposeRowIndex(): number | null {
   const position = currentSelectedCellPosition();
   if (position) return position.rowIndex;
+  const lastSelectedRowIndex = selection.lastClickedRowIndex.value;
+  if (lastSelectedRowIndex !== null) {
+    const item = displayItemAt(lastSelectedRowIndex);
+    if (item && selectedRowIds.value.has(item.id)) return lastSelectedRowIndex;
+  }
+  const selectedRowIndex = displayRowRefs.value.findIndex((row) => selectedRowIds.value.has(row.id));
+  if (selectedRowIndex >= 0) return selectedRowIndex;
+  return null;
+}
+
+function currentTransposeRequestedRowIndex(): number {
+  const selectedRowIndex = selectedTransposeRowIndex();
+  if (selectedRowIndex !== null) return selectedRowIndex;
   if (transposeRowIndex.value !== null) return transposeRowIndex.value;
   return 0;
 }
@@ -6191,13 +6216,23 @@ async function onGridKeydown(event: KeyboardEvent) {
     event.preventDefault();
     return;
   }
-  if (event.key === "ArrowLeft" && moveTransposeRecordSelection(-1)) {
-    event.preventDefault();
-    return;
-  }
-  if (event.key === "ArrowRight" && moveTransposeRecordSelection(1)) {
-    event.preventDefault();
-    return;
+  if (isTransposeMode.value) {
+    if (event.key === "ArrowUp" && moveSelectedCell(0, -1)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "ArrowDown" && moveSelectedCell(0, 1)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "ArrowLeft" && (moveSelectedCell(-1, 0) || moveTransposeRecordSelection(-1))) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "ArrowRight" && (moveSelectedCell(1, 0) || moveTransposeRecordSelection(1))) {
+      event.preventDefault();
+      return;
+    }
   }
   if (event.key === "ArrowUp" && moveSelectedCell(-1, 0)) {
     event.preventDefault();
@@ -6374,6 +6409,13 @@ function copyColumnDetailFieldValue(field: DataGridCellDetail) {
 
 const transposeRecordWidths = ref<number[]>([]);
 const transposeManualRecordWidthIndexes = ref(new Set<number>());
+const transposeRecordOffsets = computed(() => {
+  const offsets = [0];
+  for (let index = 0; index < displayRowCount.value; index += 1) {
+    offsets.push(offsets[index] + getTransposeRecordWidth(index));
+  }
+  return offsets;
+});
 
 function calcTransposeRecordWidth(recordIndex: number): number {
   const item = displayItemAt(recordIndex);
@@ -6424,6 +6466,7 @@ const transposeRecordWindow = computed(() =>
     viewportWidth: transposeViewportWidth.value,
     pinnedWidth: transposePinnedWidth.value,
     recordWidth: estimatedTransposeRecordWidth(),
+    recordOffsets: transposeRecordOffsets.value,
     overscan: 2,
   }),
 );
@@ -6487,6 +6530,8 @@ function scrollTransposeRecordIntoView(rowIndex: number) {
       viewportWidth: el.clientWidth,
       pinnedWidth: transposePinnedWidth.value,
       recordWidth: estimatedTransposeRecordWidth(),
+      recordOffsets: transposeRecordOffsets.value,
+      currentScrollLeft: el.scrollLeft,
     });
     updateTransposeViewport();
   });
@@ -6594,10 +6639,12 @@ function openContextTranspose() {
     return;
   }
   if (!contextCell.value) return;
+  const selectedRowIndex = selectedTransposeRowIndex();
+  const requestedRowIndex = selectedRowIds.value.size === 1 && selectedRowIndex !== null ? selectedRowIndex : contextCell.value.rowIndex;
   const next = nextContextTransposeState({
     showTranspose: showTranspose.value,
     transposeRowIndex: transposeRowIndex.value,
-    requestedRowIndex: contextCell.value.rowIndex,
+    requestedRowIndex,
     rowIds: displayRowRefs.value.map((ref) => ref.id),
     selectedRowIds: selectedRowIds.value,
     selectedRange: selectedRange.value,
