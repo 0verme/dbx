@@ -874,7 +874,10 @@ fn routine_name_changed(source_name: &str, saved_name: &str) -> bool {
 }
 
 fn replace_sqlserver_create_with_alter(source: &str) -> String {
-    Regex::new(r"(?i)^(?:CREATE\s+(?:OR\s+ALTER\s+)?|ALTER\s+)").unwrap().replace(source, "ALTER ").to_string()
+    let statement_start = leading_sql_statement_start(source);
+    let executable = &source[statement_start..];
+    let create = Regex::new(r"(?i)^CREATE\s+(?:OR\s+ALTER\s+)?").unwrap();
+    format!("{}{}", &source[..statement_start], create.replace(executable, "ALTER "))
 }
 
 fn build_sqlserver_alter_view_sql(schema: Option<&str>, name: &str, source: &str) -> String {
@@ -936,6 +939,19 @@ mod tests {
             name: "refresh_cache".to_string(),
             source: source.to_string(),
         }
+    }
+
+    fn assert_sqlserver_editable_and_executable(object_type: ObjectSourceKind, source: &str, expected: &str) {
+        let input = EditableObjectSourceSqlInput {
+            database_type: DatabaseType::SqlServer,
+            object_type,
+            schema: Some("dbo".to_string()),
+            name: "usp_demo".to_string(),
+            source: source.to_string(),
+        };
+
+        assert_eq!(build_editable_object_source(input.clone()), expected);
+        assert_eq!(build_executable_object_source_sql(input).unwrap(), expected);
     }
 
     fn informix_view_statements(name: &str, source: &str) -> Vec<String> {
@@ -1018,6 +1034,48 @@ mod tests {
         })
         .unwrap();
         assert_eq!(sql, "ALTER FUNCTION dbo.fn_demo() RETURNS INT AS BEGIN RETURN 1 END;");
+    }
+
+    #[test]
+    fn sqlserver_commented_procedure_source_preserves_comments_and_uses_alter() {
+        let source = "-- =============================================\n-- Author: DBX\n-- Description: issue 2269 reproduction\n-- =============================================\n\nCREATE PROCEDURE [dbo].[usp_demo]\nAS\nBEGIN\n    SELECT 1;\nEND;";
+        let expected = "-- =============================================\n-- Author: DBX\n-- Description: issue 2269 reproduction\n-- =============================================\n\nALTER PROCEDURE [dbo].[usp_demo]\nAS\nBEGIN\n    SELECT 1;\nEND;";
+
+        assert_sqlserver_editable_and_executable(ObjectSourceKind::Procedure, source, expected);
+    }
+
+    #[test]
+    fn sqlserver_block_commented_function_source_preserves_comment_and_uses_alter() {
+        let source = "/* keep this function header */\nCREATE OR ALTER FUNCTION dbo.fn_demo() RETURNS INT AS BEGIN RETURN 1 END;";
+        let expected =
+            "/* keep this function header */\nALTER FUNCTION dbo.fn_demo() RETURNS INT AS BEGIN RETURN 1 END;";
+
+        assert_sqlserver_editable_and_executable(ObjectSourceKind::Function, source, expected);
+    }
+
+    #[test]
+    fn sqlserver_commented_alter_source_remains_unchanged() {
+        let source = "-- keep this note\nALTER PROCEDURE dbo.usp_demo AS SELECT 1;";
+
+        assert_sqlserver_editable_and_executable(ObjectSourceKind::Procedure, source, source);
+    }
+
+    #[test]
+    fn sqlserver_unclosed_block_comment_source_remains_unchanged() {
+        let source = "/* unclosed header\nCREATE PROCEDURE dbo.usp_demo AS SELECT 1;";
+
+        assert_sqlserver_editable_and_executable(ObjectSourceKind::Procedure, source, source);
+    }
+
+    #[test]
+    fn sqlserver_leading_whitespace_before_procedure_uses_alter() {
+        let source = "\n \tCREATE PROCEDURE dbo.usp_demo AS SELECT 1;\n";
+
+        assert_sqlserver_editable_and_executable(
+            ObjectSourceKind::Procedure,
+            source,
+            "ALTER PROCEDURE dbo.usp_demo AS SELECT 1;",
+        );
     }
 
     #[test]
