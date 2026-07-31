@@ -596,6 +596,40 @@ class CommonJavaCompatibilityTest {
     }
 
     @Test
+    void buildsCompositeKeysFromOrderedIndexAndForeignKeyMetadata() {
+        String ddl = DdlBuilder.buildTableDdl(
+            "avatar_asset",
+            "app_config_info",
+            Arrays.asList(
+                new ColumnInfo("id", "bigint", false, null, true),
+                new ColumnInfo("tenant_id", "bigint", false, null, true),
+                new ColumnInfo("payload", "text", true, null, false)
+            ),
+            Collections.singletonList(new IndexInfo(
+                "app_config_info_pkey",
+                Arrays.asList("tenant_id", "id"),
+                true,
+                true
+            )),
+            Arrays.asList(
+                new ForeignKeyInfo("fk_account_region", "tenant_id", "accounts", "account_id"),
+                new ForeignKeyInfo("fk_account_region", "id", "accounts", "region_id")
+            )
+        );
+
+        assertEquals(
+            "CREATE TABLE \"avatar_asset\".\"app_config_info\" (\n" +
+                "  \"id\" bigint NOT NULL,\n" +
+                "  \"tenant_id\" bigint NOT NULL,\n" +
+                "  \"payload\" text,\n" +
+                "  PRIMARY KEY (\"tenant_id\", \"id\"),\n" +
+                "  CONSTRAINT \"fk_account_region\" FOREIGN KEY (\"tenant_id\", \"id\") REFERENCES \"accounts\"(\"account_id\", \"region_id\")\n" +
+                ");\n",
+            ddl
+        );
+    }
+
+    @Test
     void buildsTableDdlWithColumnComments() {
         String ddl = DdlBuilder.buildTableDdl(
             "public",
