@@ -1680,6 +1680,8 @@ export default {
     importSuccess: "Imported {count} connection(s)",
     importNavicatSuccess: "Imported {count} Navicat connection(s). Fill in any connection whose password is still empty before testing.",
     importDatagripSuccess: "Imported {count} DataGrip connection(s), filled {filled} password(s) from macOS Keychain.",
+    importDatagripSelectFiles: "Please select dataSources.xml (required), and optionally dataSources.local.xml / db-forest-config.xml",
+    importDatagripDialogTitle: "Select DataGrip configuration files",
     importDbeaverSuccess: "Imported {count} DBeaver connection(s). Fill in any connection whose password is still empty before testing.",
     importNone: "No new connections to import",
     importLayoutConfirm: "The imported file contains connection groups. Apply them?",

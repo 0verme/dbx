@@ -1652,6 +1652,8 @@ export default withEnglishFallback({
     importLayoutConfirm: "インポートされたファイルに接続グループが含まれています。適用しますか？",
     importLayoutTitle: "グループをインポート",
     importLayoutApply: "適用",
+    importDatagripSelectFiles: "dataSources.xml（必須）を選択してください。dataSources.local.xml と db-forest-config.xml も同時に選択できます。",
+    importDatagripDialogTitle: "DataGrip 設定ファイルを選択",
   },
   ai: {
     placeholder: "自然言語でクエリを説明してください...",
