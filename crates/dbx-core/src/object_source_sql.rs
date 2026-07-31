@@ -157,6 +157,12 @@ pub fn build_executable_object_source_statements(input: EditableObjectSourceSqlI
         return Ok(vec![executable_oracle_view_ddl(input.schema.as_deref(), &input.name, source)]);
     }
 
+    if is_oracle_like(input.database_type)
+        && matches!(input.object_type, ObjectSourceKind::Function | ObjectSourceKind::Procedure)
+    {
+        return Ok(vec![executable_oracle_routine_ddl(source)]);
+    }
+
     if input.database_type == DatabaseType::Informix && input.object_type == ObjectSourceKind::View {
         return Ok(executable_informix_view_statements(input.schema.as_deref(), &input.name, source));
     }
@@ -439,6 +445,14 @@ fn executable_oracle_view_ddl(schema: Option<&str>, name: &str, source: &str) ->
     }
 
     format!("CREATE OR REPLACE VIEW {} AS\n{}", postgres_qualified_name(schema, name), ensure_semicolon(trimmed))
+}
+
+fn executable_oracle_routine_ddl(source: &str) -> String {
+    let trimmed = source.trim();
+    if Regex::new(r"(?i)^(?:PROCEDURE|FUNCTION)\b").unwrap().is_match(trimmed) {
+        return ensure_semicolon(&format!("CREATE OR REPLACE {trimmed}"));
+    }
+    ensure_semicolon(trimmed)
 }
 
 fn executable_informix_view_statements(schema: Option<&str>, name: &str, source: &str) -> Vec<String> {
@@ -1533,6 +1547,69 @@ mod tests {
         .unwrap();
 
         assert_eq!(sql, "CREATE OR REPLACE PACKAGE BODY PAYROLL AS\nEND PAYROLL;");
+    }
+
+    #[test]
+    fn oracle_like_bare_procedure_source_saves_as_create_or_replace() {
+        let source = "PROCEDURE refresh_cache AS\nBEGIN\n  DELETE FROM cache_entries;\n  COMMIT;\nEND;";
+
+        for database_type in [DatabaseType::Oracle, DatabaseType::Dameng] {
+            let statements =
+                build_executable_object_source_statements(input(database_type, ObjectSourceKind::Procedure, source))
+                    .unwrap();
+
+            assert_eq!(
+                statements,
+                vec!["CREATE OR REPLACE PROCEDURE refresh_cache AS\nBEGIN\n  DELETE FROM cache_entries;\n  COMMIT;\nEND;"]
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_like_bare_function_source_saves_as_create_or_replace() {
+        for database_type in [DatabaseType::Oracle, DatabaseType::Dameng] {
+            let statements = build_executable_object_source_statements(input(
+                database_type,
+                ObjectSourceKind::Function,
+                "FUNCTION refresh_cache RETURN NUMBER AS\nBEGIN\n  RETURN 1;\nEND;",
+            ))
+            .unwrap();
+
+            assert_eq!(
+                statements,
+                vec!["CREATE OR REPLACE FUNCTION refresh_cache RETURN NUMBER AS\nBEGIN\n  RETURN 1;\nEND;"]
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_routine_create_prefix_is_not_duplicated() {
+        for source in [
+            "CREATE PROCEDURE refresh_cache AS BEGIN NULL; END;",
+            "CREATE OR REPLACE PROCEDURE refresh_cache AS BEGIN NULL; END;",
+        ] {
+            let statements = build_executable_object_source_statements(input(
+                DatabaseType::Oracle,
+                ObjectSourceKind::Procedure,
+                source,
+            ))
+            .unwrap();
+
+            assert_eq!(statements, vec![source]);
+        }
+    }
+
+    #[test]
+    fn non_oracle_bare_routine_source_is_unchanged() {
+        let source = "PROCEDURE refresh_cache AS BEGIN NULL; END;";
+        let statements = build_executable_object_source_statements(input(
+            DatabaseType::Postgres,
+            ObjectSourceKind::Procedure,
+            source,
+        ))
+        .unwrap();
+
+        assert_eq!(statements, vec![source]);
     }
 
     #[test]
