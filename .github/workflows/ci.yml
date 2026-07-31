@@ -41,6 +41,21 @@ jobs:
       - name: Frontend check
         run: pnpm check
 
+  github-scripts:
+    needs: changes
+    if: needs.changes.outputs.github_scripts == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+
+      - name: GitHub script tests
+        run: node --test .github/scripts/*.test.mjs
+
   packages:
     needs: changes
     if: needs.changes.outputs.packages == 'true'
@@ -357,6 +372,7 @@ jobs:
       agents: ${{ steps.filter.outputs.agents }}
       nix: ${{ steps.filter.outputs.nix }}
       windows_win7_bundle: ${{ steps.filter.outputs.windows_win7_bundle }}
+      github_scripts: ${{ steps.filter.outputs.github_scripts }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -430,6 +446,11 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'vendor/ctor/**'
+            github_scripts:
+              - '.github/scripts/**'
+              - '.github/workflows/ci.yml'
+              - 'apps/desktop/src/types/database.ts'
+              - 'crates/dbx-core/assets/database-drivers.manifest.json'
 
       - name: Select Rust feature coverage
         id: rust-mode
