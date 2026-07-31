@@ -90,6 +90,7 @@ import {
   supportsTableStructureEditing,
   supportsTransfer,
   usesTreeSchemaMode,
+  isSingleDatabase,
 } from "@/lib/database/databaseCapabilities";
 import { copyNameForTreeNode, isDocumentBrowserTreeNode, objectSourceKindForTreeNode, shouldRunTreeNodeRowAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/sidebar/treeNodeClick";
 import { dataTabOpenModeFromTreeClick, type DataTabOpenMode } from "@/lib/sidebar/dataTabOpenPolicy";
@@ -104,6 +105,7 @@ import {
   buildDropDatabaseSql,
   buildDropObjectSql,
   buildDropSchemaSql,
+  damengDropSchemaExecutionSchema,
   buildGetDatabaseCommentSql,
   buildGetSchemaCommentSql,
   buildUpdateDatabasePropertiesSql,
@@ -2290,7 +2292,8 @@ const canCreateSchema = computed(() => {
 
 const canDropSchema = computed(() => {
   const config = activeNode.value.connectionId ? connectionStore.getConfig(activeNode.value.connectionId) : undefined;
-  return activeNode.value.type === "schema" && !isSqlServerLinkedNode(activeNode.value) && usesTreeSchemaMode(effectiveDatabaseTypeForConnection(config)) && !connectionUsesDatabaseObjectTreeMode(config);
+  const dbType = effectiveDatabaseTypeForConnection(config);
+  return activeNode.value.type === "schema" && !isSqlServerLinkedNode(activeNode.value) && (usesTreeSchemaMode(dbType) || dbType === "dameng") && !connectionUsesDatabaseObjectTreeMode(config);
 });
 
 const canEditSchemaComment = computed(() => {
@@ -2949,17 +2952,25 @@ async function confirmDropSchema() {
   if (!node.connectionId || !node.database) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
+    const config = connectionStore.getConfig(node.connectionId);
+    const dbType = effectiveDatabaseTypeForConnection(config);
+    let dropExecutionSchema: string | undefined;
+    if (dbType === "dameng") {
+      dropExecutionSchema = damengDropSchemaExecutionSchema(config?.username, node.label) ?? undefined;
+      if (!dropExecutionSchema) throw new Error(t("contextMenu.dropDamengSchemaRequiresDifferentDba"));
+    }
     const sql =
       dropSchemaPreviewSql.value ||
       (await buildDropSchemaSql({
         databaseType: databaseTypeForNode(node),
         name: node.label,
       }));
-    await executeTreeNodeSqlWithProductionGuard(node, sql, { database: node.database });
+    await executeTreeNodeSqlWithProductionGuard(node, sql, { database: node.database, schema: dropExecutionSchema });
     toast(t("contextMenu.dropSchemaSuccess", { name: node.label }), 3000);
-    const config = connectionStore.getConfig(node.connectionId);
     if (config?.db_type === "sqlserver") {
       await connectionStore.loadSqlServerDatabaseObjects(node.connectionId, node.database, { force: true });
+    } else if (isSingleDatabase(dbType)) {
+      await connectionStore.loadDatabases(node.connectionId, { force: true });
     } else {
       await connectionStore.loadSchemas(node.connectionId, node.database, { force: true });
     }
