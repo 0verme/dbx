@@ -585,8 +585,10 @@ export function statementRangeAtCursor(sql: string, cursorPos: number, databaseT
       return rangeForCursorInSoftRanges(sql, softRanges, pos) ?? rangeFor(statement, sql);
     }
 
-    if (pos > statement.to && (!next || pos < next.hitFrom) && isCursorOnStatementLine(sql, pos, statement)) {
-      return rangeForCursorInSoftRanges(sql, softRanges, pos) ?? rangeFor(statement, sql);
+    if (pos > statement.to && (!next || pos < next.hitFrom)) {
+      const softRange = rangeForCursorInSoftRanges(sql, softRanges, pos);
+      if (softRange) return softRange;
+      if (isCursorOnStatementLine(sql, pos, statement)) return rangeFor(statement, sql);
     }
   }
 

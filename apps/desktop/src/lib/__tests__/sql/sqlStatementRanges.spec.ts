@@ -1101,6 +1101,12 @@ describe("buildExecutionCandidates", () => {
     expect(candidateSummaries(candidates)).toEqual(["cursor:select 1", "all:select 1;\n\nselect 2;"]);
   });
 
+  it("uses the final soft statement when the cursor follows trailing EOF whitespace", () => {
+    const sql = "SELECT 1\nSELECT 2 ";
+    const candidates = buildExecutionCandidates(sql, sql.length);
+    expect(candidateSummaries(candidates)).toEqual(["cursor:SELECT 2", "all:SELECT 1\nSELECT 2"]);
+  });
+
   it("dedupes when the cursor statement equals the full document", () => {
     const sql = "SELECT 1;";
     const candidates = buildExecutionCandidates(sql, indexOf(sql, "1"));
