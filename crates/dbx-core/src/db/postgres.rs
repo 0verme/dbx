@@ -850,8 +850,20 @@ fn should_retry_postgres_text_query_message(message: &str) -> bool {
 }
 
 fn should_retry_postgres_stale_cache(err: &tokio_postgres::Error) -> bool {
-    let message = err.as_db_error().map(ToString::to_string).unwrap_or_else(|| err.to_string()).to_ascii_lowercase();
-    message.contains("cached plan must not change result type")
+    if let Some(db_error) = err.as_db_error() {
+        return should_retry_postgres_stale_cache_fields(
+            Some(db_error.code().code()),
+            db_error.routine(),
+            db_error.message(),
+        );
+    }
+    should_retry_postgres_stale_cache_fields(None, None, &err.to_string())
+}
+
+fn should_retry_postgres_stale_cache_fields(sqlstate: Option<&str>, routine: Option<&str>, message: &str) -> bool {
+    let structured_match = sqlstate == Some("0A000")
+        && routine.is_some_and(|routine| routine.eq_ignore_ascii_case("RevalidateCachedQuery"));
+    structured_match || message.to_ascii_lowercase().contains("cached plan must not change result type")
 }
 
 async fn postgres_query_cached(
@@ -5996,6 +6008,26 @@ mod tests {
         assert!(!invalidates_postgres_statement_cache("UPDATE users SET name = 'Ada'"));
         assert!(!invalidates_postgres_statement_cache("INSERT INTO users(name) VALUES ('Ada')"));
         assert!(!invalidates_postgres_statement_cache("DELETE FROM users WHERE id = 1"));
+    }
+
+    #[test]
+    fn postgres_stale_cache_retry_uses_structured_fields_for_localized_errors() {
+        assert!(should_retry_postgres_stale_cache_fields(
+            Some("0A000"),
+            Some("RevalidateCachedQuery"),
+            "已缓冲的计划不能改变结果类型",
+        ));
+        assert!(should_retry_postgres_stale_cache_fields(None, None, "cached plan must not change result type",));
+    }
+
+    #[test]
+    fn postgres_stale_cache_retry_rejects_other_feature_errors() {
+        assert!(!should_retry_postgres_stale_cache_fields(Some("0A000"), Some("CheckFeatureSupport"), "不支持该功能",));
+        assert!(!should_retry_postgres_stale_cache_fields(
+            Some("23505"),
+            Some("RevalidateCachedQuery"),
+            "duplicate key value violates unique constraint",
+        ));
     }
 
     // --- execute_batch ---
