@@ -7674,14 +7674,18 @@ mod ddl_tests {
             "HASH ((lower(code)))",
             "RANGE (date_trunc('month'::text, created_at))",
         ] {
-            let ddl = render_postgres_table_ddl_with_partition_key(
+            let ddl = render_postgres_table_ddl_with_partition_info(
                 "public",
                 "events",
                 &[column("created_at", "timestamp without time zone")],
                 &[],
                 &[],
                 None,
-                Some(partition_key),
+                &db::postgres::PostgresTablePartitionInfo {
+                    key: Some(partition_key.to_string()),
+                    ..Default::default()
+                },
+                &db::postgres::PostgresTablePartitionLocalObjects::default(),
             );
 
             assert!(ddl.ends_with(&format!(") PARTITION BY {partition_key};\n")), "ddl: {ddl}");
@@ -7691,18 +7695,101 @@ mod ddl_tests {
 
     #[test]
     fn postgres_table_ddl_keeps_ordinary_table_unchanged() {
-        let ddl = render_postgres_table_ddl_with_partition_key(
+        let ddl = render_postgres_table_ddl_with_partition_info(
             "public",
             "users",
             &[column("id", "integer")],
             &[],
             &[],
             None,
-            None,
+            &db::postgres::PostgresTablePartitionInfo::default(),
+            &db::postgres::PostgresTablePartitionLocalObjects::default(),
         );
 
         assert!(ddl.ends_with(");\n"), "ddl: {ddl}");
         assert!(!ddl.contains("PARTITION BY"));
+    }
+
+    #[test]
+    fn postgres_table_ddl_renders_partition_children_and_subpartitions() {
+        let mut id = column("id", "integer");
+        id.is_primary_key = true;
+        let indexes = vec![db::IndexInfo {
+            name: "events_payload_idx".to_string(),
+            columns: vec!["payload".to_string()],
+            is_unique: false,
+            is_primary: false,
+            filter: None,
+            index_type: Some("btree".to_string()),
+            included_columns: None,
+            comment: None,
+        }];
+        let partition_info = db::postgres::PostgresTablePartitionInfo {
+            is_partition: true,
+            parent_schema: Some("public".to_string()),
+            parent_table: Some("events".to_string()),
+            bound: Some("FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')".to_string()),
+            key: Some("HASH (payload)".to_string()),
+        };
+        let partition_local_objects = db::postgres::PostgresTablePartitionLocalObjects {
+            has_primary_key: true,
+            foreign_keys: BTreeSet::new(),
+            indexes: BTreeSet::from(["events_payload_idx".to_string()]),
+        };
+
+        let ddl = render_postgres_table_ddl_with_partition_info(
+            "public",
+            "events_2026",
+            &[id, column("payload", "text")],
+            &indexes,
+            &[],
+            None,
+            &partition_info,
+            &partition_local_objects,
+        );
+
+        assert!(ddl.starts_with(
+            "CREATE TABLE \"public\".\"events_2026\" PARTITION OF \"public\".\"events\" (\n  PRIMARY KEY (\"id\")\n)"
+        ));
+        assert!(ddl.contains("FOR VALUES FROM ('2026-01-01') TO ('2027-01-01') PARTITION BY HASH (payload);"));
+        assert!(ddl.contains("CREATE INDEX \"events_payload_idx\""));
+        assert!(!ddl.contains("\"payload\" text"));
+    }
+
+    #[test]
+    fn postgres_partition_ddl_skips_inherited_constraints_and_indexes() {
+        let mut id = column("id", "integer");
+        id.is_primary_key = true;
+        let indexes = vec![db::IndexInfo {
+            name: "events_2026_pkey".to_string(),
+            columns: vec!["id".to_string()],
+            is_unique: true,
+            is_primary: true,
+            filter: None,
+            index_type: Some("btree".to_string()),
+            included_columns: None,
+            comment: None,
+        }];
+        let partition_info = db::postgres::PostgresTablePartitionInfo {
+            is_partition: true,
+            parent_schema: Some("public".to_string()),
+            parent_table: Some("events".to_string()),
+            bound: Some("DEFAULT".to_string()),
+            key: None,
+        };
+
+        let ddl = render_postgres_table_ddl_with_partition_info(
+            "public",
+            "events_default",
+            &[id],
+            &indexes,
+            &[],
+            None,
+            &partition_info,
+            &db::postgres::PostgresTablePartitionLocalObjects::default(),
+        );
+
+        assert_eq!(ddl, "CREATE TABLE \"public\".\"events_default\" PARTITION OF \"public\".\"events\" DEFAULT;\n");
     }
 
     #[test]
@@ -7939,24 +8026,30 @@ pub async fn sqlite_ddl(pool: &db::sqlite::SqliteHandle, schema: &str, table: &s
 }
 
 pub async fn pg_ddl(pool: &deadpool_postgres::Pool, schema: &str, table: &str) -> Result<String, String> {
-    let (columns, indexes, fkeys, table_comment, partition_key, trigger_definitions) = tokio::try_join!(
+    let (columns, indexes, fkeys, table_comment, partition_info, trigger_definitions) = tokio::try_join!(
         db::postgres::get_columns(pool, schema, table),
         db::postgres::list_indexes(pool, schema, table),
         db::postgres::list_foreign_keys(pool, schema, table),
         async { db::postgres::get_table_comment(pool, schema, table).await },
-        db::postgres::get_table_partition_key(pool, schema, table),
+        db::postgres::get_table_partition_info(pool, schema, table),
         db::postgres::list_trigger_definitions(pool, schema, table),
     )?;
+    let partition_local_objects = if partition_info.is_partition {
+        db::postgres::get_table_partition_local_objects(pool, schema, table).await?
+    } else {
+        db::postgres::PostgresTablePartitionLocalObjects::default()
+    };
 
     Ok(append_postgres_trigger_definitions(
-        render_postgres_table_ddl_with_partition_key(
+        render_postgres_table_ddl_with_partition_info(
             schema,
             table,
             &columns,
             &indexes,
             &fkeys,
             table_comment.as_deref(),
-            partition_key.as_deref(),
+            &partition_info,
+            &partition_local_objects,
         ),
         &trigger_definitions,
     ))
@@ -8248,68 +8341,110 @@ pub fn render_postgres_table_ddl(
     fkeys: &[db::ForeignKeyInfo],
     table_comment: Option<&str>,
 ) -> String {
-    render_postgres_table_ddl_with_partition_key(schema, table, columns, indexes, fkeys, table_comment, None)
+    render_postgres_table_ddl_with_partition_info(
+        schema,
+        table,
+        columns,
+        indexes,
+        fkeys,
+        table_comment,
+        &db::postgres::PostgresTablePartitionInfo::default(),
+        &db::postgres::PostgresTablePartitionLocalObjects::default(),
+    )
 }
 
-fn render_postgres_table_ddl_with_partition_key(
+fn render_postgres_table_ddl_with_partition_info(
     schema: &str,
     table: &str,
     columns: &[db::ColumnInfo],
     indexes: &[db::IndexInfo],
     fkeys: &[db::ForeignKeyInfo],
     table_comment: Option<&str>,
-    partition_key: Option<&str>,
+    partition_info: &db::postgres::PostgresTablePartitionInfo,
+    partition_local_objects: &db::postgres::PostgresTablePartitionLocalObjects,
 ) -> String {
     let table_name = format!("{}.{}", pg_ident(schema), pg_ident(table));
-    let mut ddl = format!("CREATE TABLE {table_name} (\n");
-    let col_lines: Vec<String> = columns
-        .iter()
-        .map(|c| {
-            let mut line = format!("  {} {}", pg_ident(&c.name), c.data_type);
-            let generated_clause = c
-                .extra
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty() && value.to_ascii_lowercase().starts_with("generated "));
-            if let Some(extra) = generated_clause {
-                line.push_str(&format!(" {extra}"));
-            }
-            if !c.is_nullable {
-                line.push_str(" NOT NULL");
-            }
-            if generated_clause.is_none() {
-                if let Some(ref def) = c.column_default {
-                    line.push_str(&format!(" DEFAULT {def}"));
-                }
-            }
-            line
+    let partition_parent = partition_info
+        .is_partition
+        .then(|| {
+            Some((
+                partition_info.parent_schema.as_deref()?,
+                partition_info.parent_table.as_deref()?,
+                partition_info.bound.as_deref()?,
+            ))
         })
-        .collect();
-    ddl.push_str(&col_lines.join(",\n"));
+        .flatten();
+    let is_partition = partition_parent.is_some();
+    let mut definition_lines = if is_partition {
+        Vec::new()
+    } else {
+        columns
+            .iter()
+            .map(|c| {
+                let mut line = format!("  {} {}", pg_ident(&c.name), c.data_type);
+                let generated_clause = c
+                    .extra
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty() && value.to_ascii_lowercase().starts_with("generated "));
+                if let Some(extra) = generated_clause {
+                    line.push_str(&format!(" {extra}"));
+                }
+                if !c.is_nullable {
+                    line.push_str(" NOT NULL");
+                }
+                if generated_clause.is_none() {
+                    if let Some(ref def) = c.column_default {
+                        line.push_str(&format!(" DEFAULT {def}"));
+                    }
+                }
+                line
+            })
+            .collect::<Vec<_>>()
+    };
 
-    let pks: Vec<&str> = columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.as_str()).collect();
+    let pks: Vec<&str> = if !is_partition || partition_local_objects.has_primary_key {
+        columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.as_str()).collect()
+    } else {
+        Vec::new()
+    };
     if !pks.is_empty() {
-        ddl.push_str(&format!(",\n  PRIMARY KEY ({})", pks.iter().map(|k| pg_ident(k)).collect::<Vec<_>>().join(", ")));
+        definition_lines
+            .push(format!("  PRIMARY KEY ({})", pks.iter().map(|key| pg_ident(key)).collect::<Vec<_>>().join(", ")));
     }
     for fk_group in group_foreign_keys_by_name(fkeys) {
         let Some(first_fk) = fk_group.first() else {
             continue;
         };
+        if is_partition && !partition_local_objects.foreign_keys.contains(&first_fk.name) {
+            continue;
+        }
         let columns = fk_group.iter().map(|fk| pg_ident(&fk.column)).collect::<Vec<_>>().join(", ");
         let ref_columns = fk_group.iter().map(|fk| pg_ident(&fk.ref_column)).collect::<Vec<_>>().join(", ");
-        ddl.push_str(&format!(
-            ",\n  CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})",
+        definition_lines.push(format!(
+            "  CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})",
             pg_ident(&first_fk.name),
             columns,
             pg_ident(&first_fk.ref_table),
             ref_columns
         ));
     }
-    if let Some(partition_key) = partition_key.filter(|key| !key.trim().is_empty()) {
-        ddl.push_str(&format!("\n) PARTITION BY {partition_key};\n"));
+
+    let mut ddl = if let Some((parent_schema, parent_table, bound)) = partition_parent {
+        let parent_name = format!("{}.{}", pg_ident(parent_schema), pg_ident(parent_table));
+        let definitions = if definition_lines.is_empty() {
+            String::new()
+        } else {
+            format!(" (\n{}\n)", definition_lines.join(",\n"))
+        };
+        format!("CREATE TABLE {table_name} PARTITION OF {parent_name}{definitions} {bound}")
     } else {
-        ddl.push_str("\n);\n");
+        format!("CREATE TABLE {table_name} (\n{}\n)", definition_lines.join(",\n"))
+    };
+    if let Some(partition_key) = partition_info.key.as_deref().filter(|key| !key.trim().is_empty()) {
+        ddl.push_str(&format!(" PARTITION BY {partition_key}"));
     }
+    ddl.push_str(";\n");
 
     if let Some(comment) = table_comment.filter(|comment| !comment.trim().is_empty()) {
         ddl.push_str(&format!("\nCOMMENT ON TABLE {table_name} IS {};", sql_string(comment)));
@@ -8327,6 +8462,9 @@ fn render_postgres_table_ddl_with_partition_key(
 
     for idx in indexes {
         if idx.is_primary {
+            continue;
+        }
+        if is_partition && !partition_local_objects.indexes.contains(&idx.name) {
             continue;
         }
         let unique = if idx.is_unique { "UNIQUE " } else { "" };

@@ -8,6 +8,7 @@ use rustls::client::verify_server_cert_signed_by_trust_anchor;
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::server::ParsedCertificate;
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::future::Future;
 use std::io::BufReader;
@@ -63,6 +64,22 @@ pub struct PostgresTableAccessInfo {
     pub owner: String,
     pub owner_default_privileges: Vec<String>,
     pub privileges: Vec<PostgresTablePrivilegeInfo>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PostgresTablePartitionInfo {
+    pub is_partition: bool,
+    pub parent_schema: Option<String>,
+    pub parent_table: Option<String>,
+    pub bound: Option<String>,
+    pub key: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PostgresTablePartitionLocalObjects {
+    pub has_primary_key: bool,
+    pub foreign_keys: BTreeSet<String>,
+    pub indexes: BTreeSet<String>,
 }
 
 fn pg_temporal_to_json_value(row: &Row, idx: usize) -> Option<serde_json::Value> {
@@ -2235,38 +2252,113 @@ pub async fn get_table_comment(pool: &Pool, schema: &str, table: &str) -> Result
     Ok(rows.first().and_then(|row| row.try_get::<_, Option<String>>(0).ok().flatten()).filter(|s| !s.is_empty()))
 }
 
-pub async fn get_table_partition_key(pool: &Pool, schema: &str, table: &str) -> Result<Option<String>, String> {
+pub async fn get_table_partition_info(
+    pool: &Pool,
+    schema: &str,
+    table: &str,
+) -> Result<PostgresTablePartitionInfo, String> {
     let schema = if schema.is_empty() { "public" } else { schema };
     let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
-    // Probe relkind first so PostgreSQL-compatible servers without the PG10
-    // pg_get_partkeydef function keep ordinary-table DDL unchanged.
-    if postgres_query_cached(&client, postgres_partitioned_parent_sql(), &[&schema, &table])
-        .await
-        .map_err(|e| e.to_string())?
-        .is_empty()
-    {
-        return Ok(None);
-    }
-    let rows = postgres_query_cached(&client, postgres_table_partition_key_sql(), &[&schema, &table])
+    let relation_rows = postgres_query_cached(&client, postgres_table_partition_relation_sql(), &[&schema, &table])
         .await
         .map_err(|e| e.to_string())?;
-    Ok(rows.first().and_then(|row| row.try_get::<_, Option<String>>(0).ok().flatten()).filter(|s| !s.is_empty()))
+    let Some(relation) = relation_rows.first() else {
+        return Ok(PostgresTablePartitionInfo::default());
+    };
+    let relkind = relation.try_get::<_, String>(0).unwrap_or_default();
+    let is_partition = relation.try_get::<_, bool>(1).unwrap_or(false);
+    if relkind != "p" && !is_partition {
+        return Ok(PostgresTablePartitionInfo::default());
+    }
+
+    let rows = postgres_query_cached(&client, postgres_table_partition_info_sql(), &[&schema, &table])
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(row) = rows.first() else {
+        return Ok(PostgresTablePartitionInfo { is_partition, ..Default::default() });
+    };
+    Ok(PostgresTablePartitionInfo {
+        is_partition,
+        parent_schema: row.try_get::<_, Option<String>>(0).ok().flatten().filter(|value| !value.is_empty()),
+        parent_table: row.try_get::<_, Option<String>>(1).ok().flatten().filter(|value| !value.is_empty()),
+        bound: row.try_get::<_, Option<String>>(2).ok().flatten().filter(|value| !value.is_empty()),
+        key: row.try_get::<_, Option<String>>(3).ok().flatten().filter(|value| !value.is_empty()),
+    })
 }
 
-fn postgres_partitioned_parent_sql() -> &'static str {
-    "SELECT 1 \
+pub async fn get_table_partition_key(pool: &Pool, schema: &str, table: &str) -> Result<Option<String>, String> {
+    Ok(get_table_partition_info(pool, schema, table).await?.key)
+}
+
+pub async fn get_table_partition_local_objects(
+    pool: &Pool,
+    schema: &str,
+    table: &str,
+) -> Result<PostgresTablePartitionLocalObjects, String> {
+    let schema = if schema.is_empty() { "public" } else { schema };
+    let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
+    let rows = postgres_query_cached(&client, postgres_table_partition_local_objects_sql(), &[&schema, &table])
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut result = PostgresTablePartitionLocalObjects::default();
+    for row in rows {
+        let object_kind = row.try_get::<_, String>(0).unwrap_or_default();
+        let object_name = row.try_get::<_, String>(1).unwrap_or_default();
+        let object_type = row.try_get::<_, Option<String>>(2).ok().flatten().unwrap_or_default();
+        match object_kind.as_str() {
+            "constraint" if object_type == "p" => result.has_primary_key = true,
+            "constraint" if object_type == "f" && !object_name.is_empty() => {
+                result.foreign_keys.insert(object_name);
+            }
+            "index" if !object_name.is_empty() => {
+                result.indexes.insert(object_name);
+            }
+            _ => {}
+        }
+    }
+    Ok(result)
+}
+
+fn postgres_table_partition_relation_sql() -> &'static str {
+    "SELECT c.relkind::text, \
+            COALESCE((pg_catalog.row_to_json(c)->>'relispartition')::boolean, false) AS is_partition \
      FROM pg_catalog.pg_class c \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'p' \
+     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r','p') \
      LIMIT 1"
 }
 
-fn postgres_table_partition_key_sql() -> &'static str {
-    "SELECT pg_catalog.pg_get_partkeydef(c.oid) AS partition_key \
+fn postgres_table_partition_info_sql() -> &'static str {
+    "SELECT CASE WHEN c.relispartition THEN pn.nspname ELSE NULL END AS parent_schema, \
+            CASE WHEN c.relispartition THEN pc.relname ELSE NULL END AS parent_table, \
+            CASE WHEN c.relispartition THEN pg_catalog.pg_get_expr(c.relpartbound, c.oid, true) ELSE NULL END AS partition_bound, \
+            CASE WHEN c.relkind = 'p' THEN pg_catalog.pg_get_partkeydef(c.oid) ELSE NULL END AS partition_key \
      FROM pg_catalog.pg_class c \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'p' \
+     LEFT JOIN pg_catalog.pg_inherits i ON i.inhrelid = c.oid \
+     LEFT JOIN pg_catalog.pg_class pc ON pc.oid = i.inhparent \
+     LEFT JOIN pg_catalog.pg_namespace pn ON pn.oid = pc.relnamespace \
+     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r','p') \
+     ORDER BY i.inhseqno NULLS LAST \
      LIMIT 1"
+}
+
+fn postgres_table_partition_local_objects_sql() -> &'static str {
+    "SELECT 'constraint'::text AS object_kind, con.conname AS object_name, con.contype::text AS object_type \
+     FROM pg_catalog.pg_constraint con \
+     JOIN pg_catalog.pg_class c ON c.oid = con.conrelid \
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+     WHERE n.nspname = $1 AND c.relname = $2 AND con.contype IN ('p','f') \
+       AND COALESCE(NULLIF(pg_catalog.row_to_json(con)->>'conparentid', '')::oid, 0) = 0 \
+     UNION ALL \
+     SELECT 'index'::text AS object_kind, idx.relname AS object_name, NULL::text AS object_type \
+     FROM pg_catalog.pg_index ix \
+     JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid \
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+     JOIN pg_catalog.pg_class idx ON idx.oid = ix.indexrelid \
+     WHERE n.nspname = $1 AND c.relname = $2 \
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid = idx.oid) \
+     ORDER BY object_kind, object_name"
 }
 
 fn postgres_table_comment_sql() -> &'static str {
@@ -5448,18 +5540,21 @@ mod tests {
     }
 
     #[test]
-    fn postgres_table_partition_key_sql_targets_partitioned_parents() {
-        let parent_sql = postgres_partitioned_parent_sql();
-        let sql = postgres_table_partition_key_sql();
+    fn postgres_table_partition_sql_tracks_parents_bounds_and_local_objects() {
+        let relation_sql = postgres_table_partition_relation_sql();
+        let info_sql = postgres_table_partition_info_sql();
+        let local_objects_sql = postgres_table_partition_local_objects_sql();
 
-        assert!(parent_sql.contains("n.nspname = $1"));
-        assert!(parent_sql.contains("c.relname = $2"));
-        assert!(parent_sql.contains("c.relkind = 'p'"));
-        assert!(sql.contains("pg_catalog.pg_get_partkeydef(c.oid)"));
-        assert!(sql.contains("n.nspname = $1"));
-        assert!(sql.contains("c.relname = $2"));
-        assert!(sql.contains("c.relkind = 'p'"));
-        assert!(!sql.contains("pg_get_expr(c.relpartbound"));
+        assert!(relation_sql.contains("row_to_json(c)->>'relispartition'"));
+        assert!(relation_sql.contains("c.relkind IN ('r','p')"));
+        assert!(info_sql.contains("pg_catalog.pg_get_expr(c.relpartbound, c.oid, true)"));
+        assert!(info_sql.contains("pg_catalog.pg_get_partkeydef(c.oid)"));
+        assert!(info_sql.contains("pg_catalog.pg_inherits"));
+        assert!(info_sql.contains("parent_schema"));
+        assert!(info_sql.contains("parent_table"));
+        assert!(local_objects_sql.contains("row_to_json(con)->>'conparentid'"));
+        assert!(local_objects_sql.contains("con.contype IN ('p','f')"));
+        assert!(local_objects_sql.contains("i.inhrelid = idx.oid"));
     }
 
     #[test]
@@ -5605,34 +5700,93 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires DBX_TEST_POSTGRES_URL pointing at a writable PostgreSQL database"]
-    async fn postgres_partition_key_metadata_reads_parent_only() {
+    async fn postgres_partition_metadata_renders_replayable_children_and_subpartitions() {
         let url = std::env::var("DBX_TEST_POSTGRES_URL").expect("DBX_TEST_POSTGRES_URL");
         let pool = connect(&url, Duration::from_secs(5)).await.expect("connect postgres");
         let schema = format!("dbx_partition_meta_{}", std::process::id());
         let schema_ident = pg_quote_ident(&schema);
+        let replay_schema = format!("{schema}_replay");
+        let replay_schema_ident = pg_quote_ident(&replay_schema);
         let parent = format!("{schema_ident}.parent");
         let child = format!("{schema_ident}.child");
+        let default_child = format!("{schema_ident}.child_default");
+        let subpartition = format!("{schema_ident}.subpartition");
+        let inherited_parent = format!("{schema_ident}.inherited_parent");
+        let inherited_child = format!("{schema_ident}.inherited_child");
 
         execute_query(&pool, &format!("CREATE SCHEMA {schema_ident}")).await.expect("create schema");
         let client = pool.get().await.expect("get postgres client");
         client
             .batch_execute(&format!(
                 "CREATE TABLE {parent} (id integer, payload text) PARTITION BY RANGE (id); \
-                 CREATE TABLE {child} PARTITION OF {parent} FOR VALUES FROM (1) TO (10)"
+                 CREATE TABLE {child} PARTITION OF {parent} (PRIMARY KEY (id)) FOR VALUES FROM (1) TO (10); \
+                 CREATE INDEX child_payload_idx ON {child} (payload); \
+                 CREATE TABLE {default_child} PARTITION OF {parent} DEFAULT; \
+                 CREATE TABLE {subpartition} PARTITION OF {parent} FOR VALUES FROM (10) TO (20) PARTITION BY HASH (payload); \
+                 CREATE TABLE {inherited_parent} (id integer, bucket integer, PRIMARY KEY (id, bucket)) PARTITION BY RANGE (bucket); \
+                 CREATE TABLE {inherited_child} PARTITION OF {inherited_parent} FOR VALUES FROM (1) TO (10)"
             ))
             .await
             .expect("create partitioned tables");
 
-        let parent_key = get_table_partition_key(&pool, &schema, "parent").await.expect("parent metadata");
-        let child_key = get_table_partition_key(&pool, &schema, "child").await.expect("child metadata");
+        let parent_info = get_table_partition_info(&pool, &schema, "parent").await.expect("parent metadata");
+        let child_info = get_table_partition_info(&pool, &schema, "child").await.expect("child metadata");
+        let default_info = get_table_partition_info(&pool, &schema, "child_default").await.expect("default metadata");
+        let subpartition_info =
+            get_table_partition_info(&pool, &schema, "subpartition").await.expect("subpartition metadata");
+        let child_local_objects =
+            get_table_partition_local_objects(&pool, &schema, "child").await.expect("child local objects");
+        let inherited_child_local_objects = get_table_partition_local_objects(&pool, &schema, "inherited_child")
+            .await
+            .expect("inherited child local objects");
         let parent_ddl = crate::schema::pg_ddl(&pool, &schema, "parent").await.expect("parent ddl");
+        let child_ddl = crate::schema::pg_ddl(&pool, &schema, "child").await.expect("child ddl");
+        let default_ddl = crate::schema::pg_ddl(&pool, &schema, "child_default").await.expect("default ddl");
+        let subpartition_ddl = crate::schema::pg_ddl(&pool, &schema, "subpartition").await.expect("subpartition ddl");
+        let inherited_parent_ddl =
+            crate::schema::pg_ddl(&pool, &schema, "inherited_parent").await.expect("inherited parent ddl");
+        let inherited_child_ddl =
+            crate::schema::pg_ddl(&pool, &schema, "inherited_child").await.expect("inherited child ddl");
 
-        execute_query(&pool, &format!("DROP SCHEMA {schema_ident} CASCADE")).await.expect("drop schema");
+        execute_query(&pool, &format!("CREATE SCHEMA {replay_schema_ident}")).await.expect("create replay schema");
+        for ddl in
+            [&parent_ddl, &child_ddl, &default_ddl, &subpartition_ddl, &inherited_parent_ddl, &inherited_child_ddl]
+        {
+            client
+                .batch_execute(&ddl.replace(&schema_ident, &replay_schema_ident))
+                .await
+                .unwrap_or_else(|error| panic!("replay partition ddl failed: {error}; ddl: {ddl}"));
+        }
 
-        assert_eq!(parent_key, Some("RANGE (id)".to_string()));
-        assert_eq!(child_key, None);
+        client
+            .batch_execute(&format!("DROP SCHEMA {schema_ident} CASCADE; DROP SCHEMA {replay_schema_ident} CASCADE"))
+            .await
+            .expect("drop schemas");
+
+        assert_eq!(parent_info.key.as_deref(), Some("RANGE (id)"));
+        assert!(!parent_info.is_partition);
+        assert_eq!(child_info.parent_schema.as_deref(), Some(schema.as_str()));
+        assert_eq!(child_info.parent_table.as_deref(), Some("parent"));
+        assert_eq!(child_info.bound.as_deref(), Some("FOR VALUES FROM (1) TO (10)"));
+        assert!(child_local_objects.has_primary_key);
+        assert!(child_local_objects.indexes.contains("child_payload_idx"));
+        assert!(!inherited_child_local_objects.has_primary_key);
+        assert!(inherited_child_local_objects.indexes.is_empty());
+        assert_eq!(default_info.bound.as_deref(), Some("DEFAULT"));
+        assert_eq!(subpartition_info.key.as_deref(), Some("HASH (payload)"));
         assert!(parent_ddl.contains(") PARTITION BY RANGE (id);"), "ddl: {parent_ddl}");
-        assert!(!parent_ddl.contains("PARTITION OF"));
+        assert!(child_ddl.contains("CREATE TABLE"), "ddl: {child_ddl}");
+        assert!(child_ddl.contains("PARTITION OF"), "ddl: {child_ddl}");
+        assert!(child_ddl.contains("PRIMARY KEY (\"id\")"), "ddl: {child_ddl}");
+        assert!(child_ddl.contains("FOR VALUES FROM (1) TO (10);"), "ddl: {child_ddl}");
+        assert!(child_ddl.contains("CREATE INDEX \"child_payload_idx\""), "ddl: {child_ddl}");
+        assert!(default_ddl.contains(" DEFAULT;"), "ddl: {default_ddl}");
+        assert!(
+            subpartition_ddl.contains("FOR VALUES FROM (10) TO (20) PARTITION BY HASH (payload);"),
+            "ddl: {subpartition_ddl}"
+        );
+        assert!(!inherited_child_ddl.contains("PRIMARY KEY"), "ddl: {inherited_child_ddl}");
+        assert!(!inherited_child_ddl.contains("CREATE INDEX"), "ddl: {inherited_child_ddl}");
     }
 
     #[tokio::test]
