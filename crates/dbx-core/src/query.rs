@@ -989,6 +989,10 @@ fn query_pool_database<'a>(database: &'a str, catalog: Option<&str>) -> Option<&
     }
 }
 
+fn postgres_prefers_text_protocol(db_type: Option<DatabaseType>) -> bool {
+    db_type == Some(DatabaseType::Redshift)
+}
+
 pub async fn operation_budget_for_pool_key(
     state: &AppState,
     pool_key: &str,
@@ -1143,6 +1147,7 @@ pub async fn do_execute(
             let p = p.clone();
             let schema = schema.map(|s| s.to_string());
             let max_rows = options.max_rows;
+            let prefer_text_protocol = postgres_prefers_text_protocol(pool_db_type);
             let cancel_context = state.get_postgres_cancel_context(pool_key).await;
             drop(connections);
             if let Some(schema) = schema {
@@ -1154,6 +1159,7 @@ pub async fn do_execute(
                     cancel_token,
                     operation_budget.clone(),
                     cancel_context,
+                    prefer_text_protocol,
                 )
                 .await
             } else {
@@ -1164,6 +1170,7 @@ pub async fn do_execute(
                     cancel_token,
                     operation_budget.clone(),
                     cancel_context,
+                    prefer_text_protocol,
                 )
                 .await
             }
@@ -3661,6 +3668,13 @@ pub async fn rollback_manual_transaction(state: &AppState, txn_session_id: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redshift_queries_prefer_text_protocol() {
+        assert!(postgres_prefers_text_protocol(Some(DatabaseType::Redshift)));
+        assert!(!postgres_prefers_text_protocol(Some(DatabaseType::Postgres)));
+        assert!(!postgres_prefers_text_protocol(None));
+    }
     #[cfg(unix)]
     use crate::db::agent_driver::{AgentDriverClient, AgentLaunchSpec};
     use crate::models::connection::{default_redis_key_separator, ConnectionConfig, DatabaseType};
