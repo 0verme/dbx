@@ -3381,6 +3381,8 @@ fn generate_schema_sync_sql_inner(
         }
         rewrite_column_type(source_type, db_type, source_dialect)
     };
+    let is_same_dialect =
+        source_dialect.map(|source| DialectKind::from_database_type(db_type) == source).unwrap_or(false);
 
     append_sequence_diff_sql(&mut lines, sequence_diffs, profile, db_type, schema, cascade, |diff_type| {
         diff_type == "added"
@@ -3389,11 +3391,29 @@ fn generate_schema_sync_sql_inner(
     for diff in diffs {
         let table = qualified_name(&diff.name, db_type, schema);
 
+        if diff.diff_type == "added" && diff.object_type.as_deref() == Some("view") {
+            if let Some(ddl) = &diff.ddl {
+                if is_same_dialect || source_dialect.is_none() {
+                    lines.push(format!("-- Create view: {}", diff.name));
+                    lines.push(format!("{};", ddl.trim_end().trim_end_matches(';')));
+                    lines.push(String::new());
+                    continue;
+                }
+            }
+
+            lines.push(format!("-- View exists only in source: {}", diff.name));
+            if diff.ddl.is_some() {
+                lines.push("-- Source view definition cannot be reused across different SQL dialects.".to_string());
+            } else {
+                lines.push("-- Source view definition is not available from this driver yet.".to_string());
+            }
+            lines.push(String::new());
+            continue;
+        }
+
         if diff.diff_type == "added" && diff.object_type.as_deref() != Some("view") {
             let has_structured_snapshot = diff.columns.as_ref().is_some_and(|columns| !columns.is_empty());
             let is_rollback_recreation = diff.ddl.is_none() && diff.target_ddl.is_some();
-            let is_same_dialect =
-                source_dialect.map(|src| DialectKind::from_database_type(db_type) == src).unwrap_or(false);
             if is_rollback_recreation {
                 if has_structured_snapshot {
                     let trigger_infos: Vec<TriggerInfo> = diff
@@ -3485,13 +3505,6 @@ fn generate_schema_sync_sql_inner(
                 }
                 missing_objects.extend(missing);
             }
-            continue;
-        }
-
-        if diff.diff_type == "added" && diff.object_type.as_deref() == Some("view") {
-            lines.push(format!("-- View exists only in source: {}", diff.name));
-            lines.push("-- Source view definition is not available from this driver yet.".to_string());
-            lines.push(String::new());
             continue;
         }
 
@@ -8541,6 +8554,86 @@ mod tests {
         );
 
         assert!(sql.contains("ALTER COLUMN \"created_at\" TYPE timestamp(0)"), "{sql}");
+    }
+
+    #[test]
+    fn mysql_sync_sql_uses_same_dialect_view_ddl() {
+        let view_diff = TableDiff {
+            diff_type: "added".into(),
+            object_type: Some("view".into()),
+            name: "active_users".into(),
+            ddl: Some("CREATE VIEW `active_users` AS SELECT `id` FROM `users` WHERE `active` = 1;".into()),
+            ..TableDiff::default()
+        };
+
+        let sql = generate_schema_sync_sql(
+            &[view_diff],
+            &[],
+            &[],
+            &[],
+            &[],
+            DatabaseType::Mysql,
+            Some("app"),
+            false,
+            Some(DialectKind::Mysql),
+            &[],
+        );
+
+        assert!(sql.contains("CREATE VIEW `active_users`"), "{sql}");
+        assert!(!sql.contains("Source view definition is not available"), "{sql}");
+        assert!(!sql.contains(";;"), "{sql}");
+    }
+
+    #[test]
+    fn cross_dialect_sync_sql_does_not_reuse_view_ddl() {
+        let view_diff = TableDiff {
+            diff_type: "added".into(),
+            object_type: Some("view".into()),
+            name: "active_users".into(),
+            ddl: Some("CREATE VIEW `active_users` AS SELECT `id` FROM `users`".into()),
+            ..TableDiff::default()
+        };
+
+        let sql = generate_schema_sync_sql(
+            &[view_diff],
+            &[],
+            &[],
+            &[],
+            &[],
+            DatabaseType::Postgres,
+            Some("public"),
+            false,
+            Some(DialectKind::Mysql),
+            &[],
+        );
+
+        assert!(!sql.contains("CREATE VIEW `active_users`"), "{sql}");
+        assert!(sql.contains("Source view definition cannot be reused across different SQL dialects"), "{sql}");
+    }
+
+    #[test]
+    fn same_dialect_sync_sql_keeps_diagnostic_without_view_ddl() {
+        let view_diff = TableDiff {
+            diff_type: "added".into(),
+            object_type: Some("view".into()),
+            name: "active_users".into(),
+            ..TableDiff::default()
+        };
+
+        let sql = generate_schema_sync_sql(
+            &[view_diff],
+            &[],
+            &[],
+            &[],
+            &[],
+            DatabaseType::Mysql,
+            Some("app"),
+            false,
+            Some(DialectKind::Mysql),
+            &[],
+        );
+
+        assert!(sql.contains("Source view definition is not available from this driver yet"), "{sql}");
     }
 
     #[test]
