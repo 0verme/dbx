@@ -406,7 +406,10 @@ public final class DamengAgent extends AbstractJdbcAgent {
     private static boolean includesSupportedObjectTypes(MetadataListConstraints constraints) {
         return constraints.includesTableLikeTypes()
             || constraints.objectTypeAllowed("PROCEDURE")
-            || constraints.objectTypeAllowed("FUNCTION");
+            || constraints.objectTypeAllowed("FUNCTION")
+            || constraints.objectTypeAllowed("SEQUENCE")
+            || constraints.objectTypeAllowed("PACKAGE")
+            || constraints.objectTypeAllowed("PACKAGE_BODY");
     }
 
     private static void appendDamengObjectTypePredicate(
@@ -448,6 +451,15 @@ public final class DamengAgent extends AbstractJdbcAgent {
         if (constraints.objectTypeAllowed("FUNCTION")) {
             result.add("FUNCTION");
         }
+        if (constraints.objectTypeAllowed("SEQUENCE")) {
+            result.add("SEQUENCE");
+        }
+        if (constraints.objectTypeAllowed("PACKAGE")) {
+            result.add("PACKAGE");
+        }
+        if (constraints.objectTypeAllowed("PACKAGE_BODY")) {
+            result.add("PACKAGE BODY");
+        }
         return result;
     }
 
@@ -472,6 +484,15 @@ public final class DamengAgent extends AbstractJdbcAgent {
         }
         if (constraints.objectTypeAllowed("FUNCTION")) {
             result.add("FUNCTION");
+        }
+        if (constraints.objectTypeAllowed("SEQUENCE")) {
+            result.add("SEQUENCE");
+        }
+        if (constraints.objectTypeAllowed("PACKAGE")) {
+            result.add("PACKAGE");
+        }
+        if (constraints.objectTypeAllowed("PACKAGE_BODY")) {
+            result.add("PACKAGE BODY");
         }
         return result;
     }
@@ -763,6 +784,9 @@ public final class DamengAgent extends AbstractJdbcAgent {
             case "MATERIALIZED_VIEW", "MATERIALIZED VIEW" -> "MATERIALIZED_VIEW";
             case "PROCEDURE" -> "PROCEDURE";
             case "FUNCTION" -> "FUNCTION";
+            case "SEQUENCE" -> "SEQUENCE";
+            case "PACKAGE" -> "PKG_SPEC";
+            case "PACKAGE_BODY", "PACKAGE BODY" -> "PKG_BODY";
             // DM DBMS_METADATA accepts TRIGGER directly and returns executable CREATE OR REPLACE DDL.
             case "TRIGGER" -> "TRIGGER";
             default -> throw new IllegalArgumentException("Unsupported object type: " + objectType);

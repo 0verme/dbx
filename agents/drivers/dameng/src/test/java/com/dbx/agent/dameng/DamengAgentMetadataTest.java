@@ -197,6 +197,26 @@ class DamengAgentMetadataTest {
     }
 
     @Test
+    void queriesSequencesAndPackagesWhenRequested() {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
+
+        agent.listObjects(
+            "APP",
+            new MetadataListConstraints(null, 20, null, List.of("SEQUENCE", "PACKAGE", "PACKAGE_BODY"))
+        );
+
+        String objectsSql = JdbcMetadataSqlFake.statements.stream()
+            .filter(sql -> sql.contains("FROM ALL_OBJECTS o"))
+            .findFirst()
+            .orElseThrow();
+        Assertions.assertTrue(objectsSql.contains("o.OBJECT_TYPE IN (?, ?, ?)"), objectsSql);
+        Assertions.assertTrue(JdbcMetadataSqlFake.statements.contains("param:2=SEQUENCE"));
+        Assertions.assertTrue(JdbcMetadataSqlFake.statements.contains("param:3=PACKAGE"));
+        Assertions.assertTrue(JdbcMetadataSqlFake.statements.contains("param:4=PACKAGE BODY"));
+    }
+
+    @Test
     void fallsBackToJdbcMetadataForRestrictedSchemaObjects() {
         DamengAgent agent = new DamengAgent();
         List<String> sqls = new ArrayList<>();
