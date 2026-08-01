@@ -1482,7 +1482,7 @@ async function refreshLocalAgentDrivers(): Promise<AgentDriverInstallState[]> {
 }
 
 function beginAgentDriverInstall(driverKey: string, label: string) {
-  agentInstallOperationId.value = crypto.randomUUID();
+  agentInstallOperationId.value = uuid();
   agentInstallDriverKey.value = driverKey;
   agentInstallLabel.value = label;
   agentInstallProgress.value = null;
