@@ -72,6 +72,18 @@ function sqlServerConnection(): ConnectionConfig {
   } as ConnectionConfig;
 }
 
+function damengConnection(): ConnectionConfig {
+  return {
+    ...postgresConnection(),
+    id: "dameng-1",
+    name: "Dameng",
+    db_type: "dameng",
+    port: 5236,
+    username: "dbx_test",
+    database: "",
+  } as ConnectionConfig;
+}
+
 function dorisConnection(): ConnectionConfig {
   return {
     ...postgresConnection(),
@@ -293,6 +305,32 @@ describe("connectionStore completion assistant", () => {
     expect(getColumns).toHaveBeenCalledWith("oracle-1", "ORCL", "", "ORDERS", undefined, "tab-a");
     expect(columns).toEqual([expect.objectContaining({ name: "REPORT_ID", table: "ORDERS", schema: undefined, dataType: "NUMBER" })]);
     expect(store.lookupLocalCompletionColumns("oracle-1", "ORCL", "ORDERS")).toEqual([]);
+  });
+
+  it("uses the Dameng login schema for unqualified column completion", async () => {
+    const completionAssistantSearch = vi.fn().mockRejectedValue(new Error("assistant unavailable"));
+    const getColumns = vi.fn().mockResolvedValue([{ name: "ID", data_type: "BIGINT", is_nullable: false, column_default: null, is_primary_key: true, extra: null, comment: null }]);
+
+    vi.doMock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => false }));
+    vi.doMock("@/lib/backend/api", () => ({
+      checkConnectionHealth: vi.fn().mockResolvedValue(undefined),
+      completionAssistantSearch,
+      getColumns,
+    }));
+
+    const { useConnectionStore } = await import("@/stores/connectionStore");
+    const store = useConnectionStore();
+    store.connections = [damengConnection()];
+    store.connectedIds.add("dameng-1");
+
+    const first = await store.listCompletionColumns("dameng-1", "", "tb_user");
+    const cached = await store.listCompletionColumns("dameng-1", "", "tb_user");
+
+    expect(completionAssistantSearch).toHaveBeenCalledTimes(1);
+    expect(getColumns).toHaveBeenCalledTimes(1);
+    expect(getColumns).toHaveBeenCalledWith("dameng-1", "", "dbx_test", "tb_user", undefined, undefined);
+    expect(first).toEqual([expect.objectContaining({ name: "ID", table: "tb_user", schema: "dbx_test" })]);
+    expect(cached).toEqual(first);
   });
 
   it("rejects assistant columns returned for a different MySQL parent table", async () => {
