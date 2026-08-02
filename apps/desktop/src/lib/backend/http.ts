@@ -843,7 +843,7 @@ export async function executeQuery(
     resultSessionId?: string;
     clientSessionId?: string;
     timeoutSecs?: number;
-    executionMode?: "simple";
+    executionMode?: "simple" | "postgres_read_only_transaction";
   },
 ): Promise<QueryResult> {
   return post("/api/query/execute", {

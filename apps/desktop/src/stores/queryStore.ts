@@ -4469,9 +4469,15 @@ export const useQueryStore = defineStore("query", () => {
     }
 
     if (databaseType === "sqlserver") {
+      // SQL Server reuses the autotrace toggle to ask for the actual execution plan:
+      // STATISTICS XML runs the statement and adds runtime counters to the same
+      // ShowPlanXML document, while SHOWPLAN_XML only estimates.
+      const actualPlan = explainMode === "autotrace";
+      const planCaptureOn = actualPlan ? "SET STATISTICS XML ON;" : "SET SHOWPLAN_XML ON;";
+      const planCaptureOff = actualPlan ? "SET STATISTICS XML OFF;" : "SET SHOWPLAN_XML OFF;";
       let built: BuildExplainSqlResult;
       try {
-        built = await buildExplainSql(databaseType, sql);
+        built = actualPlan ? await buildExplainSql(databaseType, sql, "json", true) : await buildExplainSql(databaseType, sql);
       } catch (e: any) {
         tab.isExplaining = false;
         tab.explainExecutionId = undefined;
@@ -4488,14 +4494,14 @@ export const useQueryStore = defineStore("query", () => {
       tab.explainSql = built.sql;
       const clientSessionId = `${tabClientSessionId(tab, "explain")}:${executionId}`;
       tab.explainClientSessionId = clientSessionId;
-      let showplanEnabled = false;
+      let planCaptureEnabled = false;
       try {
-        await api.executeQuery(tab.connectionId, tab.database, "SET SHOWPLAN_XML ON;", tab.schema, executionId, {
+        await api.executeQuery(tab.connectionId, tab.database, planCaptureOn, tab.schema, executionId, {
           clientSessionId,
           timeoutSecs: queryTimeoutSecs,
           executionMode: "simple",
         });
-        showplanEnabled = true;
+        planCaptureEnabled = true;
         if (tabs.value.find((t) => t.id === id)?.explainExecutionId !== executionId) {
           return { ok: true as const, sql: built.sql };
         }
@@ -4526,9 +4532,9 @@ export const useQueryStore = defineStore("query", () => {
           current.explainError = String(e?.message || e);
         }
       } finally {
-        if (showplanEnabled) {
+        if (planCaptureEnabled) {
           try {
-            await api.executeQuery(tab.connectionId, tab.database, "SET SHOWPLAN_XML OFF;", tab.schema, undefined, {
+            await api.executeQuery(tab.connectionId, tab.database, planCaptureOff, tab.schema, undefined, {
               clientSessionId,
               timeoutSecs: queryTimeoutSecs > 0 ? Math.min(queryTimeoutSecs, 5) : 5,
               executionMode: "simple",
@@ -4548,7 +4554,8 @@ export const useQueryStore = defineStore("query", () => {
       return { ok: true as const, sql: built.sql };
     }
 
-    const built = await buildExplainSql(databaseType, sql);
+    const postgresAnalyze = databaseType === "postgres" && explainMode === "autotrace";
+    const built = postgresAnalyze ? await buildExplainSql(databaseType, sql, "json", true) : await buildExplainSql(databaseType, sql);
     if (!built.ok) {
       tab.explainPlan = undefined;
       tab.explainError = built.reason;
@@ -4558,12 +4565,14 @@ export const useQueryStore = defineStore("query", () => {
     }
 
     tab.explainSql = built.sql;
-    const clientSessionId = tabClientSessionId(tab, "explain");
+    const clientSessionId = postgresAnalyze ? `${tabClientSessionId(tab, "explain")}:${executionId}` : tabClientSessionId(tab, "explain");
+    if (postgresAnalyze) tab.explainClientSessionId = clientSessionId;
     try {
       const result = await api.executeQuery(tab.connectionId, tab.database, built.sql, tab.schema, executionId, {
         clientSessionId,
         catalog: tab.catalog,
         timeoutSecs: queryTimeoutSecs,
+        executionMode: postgresAnalyze ? "postgres_read_only_transaction" : undefined,
       });
       const current = tabs.value.find((t) => t.id === id);
       if (current?.explainExecutionId === executionId) {
@@ -4582,7 +4591,10 @@ export const useQueryStore = defineStore("query", () => {
         current.isExplaining = false;
         current.explainExecutionId = undefined;
       }
-      void closeClientSessionId(tab.connectionId, tab.database, clientSessionId, tab.catalog, { tabId: tab.id });
+      if (current?.explainClientSessionId === clientSessionId) current.explainClientSessionId = undefined;
+      const closePromise = closeClientSessionId(tab.connectionId, tab.database, clientSessionId, tab.catalog, { tabId: tab.id, explainExecutionId: executionId });
+      if (postgresAnalyze) await closePromise;
+      else void closePromise;
     }
     return { ok: true as const, sql: built.sql };
   }

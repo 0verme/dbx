@@ -540,6 +540,7 @@ pub enum QueryExecutionMode {
     #[default]
     Standard,
     Simple,
+    PostgresReadOnlyTransaction,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -564,7 +565,29 @@ pub struct QueryExecutionOptions {
     pub continue_on_error: bool,
     /// Explicit low-level execution path. `Simple` is currently used by SQL Server
     /// SHOWPLAN so the source SQL bypasses result-set probing and query rewriting.
+    /// `PostgresReadOnlyTransaction` executes on an isolated client session and
+    /// always rolls the transaction back after the result is collected.
     pub execution_mode: QueryExecutionMode,
+}
+
+fn validate_query_execution_mode(
+    db_type: Option<DatabaseType>,
+    sql: &str,
+    options: &QueryExecutionOptions,
+) -> Result<(), String> {
+    if options.execution_mode != QueryExecutionMode::PostgresReadOnlyTransaction {
+        return Ok(());
+    }
+    if db_type != Some(DatabaseType::Postgres) {
+        return Err("PostgreSQL read-only transaction mode requires a PostgreSQL connection".to_string());
+    }
+    if options.client_session_id.as_deref().is_none_or(|session_id| session_id.trim().is_empty()) {
+        return Err("PostgreSQL read-only transaction mode requires an isolated client session".to_string());
+    }
+    if crate::sql::split_sql_statements_for_database(sql, DatabaseType::Postgres).len() != 1 {
+        return Err("PostgreSQL read-only transaction mode requires exactly one statement".to_string());
+    }
+    Ok(())
 }
 
 fn query_result_row_limit(max_rows: Option<usize>) -> usize {
@@ -701,6 +724,10 @@ fn is_schema_reset_cleanup_error(lower: &str) -> bool {
     lower.contains("schema.reset cleanup failed")
 }
 
+fn is_postgres_transaction_cleanup_error(lower: &str) -> bool {
+    lower.contains("postgresql read-only transaction cleanup failed")
+}
+
 fn should_discard_agent_pool_after_error(err: &str) -> bool {
     crate::db::agent_driver::agent_recovery_decision(err, RecoveryScope::UserOperation).discards_session()
 }
@@ -719,6 +746,7 @@ pub fn pool_error_action(db_type: Option<DatabaseType>, err: &str) -> PoolErrorA
     if db::sqlserver::is_driver_panic_error(err)
         || (is_dbx_query_timeout_error(&lower) && should_discard_pool_after_query_timeout(db_type))
         || is_schema_reset_cleanup_error(&lower)
+        || is_postgres_transaction_cleanup_error(&lower)
     {
         return PoolErrorAction::Discard;
     }
@@ -1284,9 +1312,21 @@ async fn do_execute_typed(
             let schema = schema.map(|s| s.to_string());
             let max_rows = options.max_rows;
             let prefer_text_protocol = postgres_prefers_text_protocol(pool_db_type);
+            let execution_mode = options.execution_mode;
             let cancel_context = state.get_postgres_cancel_context(pool_key).await;
             drop(connections);
-            if let Some(schema) = schema {
+            if execution_mode == QueryExecutionMode::PostgresReadOnlyTransaction {
+                db::postgres::execute_query_in_read_only_transaction_with_rollback(
+                    &p,
+                    schema.as_deref(),
+                    sql,
+                    max_rows,
+                    cancel_token,
+                    operation_budget.clone(),
+                    cancel_context,
+                )
+                .await
+            } else if let Some(schema) = schema {
                 db::postgres::execute_query_with_schema_and_max_rows_and_cancel(
                     &p,
                     &schema,
@@ -1700,6 +1740,7 @@ pub async fn execute_sql_statement_with_options_typed(
     }
 
     let db_type = connection_database_type(state, connection_id).await;
+    validate_query_execution_mode(db_type, sql, &options)?;
     let has_executable_sql = db_type.map_or_else(
         || crate::sql::has_executable_sql(sql),
         |db_type| crate::sql::has_executable_sql_for_database(sql, db_type),
@@ -2007,6 +2048,15 @@ pub async fn execute_multi_core_with_options_for_client_and_progress_typed(
         return Err(MONGO_SHELL_COMMAND_HINT.into());
     }
 
+    let db_type = connection_database_type(state, connection_id).await;
+    validate_query_execution_mode(db_type, sql, &options)?;
+    if options.execution_mode == QueryExecutionMode::PostgresReadOnlyTransaction {
+        let result =
+            execute_sql_statement_with_options(state, connection_id, database, sql, schema, cancel_token, options)
+                .await?;
+        return Ok(vec![result.into()]);
+    }
+
     let pool_key = state
         .get_or_create_pool_for_session(connection_id, pool_database, options.client_session_id.as_deref())
         .await
@@ -2050,7 +2100,6 @@ pub async fn execute_multi_core_with_options_for_client_and_progress_typed(
         );
     }
 
-    let db_type = connection_database_type(state, connection_id).await;
     let statements = db_type.map_or_else(
         || split_sql_statements(sql),
         |db_type| crate::sql::split_sql_statements_for_database(sql, db_type),
@@ -4251,6 +4300,28 @@ for line in sys.stdin:
         assert_eq!(QueryExecutionMode::default(), QueryExecutionMode::Standard);
     }
 
+    #[test]
+    fn query_execution_mode_deserializes_postgres_read_only_transaction() {
+        let mode: QueryExecutionMode = serde_json::from_str("\"postgres_read_only_transaction\"").unwrap();
+
+        assert_eq!(mode, QueryExecutionMode::PostgresReadOnlyTransaction);
+    }
+
+    #[test]
+    fn postgres_read_only_transaction_requires_postgres_and_isolated_session() {
+        let mut options = QueryExecutionOptions {
+            execution_mode: QueryExecutionMode::PostgresReadOnlyTransaction,
+            ..Default::default()
+        };
+
+        assert!(validate_query_execution_mode(Some(DatabaseType::Mysql), "SELECT 1", &options).is_err());
+        assert!(validate_query_execution_mode(Some(DatabaseType::Postgres), "SELECT 1", &options).is_err());
+
+        options.client_session_id = Some("tab:explain:execution".to_string());
+        assert_eq!(validate_query_execution_mode(Some(DatabaseType::Postgres), "SELECT 1", &options), Ok(()));
+        assert!(validate_query_execution_mode(Some(DatabaseType::Postgres), "SELECT 1; SELECT 2", &options).is_err());
+    }
+
     fn test_connection_config(db_type: DatabaseType) -> ConnectionConfig {
         ConnectionConfig {
             id: "conn-1".to_string(),
@@ -5489,6 +5560,14 @@ for line in sys.stdin:
 
         assert_eq!(pool_error_action(Some(DatabaseType::Postgres), err), PoolErrorAction::Discard);
         assert_eq!(pool_error_action(Some(DatabaseType::OpenGauss), err), PoolErrorAction::Discard);
+        assert!(should_discard_pool_after_error(Some(DatabaseType::Postgres), err));
+    }
+
+    #[test]
+    fn pool_error_action_discards_postgres_read_only_transaction_cleanup_without_retry() {
+        let err = "PostgreSQL read-only transaction cleanup failed: PostgreSQL explain_analyze.rollback timed out after 3 seconds";
+
+        assert_eq!(pool_error_action(Some(DatabaseType::Postgres), err), PoolErrorAction::Discard);
         assert!(should_discard_pool_after_error(Some(DatabaseType::Postgres), err));
     }
 

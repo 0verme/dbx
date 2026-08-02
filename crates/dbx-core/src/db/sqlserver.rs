@@ -2605,8 +2605,8 @@ pub async fn execute_batch_with_max_rows(
 /// Execute a SQL Server batch directly through TDS simple-query mode.
 ///
 /// This intentionally bypasses result-set type probing and SQL rewriting. It is
-/// required while `SHOWPLAN_XML` is enabled because any probe issued on the same
-/// session is itself affected by SHOWPLAN state.
+/// required while `SHOWPLAN_XML` or `STATISTICS XML` is enabled because any probe
+/// issued on the same session is itself affected by the plan-capture state.
 pub async fn execute_simple_batch_with_max_rows(
     client: &mut SqlServerClient,
     sql: &str,
@@ -2746,6 +2746,13 @@ fn requires_simple_query_batch(sql: &str) -> bool {
 
     let tokens = first_sql_tokens(sql, 4);
     if tokens.len() >= 2 && tokens[0].eq_ignore_ascii_case("SET") && tokens[1].eq_ignore_ascii_case("SHOWPLAN_XML") {
+        return true;
+    }
+    if tokens.len() >= 3
+        && tokens[0].eq_ignore_ascii_case("SET")
+        && tokens[1].eq_ignore_ascii_case("STATISTICS")
+        && tokens[2].eq_ignore_ascii_case("XML")
+    {
         return true;
     }
     if tokens.len() >= 2 && tokens[0].eq_ignore_ascii_case("CREATE") && tokens[1].eq_ignore_ascii_case("SCHEMA") {
@@ -3012,6 +3019,9 @@ mod tests {
     fn sqlserver_module_definitions_require_simple_query_batch() {
         assert!(requires_simple_query_batch("SET SHOWPLAN_XML ON;"));
         assert!(requires_simple_query_batch("SET SHOWPLAN_XML OFF;"));
+        assert!(requires_simple_query_batch("SET STATISTICS XML ON;"));
+        assert!(requires_simple_query_batch("SET STATISTICS XML OFF;"));
+        assert!(!requires_simple_query_batch("SET STATISTICS IO ON;"));
         assert!(requires_simple_query_batch("CREATE SCHEMA [analytics];"));
         assert!(requires_simple_query_batch("CREATE FUNCTION dbo.fn_demo() RETURNS INT AS BEGIN RETURN 1; END;"));
         assert!(requires_simple_query_batch("ALTER PROCEDURE dbo.usp_demo AS SELECT 1;"));

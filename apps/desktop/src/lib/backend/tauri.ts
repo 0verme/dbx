@@ -321,6 +321,8 @@ export interface BuildExplainSqlOptions {
   sql: string;
   /** MySQL can return either the existing JSON plan or its native tabular plan. */
   format?: "json" | "standard";
+  /** PostgreSQL only: run the statement so the plan carries measured rows and timings. */
+  analyze?: boolean;
 }
 
 export interface ExplainSqlBuildResult {
@@ -1058,7 +1060,7 @@ export async function executeQuery(
     resultSessionId?: string;
     clientSessionId?: string;
     timeoutSecs?: number;
-    executionMode?: "simple";
+    executionMode?: "simple" | "postgres_read_only_transaction";
   },
 ): Promise<QueryResult> {
   try {

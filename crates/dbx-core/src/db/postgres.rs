@@ -3132,6 +3132,7 @@ pub(crate) enum PostgresSearchPathContext {
     Query,
     Transaction,
     LocalTransaction,
+    LocalQueryTransaction,
 }
 
 pub(crate) fn postgres_set_search_path_sql(schema: &str, context: PostgresSearchPathContext) -> String {
@@ -3141,6 +3142,7 @@ pub(crate) fn postgres_set_search_path_sql(schema: &str, context: PostgresSearch
         PostgresSearchPathContext::Query => ("", ", pg_catalog, public"),
         PostgresSearchPathContext::Transaction => ("", ", pg_catalog"),
         PostgresSearchPathContext::LocalTransaction => (" LOCAL", ", pg_catalog"),
+        PostgresSearchPathContext::LocalQueryTransaction => (" LOCAL", ", pg_catalog, public"),
     };
     // PostgreSQL otherwise searches pg_catalog before every explicit path item.
     format!("SET{scope} search_path TO {}{suffix}", pg_quote_ident(schema))
@@ -3301,6 +3303,88 @@ pub async fn execute_query_with_max_rows_and_cancel(
         budget.query_timeout,
         budget.cancel_timeout,
         execute_query_with_max_rows_inner(&client, sql, max_rows, prefer_text_protocol),
+    )
+    .await
+}
+
+fn postgres_read_only_transaction_setup(schema: Option<&str>) -> Vec<(String, &'static str)> {
+    let mut statements = vec![("BEGIN READ ONLY".to_string(), "explain_analyze.begin")];
+    if let Some(schema) = schema.map(str::trim).filter(|schema| !schema.is_empty()) {
+        statements.push((
+            postgres_set_search_path_sql(schema, PostgresSearchPathContext::LocalQueryTransaction),
+            "explain_analyze.schema",
+        ));
+    }
+    statements
+}
+
+fn postgres_read_only_transaction_cleanup_error(error: String) -> String {
+    format!("PostgreSQL read-only transaction cleanup failed: {error}")
+}
+
+fn merge_postgres_operation_and_rollback_result<T>(
+    operation_result: Result<T, String>,
+    rollback_result: Result<(), String>,
+) -> Result<T, String> {
+    match (operation_result, rollback_result) {
+        (Ok(result), Ok(())) => Ok(result),
+        (Err(operation_error), Ok(())) => Err(operation_error),
+        (Ok(_), Err(rollback_error)) => Err(postgres_read_only_transaction_cleanup_error(rollback_error)),
+        (Err(operation_error), Err(rollback_error)) => {
+            Err(format!("{operation_error}; {}", postgres_read_only_transaction_cleanup_error(rollback_error)))
+        }
+    }
+}
+
+async fn run_postgres_operation_with_rollback<T, Operation, OperationFuture, Rollback, RollbackFuture>(
+    operation: Operation,
+    rollback: Rollback,
+) -> Result<T, String>
+where
+    Operation: FnOnce() -> OperationFuture,
+    OperationFuture: Future<Output = Result<T, String>>,
+    Rollback: FnOnce() -> RollbackFuture,
+    RollbackFuture: Future<Output = Result<(), String>>,
+{
+    let operation_result = operation().await;
+    let rollback_result = rollback().await;
+    merge_postgres_operation_and_rollback_result(operation_result, rollback_result)
+}
+
+pub async fn execute_query_in_read_only_transaction_with_rollback(
+    pool: &Pool,
+    schema: Option<&str>,
+    sql: &str,
+    max_rows: Option<usize>,
+    cancel_token: Option<CancellationToken>,
+    budget: DbOperationBudget,
+    cancel_context: Option<PostgresCancelContext>,
+) -> Result<QueryResult, String> {
+    let client = checkout_postgres_client(pool, cancel_token.as_ref(), budget.checkout_timeout).await?;
+    let setup = postgres_read_only_transaction_setup(schema);
+
+    run_postgres_operation_with_rollback(
+        || async {
+            for (statement, stage) in setup {
+                execute_postgres_infra_statement(&client, &statement, budget.recycle_timeout, stage).await?;
+            }
+
+            let pg_cancel_token = client.cancel_token();
+            wait_postgres_query(
+                pg_cancel_token,
+                cancel_context,
+                cancel_token,
+                budget.query_timeout,
+                budget.cancel_timeout,
+                execute_query_with_max_rows_inner(&client, sql, max_rows, false),
+            )
+            .await
+        },
+        || async {
+            execute_postgres_infra_statement(&client, "ROLLBACK", budget.cleanup_timeout, "explain_analyze.rollback")
+                .await
+                .map(|_| ())
+        },
     )
     .await
 }
@@ -4487,6 +4571,7 @@ pub async fn copy_in(pool: &Pool, sql: &str, data: &[u8]) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::process::Command;
     use std::time::Instant;
     use tokio_postgres::types::FromSql;
@@ -4576,6 +4661,65 @@ mod tests {
         assert!(Vec::<Option<serde_json::Value>>::accepts(&Type::JSONB_ARRAY));
         assert!(!Vec::<Option<serde_json::Value>>::accepts(&Type::TEXT_ARRAY));
         assert!(!Vec::<Option<serde_json::Value>>::accepts(&Type::INT4_ARRAY));
+    }
+
+    #[test]
+    fn postgres_explain_analyze_uses_read_only_transaction_local_schema() {
+        assert_eq!(
+            postgres_read_only_transaction_setup(Some("sales")),
+            vec![
+                ("BEGIN READ ONLY".to_string(), "explain_analyze.begin"),
+                ("SET LOCAL search_path TO \"sales\", pg_catalog, public".to_string(), "explain_analyze.schema"),
+            ]
+        );
+        assert_eq!(
+            postgres_read_only_transaction_setup(None),
+            vec![("BEGIN READ ONLY".to_string(), "explain_analyze.begin")]
+        );
+    }
+
+    #[tokio::test]
+    async fn postgres_explain_analyze_rolls_back_after_success_and_query_failures() {
+        let rollback_calls = Cell::new(0);
+        let result = run_postgres_operation_with_rollback(
+            || async { Ok::<_, String>(7) },
+            || async {
+                rollback_calls.set(rollback_calls.get() + 1);
+                Ok(())
+            },
+        )
+        .await;
+        assert_eq!(result, Ok(7));
+        assert_eq!(rollback_calls.get(), 1);
+
+        for operation_error in ["query failed", crate::query::QUERY_CANCELED, "Query timed out after 30 seconds"] {
+            let rollback_calls = Cell::new(0);
+            let result = run_postgres_operation_with_rollback(
+                || async { Err::<(), _>(operation_error.to_string()) },
+                || async {
+                    rollback_calls.set(rollback_calls.get() + 1);
+                    Ok(())
+                },
+            )
+            .await;
+
+            assert_eq!(result, Err(operation_error.to_string()));
+            assert_eq!(rollback_calls.get(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn postgres_explain_analyze_marks_rollback_failure_as_pool_pollution() {
+        let result = run_postgres_operation_with_rollback(
+            || async { Err::<(), _>("query failed".to_string()) },
+            || async { Err("PostgreSQL explain_analyze.rollback timed out after 3 seconds".to_string()) },
+        )
+        .await;
+
+        assert_eq!(
+            result,
+            Err("query failed; PostgreSQL read-only transaction cleanup failed: PostgreSQL explain_analyze.rollback timed out after 3 seconds".to_string())
+        );
     }
 
     fn pg_interval_bytes(microseconds: i64, days: i32, months: i32) -> [u8; 16] {
@@ -4691,6 +4835,10 @@ mod tests {
         assert_eq!(
             postgres_set_search_path_sql("application", PostgresSearchPathContext::LocalTransaction),
             "SET LOCAL search_path TO \"application\", pg_catalog"
+        );
+        assert_eq!(
+            postgres_set_search_path_sql("application", PostgresSearchPathContext::LocalQueryTransaction),
+            "SET LOCAL search_path TO \"application\", pg_catalog, public"
         );
     }
 
