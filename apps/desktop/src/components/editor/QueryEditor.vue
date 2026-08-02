@@ -87,7 +87,7 @@ import { createInsertValueHintsExtension, requestInsertValueHintsRefresh } from 
 import { focusEditorView } from "@/lib/editor/queryEditorFocus";
 import { createDbxCodeMirrorSqlDialect, type CodeMirrorSqlDialectName } from "@/lib/editor/codemirrorSqlDialect";
 import { sqlSemanticTableNameSpansForSyntaxTree } from "@/lib/editor/codemirrorSqlSemanticHighlight";
-import { startsQueryEditorRectangularSelection } from "@/lib/editor/queryEditorPointerSelection";
+import { startsQueryEditorRectangularSelection, usesQueryEditorObjectNavigationModifier } from "@/lib/editor/queryEditorPointerSelection";
 import { LARGE_PASTE_HISTORY_USER_EVENT, normalizeQueryEditorPasteText, recoverableNativePasteSuffix, shouldRecoverLargeTauriPaste } from "@/lib/editor/queryEditorLargePaste";
 import type { StatementExecutionMarker } from "@/lib/tabs/tabPresentation";
 import { isSchemaAware, isSingleDatabase, supportsDatabaseNameCompletion, supportsDatabaseSchemaQualifier, supportsSqlInListPaste } from "@/lib/database/databaseFeatureSupport";
@@ -845,7 +845,7 @@ function tableNavigationIdentifierAt(currentView: EditorViewType, event: MouseEv
 }
 
 function updateTableNavigationHover(currentView: EditorViewType, event: MouseEvent) {
-  if (!event.metaKey && !event.ctrlKey) {
+  if (!usesQueryEditorObjectNavigationModifier(event)) {
     clearTableNavigationHover();
     return false;
   }
@@ -855,7 +855,7 @@ function updateTableNavigationHover(currentView: EditorViewType, event: MouseEve
 }
 
 function clearTableNavigationHoverOnModifierRelease(event: KeyboardEvent) {
-  if (!event.metaKey && !event.ctrlKey) clearTableNavigationHover();
+  if (!usesQueryEditorObjectNavigationModifier(event)) clearTableNavigationHover();
 }
 
 function isEditorScrollbarPointerEvent(currentView: EditorViewType, event: MouseEvent) {
@@ -4219,14 +4219,15 @@ onMounted(async () => {
           if (currentView && startEditorSelectionDrag(currentView, event)) {
             return true;
           }
-          // Click without modifier -> close column panel
-          if (!event.metaKey && !event.ctrlKey) {
-            if (event.button === 0) {
+          // Alt belongs to CodeMirror's rectangular and multi-cursor gestures,
+          // even when Cmd/Ctrl is held at the same time.
+          if (!usesQueryEditorObjectNavigationModifier(event)) {
+            // Click without modifier -> close column panel
+            if (!event.metaKey && !event.ctrlKey && event.button === 0) {
               emit("closeColumnPanel");
             }
             return false;
           }
-          // Only handle Ctrl/Cmd + left click
           if (event.button !== 0) return false;
 
           if (!currentView || !props.connectionId || props.database == null) {
