@@ -5384,19 +5384,49 @@ pub async fn sort_tables_by_fk_dependency(
         return Ok(tables.to_vec());
     }
 
-    let table_set: HashSet<&str> = tables.iter().map(|t| t.as_str()).collect();
+    let db_type = state
+        .configs
+        .read()
+        .await
+        .get(connection_id)
+        .map(|config| config.db_type)
+        .ok_or_else(|| format!("Connection config not found: {connection_id}"))?;
+    let postgres_pool = if db_type == DatabaseType::Postgres {
+        let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+        {
+            let connections = state.connections.read().await;
+            native_postgres_dependency_pool(connections.get(&pool_key))
+        }
+    } else {
+        None
+    };
+    let dependencies = if let Some(pool) = postgres_pool {
+        db::postgres::list_table_dependencies(&pool, schema).await?
+    } else {
+        let mut dependencies = Vec::new();
+        for table in tables {
+            let fks = crate::schema::list_foreign_keys_core(state, connection_id, database, schema, table).await?;
+            dependencies.extend(fks.into_iter().map(|fk| (table.clone(), fk.ref_table)));
+        }
+        dependencies
+    };
 
-    // Gather FK relationships for every table.
-    let mut dependency_map: HashMap<String, Vec<String>> = HashMap::new();
-    for table in tables {
-        let fks = crate::schema::list_foreign_keys_core(state, connection_id, database, schema, table).await?;
-        let deps: Vec<String> = fks
-            .iter()
-            .map(|fk| fk.ref_table.clone())
-            .filter(|ref_table| table_set.contains(ref_table.as_str()))
-            .collect();
-        dependency_map.insert(table.clone(), deps);
+    Ok(sort_table_names_by_dependencies(tables, &dependencies, parents_first))
+}
+
+fn native_postgres_dependency_pool(pool_kind: Option<&PoolKind>) -> Option<deadpool_postgres::Pool> {
+    match pool_kind {
+        Some(PoolKind::Postgres(pool)) => Some(pool.clone()),
+        _ => None,
     }
+}
+
+fn sort_table_names_by_dependencies(
+    tables: &[String],
+    dependencies: &[(String, String)],
+    parents_first: bool,
+) -> Vec<String> {
+    let table_set: HashSet<&str> = tables.iter().map(|table| table.as_str()).collect();
 
     // Build in-degree and dependents graph.
     // parents_first=true:  edge ref_table → table     (parent before child)
@@ -5407,25 +5437,31 @@ pub async fn sort_tables_by_fk_dependency(
     for table in tables {
         in_degree.entry(table.as_str()).or_insert(0);
     }
-    for table in tables {
-        if let Some(deps) = dependency_map.get(table) {
-            for ref_table in deps {
-                if parents_first {
-                    // FK-bearing table depends on ref_table — parent comes first.
-                    *in_degree.entry(table.as_str()).or_insert(0) += 1;
-                    dependents.entry(ref_table.as_str()).or_default().push(table.as_str());
-                } else {
-                    // ref_table depends on FK-bearing table — child comes first.
-                    *in_degree.entry(ref_table.as_str()).or_insert(0) += 1;
-                    dependents.entry(table.as_str()).or_default().push(ref_table.as_str());
-                }
-            }
+    let mut seen_dependencies = HashSet::new();
+    for (table, ref_table) in dependencies {
+        if !table_set.contains(table.as_str()) || !table_set.contains(ref_table.as_str()) {
+            continue;
+        }
+        if !seen_dependencies.insert((table.as_str(), ref_table.as_str())) {
+            continue;
+        }
+        if parents_first {
+            // FK-bearing table depends on ref_table — parent comes first.
+            *in_degree.entry(table.as_str()).or_insert(0) += 1;
+            dependents.entry(ref_table.as_str()).or_default().push(table.as_str());
+        } else {
+            // ref_table depends on FK-bearing table — child comes first.
+            *in_degree.entry(ref_table.as_str()).or_insert(0) += 1;
+            dependents.entry(table.as_str()).or_default().push(ref_table.as_str());
         }
     }
 
     // Kahn's algorithm.
-    let mut queue: std::collections::VecDeque<&str> =
-        in_degree.iter().filter(|(_, &deg)| deg == 0).map(|(&table, _)| table).collect();
+    let mut queue: std::collections::VecDeque<&str> = tables
+        .iter()
+        .map(String::as_str)
+        .filter(|table| in_degree.get(table).copied().unwrap_or_default() == 0)
+        .collect();
 
     let mut sorted: Vec<String> = Vec::new();
     while let Some(table) = queue.pop_front() {
@@ -5453,7 +5489,7 @@ pub async fn sort_tables_by_fk_dependency(
         sorted.extend(remaining);
     }
 
-    Ok(sorted)
+    sorted
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6682,6 +6718,44 @@ mod tests {
             has_more: false,
             elasticsearch_raw_body: None,
         }
+    }
+
+    #[test]
+    fn table_dependency_sort_places_parents_before_children() {
+        let tables = vec!["audit".to_string(), "users".to_string(), "orders".to_string()];
+        let dependencies =
+            vec![("audit".to_string(), "orders".to_string()), ("orders".to_string(), "users".to_string())];
+
+        assert_eq!(
+            sort_table_names_by_dependencies(&tables, &dependencies, true),
+            vec!["users".to_string(), "orders".to_string(), "audit".to_string()]
+        );
+        assert_eq!(
+            sort_table_names_by_dependencies(&tables, &dependencies, false),
+            vec!["audit".to_string(), "orders".to_string(), "users".to_string()]
+        );
+    }
+
+    #[test]
+    fn table_dependency_sort_ignores_duplicates_and_out_of_scope_tables() {
+        let tables = vec!["orders".to_string(), "users".to_string(), "logs".to_string()];
+        let dependencies = vec![
+            ("orders".to_string(), "users".to_string()),
+            ("orders".to_string(), "users".to_string()),
+            ("logs".to_string(), "external_users".to_string()),
+        ];
+
+        assert_eq!(
+            sort_table_names_by_dependencies(&tables, &dependencies, true),
+            vec!["users".to_string(), "logs".to_string(), "orders".to_string()]
+        );
+    }
+
+    #[test]
+    fn postgres_dependency_batch_query_keeps_agent_fallback() {
+        let agent = PoolKind::agent(crate::db::agent_driver::AgentDriverClient::test_stub());
+
+        assert!(native_postgres_dependency_pool(Some(&agent)).is_none());
     }
 
     async fn test_app_state() -> (AppState, std::path::PathBuf) {

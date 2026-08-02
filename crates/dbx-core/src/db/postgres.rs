@@ -3979,6 +3979,30 @@ pub async fn list_foreign_keys(pool: &Pool, schema: &str, table: &str) -> Result
         .collect())
 }
 
+fn postgres_table_dependencies_sql() -> &'static str {
+    "SELECT DISTINCT child.relname AS table_name, parent.relname AS ref_table \
+     FROM pg_catalog.pg_constraint con \
+     JOIN pg_catalog.pg_class child ON child.oid = con.conrelid \
+     JOIN pg_catalog.pg_namespace child_schema ON child_schema.oid = child.relnamespace \
+     JOIN pg_catalog.pg_class parent ON parent.oid = con.confrelid \
+     JOIN pg_catalog.pg_namespace parent_schema ON parent_schema.oid = parent.relnamespace \
+     WHERE con.contype = 'f' \
+       AND child_schema.nspname = $1 \
+       AND parent_schema.nspname = $1 \
+     ORDER BY child.relname, parent.relname"
+}
+
+/// Fetch all same-schema table dependencies in one round trip. Whole-database
+/// exports use this instead of issuing one information_schema query per table.
+pub async fn list_table_dependencies(pool: &Pool, schema: &str) -> Result<Vec<(String, String)>, String> {
+    let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
+    let rows = postgres_query_cached(&client, postgres_table_dependencies_sql(), &[&schema])
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.iter().map(|row| (pg_row_try_string(row, 0), pg_row_try_string(row, 1))).collect())
+}
+
 pub async fn list_triggers(pool: &Pool, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
     let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
     let rows = postgres_query_cached(
@@ -5251,6 +5275,17 @@ mod tests {
         assert!(sql.contains("rc.update_rule AS on_update"));
         assert!(sql.contains("rc.delete_rule AS on_delete"));
         assert!(sql.contains("information_schema.referential_constraints rc"));
+    }
+
+    #[test]
+    fn postgres_table_dependencies_sql_batches_schema_foreign_keys() {
+        let sql = postgres_table_dependencies_sql();
+
+        assert!(sql.contains("pg_catalog.pg_constraint"));
+        assert!(sql.contains("con.contype = 'f'"));
+        assert!(sql.contains("child_schema.nspname = $1"));
+        assert!(sql.contains("parent_schema.nspname = $1"));
+        assert!(!sql.contains("information_schema"));
     }
 
     #[test]
