@@ -35,15 +35,7 @@ pub struct AgentRuntimeClient {
 
 impl AgentRuntimeClient {
     pub async fn spawn(launch: AgentLaunchSpec, app_version: &str) -> Result<Arc<Self>, String> {
-        let mut command = crate::process::new_std_command(&launch.program);
-        command.args(&launch.args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        if let Some(working_dir) = &launch.working_dir {
-            command.current_dir(working_dir);
-        }
-        remove_agent_proxy_env(&mut command);
-
-        let mut child =
-            command.spawn().map_err(|e| format!("Failed to spawn agent process {}: {e}", launch_display(&launch)))?;
+        let mut child = spawn_agent_process(&launch)?;
         let child_stdin = child.stdin.take().ok_or("Failed to capture agent stdin")?;
         let child_stdout = child.stdout.take().ok_or("Failed to capture agent stdout")?;
         let child_stderr = child.stderr.take().ok_or("Failed to capture agent stderr")?;
@@ -937,15 +929,7 @@ impl AgentDriverClient {
     /// they speak the DBX stdin/stdout JSON-RPC protocol.
     /// Blocks (async) until the agent writes `{"ready":true}` to stdout.
     pub async fn spawn(launch: AgentLaunchSpec) -> Result<Self, String> {
-        let mut command = crate::process::new_std_command(&launch.program);
-        command.args(&launch.args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        if let Some(working_dir) = &launch.working_dir {
-            command.current_dir(working_dir);
-        }
-        remove_agent_proxy_env(&mut command);
-
-        let mut child =
-            command.spawn().map_err(|e| format!("Failed to spawn agent process {}: {e}", launch_display(&launch)))?;
+        let mut child = spawn_agent_process(&launch)?;
 
         let child_stdin = child.stdin.take().ok_or("Failed to capture agent stdin")?;
         let child_stdout = child.stdout.take().ok_or("Failed to capture agent stdout")?;
@@ -2136,6 +2120,68 @@ fn launch_display(launch: &AgentLaunchSpec) -> String {
     parts.join(" ")
 }
 
+fn spawn_agent_process(launch: &AgentLaunchSpec) -> Result<Child, String> {
+    match agent_command(launch).spawn() {
+        Ok(child) => Ok(child),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            let repaired = repair_native_agent_execute_permission(&launch.program).map_err(|repair_error| {
+                format!(
+                    "Failed to spawn agent process {}: {error}; failed to restore executable permission: {repair_error}",
+                    launch_display(launch)
+                )
+            })?;
+            if !repaired {
+                return Err(format!("Failed to spawn agent process {}: {error}", launch_display(launch)));
+            }
+            agent_command(launch).spawn().map_err(|retry_error| {
+                format!("Failed to spawn agent process {}: {retry_error}", launch_display(launch))
+            })
+        }
+        Err(error) => Err(format!("Failed to spawn agent process {}: {error}", launch_display(launch))),
+    }
+}
+
+fn agent_command(launch: &AgentLaunchSpec) -> Command {
+    let mut command = crate::process::new_std_command(&launch.program);
+    command.args(&launch.args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    if let Some(working_dir) = &launch.working_dir {
+        command.current_dir(working_dir);
+    }
+    remove_agent_proxy_env(&mut command);
+    command
+}
+
+fn repair_native_agent_execute_permission(program: &Path) -> Result<bool, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if !program.is_absolute() || program.file_name().and_then(|name| name.to_str()) != Some("agent") {
+            return Ok(false);
+        }
+        let metadata = program
+            .metadata()
+            .map_err(|error| format!("Failed to inspect native agent {}: {error}", program.display()))?;
+        if !metadata.is_file() {
+            return Ok(false);
+        }
+        let mut permissions = metadata.permissions();
+        let mode = permissions.mode();
+        if mode & 0o100 != 0 {
+            return Ok(false);
+        }
+        permissions.set_mode(mode | 0o100);
+        std::fs::set_permissions(program, permissions)
+            .map_err(|error| format!("Failed to make native agent executable {}: {error}", program.display()))?;
+        Ok(true)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = program;
+        Ok(false)
+    }
+}
+
 fn remove_agent_proxy_env(command: &mut Command) {
     for key in agent_proxy_env_vars() {
         command.env_remove(key);
@@ -2308,10 +2354,10 @@ mod tests {
         agent_supports_capability, agent_transaction_params, decode_agent_response, format_agent_process_error,
         format_agent_startup_error, is_agent_rpc_response_error, is_unsupported_handshake_error,
         mongo_collection_params, mongo_database_params, mongo_document_id_params, parse_agent_java_opts,
-        read_agent_line, start_stderr_collector, validate_dameng_java_system_properties, AgentCapability,
-        AgentDriverClient, AgentHandshake, AgentKvMethod, AgentLaunchSpec, AgentMethod, AgentRuntimeClient,
-        AgentSessionDisposition, AgentTableReadCloseParams, AgentTableReadPageParams, AgentTableReadStartParams,
-        MongoAgentMethod, StderrTail, AGENT_PROTOCOL_VERSION,
+        read_agent_line, spawn_agent_process, start_stderr_collector, validate_dameng_java_system_properties,
+        AgentCapability, AgentDriverClient, AgentHandshake, AgentKvMethod, AgentLaunchSpec, AgentMethod,
+        AgentRuntimeClient, AgentSessionDisposition, AgentTableReadCloseParams, AgentTableReadPageParams,
+        AgentTableReadStartParams, MongoAgentMethod, StderrTail, AGENT_PROTOCOL_VERSION,
     };
     use std::io::Cursor;
     use std::io::Write;
@@ -2319,6 +2365,44 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
     use tokio_util::sync::CancellationToken;
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_repairs_missing_native_execute_permission_after_eacces() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("dbx-agent-permission-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let program = dir.join("agent");
+        fs::write(&program, b"#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let mut child = spawn_agent_process(&AgentLaunchSpec::new(&program)).unwrap();
+        assert!(child.wait().unwrap().success());
+        assert_ne!(fs::metadata(&program).unwrap().permissions().mode() & 0o100, 0);
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_keeps_existing_native_execute_permissions() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("dbx-agent-permission-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let program = dir.join("agent");
+        fs::write(&program, b"#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let mut child = spawn_agent_process(&AgentLaunchSpec::new(&program)).unwrap();
+        assert!(child.wait().unwrap().success());
+        assert_eq!(fs::metadata(&program).unwrap().permissions().mode() & 0o777, 0o700);
+
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn structured_agent_error_data_survives_legacy_string_boundary() {
