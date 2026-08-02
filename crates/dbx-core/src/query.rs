@@ -2741,11 +2741,11 @@ async fn exec_tx_pg_inner(
         .map_err(|e| format!("Failed to acquire connection: {}", e))?;
     let had_schema = schema.is_some();
     if let Some(s) = schema {
-        db::postgres::execute_postgres_infra_statement(
+        db::postgres::set_postgres_search_path(
             &client,
-            &db::postgres::postgres_set_search_path_sql(s, db::postgres::PostgresSearchPathContext::Transaction),
+            s,
+            db::postgres::PostgresSearchPathContext::Transaction,
             budget.recycle_timeout,
-            "schema.set",
         )
         .await
         .map_err(|e| format!("SET search_path failed: {}", e))?;
@@ -3158,12 +3158,11 @@ async fn begin_transaction_session(
             let begin_sql = postgres_transaction_begin_sql(consistent_snapshot);
             conn.execute(begin_sql, &[]).await.map_err(|e| format!("BEGIN failed: {e}"))?;
             if let Some(schema) = schema {
-                conn.execute(
-                    &db::postgres::postgres_set_search_path_sql(
-                        schema,
-                        db::postgres::PostgresSearchPathContext::LocalTransaction,
-                    ),
-                    &[],
+                db::postgres::set_postgres_search_path(
+                    &conn,
+                    schema,
+                    db::postgres::PostgresSearchPathContext::LocalTransaction,
+                    db::connection_timeout(),
                 )
                 .await
                 .map_err(|e| format!("SET search_path failed: {e}"))?;

@@ -8,13 +8,13 @@ use rustls::client::verify_server_cert_signed_by_trust_anchor;
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::server::ParsedCertificate;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fs::File;
 use std::future::Future;
 use std::io::BufReader;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 use tokio_postgres::config::SslMode;
 use tokio_postgres::types::{FromSql, Kind, Type};
@@ -3143,6 +3143,78 @@ pub(crate) fn postgres_set_search_path_sql(schema: &str, context: PostgresSearch
     format!("SET{scope} search_path TO {}{suffix}", pg_quote_ident(schema))
 }
 
+fn postgres_set_single_schema_search_path_sql(schema: &str, context: PostgresSearchPathContext) -> String {
+    let scope = if context == PostgresSearchPathContext::LocalTransaction { " LOCAL" } else { "" };
+    format!("SET{scope} search_path TO {}", pg_quote_ident(schema))
+}
+
+fn postgres_requires_single_schema_search_path(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("does not support search_path with multiple names")
+}
+
+fn postgres_single_schema_clients() -> &'static Mutex<HashMap<usize, Weak<deadpool_postgres::StatementCache>>> {
+    static CLIENTS: OnceLock<Mutex<HashMap<usize, Weak<deadpool_postgres::StatementCache>>>> = OnceLock::new();
+    CLIENTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn postgres_client_uses_single_schema_search_path(client: &deadpool_postgres::Client) -> bool {
+    let statement_cache = &client.statement_cache;
+    let key = Arc::as_ptr(statement_cache) as usize;
+    let mut clients = postgres_single_schema_clients().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    match clients.get(&key).and_then(Weak::upgrade) {
+        Some(cached) if Arc::ptr_eq(&cached, statement_cache) => true,
+        _ => {
+            clients.remove(&key);
+            false
+        }
+    }
+}
+
+fn mark_postgres_client_single_schema_search_path(client: &deadpool_postgres::Client) {
+    let statement_cache = &client.statement_cache;
+    let key = Arc::as_ptr(statement_cache) as usize;
+    let mut clients = postgres_single_schema_clients().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    clients.retain(|_, cached| cached.strong_count() > 0);
+    clients.insert(key, Arc::downgrade(statement_cache));
+}
+
+pub(crate) async fn set_postgres_search_path(
+    client: &deadpool_postgres::Client,
+    schema: &str,
+    context: PostgresSearchPathContext,
+    timeout_duration: Duration,
+) -> Result<u64, String> {
+    if postgres_client_uses_single_schema_search_path(client) {
+        return execute_postgres_infra_statement(
+            client,
+            &postgres_set_single_schema_search_path_sql(schema, context),
+            timeout_duration,
+            "schema.set",
+        )
+        .await;
+    }
+
+    let primary_sql = postgres_set_search_path_sql(schema, context);
+    match execute_postgres_infra_statement(client, &primary_sql, timeout_duration, "schema.set").await {
+        Ok(affected) => Ok(affected),
+        Err(primary_error) if postgres_requires_single_schema_search_path(&primary_error) => {
+            mark_postgres_client_single_schema_search_path(client);
+            log::info!("[postgres][schema.set:single-schema-fallback] schema={schema}");
+            execute_postgres_infra_statement(
+                client,
+                &postgres_set_single_schema_search_path_sql(schema, context),
+                timeout_duration,
+                "schema.set",
+            )
+            .await
+            .map_err(|fallback_error| {
+                format!("{primary_error}; single-schema search_path fallback failed: {fallback_error}")
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
 fn query_result_row_limit(max_rows: Option<usize>) -> usize {
     max_rows.unwrap_or(crate::query::MAX_ROWS).max(1)
 }
@@ -3227,13 +3299,7 @@ pub async fn stream_select_query_with_cancel(
     if let Some(schema) = schema.filter(|_| schema_was_set) {
         // Match normal query execution: export may reference unqualified names
         // in the active schema, so the streaming path must use the same search_path.
-        execute_postgres_infra_statement(
-            &client,
-            &postgres_set_search_path_sql(schema, PostgresSearchPathContext::Query),
-            budget.recycle_timeout,
-            "schema.set",
-        )
-        .await?;
+        set_postgres_search_path(&client, schema, PostgresSearchPathContext::Query, budget.recycle_timeout).await?;
     }
 
     let setup_transaction_started = !setup_sql.is_empty();
@@ -3344,13 +3410,7 @@ pub async fn execute_query_with_schema_and_max_rows(
     }
 
     let set_schema_start = Instant::now();
-    execute_postgres_infra_statement(
-        &client,
-        &postgres_set_search_path_sql(schema, PostgresSearchPathContext::Query),
-        super::connection_timeout(),
-        "schema.set",
-    )
-    .await?;
+    set_postgres_search_path(&client, schema, PostgresSearchPathContext::Query, super::connection_timeout()).await?;
     log::info!(
         "[postgres][execute_with_schema:set-search-path:done] elapsed_ms={} total_ms={}",
         set_schema_start.elapsed().as_millis(),
@@ -3410,13 +3470,7 @@ pub async fn execute_query_with_schema_and_max_rows_and_cancel(
     }
 
     let set_schema_start = Instant::now();
-    execute_postgres_infra_statement(
-        &client,
-        &postgres_set_search_path_sql(schema, PostgresSearchPathContext::Query),
-        budget.recycle_timeout,
-        "schema.set",
-    )
-    .await?;
+    set_postgres_search_path(&client, schema, PostgresSearchPathContext::Query, budget.recycle_timeout).await?;
     log::info!(
         "[postgres][execute_with_schema:set-search-path:done] elapsed_ms={} total_ms={}",
         set_schema_start.elapsed().as_millis(),
@@ -4595,6 +4649,33 @@ mod tests {
             postgres_set_search_path_sql("tenant\"; RESET search_path; --", PostgresSearchPathContext::Query,),
             "SET search_path TO \"tenant\"\"; RESET search_path; --\", pg_catalog, public"
         );
+    }
+
+    #[test]
+    fn postgres_single_schema_search_path_preserves_scope_and_quoting() {
+        assert_eq!(
+            postgres_set_single_schema_search_path_sql("application", PostgresSearchPathContext::Query),
+            "SET search_path TO \"application\""
+        );
+        assert_eq!(
+            postgres_set_single_schema_search_path_sql("application", PostgresSearchPathContext::Transaction),
+            "SET search_path TO \"application\""
+        );
+        assert_eq!(
+            postgres_set_single_schema_search_path_sql(
+                "tenant\"; RESET search_path; --",
+                PostgresSearchPathContext::LocalTransaction,
+            ),
+            "SET LOCAL search_path TO \"tenant\"\"; RESET search_path; --\""
+        );
+    }
+
+    #[test]
+    fn postgres_single_schema_fallback_only_matches_compatible_server_error() {
+        assert!(postgres_requires_single_schema_search_path(
+            "ERROR: Hologres does not support search_path with multiple names: admaterial."
+        ));
+        assert!(!postgres_requires_single_schema_search_path("ERROR: permission denied for schema admaterial"));
     }
 
     #[test]
