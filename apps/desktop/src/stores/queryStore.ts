@@ -668,6 +668,10 @@ export const useQueryStore = defineStore("query", () => {
       ...tableStructureRefreshVersions.value,
       [key]: (tableStructureRefreshVersions.value[key] ?? 0) + 1,
     };
+    for (const tab of tabs.value) {
+      if (tab.mode !== "query" || tab.connectionId !== connectionId || tab.database !== database) continue;
+      tab.completionContextVersion = (tab.completionContextVersion ?? 0) + 1;
+    }
   }
 
   function tableStructureRefreshVersion(connectionId: string, database: string, schema: string | undefined, tableName: string): number {

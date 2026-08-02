@@ -297,7 +297,7 @@ export function useNavigationTargets(dialogs: { showFieldLineageDialog: { value:
     await openTableTarget(target);
   }
 
-  async function onStructureEditorSaved(reloadData: () => Promise<void>, toast: (msg: string, duration?: number) => void, context: { connectionId: string; database: string; schema?: string; tableName: string }, commentChanged?: boolean) {
+  async function onStructureEditorSaved(reloadData: () => Promise<void>, toast: (msg: string, duration?: number) => void, context: { connectionId: string; database: string; schema?: string; catalog?: string; tableName: string }, commentChanged?: boolean) {
     if (!context.tableName) {
       try {
         await connectionStore.refreshObjectListTreeNode(context.connectionId, context.database, context.schema || undefined);
@@ -309,6 +309,7 @@ export function useNavigationTargets(dialogs: { showFieldLineageDialog: { value:
         await connectionStore.refreshObjectListTreeNode(context.connectionId, context.database, context.schema || undefined);
       } catch {}
     }
+    connectionStore.invalidateCompletionTableCache(context.connectionId, context.database, context.tableName, context.schema, context.catalog);
     queryStore.invalidateTableStructure(context.connectionId, context.database, context.schema, context.tableName);
     // 结构已变更：无论是否有打开的 data tab 都必须作废共享元数据缓存，否则
     // 其它 loadTableMetadata 消费者最长 30 秒拿到旧列。不带 schema/catalog

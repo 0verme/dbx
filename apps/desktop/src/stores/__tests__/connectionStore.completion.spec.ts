@@ -391,6 +391,78 @@ describe("connectionStore completion assistant", () => {
     expect(quoted).toEqual([expect.objectContaining({ name: "MixedColumn", table: "MixedTable", schema: "MixedSchema" })]);
   });
 
+  it("invalidates only the changed table completion metadata", async () => {
+    const getColumns = vi.fn(async (_connectionId: string, _database: string, _schema: string, table: string) => [
+      {
+        name: `${table}_column_${getColumns.mock.calls.length}`,
+        data_type: "integer",
+        is_nullable: false,
+        column_default: null,
+        is_primary_key: false,
+        extra: null,
+      },
+    ]);
+
+    vi.doMock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => false }));
+    vi.doMock("@/lib/backend/api", () => ({
+      checkConnectionHealth: vi.fn().mockResolvedValue(undefined),
+      completionAssistantSearch: vi.fn().mockRejectedValue(new Error("assistant unavailable")),
+      getColumns,
+    }));
+
+    const { useConnectionStore } = await import("@/stores/connectionStore");
+    const store = useConnectionStore();
+    store.connections = [sqlServerConnection()];
+    store.connectedIds.add("sqlserver-1");
+
+    await store.listCompletionColumns("sqlserver-1", "app", "users", "dbo");
+    await store.listCompletionColumns("sqlserver-1", "app", "orders", "dbo");
+    await store.listCompletionColumns("sqlserver-1", "app", "users", "dbo");
+    await store.listCompletionColumns("sqlserver-1", "app", "orders", "dbo");
+    expect(getColumns.mock.calls.map((call) => call[3])).toEqual(["users", "orders"]);
+
+    expect(store.invalidateCompletionTableCache("sqlserver-1", "app", "users", "dbo")).toBeGreaterThan(0);
+
+    await store.listCompletionColumns("sqlserver-1", "app", "users", "dbo");
+    await store.listCompletionColumns("sqlserver-1", "app", "orders", "dbo");
+    expect(getColumns.mock.calls.map((call) => call[3])).toEqual(["users", "orders", "users"]);
+  });
+
+  it("keeps the same table cached in other catalogs", async () => {
+    const getColumns = vi.fn(async (_connectionId: string, _database: string, _schema: string, table: string, catalog?: string) => [
+      {
+        name: `${catalog}_${table}`,
+        data_type: "integer",
+        is_nullable: false,
+        column_default: null,
+        is_primary_key: false,
+        extra: null,
+      },
+    ]);
+
+    vi.doMock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => false }));
+    vi.doMock("@/lib/backend/api", () => ({
+      checkConnectionHealth: vi.fn().mockResolvedValue(undefined),
+      completionAssistantSearch: vi.fn(),
+      getColumns,
+    }));
+
+    const { useConnectionStore } = await import("@/stores/connectionStore");
+    const store = useConnectionStore();
+    store.connections = [dorisConnection()];
+    store.connectedIds.add("doris-1");
+
+    await store.listCompletionColumns("doris-1", "sales", "users", undefined, undefined, "internal");
+    await store.listCompletionColumns("doris-1", "sales", "users", undefined, undefined, "hive");
+    expect(getColumns.mock.calls.map((call) => call[4])).toEqual(["internal", "hive"]);
+
+    expect(store.invalidateCompletionTableCache("doris-1", "sales", "users", undefined, "internal")).toBeGreaterThan(0);
+
+    await store.listCompletionColumns("doris-1", "sales", "users", undefined, undefined, "internal");
+    await store.listCompletionColumns("doris-1", "sales", "users", undefined, undefined, "hive");
+    expect(getColumns.mock.calls.map((call) => call[4])).toEqual(["internal", "hive", "internal"]);
+  });
+
   it("keeps quoted and unquoted Oracle objects separate in the local column index", async () => {
     const completionAssistantSearch = vi.fn(async (request: { parent_name?: string | null }) => ({
       candidates: [

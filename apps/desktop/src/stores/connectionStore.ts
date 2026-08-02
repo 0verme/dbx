@@ -5293,6 +5293,46 @@ export const useConnectionStore = defineStore("connection", () => {
     return `${completionScopeKey(connectionId, database, schema)}:${table.toLowerCase()}:fkeys`;
   }
 
+  function completionTableCacheKeyMatches(key: string, connectionId: string, database: string, tableName: string, schema?: string, catalog?: string): boolean {
+    const normalizedKey = key.toLowerCase();
+    const prefix = `${connectionId}:${database}:`.toLowerCase();
+    if (!normalizedKey.startsWith(prefix)) return false;
+    const tableToken = `:${tableName.toLowerCase()}`;
+    const tableOffset = normalizedKey.lastIndexOf(tableToken);
+    if (tableOffset < prefix.length) return false;
+    const trailing = normalizedKey.slice(tableOffset + tableToken.length);
+    if (trailing && !trailing.startsWith(":")) return false;
+    const normalizedSchema = schema?.trim().toLowerCase();
+    const normalizedCatalog = catalog?.trim().toLowerCase();
+    const scope = normalizedKey.slice(prefix.length, tableOffset);
+    if (normalizedCatalog) {
+      const catalogScope = `${normalizedCatalog}:${normalizedSchema ?? ""}`;
+      return scope === catalogScope || (!!normalizedSchema && scope === normalizedSchema);
+    }
+    if (!normalizedSchema) return true;
+    return scope === normalizedSchema || scope.endsWith(`:${normalizedSchema}`);
+  }
+
+  function invalidateCompletionTableCache(connectionId: string, database: string, tableName: string, schema?: string, catalog?: string): number {
+    const matches = (key: string) => completionTableCacheKeyMatches(key, connectionId, database, tableName, schema, catalog);
+    let removed = 0;
+    for (const cache of [completionColumnsCache.value, completionForeignKeysCache.value]) {
+      for (const key of Object.keys(cache)) {
+        if (!matches(key)) continue;
+        delete cache[key];
+        removed++;
+      }
+    }
+    for (const cache of [completionColumnIndex, completionForeignKeyIndex, completionInFlight]) {
+      for (const key of cache.keys()) {
+        if (!matches(key)) continue;
+        cache.delete(key);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   function touchCompletionIndex<T>(index: Map<string, { touched: number } & T>, key: string, value: T, max = COMPLETION_CACHE_MAX) {
     index.set(key, { ...value, touched: Date.now() });
     if (index.size <= max) return;
@@ -6854,6 +6894,7 @@ export const useConnectionStore = defineStore("connection", () => {
     listMongoCompletionCollections,
     listMongoCompletionFields,
     invalidateCompletionCache,
+    invalidateCompletionTableCache,
     invalidateMetadataCache,
     exportConnectionsToFile,
     readImportFile,

@@ -2399,6 +2399,7 @@ onUnmounted(() => {
                             connectionId: activeTab.connectionId,
                             database: activeTab.database,
                             schema: activeTab.schema,
+                            catalog: activeTab.catalog,
                             tableName: activeTab.structureTableName || '',
                           },
                           commentChanged,
