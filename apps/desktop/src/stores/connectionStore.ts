@@ -99,7 +99,8 @@ import { getTableMetadataCapabilities } from "@/lib/table/tableMetadataCapabilit
 import { useSettingsStore } from "@/stores/settingsStore";
 import { encodeSqlServerLinkedSchema, parseSqlServerLinkedSchema } from "@/lib/database/sqlServerLinkedServers";
 import { inferMongoCompletionFields, type MongoCompletionField } from "@/lib/mongo/mongoCompletion";
-import { toMongoCollectionKind } from "@/lib/sidebar/mongoCollectionMutation";
+import { isMongoLegacyDriverProfile } from "@/lib/mongo/mongoCapabilities";
+import { mongoCollectionKindFromNode, toMongoCollectionKind } from "@/lib/sidebar/mongoCollectionMutation";
 import { completionSchemasFromTree, completionTablesFromTree } from "@/lib/metadata/completionTreeIndex";
 import { kvRootNodeLabel } from "@/lib/kv/kvRootPresentation";
 import { REDIS_SCAN_PAGE_SIZE_DEFAULT } from "@/lib/redis/redisKeyPattern";
@@ -2451,19 +2452,31 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   async function syncMongoLegacyDriverFallback(connectionId: string, previousConfig: ConnectionConfig) {
-    if (!isDesktop || previousConfig.db_type !== "mongodb" || previousConfig.driver_profile === MONGO_LEGACY_DRIVER_PROFILE) {
+    if (previousConfig.db_type !== "mongodb" || isMongoLegacyDriverProfile(previousConfig.driver_profile)) {
       return;
     }
+
+    const expectedConfigFingerprint = connectionConfigFingerprint(previousConfig);
+    const current = connections.value.find((connection) => connection.id === connectionId);
+    if (!current || connectionConfigFingerprint(current) !== expectedConfigFingerprint) return;
 
     const savedConnections = await api.loadConnections().catch(() => null);
     const savedConfig = savedConnections?.map((connection) => normalizeConnection(connection)).find((connection) => connection.id === connectionId && connection.driver_profile === MONGO_LEGACY_DRIVER_PROFILE);
     if (!savedConfig) return;
 
+    const savedOriginalIdentity = {
+      ...savedConfig,
+      driver_profile: previousConfig.driver_profile,
+      driver_label: previousConfig.driver_label,
+    };
+    if (connectionConfigFingerprint(savedOriginalIdentity) !== expectedConfigFingerprint) return;
+
     const idx = connections.value.findIndex((connection) => connection.id === connectionId);
-    if (idx < 0) return;
+    if (idx < 0 || connectionConfigFingerprint(connections.value[idx]) !== expectedConfigFingerprint) return;
     const nextConnections = [...connections.value];
     nextConnections[idx] = {
-      ...savedConfig,
+      ...nextConnections[idx],
+      driver_profile: MONGO_LEGACY_DRIVER_PROFILE,
       driver_label: savedConfig.driver_label || MONGO_LEGACY_DRIVER_LABEL,
     };
     connections.value = nextConnections;
@@ -4658,7 +4671,8 @@ export const useConnectionStore = defineStore("connection", () => {
           children: [],
         });
       }
-      if ((node.type === "table" || node.type === "mongo-collection") && !parseSqlServerLinkedSchema(schema)) {
+      const isMongoView = node.type === "mongo-collection" && mongoCollectionKindFromNode(node) === "view";
+      if ((node.type === "table" || node.type === "mongo-collection") && !isMongoView && !parseSqlServerLinkedSchema(schema)) {
         if (metadataCapabilities.indexes && !isXugu) {
           children.push({
             id: `${parentId}:__indexes`,
@@ -4669,6 +4683,9 @@ export const useConnectionStore = defineStore("connection", () => {
             schema,
             catalog,
             tableName: table,
+            // Keep the Mongo collection kind available to index actions so
+            // views do not offer unsupported index creation or deletion.
+            meta: node.type === "mongo-collection" ? node.meta : undefined,
             isExpanded: false,
             children: [],
           });
@@ -4827,8 +4844,10 @@ export const useConnectionStore = defineStore("connection", () => {
 
     const load = beginTreeNodeLoad(node);
     try {
-      const metadataCapabilities = getTableMetadataCapabilities(effectiveDatabaseTypeForConnection(getConfig(connectionId)));
-      if (!metadataCapabilities.indexes) {
+      const effectiveDbType = effectiveDatabaseTypeForConnection(getConfig(connectionId));
+      const metadataCapabilities = getTableMetadataCapabilities(effectiveDbType);
+      const isMongoView = effectiveDbType === "mongodb" && node.type === "group-indexes" && mongoCollectionKindFromNode(node) === "view";
+      if (!metadataCapabilities.indexes || isMongoView) {
         const targetNode = treeNodeLoadTarget(load);
         if (!targetNode) return;
         setChildren(targetNode, []);
@@ -4839,6 +4858,7 @@ export const useConnectionStore = defineStore("connection", () => {
       const indexes = await api.listIndexes(connectionId, database, querySchema, table, catalog);
       const targetNode = treeNodeLoadTarget(load);
       if (!targetNode) return;
+      const mongoCollectionKind = effectiveDbType === "mongodb" && targetNode.type === "group-indexes" ? mongoCollectionKindFromNode(targetNode) : undefined;
       setChildren(
         targetNode,
         indexes.map((idx) => ({
@@ -4849,7 +4869,7 @@ export const useConnectionStore = defineStore("connection", () => {
           database,
           schema,
           tableName: table,
-          meta: idx,
+          meta: mongoCollectionKind ? { ...idx, collectionKind: mongoCollectionKind } : idx,
         })),
       );
       targetNode.isExpanded = true;

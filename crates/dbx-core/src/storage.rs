@@ -2200,10 +2200,8 @@ fn ensure_mcp_connection_change_allowed_in_tx(
     Ok(())
 }
 
-fn persist_connection_in_tx(tx: &rusqlite::Transaction<'_>, config: &ConnectionConfig) -> Result<(), String> {
-    let config = config.clone().canonicalized();
-    let config_id = config.id.clone();
-    let mut sanitized = config.clone();
+fn sanitized_connection_config(config: &ConnectionConfig) -> ConnectionConfig {
+    let mut sanitized = config.clone().canonicalized();
     sanitized.password = String::new();
     scrub_transport_layer_secrets(&mut sanitized);
     sanitized.redis_sentinel_password = String::new();
@@ -2212,6 +2210,13 @@ fn persist_connection_in_tx(tx: &rusqlite::Transaction<'_>, config: &ConnectionC
     scrub_mq_auth_secrets(&mut sanitized);
     scrub_mq_token_signing_secret(&mut sanitized);
     scrub_nacos_auth_secrets(&mut sanitized);
+    sanitized
+}
+
+fn persist_connection_in_tx(tx: &rusqlite::Transaction<'_>, config: &ConnectionConfig) -> Result<(), String> {
+    let config = config.clone().canonicalized();
+    let config_id = config.id.clone();
+    let sanitized = sanitized_connection_config(&config);
     let json = serde_json::to_string(&sanitized).map_err(|e| e.to_string())?;
 
     tx.execute("INSERT INTO connections (id, config_json) VALUES (?1, ?2)", params![config_id, json])
@@ -2429,6 +2434,65 @@ impl Storage {
             conn.execute("UPDATE connections SET config_json = ?1 WHERE id = ?2", params![json, connection_id])
                 .map(|_| ())
                 .map_err(|error| error.to_string())
+        })
+        .await
+    }
+
+    /// Update only the persisted driver identity for an existing connection.
+    /// This is used after runtime driver fallback and deliberately leaves all
+    /// other connection metadata and separately stored secrets untouched.
+    pub async fn save_connection_driver_profile(
+        &self,
+        expected_config: &ConnectionConfig,
+        driver_profile: Option<String>,
+        driver_label: Option<String>,
+    ) -> Result<bool, String> {
+        let expected_config = sanitized_connection_config(expected_config);
+        let connection_id = expected_config.id.clone();
+        self.with_conn(move |conn| {
+            let Some(json) = conn
+                .query_row("SELECT config_json FROM connections WHERE id = ?1", [&connection_id], |row| {
+                    row.get::<_, String>(0)
+                })
+                .optional()
+                .map_err(|error| error.to_string())?
+            else {
+                return Ok(false);
+            };
+            let current: ConnectionConfig = serde_json::from_str(&json).map_err(|error| error.to_string())?;
+            let mut current_identity = sanitized_connection_config(&current);
+            let mut expected_identity = expected_config.clone();
+            current_identity.note.clear();
+            current_identity.database_info = None;
+            expected_identity.note.clear();
+            expected_identity.database_info = None;
+
+            let identity_matches = current_identity == expected_identity
+                || (current_identity.driver_profile == driver_profile
+                    && current_identity.driver_label == driver_label
+                    && {
+                        current_identity.driver_profile = expected_identity.driver_profile.clone();
+                        current_identity.driver_label = expected_identity.driver_label.clone();
+                        current_identity == expected_identity
+                    });
+            if !identity_matches {
+                return Ok(false);
+            }
+
+            if current.driver_profile == driver_profile && current.driver_label == driver_label {
+                return Ok(true);
+            }
+
+            let mut updated = sanitized_connection_config(&current);
+            updated.driver_profile = driver_profile;
+            updated.driver_label = driver_label;
+            let updated_json = serde_json::to_string(&updated).map_err(|error| error.to_string())?;
+            conn.execute(
+                "UPDATE connections SET config_json = ?1 WHERE id = ?2 AND config_json = ?3",
+                params![updated_json, connection_id, json],
+            )
+            .map(|updated| updated > 0)
+            .map_err(|error| error.to_string())
         })
         .await
     }
@@ -4353,6 +4417,72 @@ mod tests {
         let loaded = storage.load_connections().await.unwrap();
         assert_eq!(loaded[0].database_info, Some(updated_info));
         assert_eq!(mq_token(&loaded[0]), Some("mq-secret"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn save_connection_driver_profile_updates_only_the_target_metadata() {
+        let path = temp_db_path("connection-driver-profile");
+        let storage = Storage::open(&path).await.unwrap();
+        let target = mq_connection("target", "target-secret");
+        let untouched = mq_connection("untouched", "untouched-secret");
+        storage.save_connections(&[target.clone(), untouched.clone()]).await.unwrap();
+
+        assert!(storage
+            .save_connection_driver_profile(
+                &target,
+                Some("mongodb-legacy".to_string()),
+                Some("MongoDB (Legacy)".to_string()),
+            )
+            .await
+            .unwrap());
+        let mut wrong_type = untouched.clone();
+        wrong_type.db_type = DatabaseType::MongoDb;
+        assert!(!storage
+            .save_connection_driver_profile(&wrong_type, Some("mongodb-legacy".to_string()), None,)
+            .await
+            .unwrap());
+        let mut missing = wrong_type;
+        missing.id = "missing".to_string();
+        assert!(!storage
+            .save_connection_driver_profile(&missing, Some("mongodb-legacy".to_string()), None)
+            .await
+            .unwrap());
+
+        let loaded = storage.load_connections().await.unwrap();
+        let target = loaded.iter().find(|config| config.id == "target").unwrap();
+        assert_eq!(target.driver_profile.as_deref(), Some("mongodb-legacy"));
+        assert_eq!(target.driver_label.as_deref(), Some("MongoDB (Legacy)"));
+        assert_eq!(mq_token(target), Some("target-secret"));
+        assert_eq!(loaded.iter().find(|config| config.id == "untouched"), Some(&untouched));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn save_connection_driver_profile_rejects_a_stale_connection_config() {
+        let path = temp_db_path("connection-driver-profile-stale");
+        let storage = Storage::open(&path).await.unwrap();
+        let original = mq_connection("target", "target-secret");
+        storage.save_connections(std::slice::from_ref(&original)).await.unwrap();
+
+        let mut replacement = original.clone();
+        replacement.host = "replacement.example.com".to_string();
+        replacement.name = "Replacement".to_string();
+        storage.save_connections(std::slice::from_ref(&replacement)).await.unwrap();
+
+        assert!(!storage
+            .save_connection_driver_profile(
+                &original,
+                Some("mongodb-legacy".to_string()),
+                Some("MongoDB (Legacy)".to_string()),
+            )
+            .await
+            .unwrap());
+
+        let loaded = storage.load_connections().await.unwrap();
+        assert_eq!(loaded, vec![replacement]);
 
         let _ = std::fs::remove_file(path);
     }

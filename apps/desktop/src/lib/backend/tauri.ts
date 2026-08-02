@@ -2796,6 +2796,17 @@ export interface MongoCollectionStatsResult {
   nindexes: unknown;
 }
 
+export interface MongoDropIndexFailure {
+  name: string;
+  message: string;
+}
+
+export interface MongoDropIndexesResult {
+  dropped_names: string[];
+  affected_rows: number;
+  failures?: MongoDropIndexFailure[];
+}
+
 export interface MongoGridFsFileInfo {
   id: string;
   filename?: string;
@@ -3043,7 +3054,7 @@ export async function mongoCreateIndex(connectionId: string, database: string, c
   });
 }
 
-export async function mongoDropIndexes(connectionId: string, database: string, collection: string, indexesJson?: string, single = false): Promise<{ dropped_names: string[]; affected_rows: number }> {
+export async function mongoDropIndexes(connectionId: string, database: string, collection: string, indexesJson?: string, single = false): Promise<MongoDropIndexesResult> {
   return invoke("mongo_drop_indexes", {
     connectionId,
     database,

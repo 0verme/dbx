@@ -596,10 +596,9 @@ impl DbxBackend for LocalBackend {
                     *single,
                 )
                 .await?;
-                let rows = result.dropped_names.into_iter().map(|name| vec![Value::String(name)]).collect::<Vec<_>>();
-                Ok(query_result(
-                    if rows.is_empty() { Vec::new() } else { vec!["name".to_string()] },
-                    rows,
+                Ok(mongo_drop_indexes_query_result(
+                    result.dropped_names,
+                    result.failures.into_iter().map(|failure| (failure.name, failure.message)).collect(),
                     result.affected_rows,
                 ))
             }
@@ -1226,13 +1225,21 @@ impl DbxBackend for WebBackend {
                     .into_iter()
                     .flatten()
                     .filter_map(Value::as_str)
-                    .map(|name| vec![Value::String(name.to_string())])
+                    .map(str::to_string)
                     .collect::<Vec<_>>();
-                Ok(query_result(
-                    if dropped_names.is_empty() { Vec::new() } else { vec!["name".to_string()] },
-                    dropped_names,
-                    affected_rows_from_value(&value),
-                ))
+                let failures = value
+                    .get("failures")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|failure| {
+                        Some((
+                            failure.get("name")?.as_str()?.to_string(),
+                            failure.get("message")?.as_str()?.to_string(),
+                        ))
+                    })
+                    .collect::<Vec<_>>();
+                Ok(mongo_drop_indexes_query_result(dropped_names, failures, affected_rows_from_value(&value)))
             }
             MongoCommand::DropCollection { collection } => {
                 self.request(
@@ -1360,6 +1367,28 @@ fn scalar_query_result(column: impl Into<String>, value: Value) -> dbx_core::db:
 
 fn affected_query_result(affected_rows: u64) -> dbx_core::db::QueryResult {
     query_result(Vec::new(), Vec::new(), affected_rows)
+}
+
+fn mongo_drop_indexes_query_result(
+    dropped_names: Vec<String>,
+    failures: Vec<(String, String)>,
+    affected_rows: u64,
+) -> dbx_core::db::QueryResult {
+    if failures.is_empty() {
+        let rows = dropped_names.into_iter().map(|name| vec![Value::String(name)]).collect::<Vec<_>>();
+        return query_result(if rows.is_empty() { Vec::new() } else { vec!["name".to_string()] }, rows, affected_rows);
+    }
+
+    let mut rows = dropped_names
+        .into_iter()
+        .map(|name| vec![Value::String(name), Value::String("dropped".to_string()), Value::Null])
+        .collect::<Vec<_>>();
+    rows.extend(
+        failures.into_iter().map(|(name, message)| {
+            vec![Value::String(name), Value::String("failed".to_string()), Value::String(message)]
+        }),
+    );
+    query_result(vec!["name".to_string(), "status".to_string(), "message".to_string()], rows, affected_rows)
 }
 
 fn mongo_documents_query_result(documents: Vec<Value>) -> dbx_core::db::QueryResult {
@@ -1532,6 +1561,29 @@ mod tests {
         assert_eq!(parse_database_type("Postgres").unwrap(), DatabaseType::Postgres);
         assert_eq!(parse_database_type("mongodb").unwrap(), DatabaseType::MongoDb);
         assert!(parse_database_type("unknown").is_err());
+    }
+
+    #[test]
+    fn mongo_drop_indexes_query_result_preserves_partial_failures() {
+        let result = mongo_drop_indexes_query_result(
+            vec!["email_1".to_string()],
+            vec![("missing_1".to_string(), "index not found".to_string())],
+            1,
+        );
+
+        assert_eq!(result.columns, ["name", "status", "message"]);
+        assert_eq!(
+            result.rows,
+            [
+                vec![Value::String("email_1".to_string()), Value::String("dropped".to_string()), Value::Null],
+                vec![
+                    Value::String("missing_1".to_string()),
+                    Value::String("failed".to_string()),
+                    Value::String("index not found".to_string()),
+                ],
+            ]
+        );
+        assert_eq!(result.affected_rows, 1);
     }
 
     #[tokio::test]

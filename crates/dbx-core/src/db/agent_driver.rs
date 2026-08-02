@@ -971,6 +971,7 @@ pub enum AgentCapability {
     EtcdWatch,
     EtcdLease,
     EtcdAuth,
+    MongoDropDatabase,
     MultiSession,
     StructuredErrorV1,
 }
@@ -1053,7 +1054,7 @@ fn parse_agent_rpc_error_header(header: &str) -> (Option<i64>, String) {
 }
 
 impl AgentCapability {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::Connect,
         Self::TestConnection,
         Self::Metadata,
@@ -1072,6 +1073,7 @@ impl AgentCapability {
         Self::EtcdWatch,
         Self::EtcdLease,
         Self::EtcdAuth,
+        Self::MongoDropDatabase,
         Self::MultiSession,
         Self::StructuredErrorV1,
     ];
@@ -1096,6 +1098,7 @@ impl AgentCapability {
             Self::EtcdWatch => "etcd_watch",
             Self::EtcdLease => "etcd_lease",
             Self::EtcdAuth => "etcd_auth",
+            Self::MongoDropDatabase => "mongo_drop_database",
             Self::MultiSession => "multi_session",
             Self::StructuredErrorV1 => "structured_error_v1",
         }
@@ -1275,6 +1278,7 @@ pub enum MongoAgentMethod {
     CreateIndex,
     DropIndexes,
     DropCollection,
+    DropDatabase,
     InsertDocument,
     UpdateDocument,
     UpdateDocuments,
@@ -1283,7 +1287,7 @@ pub enum MongoAgentMethod {
 }
 
 impl MongoAgentMethod {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::ListDatabases,
         Self::ListCollections,
         Self::FindDocuments,
@@ -1293,6 +1297,7 @@ impl MongoAgentMethod {
         Self::CreateIndex,
         Self::DropIndexes,
         Self::DropCollection,
+        Self::DropDatabase,
         Self::InsertDocument,
         Self::UpdateDocument,
         Self::UpdateDocuments,
@@ -1311,6 +1316,7 @@ impl MongoAgentMethod {
             Self::CreateIndex => "create_index",
             Self::DropIndexes => "drop_indexes",
             Self::DropCollection => "drop_collection",
+            Self::DropDatabase => "drop_database",
             Self::InsertDocument => "insert_document",
             Self::UpdateDocument => "update_document",
             Self::UpdateDocuments => "update_documents",
@@ -2438,6 +2444,19 @@ impl AgentDriverClient {
         self.call_mongo_method(MongoAgentMethod::ListCollections, mongo_database_params(database)).await
     }
 
+    /// Request collection metadata while accepting old Agents that still
+    /// return the historical string array and ignore `include_types`.
+    pub async fn mongo_list_collection_specs<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        database: &str,
+    ) -> Result<T, String> {
+        self.call_mongo_method(
+            MongoAgentMethod::ListCollections,
+            serde_json::json!({ "database": database, "include_types": true }),
+        )
+        .await
+    }
+
     pub async fn mongo_find_documents<T: DeserializeOwned + Send + 'static>(
         &mut self,
         params: Value,
@@ -2486,6 +2505,13 @@ impl AgentDriverClient {
         params: Value,
     ) -> Result<T, String> {
         self.call_mongo_method(MongoAgentMethod::DropCollection, params).await
+    }
+
+    pub async fn mongo_drop_database<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        params: Value,
+    ) -> Result<T, String> {
+        self.call_mongo_method(MongoAgentMethod::DropDatabase, params).await
     }
 
     pub async fn mongo_insert_document<T: DeserializeOwned + Send + 'static>(
@@ -2660,6 +2686,7 @@ pub fn agent_supports_capability(handshake: Option<&AgentHandshake>, capability:
             | AgentCapability::EtcdWatch
             | AgentCapability::EtcdLease
             | AgentCapability::EtcdAuth
+            | AgentCapability::MongoDropDatabase
     ) {
         return handshake.map(|value| value.supports(capability)).unwrap_or(false);
     }
@@ -4242,9 +4269,10 @@ for line in sys.stdin:
         assert_eq!(AgentCapability::EtcdWatch.as_str(), "etcd_watch");
         assert_eq!(AgentCapability::EtcdLease.as_str(), "etcd_lease");
         assert_eq!(AgentCapability::EtcdAuth.as_str(), "etcd_auth");
+        assert_eq!(AgentCapability::MongoDropDatabase.as_str(), "mongo_drop_database");
         assert_eq!(AgentCapability::MultiSession.as_str(), "multi_session");
-        assert_eq!(AgentCapability::ALL.len(), 20);
         assert_eq!(AgentCapability::StructuredErrorV1.as_str(), "structured_error_v1");
+        assert_eq!(AgentCapability::ALL.len(), 21);
     }
 
     #[test]
@@ -4292,6 +4320,7 @@ for line in sys.stdin:
         assert_eq!(MongoAgentMethod::CreateIndex.as_str(), "create_index");
         assert_eq!(MongoAgentMethod::DropIndexes.as_str(), "drop_indexes");
         assert_eq!(MongoAgentMethod::DropCollection.as_str(), "drop_collection");
+        assert_eq!(MongoAgentMethod::DropDatabase.as_str(), "drop_database");
         assert_eq!(MongoAgentMethod::InsertDocument.as_str(), "insert_document");
         assert_eq!(MongoAgentMethod::UpdateDocument.as_str(), "update_document");
         assert_eq!(MongoAgentMethod::UpdateDocuments.as_str(), "update_documents");
@@ -4350,6 +4379,7 @@ for line in sys.stdin:
     fn exposes_mongo_protocol_wrappers() {
         let _mongo_list_databases = AgentDriverClient::mongo_list_databases::<serde_json::Value>;
         let _mongo_list_collections = AgentDriverClient::mongo_list_collections::<serde_json::Value>;
+        let _mongo_list_collection_specs = AgentDriverClient::mongo_list_collection_specs::<serde_json::Value>;
         let _mongo_find_documents = AgentDriverClient::mongo_find_documents::<serde_json::Value>;
         let _mongo_find_documents_extended_json =
             AgentDriverClient::mongo_find_documents_extended_json::<serde_json::Value>;
@@ -4357,6 +4387,7 @@ for line in sys.stdin:
         let _mongo_create_index = AgentDriverClient::mongo_create_index::<serde_json::Value>;
         let _mongo_drop_indexes = AgentDriverClient::mongo_drop_indexes::<serde_json::Value>;
         let _mongo_drop_collection = AgentDriverClient::mongo_drop_collection::<serde_json::Value>;
+        let _mongo_drop_database = AgentDriverClient::mongo_drop_database::<serde_json::Value>;
         let _mongo_insert_document = AgentDriverClient::mongo_insert_document::<serde_json::Value>;
         let _mongo_update_document = AgentDriverClient::mongo_update_document::<serde_json::Value>;
         let _mongo_update_documents = AgentDriverClient::mongo_update_documents::<serde_json::Value>;
@@ -4587,6 +4618,12 @@ for line in sys.stdin:
         assert!(!agent_supports_capability(Some(&handshake), AgentCapability::KvStatus));
         assert!(!agent_supports_capability(None, AgentCapability::KvHistory));
         assert!(!agent_supports_capability(Some(&handshake), AgentCapability::KvHistory));
+        assert!(!agent_supports_capability(None, AgentCapability::MongoDropDatabase));
+        assert!(!agent_supports_capability(Some(&handshake), AgentCapability::MongoDropDatabase));
+
+        let mongo_handshake =
+            AgentHandshake { capabilities: vec![AgentCapability::MongoDropDatabase.as_str().to_string()], ..handshake };
+        assert!(agent_supports_capability(Some(&mongo_handshake), AgentCapability::MongoDropDatabase));
     }
 
     #[test]
