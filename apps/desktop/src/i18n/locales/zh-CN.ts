@@ -4460,6 +4460,11 @@ export default withEnglishFallback({
   },
   settings: {
     title: "设置",
+    searchSettings: "搜索设置",
+    searchSettingsNoResults: "未找到匹配的设置项",
+    searchSettingsResults: "设置搜索结果",
+    clearSettingsSearch: "清除设置搜索",
+    exitSettingsSearch: "返回设置",
     editorTab: "编辑器",
     sqlFormatterTab: "SQL 格式化",
     sqlFormatterImport: "导入配置",

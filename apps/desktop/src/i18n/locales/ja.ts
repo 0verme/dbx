@@ -4281,6 +4281,11 @@ export default withEnglishFallback({
   },
   settings: {
     title: "設定",
+    searchSettings: "設定を検索",
+    searchSettingsNoResults: "一致する設定がありません",
+    searchSettingsResults: "設定の検索結果",
+    clearSettingsSearch: "設定検索をクリア",
+    exitSettingsSearch: "設定に戻る",
     editorTab: "エディタ",
     sqlFormatterTab: "SQLフォーマッター",
     sqlFormatterImport: "設定をインポート",

@@ -3708,6 +3708,11 @@ export default withEnglishFallback({
   },
   settings: {
     title: "設定",
+    searchSettings: "搜尋設定",
+    searchSettingsNoResults: "找不到相符的設定項目",
+    searchSettingsResults: "設定搜尋結果",
+    clearSettingsSearch: "清除設定搜尋",
+    exitSettingsSearch: "返回設定",
     editorTab: "編輯器",
     sqlFormatterTab: "SQL 格式化",
     sqlFormatterImport: "匯入設定",

@@ -4202,6 +4202,11 @@ export default withEnglishFallback({
   },
   settings: {
     title: "설정",
+    searchSettings: "설정 검색",
+    searchSettingsNoResults: "일치하는 설정이 없습니다",
+    searchSettingsResults: "설정 검색 결과",
+    clearSettingsSearch: "설정 검색 지우기",
+    exitSettingsSearch: "설정으로 돌아가기",
     editorTab: "편집기",
     sqlFormatterTab: "SQL 포매터",
     sqlFormatterImport: "설정 가져오기",

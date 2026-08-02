@@ -4460,6 +4460,11 @@ export default {
   },
   settings: {
     title: "Settings",
+    searchSettings: "Search settings",
+    searchSettingsNoResults: "No matching settings",
+    searchSettingsResults: "Settings search results",
+    clearSettingsSearch: "Clear settings search",
+    exitSettingsSearch: "Back to settings",
     editorTab: "Editor",
     sqlFormatterTab: "SQL Formatter",
     sqlFormatterImport: "Import config",
