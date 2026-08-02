@@ -322,9 +322,19 @@ impl DbxBackend for LocalBackend {
         arguments: Value,
         permissions: AgentSqlPermissions,
     ) -> ToolResult {
+        let schema = arguments.get("schema").and_then(|value| value.as_str()).map(ToOwned::to_owned);
         let call =
             ToolCall { id: format!("mcp-{tool_name}"), name: tool_name.to_string(), arguments, provider_payload: None };
-        agent_tools::execute_tool(&call, &self.state, &connection.id, database, &connection.db_type, permissions).await
+        agent_tools::execute_tool(
+            &call,
+            &self.state,
+            &connection.id,
+            database,
+            schema.as_deref(),
+            &connection.db_type,
+            permissions,
+        )
+        .await
     }
 
     async fn execute_query(

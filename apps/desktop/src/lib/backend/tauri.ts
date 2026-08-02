@@ -431,6 +431,7 @@ export async function aiAgentStream(
   request: AiCompletionRequest,
   connectionId: string,
   database: string,
+  schema: string | undefined,
   dbType: string,
   onEvent: (event: AgentEvent) => void,
   mode?: string,
@@ -438,6 +439,7 @@ export async function aiAgentStream(
   confirmedWriteSql?: string,
   confirmedConnectionId?: string,
   confirmedDatabase?: string,
+  confirmedSchema?: string,
   _signal?: AbortSignal,
 ): Promise<string> {
   const unlisten: UnlistenFn = await listen<AgentEvent>("ai-agent-event", (event) => {
@@ -452,12 +454,14 @@ export async function aiAgentStream(
       request,
       connectionId,
       database,
+      schema,
       dbType,
       mode,
       allowWriteSql,
       confirmedWriteSql,
       confirmedConnectionId,
       confirmedDatabase,
+      confirmedSchema,
     });
   } catch (e) {
     unlisten();

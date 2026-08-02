@@ -1336,6 +1336,7 @@ export async function aiAgentStream(
   request: AiCompletionRequest,
   connectionId: string,
   database: string,
+  schema: string | undefined,
   dbType: string,
   onEvent: (event: import("@/lib/backend/tauri").AgentEvent) => void,
   mode?: string,
@@ -1343,6 +1344,7 @@ export async function aiAgentStream(
   confirmedWriteSql?: string,
   confirmedConnectionId?: string,
   confirmedDatabase?: string,
+  confirmedSchema?: string,
   signal?: AbortSignal,
 ): Promise<string> {
   const res = await fetch(apiUrl("/api/ai/agent-stream"), {
@@ -1353,12 +1355,14 @@ export async function aiAgentStream(
       request,
       connectionId,
       database,
+      schema,
       dbType,
       mode: mode || "ask",
       allowWriteSql,
       confirmedWriteSql,
       confirmedConnectionId,
       confirmedDatabase,
+      confirmedSchema,
     }),
     signal,
   });
