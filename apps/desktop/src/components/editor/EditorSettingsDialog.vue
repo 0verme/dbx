@@ -1719,16 +1719,18 @@ const mcpLaunchConfig = computed<McpLaunchConfig | undefined>(() => {
       },
     };
   }
+  const env = mcpStatus.value?.data_dir ? { DBX_DATA_DIR: mcpStatus.value.data_dir } : undefined;
   if (mcpStatus.value?.node_path && mcpStatus.value.script_path) {
     return {
       command: mcpStatus.value.node_path,
       args: [mcpStatus.value.script_path],
+      env,
     };
   }
   if (mcpStatus.value?.bin_path) {
-    return { command: mcpStatus.value.bin_path };
+    return { command: mcpStatus.value.bin_path, env };
   }
-  return undefined;
+  return env ? { command: "dbx-mcp-server", env } : undefined;
 });
 
 const mcpJsonRecommendedConfig = computed(() => buildMcpJsonConfig(mcpLaunchConfig.value));

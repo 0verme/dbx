@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 const MCP_PACKAGE_NAME: &str = "@dbx-app/mcp-server";
 const MCP_LATEST_URL: &str = "https://registry.npmjs.org/@dbx-app%2fmcp-server/latest";
@@ -26,6 +27,7 @@ pub struct McpServerStatus {
     pub bin_path: Option<String>,
     pub native_bin_path: Option<String>,
     pub script_path: Option<String>,
+    pub data_dir: Option<String>,
     pub install_command: String,
     pub update_command: String,
     pub error: Option<String>,
@@ -178,7 +180,9 @@ struct NodeVersion {
 }
 
 #[tauri::command]
-pub async fn check_mcp_server_status() -> Result<McpServerStatus, String> {
+pub async fn check_mcp_server_status(app: AppHandle) -> Result<McpServerStatus, String> {
+    let default_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let data_dir = crate::data_dir::resolve_data_dir_with_mode(default_data_dir).custom_data_dir().map(path_string);
     let local_status = tauri::async_runtime::spawn_blocking(|| {
         let runtime = resolve_node_runtime();
         let fallback_bin = match runtime.as_ref() {
@@ -221,6 +225,7 @@ pub async fn check_mcp_server_status() -> Result<McpServerStatus, String> {
         bin_path,
         native_bin_path,
         script_path,
+        data_dir,
         install_command: MCP_INSTALL_COMMAND.to_string(),
         update_command: runtime.as_ref().map(NodeRuntime::update_command).unwrap_or(MCP_INSTALL_COMMAND).to_string(),
         error,
