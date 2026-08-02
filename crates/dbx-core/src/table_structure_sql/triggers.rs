@@ -55,7 +55,7 @@ pub(super) fn build_trigger_sql(options: &TableStructureSqlOptions, warnings: &m
 }
 
 fn has_trigger_edit(trigger: &EditableStructureTrigger) -> bool {
-    trigger.marked_for_drop || trigger.original.as_ref().map_or(true, |original| has_trigger_change(trigger, original))
+    trigger.marked_for_drop || trigger.original.as_ref().is_none_or(|original| has_trigger_change(trigger, original))
 }
 
 fn has_trigger_change(trigger: &EditableStructureTrigger, original: &TriggerInfo) -> bool {
