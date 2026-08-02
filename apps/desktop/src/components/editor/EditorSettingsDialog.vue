@@ -71,7 +71,10 @@ import {
   saveWebdavSyncSecretsPreference,
   saveWebdavSavedPassword,
   saveSnippetSavedToken,
+  saveSnippetSyncId,
+  retrySnippetLegacyCleanup,
   snippetSyncDownload,
+  snippetSyncSettings,
   snippetSyncTest,
   snippetSyncUpload,
   snippetTokenStatus,
@@ -1670,22 +1673,35 @@ const webdavError = ref(false);
 const syncMethodTab = ref<"webdav" | "snippet">("webdav");
 
 const snippetProvider = ref<SnippetProvider>((localStorage.getItem("dbx-snippet-provider") as SnippetProvider) || "github");
-const snippetId = ref(localStorage.getItem(`dbx-snippet-id-${snippetProvider.value}`) || "");
+const snippetId = ref("");
 const snippetToken = ref("");
 const snippetRememberToken = ref(localStorage.getItem(`dbx-snippet-remember-token-${snippetProvider.value}`) === "true");
 const snippetHasSavedToken = ref(false);
-const snippetBusy = ref<"" | "test" | "upload" | "download">("");
+const snippetPassphrase = ref("");
+const snippetSecretsPassphrase = ref("");
+const snippetIncludeSecrets = ref(false);
+const snippetRestoreSecrets = ref(false);
+const snippetBusy = ref<"" | "test" | "upload" | "download" | "migrate" | "cleanup">("");
 const snippetMessage = ref("");
 const snippetError = ref(false);
+const legacySnippetId = ref("");
+const pendingLegacyCleanupId = ref("");
+const snippetSyncSettingsLoading = ref(true);
 
 const webdavReady = computed(() => !!webdavEndpoint.value.trim() && !webdavBusy.value && (!webdavSyncSecrets.value || !!webdavSecretsPassphrase.value.trim() || webdavHasSavedSecretsPassphrase.value));
-const snippetReady = computed(() => !snippetBusy.value && (!!snippetToken.value.trim() || snippetHasSavedToken.value));
+const snippetReady = computed(() => !snippetSyncSettingsLoading.value && !snippetBusy.value && (!!snippetToken.value.trim() || snippetHasSavedToken.value));
+const snippetUploadReady = computed(() => snippetReady.value && !!snippetPassphrase.value.trim() && (!snippetIncludeSecrets.value || !!snippetSecretsPassphrase.value.trim()));
+// Legacy plaintext snippets have no outer encryption password. Let the
+// backend require one only after it detects an encrypted envelope so those
+// snapshots remain recoverable for migration.
+const snippetDownloadReady = computed(() => snippetReady.value && (!snippetRestoreSecrets.value || !!snippetSecretsPassphrase.value.trim()));
 
-function currentSnippetConfig(): SnippetSyncConfig {
+function currentSnippetConfig(replaceLegacySnippet = false): SnippetSyncConfig {
   return {
     provider: snippetProvider.value,
     token: snippetToken.value.trim() || undefined,
     snippetId: snippetId.value.trim() || undefined,
+    replaceLegacySnippet: replaceLegacySnippet || undefined,
   };
 }
 
@@ -1703,6 +1719,36 @@ async function refreshSnippetTokenStatus() {
   }
 }
 
+async function refreshSnippetSyncSettings(provider = snippetProvider.value) {
+  try {
+    const settings = await snippetSyncSettings(provider);
+    if (provider !== snippetProvider.value) return;
+    pendingLegacyCleanupId.value = settings.legacyCleanupRequiredId || "";
+    if (settings.snippetId) {
+      snippetId.value = settings.snippetId;
+      return;
+    }
+    const legacyId = localStorage.getItem(`dbx-snippet-id-${provider}`)?.trim();
+    if (legacyId) {
+      await saveSnippetSyncId(provider, legacyId);
+      localStorage.removeItem(`dbx-snippet-id-${provider}`);
+    }
+    if (provider !== snippetProvider.value) return;
+    snippetId.value = legacyId || "";
+  } catch {
+    if (provider === snippetProvider.value) {
+      snippetId.value = "";
+      pendingLegacyCleanupId.value = "";
+    }
+  } finally {
+    if (provider === snippetProvider.value) snippetSyncSettingsLoading.value = false;
+  }
+}
+
+async function persistSnippetSyncId() {
+  await saveSnippetSyncId(snippetProvider.value, snippetId.value.trim() || undefined);
+}
+
 async function applySnippetTokenPreference() {
   const token = snippetToken.value.trim();
   if (snippetRememberToken.value && token) {
@@ -1716,19 +1762,21 @@ async function applySnippetTokenPreference() {
   }
 }
 
-async function runSnippetAction(kind: "test" | "upload" | "download", action: () => Promise<string>) {
+async function runSnippetAction(kind: "test" | "upload" | "download" | "migrate" | "cleanup", action: () => Promise<string>, persistCurrentSnippetId = true) {
   snippetBusy.value = kind;
   snippetMessage.value = "";
   snippetError.value = false;
   try {
     localStorage.setItem("dbx-snippet-provider", snippetProvider.value);
-    localStorage.setItem(`dbx-snippet-id-${snippetProvider.value}`, snippetId.value.trim());
     localStorage.setItem(`dbx-snippet-remember-token-${snippetProvider.value}`, String(snippetRememberToken.value));
+    if (persistCurrentSnippetId) await persistSnippetSyncId();
     await applySnippetTokenPreference();
-    await applyWebDavSyncSecretsPreference();
     snippetMessage.value = await action();
   } catch (e: any) {
     snippetMessage.value = e?.message || String(e);
+    if (kind === "upload" && snippetMessage.value.includes("legacy unencrypted DBX snapshot")) {
+      legacySnippetId.value = snippetId.value.trim();
+    }
     snippetError.value = true;
   } finally {
     snippetBusy.value = "";
@@ -1743,10 +1791,15 @@ async function testSnippetSync() {
 }
 
 async function uploadSnippetSnapshot() {
+  if (legacySnippetId.value) {
+    snippetMessage.value = t("settings.syncSnippetMigrateLegacyRequired");
+    snippetError.value = true;
+    return;
+  }
   await runSnippetAction("upload", async () => {
-    const summary = await snippetSyncUpload(currentSnippetConfig(), settingsStore.editorSettings, webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined);
+    const summary = await snippetSyncUpload(currentSnippetConfig(), settingsStore.editorSettings, snippetPassphrase.value, snippetIncludeSecrets.value, snippetIncludeSecrets.value ? snippetSecretsPassphrase.value : undefined);
     snippetId.value = summary.snippetId;
-    localStorage.setItem(`dbx-snippet-id-${snippetProvider.value}`, summary.snippetId);
+    await persistSnippetSyncId();
     return t("settings.syncSnippetUploadSuccess", {
       bytes: summary.bytes,
       id: summary.snippetId,
@@ -1754,10 +1807,46 @@ async function uploadSnippetSnapshot() {
   });
 }
 
+async function migrateLegacySnippet() {
+  const id = legacySnippetId.value;
+  if (!id || !window.confirm(t("settings.syncSnippetMigrateLegacyConfirm", { id }))) return;
+  await runSnippetAction(
+    "migrate",
+    async () => {
+      const config = currentSnippetConfig(true);
+      config.snippetId = id;
+      const summary = await snippetSyncUpload(config, settingsStore.editorSettings, snippetPassphrase.value, snippetIncludeSecrets.value, snippetSecretsPassphrase.value || undefined);
+      snippetId.value = summary.snippetId;
+      await persistSnippetSyncId();
+      legacySnippetId.value = "";
+      pendingLegacyCleanupId.value = summary.legacyCleanupRequiredId || "";
+      if (!summary.legacyCleanupRequiredId) {
+        return t("settings.syncSnippetMigrateLegacySuccess", { id: summary.snippetId });
+      }
+      throw new Error(`${t("settings.syncSnippetMigrateLegacyCreated", { id: summary.snippetId })} ${t("settings.syncSnippetMigrateLegacyCleanupRequired", { id: summary.legacyCleanupRequiredId })}`);
+    },
+    false,
+  );
+}
+
+async function retryLegacySnippetCleanup() {
+  const id = pendingLegacyCleanupId.value;
+  if (!id) return;
+  await runSnippetAction("cleanup", async () => {
+    const settings = await retrySnippetLegacyCleanup(currentSnippetConfig());
+    if (settings.snippetId) snippetId.value = settings.snippetId;
+    pendingLegacyCleanupId.value = settings.legacyCleanupRequiredId || "";
+    if (settings.legacyCleanupRequiredId) {
+      throw new Error(t("settings.syncSnippetMigrateLegacyCleanupRequired", { id: settings.legacyCleanupRequiredId }));
+    }
+    return t("settings.syncSnippetLegacyCleanupSuccess", { id });
+  });
+}
+
 async function downloadSnippetSnapshot() {
   if (!snippetId.value.trim() || !window.confirm(t("settings.syncDownloadConfirm"))) return;
   await runSnippetAction("download", async () => {
-    const result = await snippetSyncDownload(currentSnippetConfig(), webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined);
+    const result = await snippetSyncDownload(currentSnippetConfig(), snippetPassphrase.value, snippetRestoreSecrets.value, snippetRestoreSecrets.value ? snippetSecretsPassphrase.value : undefined);
     if (result.editorSettings && typeof result.editorSettings === "object") settingsStore.updateEditorSettings(result.editorSettings as any);
     await settingsStore.updateDesktopSettings(result.desktopSettings);
     await connectionStore.initFromDisk();
@@ -1952,6 +2041,7 @@ watch(
   () => settingsVisible.value,
   async (open) => {
     if (open) {
+      snippetSyncSettingsLoading.value = true;
       mcpPolicyLoading.value = true;
       mcpPolicyLoadError.value = "";
       aiConfigListMode.value = "list";
@@ -1999,6 +2089,7 @@ watch(
       await refreshWebDavPasswordStatus();
       await refreshWebDavSyncSecretsStatus();
       await refreshSnippetTokenStatus();
+      await refreshSnippetSyncSettings();
       syncAiEditState();
       if (!isWeb && activeSettingsTab.value === "mcp") void refreshMcpStatus();
       if (!isWeb && activeSettingsTab.value === "ai" && aiIsCliProvider.value) void ensureCliMcpStatus();
@@ -2037,10 +2128,14 @@ watch([webdavAutoUploadEnabled, webdavAutoUploadIntervalMinutes], () => {
 });
 watch(snippetProvider, (provider) => {
   localStorage.setItem("dbx-snippet-provider", provider);
-  snippetId.value = localStorage.getItem(`dbx-snippet-id-${provider}`) || "";
+  snippetId.value = "";
   snippetRememberToken.value = localStorage.getItem(`dbx-snippet-remember-token-${provider}`) === "true";
   snippetToken.value = "";
+  legacySnippetId.value = "";
+  pendingLegacyCleanupId.value = "";
+  snippetSyncSettingsLoading.value = true;
   void refreshSnippetTokenStatus();
+  void refreshSnippetSyncSettings(provider);
 });
 
 watch(activeSettingsTab, async (tab) => {
@@ -4879,7 +4974,7 @@ onUnmounted(cleanupPreviewEditor);
                   <div class="grid gap-4 rounded-md border p-4 md:grid-cols-2">
                     <div class="space-y-2">
                       <Label>{{ t("settings.syncSnippetProvider") }}</Label>
-                      <Select v-model="snippetProvider">
+                      <Select v-model="snippetProvider" :disabled="!!snippetBusy">
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="github">GitHub Gist</SelectItem>
@@ -4889,7 +4984,7 @@ onUnmounted(cleanupPreviewEditor);
                     </div>
                     <div class="space-y-2">
                       <Label for="snippet-sync-id">{{ t("settings.syncSnippetId") }}</Label>
-                      <Input id="snippet-sync-id" v-model="snippetId" autocomplete="off" :placeholder="t('settings.syncSnippetIdPlaceholder')" />
+                      <Input id="snippet-sync-id" v-model="snippetId" autocomplete="off" :disabled="snippetSyncSettingsLoading || !!snippetBusy" :placeholder="t('settings.syncSnippetIdPlaceholder')" @blur="persistSnippetSyncId" />
                     </div>
                     <div class="space-y-2 md:col-span-2">
                       <Label for="snippet-sync-token">{{ t("settings.syncSnippetToken") }}</Label>
@@ -4918,6 +5013,37 @@ onUnmounted(cleanupPreviewEditor);
                         {{ t("settings.syncSnippetTokenDescription") }}
                       </p>
                     </div>
+                    <div class="space-y-2 md:col-span-2">
+                      <Label for="snippet-sync-passphrase">{{ t("settings.syncSnippetPassphrase") }}</Label>
+                      <PasswordInput id="snippet-sync-passphrase" v-model="snippetPassphrase" autocomplete="new-password" />
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("settings.syncSnippetPassphraseDescription") }}
+                      </p>
+                    </div>
+                    <div class="space-y-2 md:col-span-2">
+                      <label class="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input v-model="snippetIncludeSecrets" type="checkbox" class="h-4 w-4 shrink-0 accent-primary" />
+                        <span>{{ t("settings.syncSnippetIncludeSecrets") }}</span>
+                      </label>
+                      <label class="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input v-model="snippetRestoreSecrets" type="checkbox" class="h-4 w-4 shrink-0 accent-primary" />
+                        <span>{{ t("settings.syncSnippetRestoreSecrets") }}</span>
+                      </label>
+                    </div>
+                    <div v-if="snippetIncludeSecrets || snippetRestoreSecrets || legacySnippetId" class="space-y-2 md:col-span-2">
+                      <Label for="snippet-sync-secrets-passphrase">{{ t("settings.syncSecretsPassphrase") }}</Label>
+                      <PasswordInput id="snippet-sync-secrets-passphrase" v-model="snippetSecretsPassphrase" autocomplete="new-password" />
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("settings.syncSecretsPassphraseDescription") }}
+                      </p>
+                    </div>
+                    <div v-if="pendingLegacyCleanupId" class="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive md:col-span-2">
+                      <span>{{ t("settings.syncSnippetMigrateLegacyCleanupRequired", { id: pendingLegacyCleanupId }) }}</span>
+                      <Button variant="destructive" size="sm" :disabled="!snippetReady" @click="retryLegacySnippetCleanup">
+                        <Loader2 v-if="snippetBusy === 'cleanup'" class="mr-1 h-3 w-3 animate-spin" />
+                        {{ t("settings.syncSnippetRetryLegacyCleanup") }}
+                      </Button>
+                    </div>
                     <div class="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
                       <div v-if="snippetMessage" class="min-w-0 flex-1 text-xs" :class="snippetError ? 'text-destructive' : 'text-green-600 dark:text-green-400'">
                         {{ snippetMessage }}
@@ -4928,15 +5054,19 @@ onUnmounted(cleanupPreviewEditor);
                           <Loader2 v-if="snippetBusy === 'test'" class="mr-1 h-3 w-3 animate-spin" />
                           {{ t("settings.syncTest") }}
                         </Button>
-                        <Button variant="outline" size="sm" :disabled="!snippetReady || !snippetId.trim()" @click="downloadSnippetSnapshot">
+                        <Button variant="outline" size="sm" :disabled="!snippetDownloadReady || !snippetId.trim()" @click="downloadSnippetSnapshot">
                           <Loader2 v-if="snippetBusy === 'download'" class="mr-1 h-3 w-3 animate-spin" />
                           <Download v-else class="mr-1 h-3 w-3" />
                           {{ t("settings.syncDownload") }}
                         </Button>
-                        <Button size="sm" :disabled="!snippetReady" @click="uploadSnippetSnapshot">
+                        <Button size="sm" :disabled="!snippetUploadReady" @click="uploadSnippetSnapshot">
                           <Loader2 v-if="snippetBusy === 'upload'" class="mr-1 h-3 w-3 animate-spin" />
                           <Upload v-else class="mr-1 h-3 w-3" />
                           {{ t("settings.syncUpload") }}
+                        </Button>
+                        <Button v-if="legacySnippetId" variant="destructive" size="sm" :disabled="!snippetUploadReady" @click="migrateLegacySnippet">
+                          <Loader2 v-if="snippetBusy === 'migrate'" class="mr-1 h-3 w-3 animate-spin" />
+                          {{ t("settings.syncSnippetMigrateLegacy") }}
                         </Button>
                       </div>
                     </div>
