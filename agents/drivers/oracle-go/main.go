@@ -939,17 +939,11 @@ func openDBWithStringConverter(params connectParams, stringConverter converters.
 	if err != nil {
 		return nil, err
 	}
-	var db *sql.DB
-	if stringConverter == nil {
-		db, err = sql.Open("oracle", dsn)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		connector := go_ora.NewConnector(dsn)
+	connector := go_ora.NewConnector(dsn)
+	if stringConverter != nil {
 		go_ora.SetStringConverter(connector, stringConverter, nil)
-		db = sql.OpenDB(connector)
 	}
+	db := sql.OpenDB(connector)
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(30 * time.Minute)

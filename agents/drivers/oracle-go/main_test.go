@@ -816,6 +816,30 @@ func TestOracleGB18030ConverterRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOpenDBUsesIndependentOracleDrivers(t *testing.T) {
+	params := connectParams{
+		Host:     "127.0.0.1",
+		Port:     1521,
+		Database: "ORCL",
+		Username: "dbx",
+		Password: "secret",
+	}
+	first, err := openDB(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := openDB(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	if first.Driver() == second.Driver() {
+		t.Fatal("Oracle connections must not share the driver's cached charset converters")
+	}
+}
+
 func TestOracleStringConverterForUnsupportedCharsetError(t *testing.T) {
 	err := errors.New("the server use charset with id: 854 which is not supported by the driver")
 	converter, ok := oracleStringConverterForUnsupportedCharsetError(err)
