@@ -2787,6 +2787,7 @@ export default withEnglishFallback({
     cardinality: "카디널리티",
     cardinalityOneToMany: "1:N",
     cardinalityManyToOne: "N:1",
+    cardinalityManyToMany: "N:N",
     cardinalityOneToOne: "1:1",
     addRelationship: "관계 추가",
     removeRelationship: "관계 제거",
