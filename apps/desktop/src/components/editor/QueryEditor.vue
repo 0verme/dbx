@@ -2749,6 +2749,7 @@ async function provideSqlCompletions(context: CompletionContext) {
         databaseType: snippetDatabaseType.value,
         currentSchema: props.schema,
         keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
+        functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
         autoAliasTables: settingsStore.editorSettings.autoAliasTables,
       });
       return buildCompletionResult(items, position - completionContext.prefix.length, getSqlCompletionResultValidFor(fullDoc, position));
@@ -2808,6 +2809,7 @@ async function provideSqlCompletions(context: CompletionContext) {
         databaseType: snippetDatabaseType.value,
         currentSchema: props.schema,
         keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
+        functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
         autoAliasTables: settingsStore.editorSettings.autoAliasTables,
       });
       return buildCompletionResult(items, position - completionContext.prefix.length, getSqlCompletionResultValidFor(fullDoc, position));
@@ -3023,6 +3025,7 @@ function buildLocalSqlCompletionResult(completionContext: ReturnType<typeof getS
     databaseType: snippetDatabaseType.value,
     currentSchema: scope.schema,
     keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
+    functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
     autoAliasTables: settingsStore.editorSettings.autoAliasTables,
   });
 
@@ -3482,6 +3485,7 @@ async function performAsyncCompletionWithResult(epoch: number, completionContext
     databaseType: snippetDatabaseType.value,
     currentSchema: scope.schema,
     keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
+    functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
     autoAliasTables: settingsStore.editorSettings.autoAliasTables,
   });
 
