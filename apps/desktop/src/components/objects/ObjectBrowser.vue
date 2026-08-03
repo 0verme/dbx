@@ -2405,7 +2405,7 @@ async function loadObjects(options?: { allowCached?: boolean }) {
     void loadObjectStatistics(request, cacheWriteToken, cachedAt);
   } catch (e: any) {
     if (!objectBrowserRowsLoadGuard.isCurrent(request)) return;
-    error.value = e?.message || String(e);
+    error.value = translateBackendError(t, e);
   } finally {
     if (objectBrowserRowsLoadGuard.isCurrent(request)) finishObjectBrowserRowsLoad();
   }
