@@ -2960,6 +2960,41 @@ func (s *server) executeQuery(opts queryOptions) (queryResult, error) {
 }
 
 func (s *server) executeSelect(sqlText string, maxRows int, timeoutSecs int) (queryResult, error) {
+	return executeOracleSelectWithXMLTypeRetry(
+		sqlText,
+		func(query string) (queryResult, error) {
+			return s.executeSelectOnce(query, maxRows, timeoutSecs)
+		},
+		s.rewriteXMLTypeSelectSQL,
+	)
+}
+
+func executeOracleSelectWithXMLTypeRetry(
+	sqlText string,
+	execute func(string) (queryResult, error),
+	rewrite func(string) (string, error),
+) (queryResult, error) {
+	result, err := execute(sqlText)
+	if err == nil || !shouldRetryOracleXMLTypeRewrite(err) {
+		return result, err
+	}
+	rewritten, rewriteErr := rewrite(sqlText)
+	if rewriteErr != nil || rewritten == sqlText {
+		return result, err
+	}
+	return execute(rewritten)
+}
+
+func shouldRetryOracleXMLTypeRewrite(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "abnormal data representation for date") ||
+		strings.Contains(message, "TTC error: received code ")
+}
+
+func (s *server) executeSelectOnce(sqlText string, maxRows int, timeoutSecs int) (queryResult, error) {
 	rows, err := s.queryRowsWithXMLTypeRewriteIfNeeded(sqlText, timeoutSecs)
 	if err != nil {
 		return queryResult{}, err
