@@ -4379,8 +4379,12 @@ function setDetailNull() {
 
 function applyColumnSort(column: string, columnIndex: number, direction: "asc" | "desc" | null, mode: DataGridSortMode = "database") {
   if (getIsResizing()) return;
-  currentPage.value = 1;
-  resetGridVerticalScroll(true);
+  if (mode === "database" && infiniteScrollEnabled.value) {
+    resetInfiniteScrollState();
+  } else {
+    currentPage.value = 1;
+    resetGridVerticalScroll(true);
+  }
   if (direction) {
     setSort(column, columnIndex, direction, mode);
     if (mode === "database") {
