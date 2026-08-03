@@ -5912,6 +5912,8 @@ export default withEnglishFallback({
     beginTime: "Hora inicial",
     endTime: "Hora final",
     maxNum: "Número máximo",
+    invalidTimeRange: "Hora inicial ou final inválida",
+    endTimeMustBeAfterBegin: "A hora final deve ser posterior à hora inicial",
     query: "Pesquisar",
     querying: "Pesquisando...",
     messageOverview: "Informações básicas",
