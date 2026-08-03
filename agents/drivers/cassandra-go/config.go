@@ -9,6 +9,7 @@ import (
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	gocqlastra "github.com/datastax/gocql-astra/v2"
 )
 
 type cassandraConfig struct {
@@ -41,6 +42,9 @@ type cassandraConfig struct {
 	reconnectionMaxDelay     time.Duration
 	loadBalancingPolicy      string
 	disableInitialHostLookup bool
+	configFile               string
+	secureConnectBundle      string
+	kerberos                 kerberosConfig
 }
 
 func parseCassandraConfig(cp connectParams) (cassandraConfig, error) {
@@ -62,6 +66,7 @@ func parseCassandraConfig(cp connectParams) (cassandraConfig, error) {
 		retryCount:            3,
 		reconnectionBaseDelay: time.Second,
 		reconnectionMaxDelay:  60 * time.Second,
+		kerberos:              defaultKerberosConfig(),
 	}
 	if cp.Port > 0 {
 		config.port = cp.Port
@@ -76,10 +81,6 @@ func parseCassandraConfig(cp connectParams) (cassandraConfig, error) {
 	if len(config.hosts) == 0 {
 		config.hosts = splitHosts(cp.Host)
 	}
-	if len(config.hosts) == 0 {
-		return cassandraConfig{}, fmt.Errorf("Cassandra host is required")
-	}
-
 	urlParams, err := parseURLParams(cp.URLParams)
 	if err != nil {
 		return cassandraConfig{}, err
@@ -90,7 +91,18 @@ func parseCassandraConfig(cp connectParams) (cassandraConfig, error) {
 	if err := applyCassandraURLParams(&config, params); err != nil {
 		return cassandraConfig{}, err
 	}
-	if !config.disableInitialHostLookup && allLoopbackHosts(config.hosts) {
+	if config.configFile != "" {
+		if err := applyCassandraConfigFile(&config, config.configFile); err != nil {
+			return cassandraConfig{}, err
+		}
+	}
+	if err := config.finalize(); err != nil {
+		return cassandraConfig{}, err
+	}
+	if len(config.hosts) == 0 && config.secureConnectBundle == "" {
+		return cassandraConfig{}, fmt.Errorf("Cassandra host is required")
+	}
+	if len(config.hosts) > 0 && !config.disableInitialHostLookup && allLoopbackHosts(config.hosts) {
 		config.disableInitialHostLookup = true
 	}
 	return config, nil
@@ -276,17 +288,53 @@ func applyCassandraURLParams(config *cassandraConfig, params url.Values) error {
 			if err != nil {
 				return fmt.Errorf("invalid usekrb5 option: %w", err)
 			}
-			if enabled {
-				return fmt.Errorf("Cassandra Kerberos authentication is not supported by the native agent")
-			}
+			config.kerberos.enabled = enabled
 		case "secureconnectbundle":
-			if value != "" {
-				return fmt.Errorf("Cassandra secure connect bundles are not supported by the native agent")
-			}
+			config.secureConnectBundle = value
 		case "configfile":
-			if value != "" {
-				return fmt.Errorf("Cassandra Java driver configfile is not supported; translate it to native URL parameters")
+			config.configFile = value
+		case "kerberosconfig", "kerberosconfigpath", "krb5config", "krb5conf":
+			config.kerberos.configPath = value
+		case "jaasconfig", "jaasconfigpath":
+			config.kerberos.jaasConfigPath = value
+		case "kerberosprincipal", "krb5principal":
+			config.kerberos.principal = value
+		case "kerberosrealm", "krb5realm":
+			config.kerberos.realm = value
+		case "kerberoskeytab", "keytab":
+			config.kerberos.keytabPath = value
+		case "kerberosccache", "kerberosticketcache", "ccache", "ticketcache":
+			config.kerberos.ccachePath = value
+		case "kerberospassword":
+			config.kerberos.password = value
+		case "kerberosservice", "kerberosservicename", "saslprotocol":
+			config.kerberos.serviceName = value
+		case "kerberosservername", "saslservername":
+			config.kerberos.serverName = value
+		case "kerberosauthorizationid", "authorizationid":
+			config.kerberos.authorizationID = value
+		case "kerberosqop", "saslqop":
+			config.kerberos.qop = value
+		case "kerberosdisablepafxfast", "disablepafxfast":
+			disabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return fmt.Errorf("invalid disablepafxfast option: %w", err)
 			}
+			config.kerberos.disablePAFXFAST = disabled
+		case "kerberosusekeytab", "usekeytab":
+			enabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return fmt.Errorf("invalid usekeytab option: %w", err)
+			}
+			config.kerberos.useKeytab = enabled
+			config.kerberos.useKeytabSet = true
+		case "kerberosuseticketcache", "useticketcache":
+			enabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return fmt.Errorf("invalid useticketcache option: %w", err)
+			}
+			config.kerberos.useTicketCache = enabled
+			config.kerberos.useTicketCacheSet = true
 		case "compliancemode":
 			// JDBC compliance modes only alter java.sql behavior. The native DBX
 			// JSON-RPC contract already defines statement and transaction behavior.
@@ -298,21 +346,35 @@ func applyCassandraURLParams(config *cassandraConfig, params url.Values) error {
 }
 
 func (config cassandraConfig) clusterConfig(keyspace string) (*gocql.ClusterConfig, error) {
-	cluster := gocql.NewCluster(config.hosts...)
-	cluster.Port = config.port
+	var cluster *gocql.ClusterConfig
+	var err error
+	if config.secureConnectBundle != "" {
+		cluster, err = gocqlastra.NewClusterFromBundle(
+			config.secureConnectBundle,
+			config.username,
+			config.password,
+			config.connectTimeout,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("load Cassandra secure connect bundle: %w", err)
+		}
+	} else {
+		cluster = gocql.NewCluster(config.hosts...)
+		cluster.Port = config.port
+		cluster.Dialer = cassandraDialer{
+			timeout:    config.connectTimeout,
+			keepAlive:  config.keepAlive,
+			tcpNoDelay: config.tcpNoDelay,
+		}
+		cluster.DisableInitialHostLookup = config.disableInitialHostLookup
+		cluster.IgnorePeerAddr = config.disableInitialHostLookup
+	}
 	cluster.Keyspace = strings.TrimSpace(keyspace)
 	cluster.Timeout = config.requestTimeout
 	cluster.ConnectTimeout = config.connectTimeout
 	cluster.WriteTimeout = config.requestTimeout
 	cluster.NumConns = config.numConnections
 	cluster.PageSize = config.pageSize
-	cluster.Dialer = cassandraDialer{
-		timeout:    config.connectTimeout,
-		keepAlive:  config.keepAlive,
-		tcpNoDelay: config.tcpNoDelay,
-	}
-	cluster.DisableInitialHostLookup = config.disableInitialHostLookup
-	cluster.IgnorePeerAddr = config.disableInitialHostLookup
 	if config.protocolVersion != 0 {
 		cluster.ProtoVersion = config.protocolVersion
 	}
@@ -333,10 +395,17 @@ func (config cassandraConfig) clusterConfig(keyspace string) (*gocql.ClusterConf
 		}
 		cluster.SerialConsistency = consistency
 	}
-	if config.username != "" {
+	if config.kerberos.enabled {
+		authProvider, err := newKerberosAuthProvider(config.kerberos, config.username, config.password)
+		if err != nil {
+			return nil, err
+		}
+		cluster.Authenticator = nil
+		cluster.AuthProvider = authProvider
+	} else if config.secureConnectBundle == "" && config.username != "" {
 		cluster.Authenticator = gocql.PasswordAuthenticator{Username: config.username, Password: config.password}
 	}
-	if config.ssl {
+	if config.secureConnectBundle == "" && config.ssl {
 		cluster.SslOpts = &gocql.SslOptions{
 			CaPath:                 config.caCertPath,
 			CertPath:               config.clientCertPath,
@@ -354,6 +423,30 @@ func (config cassandraConfig) clusterConfig(keyspace string) (*gocql.ClusterConf
 		return nil, err
 	}
 	return cluster, nil
+}
+
+func (config *cassandraConfig) finalize() error {
+	var err error
+	config.configFile, err = normalizeLocalFilePath(config.configFile)
+	if err != nil {
+		return fmt.Errorf("invalid Cassandra configfile: %w", err)
+	}
+	config.secureConnectBundle, err = normalizeLocalFilePath(config.secureConnectBundle)
+	if err != nil {
+		return fmt.Errorf("invalid Cassandra secureconnectbundle: %w", err)
+	}
+	if config.secureConnectBundle != "" && config.kerberos.enabled {
+		return fmt.Errorf("Cassandra secure connect bundles cannot be combined with Kerberos authentication")
+	}
+	if config.secureConnectBundle != "" && (config.username == "" || config.password == "") {
+		return fmt.Errorf("Cassandra secure connect bundles require username and password credentials")
+	}
+	if config.kerberos.enabled {
+		if err := config.kerberos.finalize(config.username, config.password); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func splitHosts(raw string) []string {
@@ -422,7 +515,7 @@ func normalizeRetryPolicy(value string) (string, error) {
 func normalizeLoadBalancingPolicy(value string) (string, error) {
 	name := strings.ToLower(simpleClassName(value))
 	switch name {
-	case "", "dcinferringloadbalancingpolicy", "defaultloadbalancingpolicy":
+	case "", "basicloadbalancingpolicy", "dcinferringloadbalancingpolicy", "defaultloadbalancingpolicy":
 		return "default", nil
 	case "roundrobinpolicy":
 		return "round_robin", nil

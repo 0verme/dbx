@@ -128,16 +128,15 @@ func TestParseCassandraConfigAcceptsDefaultSSLEngineFactory(t *testing.T) {
 	}
 }
 
-func TestParseCassandraConfigRejectsJavaOnlyJDBCOptions(t *testing.T) {
+func TestParseCassandraConfigRejectsCustomJavaImplementationClasses(t *testing.T) {
 	tests := []string{
-		"configfile=/tmp/application.conf",
-		"secureconnectbundle=/tmp/secure-connect.zip",
-		"usekrb5=true",
 		"sslenginefactory=example.CustomSslEngineFactory",
+		"loadbalancing=example.CustomPolicy",
+		"retry=example.CustomRetryPolicy",
 	}
 	for _, urlParams := range tests {
 		if _, err := parseCassandraConfig(connectParams{Host: "localhost", URLParams: urlParams}); err == nil {
-			t.Fatalf("expected unsupported Java-only option error for %q", urlParams)
+			t.Fatalf("expected custom Java implementation rejection for %q", urlParams)
 		}
 	}
 }

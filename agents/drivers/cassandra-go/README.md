@@ -8,8 +8,14 @@ multi-session JSON-RPC protocol without a JVM.
 - Native protocol versions: v3-v5
 - Declared server range: Apache Cassandra 2.1+
 - Live validation: 2.2.19, 3.11.19, 4.1.10, and 5.0.6
-- Authentication: username/password
+- Kerberos live validation: Cassandra 4.1.10 with password, keytab, FILE ccache,
+  JAAS discovery, and HOCON `configfile`
+- Astra validation: secure-connect bundle parsing and transport configuration;
+  live Astra credentials were not available
+- Authentication: username/password and Kerberos/GSSAPI
 - TLS: CA verification, optional client certificate/key, hostname verification
+- Cloud: DataStax Astra secure connect bundles
+- Configuration: Java Driver 4 HOCON `configfile` mapping plus native extensions
 - Metadata: keyspaces, tables, columns, indexes, CQL table DDL, completion search
 - Queries: legacy string result values, paging, cancellation, logged and unlogged batches
 
@@ -33,15 +39,87 @@ syntax.
 | `sslenginefactory` | the standard `DefaultSslEngineFactory` maps to native TLS |
 | `hostnameverification` | TLS hostname verification; enabled by default |
 | `user`, `password` | password authentication |
+| `configfile` | Java Driver 4 HOCON configuration; overrides URL options except contact points and keyspace |
+| `usekrb5` | Kerberos/GSSAPI authentication using password, keytab, or FILE credential cache |
+| `secureconnectbundle` | DataStax Astra secure connect bundle; contact points and manual TLS options are ignored |
 | `requesttimeout`, `connecttimeout` | request and connection deadlines |
 | `tcpnodelay`, `keepalive` | native TCP socket options |
 | `compliancemode` | accepted; JDBC-only `java.sql` behavior is not applicable to JSON-RPC |
 
-Java implementation hooks do not have a safe native equivalent. The Agent
-returns a targeted connection error for `configfile`, `usekrb5=true`,
-`secureconnectbundle`, custom `sslenginefactory` classes, and custom policy
-classes. Translate Java HOCON settings to the supported URL parameters before
-migrating a connection.
+The Agent rejects custom Java implementation classes because they cannot be
+loaded by a native binary. This includes custom authentication, SSL, retry,
+reconnection, and load-balancing classes. Java JKS/PKCS12 truststores and
+keystores are not read directly; use the native PEM paths described below.
+
+## Java Driver HOCON configuration
+
+`configfile` reads Java Driver 4 HOCON files and preserves the JDBC wrapper's
+precedence: the file overrides URL options except contact points and keyspace.
+A missing file is ignored for compatibility with the JDBC wrapper.
+
+Mapped Java Driver paths include:
+
+- `basic.request.timeout`, `consistency`, `serial-consistency`, and `page-size`
+- `basic.load-balancing-policy.class` and `local-datacenter`
+- `basic.cloud.secure-connect-bundle`
+- `advanced.connection.connect-timeout` and `pool.local.size`
+- `advanced.socket.tcp-no-delay` and `keep-alive`
+- `advanced.protocol.version`, retry policy, and reconnection policy
+- `advanced.auth-provider` plaintext and Instaclustr Kerberos options
+- `advanced.ssl-engine-factory` default TLS and hostname validation
+
+Native-only settings can be placed under `dbx.cassandra`:
+
+```hocon
+dbx.cassandra {
+  tls {
+    enabled = true
+    ca-cert-path = "/path/to/ca.pem"
+    client-cert-path = "/path/to/client.pem"
+    client-key-path = "/path/to/client-key.pem"
+    hostname-verification = true
+  }
+  kerberos {
+    enabled = true
+    config = "/etc/krb5.conf"
+    jaas-config = "/path/to/jaas.conf"
+    principal = "alice@EXAMPLE.COM"
+    keytab = "/path/to/alice.keytab"
+    service-name = "cassandra"
+    server-name = "node1.example.com"
+    authorization-id = "assumed_role"
+    qop = "auth"
+  }
+}
+```
+
+## Kerberos
+
+`usekrb5=true` implements the same GSSAPI flow used by the former Instaclustr
+Java auth provider. The service principal defaults to
+`cassandra/<canonical-node-hostname>`. Set `kerberosservername` when reverse DNS
+does not resolve to the service-principal hostname.
+
+Credential discovery order is:
+
+1. Explicit JAAS `CassandraJavaClient` cache/keytab selection
+2. Explicit `kerberosccache` or `kerberoskeytab`
+3. Explicit principal and password
+4. `KRB5CCNAME`, then `KRB5_CLIENT_KTNAME`/`KRB5_KTNAME`
+
+The Agent also reads `java.security.auth.login.config` and
+`java.security.krb5.conf` from `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, or
+`JDK_JAVA_OPTIONS`. Only FILE credential caches are supported. SASL QOP `auth`
+is supported; `auth-int` and `auth-conf` are rejected because they require
+wrapping Cassandra traffic after authentication.
+
+## Astra secure connect bundles
+
+Set `secureconnectbundle` to a local Astra bundle ZIP and provide its database
+credentials with `user` and `password`. A normal Cassandra host is not required.
+Kerberos cannot be combined with a secure connect bundle. Manual TLS settings
+are ignored because the bundle supplies its own CA, client certificate, key,
+SNI endpoint, and metadata service.
 
 ## Integration test
 
