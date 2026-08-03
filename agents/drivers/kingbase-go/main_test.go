@@ -1158,7 +1158,73 @@ func TestInformationSchemaColumnsResolveUserDefinedTypeWithoutColumnType(t *test
 	}
 }
 
-func TestInformationSchemaColumnsFallsBackOnlyForMissingColumnType(t *testing.T) {
+func TestInformationSchemaColumnsPreserveColumnTypeWithoutUdtName(t *testing.T) {
+	state := &metadataDriverState{query: func(query string) (driver.Rows, error) {
+		if strings.Contains(query, "c.udt_name") {
+			return nil, &gokb.Error{Code: gokb.ErrorCode("42703"), Message: "kb: column c.udt_name does not exist"}
+		}
+		if !strings.Contains(query, "c.column_type") {
+			return nil, errors.New("column type fallback was not requested")
+		}
+		return &valueRows{
+			columns: []string{"column_name", "data_type", "column_type", "is_nullable", "column_default", "column_comment", "numeric_precision", "numeric_scale", "character_maximum_length"},
+			rows:    [][]driver.Value{{"status", "enum", "enum('new','done')", "YES", nil, nil, nil, nil, nil}},
+		}, nil
+	}}
+	server := newServer()
+	server.db = openMetadataDB(t, state)
+
+	columns, err := server.informationSchemaColumns("public", "orders", map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(columns) != 1 || columns[0].FullDataType != "enum('new','done')" {
+		t.Fatalf("unexpected metadata columns: %#v", columns)
+	}
+	if ddl := renderTableDDL("public", "orders", columns, nil); !strings.Contains(ddl, `"status" enum('new','done')`) {
+		t.Fatalf("unexpected table DDL:\n%s", ddl)
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if len(state.queries) != 2 {
+		t.Fatalf("unexpected query count: got %d, want 2: %v", len(state.queries), state.queries)
+	}
+}
+
+func TestInformationSchemaColumnsFallbackWithoutExtendedTypeColumns(t *testing.T) {
+	state := &metadataDriverState{query: func(query string) (driver.Rows, error) {
+		if strings.Contains(query, "c.column_type") {
+			return nil, &gokb.Error{Code: gokb.ErrorCode("42703"), Message: "column c.column_type does not exist"}
+		}
+		if strings.Contains(query, "c.udt_name") {
+			return nil, &gokb.Error{Code: gokb.ErrorCode("42703"), Message: "column c.udt_name does not exist"}
+		}
+		if !strings.Contains(query, "NULL AS column_type") {
+			return nil, errors.New("base type fallback was not requested")
+		}
+		return &valueRows{
+			columns: []string{"column_name", "data_type", "column_type", "is_nullable", "column_default", "column_comment", "numeric_precision", "numeric_scale", "character_maximum_length"},
+			rows:    [][]driver.Value{{"label", "varchar", nil, "YES", nil, nil, nil, nil, int64(64)}},
+		}, nil
+	}}
+	server := newServer()
+	server.db = openMetadataDB(t, state)
+
+	columns, err := server.informationSchemaColumns("public", "orders", map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(columns) != 1 || columnDDLDefinition(columns[0]) != `"label" varchar(64)` {
+		t.Fatalf("unexpected fallback columns: %#v", columns)
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if len(state.queries) != 3 {
+		t.Fatalf("unexpected query count: got %d, want 3: %v", len(state.queries), state.queries)
+	}
+}
+
+func TestInformationSchemaColumnsRetriesOnlyForMissingTypeMetadataColumns(t *testing.T) {
 	tests := []struct {
 		name         string
 		firstError   error
