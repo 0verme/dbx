@@ -13,7 +13,7 @@ DBX 的 Agent 驱动 —— 通过 JDBC 和原生数据库驱动支持各种数�
 | access | Microsoft Access | UCanAccess |
 | dameng | 达梦 DM8 | DM JDBC |
 | kingbase | 人大金仓 KingbaseES | gokb Go 原生 agent |
-| vastbase | Vastbase | Vastbase JDBC |
+| vastbase | Vastbase | openGauss Go 原生 agent |
 | uxdb | 优炫 UXDB | UXDB JDBC |
 | goldendb | GoldenDB | MySQL Connector/J |
 | databend | Databend | Databend JDBC |
@@ -75,7 +75,7 @@ HikariCP 会直接打进启用连接池的 Agent JAR。已经使用 DBX 托管 J
 
 对于新 agent，只要存在成熟、许可证兼容的原生驱动，优先选择**原生（Go 或 Rust）驱动**而非 Java/JDBC agent。原生 agent 以单一自包含可执行文件发布，无需 JRE，可显著降低内存占用和启动时间 —— 完全避开 Java agent 即便空闲也要付出的 JVM 基线开销。
 
-- **原生（Go/Rust）** —— 存在可用原生驱动时首选。参考 `drivers/oracle-go`（go-ora）、`drivers/kingbase-go`（gokb）、`drivers/xugu` 和 `drivers/rabbitmq`（amqp091-go）。无需 JRE 下载与管理。
+- **原生（Go/Rust）** —— 存在可用原生驱动时首选。参考 `drivers/oracle-go`（go-ora）、`drivers/kingbase-go`（gokb）、`drivers/vastbase-go`（openGauss connector）、`drivers/xugu` 和 `drivers/rabbitmq`（amqp091-go）。无需 JRE 下载与管理。
 - **Java/JDBC** —— 当某数据库只有 JDBC 驱动，或原生驱动不成熟、缺乏维护时的默认兜底方案。多数 agent 仍属此类。
 
 原生 agent 实现与 Java agent 相同的 JSON-RPC 契约和 `versions.json` 登记；它发布的是 `agent` 可执行文件而非 `agent.jar`。若同一数据库同时保留原生和 Java 源码实现，默认只发布原生产物；只有 Java 变体以独立兼容配置登记时才同时发布，例如 `oracle-legacy` / `oracle-10g`。
@@ -88,11 +88,12 @@ HikariCP 会直接打进启用连接池的 Agent JAR。已经使用 DBX 托管 J
 ./gradlew shadowJar
 (cd drivers/oracle-go && go build -o agent .)
 (cd drivers/kingbase-go && go build -o agent .)
+(cd drivers/vastbase-go && go build -o agent .)
 (cd drivers/xugu && go build -o agent .)
 (cd drivers/rabbitmq && go build -o agent .)
 ```
 
-产物 JAR 在 `drivers/{module}/build/libs/`。原生 agent 从 `drivers/oracle-go`、`drivers/kingbase-go`、`drivers/xugu` 和 `drivers/rabbitmq` 构建。
+产物 JAR 在 `drivers/{module}/build/libs/`。原生 agent 从 `drivers/oracle-go`、`drivers/kingbase-go`、`drivers/vastbase-go`、`drivers/xugu` 和 `drivers/rabbitmq` 构建。
 
 ### 本地 DBX 运行时测试
 

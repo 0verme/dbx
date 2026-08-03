@@ -48,9 +48,10 @@ const nativeDriverDirectories = {
   duckdb: "duckdb",
   oracle: "oracle-go",
   kingbase: "kingbase-go",
+  vastbase: "vastbase-go",
   rabbitmq: "rabbitmq",
 };
-const nativeDriverModules = new Set(["duckdb", "oracle", "xugu", "kingbase", "rabbitmq"]);
+const nativeDriverModules = new Set(["duckdb", "oracle", "xugu", "kingbase", "vastbase", "rabbitmq"]);
 
 function resolveAgentModule(moduleName, { legacyStandaloneModules, moduleExists, readModuleFile }) {
   let checkDir = null;

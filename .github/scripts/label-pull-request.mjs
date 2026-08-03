@@ -58,6 +58,7 @@ const DRIVER_DATABASE_ALIASES = {
   rabbitmq: "mq",
   rocketmq: "mq",
   "sqlserver-legacy": "sqlserver",
+  "vastbase-go": "vastbase",
 };
 
 const DIALECT_DATABASE_ALIASES = {

@@ -45,6 +45,18 @@ test("bumps the native RabbitMQ agent from its Go directory", () => {
   assert.equal(result.versions.rabbitmq, "0.1.1");
 });
 
+test("bumps the native Vastbase agent from its independent Go directory", () => {
+  const result = evaluateAgentVersionBump({
+    versions: { vastbase: "0.1.37" },
+    changedFiles: ["agents/drivers/vastbase-go/main.go"],
+    moduleExists: (path) => path === "agents/drivers/vastbase-go",
+    readModuleFile: () => "",
+  });
+
+  assert.equal(result.versions.vastbase, "0.1.38");
+  assert.deepEqual(result.nativeModules, ["vastbase"]);
+});
+
 test("builds a manually versioned module even without runtime file changes", () => {
   const result = evaluateAgentVersionBump({
     versions: { duckdb: "0.1.1" },

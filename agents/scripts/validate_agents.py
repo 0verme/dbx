@@ -16,6 +16,7 @@ NATIVE_ONLY_AGENT_MODULES = {
     "duckdb": "drivers/duckdb",
     "oracle": "drivers/oracle-go",
     "kingbase": "drivers/kingbase-go",
+    "vastbase": "drivers/vastbase-go",
     "xugu": "drivers/xugu",
     "rabbitmq": "drivers/rabbitmq",
 }

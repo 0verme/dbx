@@ -9,7 +9,7 @@ def pooledJdbcProjects = [
     'firebird', 'gbase8a', 'gbase8s', 'goldendb', 'h2', 'h2-legacy', 'highgo', 'hive',
     'informix', 'iotdb', 'iris', 'kylin', 'neo4j', 'oceanbase-oracle', 'oscar', 'saphana',
     'snowflake', 'spark', 'sqlserver-legacy', 'sundb', 'tdengine', 'teradata', 'trino', 'uxdb',
-    'vastbase', 'vertica', 'yashandb'
+    'vertica', 'yashandb'
 ] as Set
 def agentProjects = subprojects.findAll { !infrastructureProjects.contains(it.name) }
 def jdbcAgentProjects = agentProjects.findAll { !legacyStandaloneProjects.contains(it.name) }

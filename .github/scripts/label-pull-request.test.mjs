@@ -25,6 +25,7 @@ const knownDatabaseTypes = new Set([
   "redis",
   "sqlite",
   "sqlserver",
+  "vastbase",
 ]);
 
 test("labels a desktop MySQL UI fix", () => {
@@ -54,11 +55,12 @@ test("maps agent and dialect paths to existing database types", () => {
   assert.deepEqual(
     inferDatabaseTypes([
       "agents/drivers/oracle-go/go.mod",
+      "agents/drivers/vastbase-go/go.mod",
       "agents/drivers/kafka/build.gradle",
       "plugins/dialects/postgresql.yaml",
       "plugins/dialects/oceanbase.yaml",
     ], knownDatabaseTypes),
-    ["mq", "oceanbase-oracle", "oracle", "postgres"],
+    ["mq", "oceanbase-oracle", "oracle", "postgres", "vastbase"],
   );
 });
 

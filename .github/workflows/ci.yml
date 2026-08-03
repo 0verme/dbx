@@ -538,6 +538,10 @@ jobs:
         run: go test ./...
         working-directory: agents/drivers/rabbitmq
 
+      - name: Vastbase native agent tests
+        run: go test ./...
+        working-directory: agents/drivers/vastbase-go
+
       - name: Oracle native agent build
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/dbx-agent-oracle-linux-x64 .
         working-directory: agents/drivers/oracle-go
@@ -549,6 +553,10 @@ jobs:
       - name: RabbitMQ native agent build
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/dbx-agent-rabbitmq-linux-x64 .
         working-directory: agents/drivers/rabbitmq
+
+      - name: Vastbase native agent build
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/dbx-agent-vastbase-linux-x64 .
+        working-directory: agents/drivers/vastbase-go
 
       - name: RabbitMQ native agent integration tests
         shell: bash
