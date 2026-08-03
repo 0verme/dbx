@@ -35,6 +35,9 @@ func (s *server) executeQuery(options queryOptions) (queryResult, error) {
 	}
 	if len(columns) == 0 {
 		err := iter.Close()
+		if err == nil && isSchemaChangingCQL(options.SQL) {
+			s.runtime.invalidateMetadataSession()
+		}
 		result.ExecutionTimeMS = time.Since(start).Milliseconds()
 		return result, err
 	}
@@ -326,4 +329,17 @@ func trimStatementSQL(sql string) string {
 		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, ";"))
 	}
 	return trimmed
+}
+
+func isSchemaChangingCQL(sql string) bool {
+	fields := strings.Fields(trimStatementSQL(sql))
+	if len(fields) == 0 {
+		return false
+	}
+	switch strings.ToUpper(fields[0]) {
+	case "CREATE", "ALTER", "DROP":
+		return true
+	default:
+		return false
+	}
 }

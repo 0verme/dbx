@@ -48,3 +48,20 @@ func TestTrimStatementSQL(t *testing.T) {
 		t.Fatalf("unexpected trimmed SQL: %q", got)
 	}
 }
+
+func TestIsSchemaChangingCQL(t *testing.T) {
+	for _, sql := range []string{
+		"CREATE TABLE app.events (id int PRIMARY KEY)",
+		" alter keyspace app with replication = {'class': 'SimpleStrategy'} ",
+		"DROP INDEX app.events_idx;",
+	} {
+		if !isSchemaChangingCQL(sql) {
+			t.Fatalf("expected schema-changing CQL: %q", sql)
+		}
+	}
+	for _, sql := range []string{"SELECT * FROM app.events", "INSERT INTO app.events (id) VALUES (1)", "TRUNCATE app.events"} {
+		if isSchemaChangingCQL(sql) {
+			t.Fatalf("unexpected schema-changing CQL: %q", sql)
+		}
+	}
+}

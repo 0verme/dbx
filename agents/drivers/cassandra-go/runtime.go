@@ -24,13 +24,15 @@ const (
 var errOperationCapacity = errors.New("agent operation capacity is temporarily exhausted")
 
 type connectionRuntime struct {
-	mu              sync.Mutex
-	config          cassandraConfig
-	sessions        map[string]*gocql.Session
-	permits         chan struct{}
-	metadataPermits chan struct{}
-	references      int
-	closed          bool
+	mu               sync.Mutex
+	config           cassandraConfig
+	sessions         map[string]*gocql.Session
+	retiredSessions  []*gocql.Session
+	permits          chan struct{}
+	metadataPermits  chan struct{}
+	activeOperations int
+	references       int
+	closed           bool
 }
 
 func newConnectionRuntime(cp connectParams) (*connectionRuntime, error) {
@@ -69,6 +71,23 @@ func (r *connectionRuntime) sessionFor(keyspace string) (*gocql.Session, error) 
 	return session, nil
 }
 
+func (r *connectionRuntime) invalidateMetadataSession() {
+	var retiredSession *gocql.Session
+	r.mu.Lock()
+	if session := r.sessions[""]; session != nil {
+		delete(r.sessions, "")
+		if r.activeOperations == 0 {
+			retiredSession = session
+		} else {
+			r.retiredSessions = append(r.retiredSessions, session)
+		}
+	}
+	r.mu.Unlock()
+	if retiredSession != nil {
+		retiredSession.Close()
+	}
+}
+
 func (r *connectionRuntime) acquire(metadata bool) (func(), error) {
 	ctx, cancel := context.WithTimeout(context.Background(), operationPermitTimeout)
 	defer cancel()
@@ -83,10 +102,24 @@ func (r *connectionRuntime) acquire(metadata bool) (func(), error) {
 	}
 	select {
 	case r.permits <- struct{}{}:
+		r.mu.Lock()
+		r.activeOperations++
+		r.mu.Unlock()
 		return func() {
+			var retiredSessions []*gocql.Session
+			r.mu.Lock()
+			r.activeOperations--
+			if r.activeOperations == 0 && len(r.retiredSessions) > 0 {
+				retiredSessions = r.retiredSessions
+				r.retiredSessions = nil
+			}
+			r.mu.Unlock()
 			<-r.permits
 			if metadataAcquired {
 				<-r.metadataPermits
+			}
+			for _, session := range retiredSessions {
+				session.Close()
 			}
 		}, nil
 	case <-ctx.Done():
@@ -105,9 +138,14 @@ func (r *connectionRuntime) close() {
 	}
 	r.closed = true
 	sessions := r.sessions
+	retiredSessions := r.retiredSessions
 	r.sessions = map[string]*gocql.Session{}
+	r.retiredSessions = nil
 	r.mu.Unlock()
 	for _, session := range sessions {
+		session.Close()
+	}
+	for _, session := range retiredSessions {
 		session.Close()
 	}
 }
