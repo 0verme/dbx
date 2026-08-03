@@ -14,7 +14,7 @@ import { copyToClipboard, readTextFromClipboard } from "@/lib/common/clipboard";
 import { resolveExecutableSql, type SqlExecutionSnapshot, type SqlExecutionOverride, type SqlExecutionCandidate } from "@/lib/sql/sqlExecutionTarget";
 import { buildExecutionCandidates, hasMultipleExecutionTargets, supportsExecutionTargetPicker, type SqlTextRange } from "@/lib/sql/sqlStatementRanges";
 import { executableStatementRangeAtCursor, executableStatementRangeCacheForDoc, executableStatementRangeStartingAt as executableStatementRangeStartingAtLine, type ExecutableStatementRangeCache } from "@/lib/sql/executableStatementRangeCache";
-import { currentStatementFrameRangeTo, visualSqlColumnsWithInlineHints } from "@/lib/sql/currentStatementFrame";
+import { currentStatementFrameRangeTo, shouldRebuildCurrentStatementFrame, visualSqlColumnsWithInlineHints } from "@/lib/sql/currentStatementFrame";
 import { expandToSqlStatementWindow, parseInsertValueHints } from "@/lib/sql/insertValueHints";
 import { insertValueHintColumnNames } from "@/lib/sql/insertValueHintColumns";
 import { formatSqlText, compressSqlText, type SqlFormatDialect } from "@/lib/sql/sqlFormatter";
@@ -3932,11 +3932,19 @@ onMounted(async () => {
   const currentStatementFrameHighlighter = ViewPlugin.fromClass(
     class {
       decorations: import("@codemirror/view").DecorationSet;
+      private configuration: string;
       constructor(view: import("@codemirror/view").EditorView) {
+        this.configuration = this.currentConfiguration();
         this.decorations = this.getDeco(view);
       }
       update(update: import("@codemirror/view").ViewUpdate) {
+        const configuration = this.currentConfiguration();
+        if (!shouldRebuildCurrentStatementFrame({ docChanged: update.docChanged, selectionSet: update.selectionSet, configurationChanged: configuration !== this.configuration })) return;
+        this.configuration = configuration;
         this.decorations = this.getDeco(update.view);
+      }
+      currentConfiguration() {
+        return `${settingsStore.editorSettings.showCurrentStatementFrame}:${settingsStore.editorSettings.showInsertValueHints}:${props.databaseType ?? ""}`;
       }
       getDeco(view: import("@codemirror/view").EditorView) {
         if (!settingsStore.editorSettings.showCurrentStatementFrame) return Decoration.none;
@@ -3950,10 +3958,13 @@ onMounted(async () => {
         let insertValueHints: Array<{ from: number; column: string }> = [];
         try {
           if (settingsStore.editorSettings.showInsertValueHints && props.databaseType !== "redis" && props.databaseType !== "mongodb" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch") {
-            insertValueHints = parseInsertValueHints(view.state.doc.sliceString(range.from, range.to), { resolveTableColumns: getInsertValueHintTableColumns }).map((hint) => ({
-              ...hint,
-              from: hint.from + range.from,
-            }));
+            const statementSql = view.state.doc.sliceString(range.from, range.to);
+            if (/\binsert\b/i.test(statementSql)) {
+              insertValueHints = parseInsertValueHints(statementSql, { resolveTableColumns: getInsertValueHintTableColumns }).map((hint) => ({
+                ...hint,
+                from: hint.from + range.from,
+              }));
+            }
           }
         } catch {
           insertValueHints = [];
