@@ -14,6 +14,7 @@ import {
 
 const knownDatabaseTypes = new Set([
   "access",
+  "cassandra",
   "doris",
   "jdbc",
   "mongodb",
@@ -55,12 +56,13 @@ test("maps agent and dialect paths to existing database types", () => {
   assert.deepEqual(
     inferDatabaseTypes([
       "agents/drivers/oracle-go/go.mod",
+      "agents/drivers/cassandra-go/go.mod",
       "agents/drivers/vastbase-go/go.mod",
       "agents/drivers/kafka/build.gradle",
       "plugins/dialects/postgresql.yaml",
       "plugins/dialects/oceanbase.yaml",
     ], knownDatabaseTypes),
-    ["mq", "oceanbase-oracle", "oracle", "postgres", "vastbase"],
+    ["cassandra", "mq", "oceanbase-oracle", "oracle", "postgres", "vastbase"],
   );
 });
 

@@ -13,6 +13,7 @@ KOTLIN_SCAN_EXCLUDED_PARTS = {".git", ".gradle", "build"}
 DEFAULT_AGENT_JRE_KEY = "21"
 NON_JDBC_AGENT_MODULES = {"mongodb", "etcd", "zookeeper", "kafka", "rocketmq", "rabbitmq"}
 NATIVE_ONLY_AGENT_MODULES = {
+    "cassandra": "drivers/cassandra-go",
     "duckdb": "drivers/duckdb",
     "oracle": "drivers/oracle-go",
     "kingbase": "drivers/kingbase-go",
