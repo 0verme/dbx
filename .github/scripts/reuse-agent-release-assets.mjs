@@ -66,7 +66,8 @@ export function collectReusableAssetPlan({ registry, release, versions, modules,
       throw new Error(`Previous agent version mismatch for ${moduleName}: registry=${driver.version}, expected=${versions[moduleName]}`);
     }
 
-    if (driver.jar) {
+    const reusableJar = driver.jar && driver.jar.size > 0;
+    if (reusableJar) {
       driverAssets.push({
         ...requireReleaseAsset(assets, driver.jar, `${moduleName} Java package`),
         moduleName,
@@ -95,7 +96,7 @@ export function collectReusableAssetPlan({ registry, release, versions, modules,
       });
     }
 
-    if (!driver.jar && nativePlatforms.length === 0) {
+    if (!reusableJar && nativePlatforms.length === 0) {
       throw new Error(`Previous agent registry has no reusable artifacts for module: ${moduleName}`);
     }
   }

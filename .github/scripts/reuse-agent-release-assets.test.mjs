@@ -60,6 +60,37 @@ test("rejects an incomplete reusable native platform set", () => {
   );
 });
 
+test("ignores zero-size legacy JAR placeholders for native-only modules", () => {
+  const native = Object.fromEntries(
+    platforms.map((platform, index) => [platform, artifact(`dbx-agent-duckdb-0.1.2-${platform}.tar.zst`, String(index + 1))]),
+  );
+  const registry = {
+    drivers: {
+      duckdb: {
+        version: "0.1.2",
+        jar: {
+          url: "https://example.invalid/dbx-agent-duckdb-legacy-placeholder.jar",
+          size: 0,
+          sha256: "",
+        },
+        native,
+      },
+    },
+    jres: {},
+  };
+
+  const plan = collectReusableAssetPlan({
+    registry,
+    release: releaseFor(Object.values(native)),
+    versions: { duckdb: "0.1.2" },
+    modules: ["duckdb"],
+    reuseJre: false,
+  });
+
+  assert.equal(plan.driverAssets.length, 6);
+  assert.equal(plan.driverAssets.some((asset) => asset.kind === "jar"), false);
+});
+
 test("rejects a registry version that differs from the effective baseline", () => {
   const access = artifact("dbx-agent-access-0.1.33.tar.zst", "a");
   const registry = { drivers: { access: { version: "0.1.33", jar: access } }, jres: {} };
