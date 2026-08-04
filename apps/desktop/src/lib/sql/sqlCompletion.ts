@@ -2512,9 +2512,10 @@ function extractReferencedTables(sql: string, databaseType?: DatabaseType): SqlC
   ]);
 
   // STRAIGHT_JOIN is a standalone MySQL table introducer, not a modifier followed by JOIN.
-  const identifier = '(?:"[^"]+"|`[^`]+`|\\[[^\\]]+\\]|[A-Za-z_][\\w$@#]*)';
+  const unquotedIdentifier = databaseType === "sqlserver" ? "[_\\p{ID_Start}][$@#_\\u200c\\u200d\\p{ID_Continue}]*" : "[A-Za-z_][\\w$@#]*";
+  const identifier = `(?:"[^"]+"|\`[^\`]+\`|\\[[^\\]]+\\]|${unquotedIdentifier})`;
   const qualifiedSeparator = databaseType === "sqlserver" ? `\\.(?:${identifier}|\\.${identifier})` : `\\.${identifier}`;
-  const pattern = new RegExp(`\\b(?:from|join|straight_join|update|apply)\\s+(${identifier}(?:${qualifiedSeparator}){0,3})(?:\\s+(?:as\\s+)?([A-Za-z_][\\w$]*))?`, "gi");
+  const pattern = new RegExp(`\\b(?:from|join|straight_join|update|apply)\\s+(${identifier}(?:${qualifiedSeparator}){0,3})(?:\\s+(?:as\\s+)?([A-Za-z_][\\w$]*))?`, databaseType === "sqlserver" ? "giu" : "gi");
   const referenced: SqlCompletionReferencedTable[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(sql)) !== null) {
