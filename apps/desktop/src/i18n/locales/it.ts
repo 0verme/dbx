@@ -2355,6 +2355,7 @@ export default withEnglishFallback({
     createFunction: "Nuova funzione",
     createTrigger: "Nuovo trigger",
     changeOpenMode: "Modifica modalità apertura",
+    closeRightTabs: "Chiudi le schede a destra",
   },
   visibleDatabases: {
     title: "Database Visibili",

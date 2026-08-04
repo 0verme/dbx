@@ -2176,6 +2176,7 @@ export default withEnglishFallback({
     fullTabTitle: "完整标签标题",
     closeTab: "关闭标签页",
     closeFixedTab: "关闭固定标签页",
+    closeRightTabs: "关闭右侧标签页",
     closeOtherTabs: "关闭其他标签页",
     closeOtherRegularTabs: "关闭其他普通标签页",
     closeOtherFixedTabs: "关闭其他固定标签页",

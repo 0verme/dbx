@@ -649,6 +649,7 @@ export const useQueryStore = defineStore("query", () => {
   const pendingCloseTabId = ref<string | null>(null);
   const pendingBatchCloseTabIds = ref<string[] | null>(null);
   const pendingBatchCloseFinalActiveTabId = ref<string | null | undefined>(undefined);
+  let pendingBatchCloseComplete: (() => void) | null = null;
   const isConfirmingAppClose = ref(false);
   const closeConfirmContext = ref<CloseConfirmContext>("tab");
   const tableStructureRefreshVersions = ref<Record<string, number>>({});
@@ -1903,11 +1904,14 @@ export const useQueryStore = defineStore("query", () => {
 
   function finishPendingBatchClose() {
     const finalActiveTabId = pendingBatchCloseFinalActiveTabId.value;
+    const onComplete = pendingBatchCloseComplete;
     pendingBatchCloseTabIds.value = null;
     pendingBatchCloseFinalActiveTabId.value = undefined;
+    pendingBatchCloseComplete = null;
     if (finalActiveTabId !== undefined) {
       activeTabId.value = finalActiveTabId && tabs.value.some((tab) => tab.id === finalActiveTabId) ? finalActiveTabId : null;
     }
+    return onComplete;
   }
 
   function continuePendingBatchClose() {
@@ -1917,7 +1921,7 @@ export const useQueryStore = defineStore("query", () => {
     const remainingIds = pendingIds.filter((id) => tabs.value.some((tab) => tab.id === id));
     pendingBatchCloseTabIds.value = remainingIds;
     if (remainingIds.length === 0) {
-      finishPendingBatchClose();
+      finishPendingBatchClose()?.();
       return;
     }
 
@@ -1928,15 +1932,20 @@ export const useQueryStore = defineStore("query", () => {
       return;
     }
 
-    finishPendingBatchClose();
+    const onComplete = finishPendingBatchClose();
     for (const id of remainingIds) closeTab(id, { force: true });
+    onComplete?.();
   }
 
-  function beginBatchClose(ids: string[], finalActiveTabId?: string | null) {
+  function beginBatchClose(ids: string[], finalActiveTabId?: string | null, onComplete?: () => void) {
     const uniqueIds = [...new Set(ids)].filter((id) => tabs.value.some((tab) => tab.id === id));
-    if (uniqueIds.length === 0) return;
+    if (uniqueIds.length === 0) {
+      onComplete?.();
+      return;
+    }
     pendingBatchCloseTabIds.value = uniqueIds;
     pendingBatchCloseFinalActiveTabId.value = finalActiveTabId;
+    pendingBatchCloseComplete = onComplete ?? null;
     continuePendingBatchClose();
   }
 
@@ -1998,12 +2007,14 @@ export const useQueryStore = defineStore("query", () => {
     const pendingId = pendingCloseTabId.value;
     const batchIds = pendingBatchCloseTabIds.value?.filter((id) => tabs.value.some((tab) => tab.id === id)) ?? null;
     const finalActiveTabId = pendingBatchCloseFinalActiveTabId.value;
+    const onBatchComplete = pendingBatchCloseComplete;
     const confirmingAppClose = isConfirmingAppClose.value;
 
     pendingCloseTabId.value = null;
     showCloseConfirm.value = false;
     pendingBatchCloseTabIds.value = null;
     pendingBatchCloseFinalActiveTabId.value = undefined;
+    pendingBatchCloseComplete = null;
     isConfirmingAppClose.value = false;
     closeConfirmContext.value = "tab";
 
@@ -2015,6 +2026,7 @@ export const useQueryStore = defineStore("query", () => {
     if (finalActiveTabId !== undefined) {
       activeTabId.value = finalActiveTabId && tabs.value.some((tab) => tab.id === finalActiveTabId) ? finalActiveTabId : null;
     }
+    if (batchIds) onBatchComplete?.();
   }
 
   function cancelClosePendingTab() {
@@ -2022,6 +2034,7 @@ export const useQueryStore = defineStore("query", () => {
     showCloseConfirm.value = false;
     pendingBatchCloseTabIds.value = null;
     pendingBatchCloseFinalActiveTabId.value = undefined;
+    pendingBatchCloseComplete = null;
     isConfirmingAppClose.value = false;
     closeConfirmContext.value = "tab";
   }
@@ -2054,12 +2067,14 @@ export const useQueryStore = defineStore("query", () => {
     const pendingId = pendingCloseTabId.value;
     const batchIds = pendingBatchCloseTabIds.value?.filter((id) => tabs.value.some((tab) => tab.id === id)) ?? null;
     const finalActiveTabId = pendingBatchCloseFinalActiveTabId.value;
+    const onBatchComplete = pendingBatchCloseComplete;
     const confirmingAppClose = isConfirmingAppClose.value;
 
     pendingCloseTabId.value = null;
     showCloseConfirm.value = false;
     pendingBatchCloseTabIds.value = null;
     pendingBatchCloseFinalActiveTabId.value = undefined;
+    pendingBatchCloseComplete = null;
     isConfirmingAppClose.value = false;
     closeConfirmContext.value = "tab";
 
@@ -2070,6 +2085,7 @@ export const useQueryStore = defineStore("query", () => {
     if (finalActiveTabId !== undefined) {
       activeTabId.value = finalActiveTabId && tabs.value.some((tab) => tab.id === finalActiveTabId) ? finalActiveTabId : null;
     }
+    if (batchIds) onBatchComplete?.();
     return "tabs" as const;
   }
 
@@ -2079,6 +2095,22 @@ export const useQueryStore = defineStore("query", () => {
       tabs.value.filter((tab) => tab.id !== id).map((tab) => tab.id),
       id,
     );
+  }
+
+  function closeRightTabs(id: string, onComplete?: () => void) {
+    const target = tabs.value.find((tab) => tab.id === id);
+    if (!target) return;
+
+    const groupedTabs = tabs.value.filter((tab) => Boolean(tab.pinned) === Boolean(target.pinned));
+    const targetIndex = groupedTabs.findIndex((tab) => tab.id === id);
+    const ids = groupedTabs.slice(targetIndex + 1).map((tab) => tab.id);
+    if (ids.length === 0) {
+      onComplete?.();
+      return;
+    }
+
+    const finalActiveTabId = activeTabId.value && !ids.includes(activeTabId.value) ? activeTabId.value : id;
+    beginBatchClose(ids, finalActiveTabId, onComplete);
   }
 
   function finalActiveTabAfterClosing(ids: string[]) {
@@ -5302,6 +5334,7 @@ export const useQueryStore = defineStore("query", () => {
     discardTabChanges,
     requestAppCloseConfirmation,
     closeOtherTabs,
+    closeRightTabs,
     closeOtherRegularTabs,
     closeRegularTabs,
     closeOtherFixedTabs,

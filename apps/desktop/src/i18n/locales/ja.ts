@@ -2382,6 +2382,7 @@ export default withEnglishFallback({
     createFunction: "新規関数",
     createTrigger: "新規トリガー",
     changeOpenMode: "開き方を変更",
+    closeRightTabs: "右側のタブを閉じる",
   },
   visibleDatabases: {
     title: "表示するデータベース",

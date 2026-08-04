@@ -2357,6 +2357,7 @@ export default withEnglishFallback({
     createFunction: "Nueva función",
     createTrigger: "Nuevo disparador",
     changeOpenMode: "Modificar modo de apertura",
+    closeRightTabs: "Cerrar pestañas a la derecha",
   },
   visibleDatabases: {
     title: "Bases de datos visibles",
