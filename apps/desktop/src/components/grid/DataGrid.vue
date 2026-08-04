@@ -5534,6 +5534,8 @@ const {
   copyText,
   copyCell,
   copyRow,
+  copyRowCount,
+  canCopyRow,
   copyAll,
   copyWithExtractor,
   previewWithExtractor,
@@ -7113,6 +7115,7 @@ watch(
     }
     clearCellSelection();
     clearRowSelection();
+    invalidateSyntheticContextSelection();
     closeCellDetails();
     closeDetailDialogs();
     if (shouldPreserveTranspose) {
@@ -8298,7 +8301,11 @@ function copySubmenu(): ContextMenuItem {
   if (contextColumn.value) {
     items.push({ label: t("grid.copyCell"), action: copyCell });
   }
-  items.push({ label: isMultiRow.value ? t("grid.copyRows", { count: multiRowCount.value }) : t("grid.copyRow"), action: copyRow });
+  items.push({
+    label: copyRowCount.value > 1 ? t("grid.copyRows", { count: copyRowCount.value }) : t("grid.copyRow"),
+    action: copyRow,
+    disabled: () => !canCopyRow.value,
+  });
   items.push({ label: "", separator: true });
   items.push(...buildExtractorContextItems());
   items.push({ label: "", separator: true });
