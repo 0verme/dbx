@@ -4955,6 +4955,7 @@ export default withEnglishFallback({
     shortcutPasteSidebarSelection: "サイドバーに貼り付け",
     shortcutEditSidebarConnection: "サイドバー接続を編集",
     shortcutOpenDataInNewTab: "新しいデータタブで開く（マウスクリック）",
+    shortcutViewTableDdl: "テーブルDDLを表示",
     shortcutSendSelectionToAi: "選択範囲をAIに送信",
     shortcutToggleFold: "折りたたみの切り替え",
     shortcutScopeGlobal: "グローバル",

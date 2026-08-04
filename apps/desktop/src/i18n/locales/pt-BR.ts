@@ -4935,6 +4935,7 @@ export default withEnglishFallback({
     shortcutPasteSidebarSelection: "Colar na barra lateral",
     shortcutEditSidebarConnection: "Editar conexão da barra lateral",
     shortcutOpenDataInNewTab: "Abrir dados em nova aba (clique do mouse)",
+    shortcutViewTableDdl: "Ver DDL da tabela",
     shortcutSendSelectionToAi: "Enviar seleção para IA",
     shortcutToggleFold: "Recolher/expandir código",
     shortcutScopeGlobal: "Global",

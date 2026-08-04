@@ -4791,6 +4791,7 @@ export default withEnglishFallback({
     shortcutPasteSidebarSelection: "사이드바에 붙여넣기",
     shortcutEditSidebarConnection: "사이드바 연결 편집",
     shortcutOpenDataInNewTab: "새 탭에서 데이터 열기 (마우스 클릭)",
+    shortcutViewTableDdl: "테이블 DDL 보기",
     shortcutSendSelectionToAi: "선택 영역을 AI로 보내기",
     shortcutScopeGlobal: "전역",
     shortcutScopeEditor: "SQL 편집기",

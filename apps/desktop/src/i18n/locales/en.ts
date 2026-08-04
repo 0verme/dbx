@@ -5196,6 +5196,7 @@ export default {
     shortcutPasteSidebarSelection: "Paste into sidebar",
     shortcutEditSidebarConnection: "Edit sidebar connection",
     shortcutOpenDataInNewTab: "Open data in new tab (mouse click)",
+    shortcutViewTableDdl: "View table DDL",
     shortcutSendSelectionToAi: "Send selection to AI",
     shortcutToggleFold: "Toggle fold",
     shortcutScopeGlobal: "Global",

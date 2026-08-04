@@ -4933,6 +4933,7 @@ export default withEnglishFallback({
     shortcutPasteSidebarSelection: "Incolla nella barra laterale",
     shortcutEditSidebarConnection: "Modifica connessione barra laterale",
     shortcutOpenDataInNewTab: "Apri dati in una nuova scheda (clic del mouse)",
+    shortcutViewTableDdl: "Visualizza DDL tabella",
     shortcutSendSelectionToAi: "Invia selezione ad AI",
     shortcutToggleFold: "Comprimi/espandi codice",
     shortcutScopeGlobal: "Globale",

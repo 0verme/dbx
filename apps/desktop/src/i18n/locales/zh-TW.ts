@@ -4385,6 +4385,7 @@ export default withEnglishFallback({
     shortcutPasteSidebarSelection: "貼到側邊欄",
     shortcutEditSidebarConnection: "編輯側邊欄連線",
     shortcutOpenDataInNewTab: "在新資料分頁中開啟（滑鼠點擊）",
+    shortcutViewTableDdl: "檢視資料表 DDL",
     shortcutSendSelectionToAi: "傳送選取程式碼至 AI",
     shortcutToggleFold: "切換折疊",
     shortcutScopeGlobal: "全域",
