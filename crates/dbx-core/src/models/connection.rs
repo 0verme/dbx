@@ -545,6 +545,10 @@ pub enum DatabaseType {
     /// system is determined by `external_config.systemKind`.
     #[serde(rename = "mq")]
     MessageQueue,
+    /// MQTT broker connection. The broker address, client ID, and authentication
+    /// are stored in `external_config`.
+    #[serde(rename = "mqtt")]
+    Mqtt,
 }
 
 #[derive(Deserialize)]
@@ -1091,6 +1095,7 @@ impl ConnectionConfig {
             }
             DatabaseType::Jdbc => "jdbc:<redacted>".to_string(),
             DatabaseType::MessageQueue => self.message_queue_admin_url(),
+            DatabaseType::Mqtt => self.mqtt_broker_url(),
             DatabaseType::Nacos => self.nacos_admin_url(),
         }
     }
@@ -1321,6 +1326,7 @@ impl ConnectionConfig {
                 self.connection_string.as_deref().filter(|value| !value.is_empty()).unwrap_or("jdbc:").to_string()
             }
             DatabaseType::MessageQueue => self.message_queue_admin_url(),
+            DatabaseType::Mqtt => self.mqtt_broker_url(),
             DatabaseType::Nacos => self.nacos_admin_url(),
         }
     }
@@ -1356,6 +1362,18 @@ impl ConnectionConfig {
             .filter(|value| !value.is_empty())
             .unwrap_or("nacos://")
             .to_string()
+    }
+
+    fn mqtt_broker_url(&self) -> String {
+        #[cfg(feature = "mq-admin")]
+        {
+            use crate::mqtt::types::MqttConnectionConfig;
+            if let Ok(config) = MqttConnectionConfig::from_connection(self) {
+                return config.broker_url();
+            }
+        }
+        let scheme = if self.ssl { "mqtts" } else { "mqtt" };
+        format!("{}://{}:{}", scheme, self.host, self.port)
     }
 
     fn normalized_url_params(&self) -> String {
