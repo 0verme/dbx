@@ -1526,6 +1526,7 @@ export default withEnglishFallback({
     searchColumn: "搜索列/注释...",
     noColumnsFound: "未找到列",
     queryError: "查询出错",
+    saveErrorTitle: "数据修改保存失败",
     dataUnavailable: "表数据需要重新加载。",
     dataUnavailableHintPrefix: "按 ",
     dataUnavailableHintSuffix: " 或点击下方刷新按钮重新加载。",

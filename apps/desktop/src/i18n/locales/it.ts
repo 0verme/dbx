@@ -1406,6 +1406,7 @@ export default withEnglishFallback({
     searchColumn: "Cerca colonna/commento...",
     noColumnsFound: "Nessuna colonna trovata",
     queryError: "Errore Query",
+    saveErrorTitle: "Impossibile salvare le modifiche",
     dataUnavailable: "I dati della tabella devono essere ricaricati.",
     dataUnavailableHintPrefix: "Premi ",
     dataUnavailableHintSuffix: " o fai clic su Aggiorna qui sotto per ricaricare.",

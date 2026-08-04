@@ -1410,6 +1410,7 @@ export default withEnglishFallback({
     dataUnavailableHintPrefix: "按 ",
     dataUnavailableHintSuffix: " 或點擊下方重新整理來重新載入。",
     queryError: "查詢出錯",
+    saveErrorTitle: "資料修改儲存失敗",
     refresh: "重新整理",
     undoChange: "復原變更",
     redoChange: "重做變更",

@@ -1408,6 +1408,7 @@ export default withEnglishFallback({
     searchColumn: "Buscar coluna/comentário...",
     noColumnsFound: "Nenhuma coluna encontrada",
     queryError: "Erro na Consulta",
+    saveErrorTitle: "Falha ao salvar alterações",
     dataUnavailable: "Os dados da tabela precisam ser recarregados.",
     dataUnavailableHintPrefix: "Pressione ",
     dataUnavailableHintSuffix: " ou clique em Atualizar abaixo para recarregar.",

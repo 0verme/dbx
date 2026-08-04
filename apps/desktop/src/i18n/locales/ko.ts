@@ -1420,6 +1420,7 @@ export default withEnglishFallback({
     searchColumn: "컬럼/주석 검색...",
     noColumnsFound: "컬럼이 없습니다",
     queryError: "쿼리 오류",
+    saveErrorTitle: "변경사항 저장 실패",
     dataUnavailable: "테이블 데이터를 다시 불러와야 합니다.",
     cachedResultUnavailable: "캐시된 결과가 없거나 호환되지 않습니다.",
     reexecuteQuery: "쿼리 다시 실행",

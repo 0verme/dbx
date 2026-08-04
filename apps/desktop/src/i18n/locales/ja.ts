@@ -1424,6 +1424,7 @@ export default withEnglishFallback({
     searchColumn: "列/コメントを検索...",
     noColumnsFound: "列が見つかりません",
     queryError: "クエリエラー",
+    saveErrorTitle: "変更の保存に失敗しました",
     dataUnavailable: "テーブルデータを再読み込みする必要があります。",
     dataUnavailableHintPrefix: "",
     dataUnavailableHintSuffix: " を押すか、下の更新ボタンをクリックして再読み込みしてください。",
