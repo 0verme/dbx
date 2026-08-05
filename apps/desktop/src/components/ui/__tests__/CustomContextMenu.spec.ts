@@ -164,7 +164,7 @@ describe("CustomContextMenu lifecycle", () => {
     app.unmount();
   });
 
-  it("renders checked state after the menu label", async () => {
+  it("renders checked state in the leading icon slot", async () => {
     const root = defineComponent({
       setup() {
         return () =>
@@ -188,7 +188,8 @@ describe("CustomContextMenu lifecycle", () => {
 
     const current = Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent?.includes("Current"));
     const other = Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent?.includes("Other"));
-    expect(current?.lastElementChild?.tagName.toLowerCase()).toBe("svg");
+    expect(current?.firstElementChild?.querySelector("svg")).not.toBeNull();
+    expect(current?.lastElementChild?.tagName.toLowerCase()).toBe("span");
     expect(other?.querySelector("svg")).toBeNull();
 
     app.unmount();

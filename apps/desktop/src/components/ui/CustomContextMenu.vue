@@ -282,10 +282,10 @@ onBeforeUnmount(() => {
           </div>
           <button v-else :disabled="itemIsDisabled(item)" :class="[...itemButtonClass(item.variant), activeSubIndex === index ? 'bg-accent text-accent-foreground' : '']" @click="handleItemClick(item)" @mouseenter="(e) => onItemMouseEnter(index, e)" @mouseleave="onItemMouseLeave">
             <span class="flex size-4 shrink-0 items-center justify-center">
-              <component :is="item.icon" v-if="item.icon" :class="['size-4', item.iconClass]" />
+              <Check v-if="item.checked" class="size-4 text-primary" />
+              <component :is="item.icon" v-else-if="item.icon" :class="['size-4', item.iconClass]" />
             </span>
             <span class="flex-1 whitespace-nowrap">{{ item.label }}</span>
-            <Check v-if="item.checked" class="ml-4 size-4 shrink-0 text-primary" />
             <span v-if="item.shortcut" class="ml-8 inline-flex shrink-0 items-center gap-1 text-muted-foreground">
               <kbd v-for="key in shortcutKeys(item.shortcut)" :key="key" class="min-w-4 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs">{{ key }}</kbd>
             </span>
@@ -313,10 +313,10 @@ onBeforeUnmount(() => {
           </div>
           <button v-else :disabled="itemIsDisabled(child)" :class="itemButtonClass(child.variant)" @click="handleSubItemClick(child)">
             <span class="flex size-4 shrink-0 items-center justify-center">
-              <component :is="child.icon" v-if="child.icon" :class="['size-4', child.iconClass]" />
+              <Check v-if="child.checked" class="size-4 text-primary" />
+              <component :is="child.icon" v-else-if="child.icon" :class="['size-4', child.iconClass]" />
             </span>
             <span class="flex-1 whitespace-nowrap">{{ child.label }}</span>
-            <Check v-if="child.checked" class="ml-4 size-4 shrink-0 text-primary" />
             <span v-if="child.shortcut" class="ml-8 inline-flex shrink-0 items-center gap-1 text-muted-foreground">
               <kbd v-for="key in shortcutKeys(child.shortcut)" :key="key" class="min-w-4 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs">{{ key }}</kbd>
             </span>
