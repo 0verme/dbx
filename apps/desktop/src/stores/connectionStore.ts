@@ -122,7 +122,6 @@ import i18n from "@/i18n";
 import type { MqAdminConfig } from "@/types/mq";
 import { RABBITMQ_MQ_TENANT, resolveMqSystemKindFromConnection } from "@/lib/mq/mqConsoleDefaults";
 import { applySidebarDatabaseStorage, applySidebarTableStorage, sidebarDatabaseNames, supportsSidebarDatabaseStorage, supportsSidebarTableStorage, type SidebarTableStorageScope } from "@/lib/sidebar/sidebarDatabaseStorage";
-import { sidebarVisibleFilterSummary } from "@/lib/sidebar/sidebarVisibleFilterSummary";
 
 const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
 const ACTIVE_CONNECTION_STORAGE_KEY = "dbx-active-connection";
@@ -344,7 +343,6 @@ export const useConnectionStore = defineStore("connection", () => {
   const completionColumnsCache = ref<Record<string, ColumnInfo[]>>({});
   const completionForeignKeysCache = ref<Record<string, ForeignKeyInfo[]>>({});
   const completionDatabasesCache = ref<Record<string, string[]>>({});
-  const primaryVisibleObjectNames = ref<Record<string, string[]>>({});
   const sqlServerCompletionContextCache = ref<Record<string, SqlServerCompletionContext>>({});
   const elasticsearchCompletionIndicesCache = ref<Record<string, string[]>>({});
   const redisCompletionKeysCache = ref<Record<string, string[]>>({});
@@ -2377,7 +2375,6 @@ export const useConnectionStore = defineStore("connection", () => {
       clearConnectionError(id);
       connectionErrorRevisions.delete(id);
       connectedIds.value.delete(id);
-      clearPrimaryVisibleObjectNames(id);
       clearConnectionIdentifierQuote(id);
       clearConnectionHealthCheck(id);
       sidebarLayout.value = removeConnectionFromSidebarLayout(sidebarLayout.value, id);
@@ -2413,7 +2410,6 @@ export const useConnectionStore = defineStore("connection", () => {
     connections.value = nextConnections;
     rebuildTreeNodes();
     if (!runtimeConfigChanged) return;
-    clearPrimaryVisibleObjectNames(config.id);
     connectedIds.value.delete(config.id);
     clearConnectionIdentifierQuote(config.id);
     clearConnectionHealthCheck(config.id);
@@ -2557,25 +2553,6 @@ export const useConnectionStore = defineStore("connection", () => {
     if (!config) return;
     await updateVisibleDatabasesConfig(connectionId, normalizeVisibleDatabaseSelection(databaseNames, databaseNames));
     await reloadConnectionDatabaseChildren(connectionId);
-  }
-
-  function recordPrimaryVisibleObjectNames(connectionId: string, objectNames: readonly string[]) {
-    const names = [...objectNames];
-    const existing = primaryVisibleObjectNames.value[connectionId];
-    if (existing?.length === names.length && existing.every((name, index) => name === names[index])) return;
-    primaryVisibleObjectNames.value = { ...primaryVisibleObjectNames.value, [connectionId]: names };
-  }
-
-  function clearPrimaryVisibleObjectNames(connectionId: string) {
-    if (!(connectionId in primaryVisibleObjectNames.value)) return;
-    const next = { ...primaryVisibleObjectNames.value };
-    delete next[connectionId];
-    primaryVisibleObjectNames.value = next;
-  }
-
-  function getSidebarVisibleFilterSummary(connectionId: string) {
-    const config = getConfig(connectionId);
-    return config ? sidebarVisibleFilterSummary(config, primaryVisibleObjectNames.value[connectionId]) : null;
   }
 
   async function clearVisibleDatabases(connectionId: string) {
@@ -3060,16 +3037,10 @@ export const useConnectionStore = defineStore("connection", () => {
               }
             }
             const [databases, schemas] = await Promise.all([withMetadataLoadTimeout(connectionId, api.listDatabases(connectionId), "databases"), withMetadataLoadTimeout(connectionId, api.listSchemas(connectionId, "main"), "schemas")]);
-            const databaseNames = databases.map((database) => database.name);
-            const visibleNames = filterDatabaseNamesForConnection(databaseNames, config);
-            const visibleNameSet = new Set(visibleNames);
-            const visibleDatabases = databases.filter((database) => visibleNameSet.has(database.name));
-            const visibleSchemas = visibleNameSet.has("main") ? schemas : [];
-            const children = withSavedSqlRoot(connectionId, buildDuckDbConnectionTreeNodes(connectionId, visibleDatabases, visibleSchemas), node);
+            const children = withSavedSqlRoot(connectionId, buildDuckDbConnectionTreeNodes(connectionId, databases, schemas), node);
             if (isSidebarSearchQueryChanged(options)) return;
             const targetNode = treeNodeLoadTarget(load);
             if (!targetNode) return;
-            recordPrimaryVisibleObjectNames(connectionId, databaseNames);
             setChildren(targetNode, children);
             await savePersistedConnectionTreeChildren(cacheKey, targetNode.children || children);
           } else if (config && connectionUsesVisibleSchemaFilter(config)) {
@@ -3084,7 +3055,7 @@ export const useConnectionStore = defineStore("connection", () => {
                 return;
               }
             }
-            const schemas = await withMetadataLoadTimeout(connectionId, api.listSchemas(connectionId, effectiveDb), "schemas");
+            const schemas = await withMetadataLoadTimeout(connectionId, api.listSchemas(connectionId, effectiveDb, true), "schemas");
             const visibleSchemas = filterSchemaNamesForConnection(schemas, schemaFilterConfig, effectiveDb || "", { showSystemSchemas });
             const schemaNodes: TreeNode[] = sortSidebarNames(visibleSchemas).map((s) => ({
               id: `${connectionId}:${s}:${s}`,
@@ -3099,7 +3070,6 @@ export const useConnectionStore = defineStore("connection", () => {
             if (isSidebarSearchQueryChanged(options)) return;
             const targetNode = treeNodeLoadTarget(load);
             if (!targetNode) return;
-            recordPrimaryVisibleObjectNames(connectionId, schemas);
             setChildren(targetNode, withSavedSqlRoot(connectionId, schemaNodes, targetNode));
             await savePersistedConnectionTreeChildren(cacheKey, targetNode.children || schemaNodes);
           } else {
@@ -3183,10 +3153,6 @@ export const useConnectionStore = defineStore("connection", () => {
               if (isSidebarSearchQueryChanged(options)) return;
               const targetNode = treeNodeLoadTarget(load);
               if (!targetNode) return;
-              recordPrimaryVisibleObjectNames(
-                connectionId,
-                databases.map((database) => database.name),
-              );
               setChildren(targetNode, children);
               await savePersistedConnectionTreeChildren(cacheKey, targetNode.children || children);
             }
@@ -3242,10 +3208,6 @@ export const useConnectionStore = defineStore("connection", () => {
       const visibleNameSet = new Set(visibleNames);
       const targetNode = treeNodeLoadTarget(load);
       if (!targetNode) return;
-      recordPrimaryVisibleObjectNames(
-        connectionId,
-        dbs.map((db) => String(db.db)),
-      );
       setChildren(
         targetNode,
         withSavedSqlRoot(
@@ -3549,7 +3511,6 @@ export const useConnectionStore = defineStore("connection", () => {
       const visibleDbs = filterDatabaseNamesForConnection(dbs, config);
       const targetNode = treeNodeLoadTarget(load);
       if (!targetNode) return;
-      recordPrimaryVisibleObjectNames(connectionId, dbs);
       setChildren(
         targetNode,
         withSavedSqlRoot(
@@ -6937,8 +6898,6 @@ export const useConnectionStore = defineStore("connection", () => {
     ensureVisibleDatabase,
     setVisibleSchemas,
     clearVisibleSchemas,
-    recordPrimaryVisibleObjectNames,
-    getSidebarVisibleFilterSummary,
     removeConnection,
     removeConnections,
     editingConnectionId,

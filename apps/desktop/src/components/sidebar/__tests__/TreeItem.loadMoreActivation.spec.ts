@@ -61,7 +61,6 @@ function runtimeHost(): SidebarTreeRuntimeHost {
     handleRowClick: vi.fn(),
     handleRowDoubleClick: vi.fn(),
     handleRowKeydown: vi.fn(),
-    openPrimaryVisibleFilter: vi.fn(),
     openDataInNewTab: vi.fn(),
     requestPaste: vi.fn(() => false),
     toggleNode: vi.fn(),
