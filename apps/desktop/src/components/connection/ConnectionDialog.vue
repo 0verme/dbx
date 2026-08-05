@@ -34,6 +34,7 @@ import { applyParsedConnectionUrl, normalizeMongoConnectionString, parseConnecti
 import { buildOracleTnsConnectionString, normalizeOracleTnsAdminPath, parseOracleTnsConnectionString } from "@/lib/connection/oracleTnsConnection";
 import { parseConnectionDeepLink, type ConnectionDeepLinkDraft } from "@/lib/connection/connectionDeepLink";
 import { connectionUrlPlaceholder as getUrlPlaceholder } from "@/lib/connection/connectionPresentation";
+import { parseGaussdbHosts, serializeGaussdbHosts, type GaussdbHostEntry } from "@/lib/connection/gaussdbHosts";
 import { h2ConnectionModeForConfig, h2FileJdbcUrlWithPath, h2FilePathFromJdbcUrl, isH2SplitJdbcUrl, type H2ConnectionMode } from "@/lib/database/h2Connection";
 import { firstZooKeeperEndpoint, normalizeZooKeeperConnectString } from "@/lib/zookeeper/zookeeperConnection";
 import { setZooKeeperAuthScheme, zooKeeperAuthScheme as resolveZooKeeperAuthScheme, type ZooKeeperAuthScheme } from "@/lib/zookeeper/zookeeperConnectionOptions";
@@ -475,6 +476,36 @@ const gaussdbQuoteStyle = computed<GaussdbIdentifierQuoteStyle>({
     resetTestState();
   },
 });
+
+const gaussdbHostEntries = ref<GaussdbHostEntry[]>(parseGaussdbHosts(form.value.host, form.value.port));
+
+watch(
+  () => form.value.db_type,
+  (dbType) => {
+    if (dbType === "gaussdb") {
+      gaussdbHostEntries.value = parseGaussdbHosts(form.value.host, form.value.port);
+    }
+  },
+);
+
+watch(
+  () => [form.value.host, form.value.port] as const,
+  ([host, port]) => {
+    if (form.value.db_type === "gaussdb") {
+      gaussdbHostEntries.value = parseGaussdbHosts(host, port);
+    }
+  },
+);
+
+function addGaussdbHostEntry() {
+  const lastPort = gaussdbHostEntries.value.length > 0 ? gaussdbHostEntries.value[gaussdbHostEntries.value.length - 1].port : 5432;
+  gaussdbHostEntries.value.push({ host: "", port: lastPort });
+}
+
+function removeGaussdbHostEntry(idx: number) {
+  if (gaussdbHostEntries.value.length <= 1) return;
+  gaussdbHostEntries.value.splice(idx, 1);
+}
 
 function resizeNoteTextarea() {
   const textarea = noteTextareaRef.value;
@@ -3226,6 +3257,11 @@ function connectionConfigForSubmit(id: string, generatedName = ""): ConnectionCo
     if (!config.database) {
       throw new Error(t("connection.kingbaseDatabaseRequired"));
     }
+  }
+  if (config.db_type === "gaussdb") {
+    const serialized = serializeGaussdbHosts(gaussdbHostEntries.value);
+    config.host = serialized.host;
+    config.port = serialized.port;
   }
   if (isCloudflareD1Connection(config)) {
     normalizeCloudflareD1Connection(config);
@@ -6157,7 +6193,26 @@ function openExternalUrl(url: string) {
                     </div>
                   </div>
 
-                  <div v-if="form.db_type !== 'oracle' || form.oracle_connection_type !== 'tns'" class="grid grid-cols-4 items-center gap-4">
+                  <!-- GaussDB: multi-host dynamic list -->
+                  <template v-if="form.db_type === 'gaussdb'">
+                    <div class="grid grid-cols-4 items-start gap-4">
+                      <Label :class="connectionLabelTopClass">{{ t("connection.host") }}</Label>
+                      <div class="col-span-3 space-y-2">
+                        <div v-for="(entry, idx) in gaussdbHostEntries" :key="idx" class="flex items-start gap-2">
+                          <Input v-model="entry.host" class="flex-1 min-w-0 break-all" placeholder="127.0.0.1" />
+                          <Input v-model.number="entry.port" type="number" class="w-24 shrink-0" />
+                          <Button type="button" variant="outline" size="icon" class="h-9 w-9 shrink-0 mt-0.5" :disabled="gaussdbHostEntries.length <= 1" @click="removeGaussdbHostEntry(idx)">
+                            <Trash2 class="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" class="mt-1" @click="addGaussdbHostEntry">
+                          <Plus class="mr-1 h-3.5 w-3.5" />
+                          {{ t("connection.addHost") }}
+                        </Button>
+                      </div>
+                    </div>
+                  </template>
+                  <div v-else-if="form.db_type !== 'oracle' || form.oracle_connection_type !== 'tns'" class="grid grid-cols-4 items-center gap-4">
                     <Label :class="connectionLabelClass">{{ form.db_type === "elasticsearch" && elasticsearchConnectionMode === "kibana" ? t("connection.elasticsearchKibanaHost") : t("connection.host") }}</Label>
                     <Input v-model="form.host" class="col-span-2" />
                     <Input v-model.number="form.port" type="number" class="col-span-1" @input="markSqlServerPortExplicit" />
