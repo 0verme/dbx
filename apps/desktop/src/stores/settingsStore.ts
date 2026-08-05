@@ -684,7 +684,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   prefillNewQueryWithSelect: true,
   updateNotificationsEnabled: true,
   sidebarHiddenTablePrefixes: [],
-  sidebarObjectInfoMode: "comment-aligned",
+  sidebarObjectInfoMode: "comment-inline",
   sidebarAllowHorizontalScroll: false,
   columnFormatters: {},
   customColumnFormatters: {},
