@@ -32,6 +32,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useTheme } from "@/composables/useTheme";
 import { useToast } from "@/composables/useToast";
 import {
+  buildSelectStarExpansion,
   buildSqlCompletionItemsFromContext,
   getSqlFunctionSignatureHelp,
   getSqlCompletionContext,
@@ -39,11 +40,12 @@ import {
   isSqlCompletionSuppressedContext,
   isSqlLikeCompletionStatement,
   recordCompletionSelection,
+  selectStarResultColumnsMatch,
   shouldAutoOpenSqlCompletion,
   shouldChainSqlCompletionAfterAccept,
   extractCteDefinitions,
 } from "@/lib/sql/sqlCompletion";
-import { sqlCompletionContextFromSemantic } from "@/lib/sql/semantic/completion";
+import { sqlCompletionContextFromSemantic, sqlSemanticSelectStarIsOnlyProjection, sqlSemanticSelectStarQualifierSql, sqlSemanticSelectStarTableSource } from "@/lib/sql/semantic/completion";
 import { buildSqlSemanticModel } from "@/lib/sql/semantic/model";
 import { mergeSqlSemanticReferenceAnalysis, resolveSqlSemanticNavigationTarget } from "@/lib/sql/semantic/references";
 import { buildElasticsearchCompletionItemsFromContext, getElasticsearchCompletionContext, getElasticsearchCompletionResultValidFor, shouldAutoOpenElasticsearchCompletion, type ElasticsearchCompletionItem } from "@/lib/elasticsearch/elasticsearchCompletion";
@@ -130,7 +132,7 @@ import {
 import { sqlReferenceAnalysisDialectFor } from "@/lib/sql/semantic/dialect";
 import { buildRedisSyntaxDiagnostics, shouldRunRedisDiagnostics } from "@/lib/redis/redisSyntaxDiagnostics";
 import { buildRedisCompletionItemsFromContext, getRedisCompletionContext, getRedisCompletionResultValidFor, shouldAutoOpenRedisCompletion, takesKeyArgument, type RedisCompletionItem } from "@/lib/redis/redisCompletion";
-import type { SqlCompletionColumn, SqlCompletionForeignKey, SqlCompletionItem, SqlCompletionObject, SqlCompletionReferencedTable, SqlCompletionTable } from "@/lib/sql/sqlCompletion";
+import type { SqlCompletionColumn, SqlCompletionContext, SqlCompletionForeignKey, SqlCompletionItem, SqlCompletionObject, SqlCompletionReferencedTable, SqlCompletionTable } from "@/lib/sql/sqlCompletion";
 import type { CompletionAssistantObjectKind, ColumnInfo, DatabaseType, IndexInfo, SqlReferenceAnalysis, SqlServerCompletionContext, SqlTableReference, SqlTextSpan } from "@/types/database";
 
 const props = defineProps<{
@@ -149,6 +151,10 @@ const props = defineProps<{
   compressRequestId?: number;
   executionError?: string;
   executionErrorSql?: string;
+  resultColumns?: string[];
+  resultSourceStatement?: string;
+  resultSourceFrom?: number;
+  resultSourceTo?: number;
   readOnly?: boolean;
   autoFocus?: boolean;
   forceWordWrap?: boolean;
@@ -313,6 +319,18 @@ const searchPanelRef = ref<InstanceType<typeof EditorSearchPanel>>();
 const selectedSql = ref("");
 const executableSql = ref("");
 const contextObjectTarget = ref<SqlObjectNavigationTarget | null>(null);
+
+interface SelectStarExpansionTarget {
+  from: number;
+  to: number;
+  reference: SqlCompletionReferencedTable;
+  context: SqlCompletionContext;
+  qualifierSql?: string;
+  statementSql: string;
+  allowResultColumnsFallback: boolean;
+}
+
+const selectStarExpansionTarget = ref<SelectStarExpansionTarget | null>(null);
 
 const hasSelectedSql = computed(() => selectedSql.value.trim().length > 0);
 const canCopySelectedSql = computed(() => selectedSql.value.length > 0);
@@ -792,14 +810,91 @@ function closePicker() {
   view.value?.focus();
 }
 
-function syncContextMenuState(currentView: EditorViewType) {
+function syncContextMenuState(currentView: EditorViewType, starPosition?: number) {
   selectedSql.value = selectedSqlFromView(currentView);
   executableSql.value = executableSqlFromView(currentView);
+  selectStarExpansionTarget.value = selectStarExpansionTargetForView(currentView, starPosition);
+}
+
+function selectStarExpansionTargetForView(currentView: EditorViewType, position?: number): SelectStarExpansionTarget | null {
+  if (!props.connectionId || props.database == null || props.readOnly || !SEMANTIC_SQL_COMPLETION_ENABLED) return null;
+
+  const sql = currentView.state.doc.toString();
+  const selection = currentView.state.selection.main;
+  let cursor: number;
+  if (position != null) {
+    if (sql[position] === "*") {
+      cursor = position + 1;
+    } else if (sql[position - 1] === "*") {
+      cursor = position;
+    } else {
+      return null;
+    }
+  } else if (!selection.empty) {
+    if (currentView.state.sliceDoc(selection.from, selection.to) !== "*") return null;
+    cursor = selection.to;
+  } else if (sql[selection.head] === "*") {
+    cursor = selection.head + 1;
+  } else if (sql[selection.head - 1] === "*") {
+    cursor = selection.head;
+  } else {
+    return null;
+  }
+
+  const model = buildSqlSemanticModel(sql, cursor, sqlCompletionDialectOptions());
+  const intent = model.cursorIntent;
+  if (intent.kind !== "star" || intent.confidence !== "high" || intent.replacementRange.end - intent.replacementRange.start !== 1 || sql.slice(intent.replacementRange.start, intent.replacementRange.end) !== "*") return null;
+  if (position == null && !selection.empty && (selection.from !== intent.replacementRange.start || selection.to !== intent.replacementRange.end)) return null;
+
+  const starToken = model.tokens.find((token) => token.span.start === intent.replacementRange.start && token.span.end === intent.replacementRange.end && token.text === "*");
+  if (!starToken) return null;
+  let isSelectProjection = false;
+  for (let index = model.tokens.length - 1; index >= 0; index -= 1) {
+    const token = model.tokens[index];
+    if (!token || token.span.end > starToken.span.start || token.depth !== starToken.depth || token.kind !== "word") continue;
+    if (token.normalized === "from") return null;
+    if (token.normalized === "select") {
+      isSelectProjection = true;
+      break;
+    }
+  }
+  if (!isSelectProjection) return null;
+
+  const source = sqlSemanticSelectStarTableSource(model);
+  if (!source) return null;
+
+  const sourceTarget = queryTableCandidateAtSqlPosition({
+    connectionId: props.connectionId,
+    database: props.database,
+    schema: props.schema,
+    databaseType: props.databaseType,
+    sql,
+    position: source.qualifiedName?.span.start ?? source.sourceSpan.start,
+  });
+  const reference: SqlCompletionReferencedTable = {
+    name: sourceTarget?.tableName ?? source.metadataTarget?.table ?? source.name,
+    database: sourceTarget?.database ?? source.metadataTarget?.database,
+    schema: sourceTarget?.schema ?? source.metadataTarget?.schema,
+    alias: source.alias,
+  };
+  const legacyContext = getSqlCompletionContext(sql, cursor, sqlCompletionDialectOptions());
+  const context = sqlCompletionContextFromSemantic(model, legacyContext);
+  if (context.statementKind !== "select" || !context.onStar) return null;
+
+  return {
+    from: intent.replacementRange.start,
+    to: intent.replacementRange.end,
+    reference,
+    context: { ...context, referencedTables: [reference] },
+    qualifierSql: sqlSemanticSelectStarQualifierSql(model),
+    statementSql: model.statement.text,
+    allowResultColumnsFallback: model.rowSources.length === 1 && sqlSemanticSelectStarIsOnlyProjection(model),
+  };
 }
 
 function syncContextMenuStateAtEvent(currentView: EditorViewType, event: MouseEvent) {
-  syncContextMenuState(currentView);
   const pos = currentView.posAtCoords({ x: event.clientX, y: event.clientY });
+  syncContextMenuState(currentView, pos ?? undefined);
   if (pos == null) {
     contextObjectTarget.value = null;
     return;
@@ -1327,6 +1422,9 @@ function selectSqlLineFromGutter(currentView: EditorViewType, line: { from: numb
 
 const contextMenuItems = computed<ContextMenuItem[]>(() => {
   const shortcuts = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
+  // The menu closes before running its action, so retain this right-click's
+  // resolved target instead of reading state after the close handler runs.
+  const starExpansionTarget = selectStarExpansionTarget.value;
   return [
     ...(props.hideExecutionControls
       ? []
@@ -1357,6 +1455,13 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
           },
         ]),
     ...queryContextObjectActions(contextObjectTarget.value?.type).map(contextObjectMenuItem),
+    {
+      label: t("editor.contextMenu.expandSelectStar"),
+      action: () => void expandSelectStar(starExpansionTarget),
+      disabled: !starExpansionTarget,
+      icon: Table2,
+      shortcut: shortcuts.expandSelectStar,
+    },
     { label: "", separator: true },
     {
       label: t("editor.contextMenu.copySelection"),
@@ -1443,6 +1548,12 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
         }),
         ...binding(shortcuts.formatSql, () => {
           void formatCurrentSql();
+          return true;
+        }),
+        ...binding(shortcuts.expandSelectStar, (currentView) => {
+          const target = selectStarExpansionTargetForView(currentView);
+          if (!target) return false;
+          void expandSelectStar(target);
           return true;
         }),
         ...binding(shortcuts.indentMore, (view) => codeMirrorIndentMore?.(view) ?? false),
@@ -1788,17 +1899,77 @@ async function findExactSemanticDiagnosticTable(table: SqlTableReference): Promi
   return remoteMatches.find((item) => completionTablesMatch(item, table)) ?? null;
 }
 
-async function ensureColumnsForTable(table: { name: string; database?: string | null; schema?: string | null }): Promise<boolean> {
+async function ensureColumnsForTable(table: { name: string; database?: string | null; schema?: string | null }, reference?: Pick<SqlCompletionReferencedTable, "nameQuoted" | "schemaQuoted">): Promise<boolean> {
   if (isVirtualCompletionTableReference(table)) return false;
   const cacheKey = completionCacheKey(table);
   if (cachedColumnsByTable.has(cacheKey)) return true;
   if (!props.connectionId || props.database == null) return false;
   const target = completionMetadataTarget(table);
   if (!target) return false;
-  const columns = await listCompletionColumnsForEditor(props.connectionId, target.database, table.name, target.schema, target.catalog);
+  const localColumns = connectionStore.lookupLocalCompletionColumns(props.connectionId, target.database, table.name, target.schema, target.catalog, completionColumnRequestContext(reference));
+  if (localColumns.length > 0) {
+    cachedColumnsByTable.set(cacheKey, localColumns);
+    loadedColumnsByTable.add(cacheKey.toLowerCase());
+    return true;
+  }
+  const columns = await listCompletionColumnsForEditor(props.connectionId, target.database, table.name, target.schema, target.catalog, reference);
   cachedColumnsByTable.set(cacheKey, columns);
   loadedColumnsByTable.add(cacheKey.toLowerCase());
   return true;
+}
+
+function resultColumnsForSelectStar(target: SelectStarExpansionTarget, sql: string): SqlCompletionColumn[] {
+  if (
+    !target.allowResultColumnsFallback ||
+    !selectStarResultColumnsMatch({
+      currentSql: sql,
+      targetFrom: target.from,
+      targetTo: target.to,
+      statementSql: target.statementSql,
+      sourceStatement: props.resultSourceStatement,
+      sourceFrom: props.resultSourceFrom,
+      sourceTo: props.resultSourceTo,
+    })
+  )
+    return [];
+  return (props.resultColumns ?? [])
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map((name) => ({ name, table: target.reference.name, schema: target.reference.schema }));
+}
+
+async function expandSelectStar(target = selectStarExpansionTarget.value) {
+  const currentView = view.value;
+  if (!currentView || props.readOnly) return;
+  if (!target) return;
+
+  const originalDocument = currentView.state.doc.toString();
+  try {
+    await ensureColumnsForTable(target.reference, target.reference);
+  } catch (error) {
+    console.warn("expandSelectStar: failed to load columns", error);
+  }
+
+  if (view.value !== currentView || currentView.state.doc.toString() !== originalDocument || currentView.state.sliceDoc(target.from, target.to) !== "*") return;
+  const columns = cachedColumnsByTable.get(completionCacheKey(target.reference));
+  const expansionColumns = columns?.length ? columns : resultColumnsForSelectStar(target, originalDocument);
+  if (expansionColumns.length === 0) {
+    toast(t("editor.contextMenu.expandSelectStarUnavailable"), 3000);
+    return;
+  }
+  const expansion = buildSelectStarExpansion(target.context, new Map([[completionCacheKey(target.reference), expansionColumns]]), props.dialect, target.qualifierSql, props.databaseType);
+  if (!expansion) {
+    toast(t("editor.contextMenu.expandSelectStarUnavailable"), 3000);
+    return;
+  }
+
+  currentView.dispatch({
+    changes: { from: target.from, to: target.to, insert: expansion },
+    selection: { anchor: target.from + expansion.length },
+    scrollIntoView: true,
+    userEvent: "input.expandSelectStar",
+  });
+  currentView.focus();
 }
 
 function isMissingTableMetadataError(error: unknown) {
