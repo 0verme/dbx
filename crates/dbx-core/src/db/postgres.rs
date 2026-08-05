@@ -476,6 +476,7 @@ fn pg_type_requires_text_protocol(pg_type: &Type, col_type: PgColType) -> bool {
     }
 
     match pg_type.kind() {
+        Kind::Enum(_) => false,
         Kind::Array(element_type) => element_type.oid() >= POSTGRES_FIRST_NORMAL_OBJECT_ID,
         Kind::Simple => pg_scalar_type_requires_text_protocol(pg_type.oid(), col_type),
         _ => pg_type.oid() >= POSTGRES_FIRST_NORMAL_OBJECT_ID,
@@ -4802,6 +4803,21 @@ mod tests {
             Type::new("_record".to_string(), Type::RECORD_ARRAY.oid(), Kind::Simple, "pg_catalog".to_string());
         assert!(pg_type_requires_text_protocol(&dynamic_record, PgColType::Other));
         assert!(pg_type_requires_text_protocol(&dynamic_record_array, PgColType::GenericArray));
+    }
+
+    #[test]
+    fn postgres_enum_keeps_binary_protocol() {
+        let enum_type = Type::new(
+            "withdraw_btc_status".to_string(),
+            98_765,
+            Kind::Enum(vec!["pending".to_string(), "completed".to_string()]),
+            "risk".to_string(),
+        );
+        let enum_array =
+            Type::new("_withdraw_btc_status".to_string(), 98_766, Kind::Array(enum_type.clone()), "risk".to_string());
+
+        assert!(!pg_type_requires_text_protocol(&enum_type, PgColType::Other));
+        assert!(pg_type_requires_text_protocol(&enum_array, PgColType::GenericArray));
     }
 
     #[test]
