@@ -1097,12 +1097,12 @@ for line in sys.stdin:
     }
 
     #[cfg(unix)]
-    fn dameng_test_connection() -> ConnectionConfig {
+    fn agent_test_connection(id: &str, name: &str, db_type: DatabaseType, database: &str) -> ConnectionConfig {
         ConnectionConfig {
-            id: "dameng-1".to_string(),
-            name: "Dameng".to_string(),
+            id: id.to_string(),
+            name: name.to_string(),
             note: String::new(),
-            db_type: DatabaseType::Dameng,
+            db_type,
             driver_profile: None,
             driver_label: None,
             url_params: None,
@@ -1111,7 +1111,7 @@ for line in sys.stdin:
             port: 5236,
             username: "APP_USER".to_string(),
             password: String::new(),
-            database: Some("APPDB".to_string()),
+            database: Some(database.to_string()),
             visible_databases: None,
             visible_schemas: None,
             show_system_schemas: false,
@@ -1293,7 +1293,7 @@ for line in sys.stdin:
         let (client, _script) = spawn_recording_agent(&record_path).await;
         let storage = Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
-        let connection = dameng_test_connection();
+        let connection = agent_test_connection("dameng-1", "Dameng", DatabaseType::Dameng, "APPDB");
         state.configs.write().await.insert(connection.id.clone(), connection);
         state.connections.write().await.insert("dameng-1:APPDB".to_string(), PoolKind::agent(client));
 
@@ -1347,6 +1347,46 @@ for line in sys.stdin:
             assert_eq!(request["params"]["database"], "APPDB");
             assert_eq!(request["params"]["schema"], "REPORTING");
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn mysql_agent_allows_show_triggers_without_write_confirmation() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let record_path = temp_dir.path().join("agent-requests.jsonl");
+        let (client, _script) = spawn_recording_agent(&record_path).await;
+        let storage = Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
+        let state = Arc::new(AppState::new(storage));
+        let connection = agent_test_connection("mysql-1", "MySQL", DatabaseType::Mysql, "rs_main");
+        state.configs.write().await.insert(connection.id.clone(), connection);
+        state.connections.write().await.insert("mysql-1:rs_main".to_string(), PoolKind::agent(client));
+
+        let sql = "SHOW TRIGGERS FROM `rs_main` LIKE 'trg_order_items_after_%';";
+        let call = ToolCall {
+            id: "show-triggers".to_string(),
+            name: "execute_query".to_string(),
+            arguments: json!({ "sql": sql }),
+            provider_payload: None,
+        };
+        let result = execute_tool(
+            &call,
+            &state,
+            "mysql-1",
+            "rs_main",
+            None,
+            &DatabaseType::Mysql,
+            AgentSqlPermissions::default(),
+        )
+        .await;
+
+        assert!(!result.is_error, "{}", result.content);
+        let request = std::fs::read_to_string(&record_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .find(|request| request["method"] == "execute_query")
+            .unwrap();
+        assert_eq!(request["params"]["sql"], sql);
     }
 
     #[test]

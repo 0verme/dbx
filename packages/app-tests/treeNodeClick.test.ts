@@ -122,13 +122,13 @@ test("double click does not open object browser for non-browsable rows", () => {
 });
 
 test("double click navigation mode copies the selected sidebar row name", () => {
-  assert.equal(sidebarSelectionCopyAction({ key: "c", metaKey: true }), "copy-name");
-  assert.equal(sidebarSelectionCopyAction({ key: "C", ctrlKey: true }), "copy-name");
+  assert.equal(sidebarSelectionCopyAction({ key: "c", metaKey: true }, "MacIntel"), "copy-name");
+  assert.equal(sidebarSelectionCopyAction({ key: "C", ctrlKey: true }, "Win32"), "copy-name");
 });
 
 test("single click navigation mode copies the selected sidebar row name", () => {
-  assert.equal(sidebarSelectionCopyAction({ key: "c", metaKey: true }), "copy-name");
-  assert.equal(sidebarSelectionCopyAction({ key: "C", ctrlKey: true }), "copy-name");
+  assert.equal(sidebarSelectionCopyAction({ key: "c", metaKey: true }, "MacIntel"), "copy-name");
+  assert.equal(sidebarSelectionCopyAction({ key: "C", ctrlKey: true }, "Win32"), "copy-name");
 });
 
 test("copying table child group rows uses the parent table name", () => {
