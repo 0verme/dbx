@@ -3662,6 +3662,8 @@ export default withEnglishFallback({
     fieldRequired: "请输入字段名",
     valueRequired: "请输入值",
     memberRequired: "请输入成员",
+    updateAppliedRefreshFailed: "修改已保存，但刷新值失败：{message}",
+    zsetAclCompatibilityWarning: "修改已通过 ACL 兼容模式保存，无法校验并发的分数变更。",
     ttlInvalid: "请输入有效的 TTL（秒数，-1 表示永不过期）",
     member: "成员",
     memberDetail: "成员详情",

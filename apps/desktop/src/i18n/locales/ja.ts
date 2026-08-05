@@ -3543,6 +3543,8 @@ export default withEnglishFallback({
     fieldRequired: "フィールド名を入力してください",
     valueRequired: "値を入力してください",
     memberRequired: "メンバーを入力してください",
+    updateAppliedRefreshFailed: "変更は保存されましたが、値を更新できませんでした: {message}",
+    zsetAclCompatibilityWarning: "ACL 互換モードで保存しました。同時に行われたスコア変更は確認できませんでした。",
     ttlInvalid: "有効なTTLを秒で入力してください（-1で期限なし）",
     member: "メンバー",
     memberDetail: "メンバー詳細",

@@ -2231,6 +2231,10 @@ export async function redisZrem(connectionId: string, db: number, keyRaw: string
   return invoke("redis_zrem", { connectionId, db, keyRaw, member });
 }
 
+export async function redisZsetUpdate(connectionId: string, db: number, keyRaw: string, originalMember: string, expectedScore: string, member: string, score: string): Promise<boolean> {
+  return invoke("redis_zset_update", { connectionId, db, keyRaw, originalMember, expectedScore, member, score });
+}
+
 export async function redisStreamAdd(connectionId: string, db: number, keyRaw: string, entryId: string, fields: [string, string][], ttl?: number): Promise<void> {
   return invoke("redis_stream_add", {
     connectionId,
@@ -2275,7 +2279,7 @@ export async function redisExecuteCommand(connectionId: string, db: number, comm
   });
 }
 
-export async function redisLoadMore(connectionId: string, db: number, keyRaw: string, keyType: string, cursor: number, count: number, filter?: string): Promise<RedisCollectionPage> {
+export async function redisLoadMore(connectionId: string, db: number, keyRaw: string, keyType: string, cursor: number, count: number, filter?: string, sortDirection?: "asc" | "desc"): Promise<RedisCollectionPage> {
   return invoke("redis_load_more", {
     connectionId,
     db,
@@ -2284,6 +2288,7 @@ export async function redisLoadMore(connectionId: string, db: number, keyRaw: st
     cursor,
     count,
     filter,
+    sortDirection,
   });
 }
 
