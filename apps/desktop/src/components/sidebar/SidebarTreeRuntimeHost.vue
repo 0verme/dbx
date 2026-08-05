@@ -779,7 +779,7 @@ async function loadMoreObjectGroupChildren() {
   try {
     await connectionStore.loadMoreObjectGroupChildren(node);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -788,7 +788,7 @@ async function loadAllObjectGroupChildren() {
   try {
     await connectionStore.loadAllObjectGroupChildren(node);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1150,7 +1150,7 @@ async function openObjectBrowser() {
       await toggle();
     }
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
     openDriverStoreForInstallError(e?.message || String(e));
   }
 }
@@ -1163,7 +1163,7 @@ async function openUserAdmin() {
     connectionStore.activeConnectionId = node.connectionId;
     queryStore.openUserAdmin(node.connectionId);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1175,7 +1175,7 @@ async function openProcessList() {
     connectionStore.activeConnectionId = node.connectionId;
     queryStore.openProcessList(node.connectionId);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1193,7 +1193,7 @@ async function openServerDashboard() {
       queryStore.openMysqlDashboard(node.connectionId);
     }
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1205,7 +1205,7 @@ async function openDamengJobAdmin() {
     connectionStore.activeConnectionId = node.connectionId;
     queryStore.openDamengJobAdmin(node.connectionId);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1240,7 +1240,7 @@ async function newQuery() {
     const options = await getDatabaseOptions(node.connectionId);
     queryStore.createTab(node.connectionId, resolveDefaultDatabase(connection, options), undefined, "query");
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
     openDriverStoreForInstallError(e?.message || String(e));
   }
 }
@@ -1312,7 +1312,7 @@ async function newSelectTemplate() {
     });
     openSqlTemplateTab(context.node.connectionId!, context.node.database!, context.node.schema, context.node.catalog, sql);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1332,7 +1332,7 @@ async function newInsertTemplate() {
     });
     openSqlTemplateTab(context.node.connectionId!, context.node.database!, context.node.schema, context.node.catalog, sql);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1351,7 +1351,7 @@ async function newUpdateTemplate() {
     });
     openSqlTemplateTab(context.node.connectionId!, context.node.database!, context.node.schema, context.node.catalog, sql);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1370,7 +1370,7 @@ async function newDeleteTemplate() {
     });
     openSqlTemplateTab(context.node.connectionId!, context.node.database!, context.node.schema, context.node.catalog, sql);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
 }
 
@@ -1424,7 +1424,7 @@ async function refresh() {
   try {
     await connectionStore.refreshTreeNode(node);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
     openDriverStoreForInstallError(e?.message || String(e), node);
   }
 }
@@ -2539,7 +2539,7 @@ async function confirmEditDatabaseProperties() {
     showEditDatabasePropertiesDialog.value = false;
     await connectionStore.loadDatabases(node.connectionId, { force: true });
   } catch (e: any) {
-    toast(t("contextMenu.tableOperationFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("contextMenu.tableOperationFailed", { message: translateBackendError(t, e) }), 5000);
   } finally {
     editDatabasePropertiesLoading.value = false;
   }
@@ -2611,7 +2611,7 @@ async function confirmEditSchemaComment() {
     showEditSchemaCommentDialog.value = false;
     await connectionStore.loadSchemas(node.connectionId, node.database, { force: true });
   } catch (e: any) {
-    toast(t("contextMenu.tableOperationFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
+    toast(t("contextMenu.tableOperationFailed", { message: translateBackendError(t, e) }), 5000);
   } finally {
     schemaCommentLoading.value = false;
   }
