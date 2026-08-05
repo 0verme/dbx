@@ -61,7 +61,21 @@ import {
   type SqlCompletionScope,
 } from "@/lib/sql/sqlCompletionLookupTarget";
 import { usesOracleSessionCompletionColumns as shouldUseOracleSessionCompletionColumns } from "@/lib/sql/oracleCompletionSession";
-import { extractIdentifierDetailsAt, isSqlKeyword, matchTable, mergeSqlObjectNavigationType, splitQualifiedIdentifier, sqlObjectHoverDetail, sqlObjectNavigationSourceKind, sqlObjectNavigationTarget, type SqlObjectNavigationTarget } from "@/lib/sql/sqlNavigation";
+import {
+  extractIdentifierDetailsAt,
+  isSqlKeyword,
+  matchSqlObject,
+  matchTable,
+  mergeSqlObjectNavigationType,
+  resolveSqlObjectNavigationIdentity,
+  splitQualifiedIdentifier,
+  sqlObjectHoverDetail,
+  sqlObjectNavigationSourceKind,
+  sqlObjectNavigationTarget,
+  sqlObjectNavigationTargetFromIdentity,
+  sqlObjectNavigationTypeFromCompletionObjectType,
+  type SqlObjectNavigationTarget,
+} from "@/lib/sql/sqlNavigation";
 import { buildHoverTableSql, ddlForHoverPreview, hoverTableMatchesScope, quoteQualifiedName, reformatHoverDdl, scopeHoverTables, type HoverTableScope } from "@/lib/editor/hoverTableSql";
 import { lineColumnToOffset, parseSqlErrorLocation } from "@/lib/sql/sqlDiagnostics";
 import {
@@ -4312,22 +4326,113 @@ onMounted(async () => {
           event.preventDefault();
           setTimeout(async () => {
             try {
-              const identifierParts = splitQualifiedIdentifier(identifier);
-              const tableLookupFilter = identifierParts[identifierParts.length - 1] ?? identifier;
+              // Single identity model: quote flags + role (relation column list vs routine call vs unknown).
+              const identity = resolveSqlObjectNavigationIdentity(doc, pos);
+              if (!identity) return;
 
-              // Ensure table cache is populated
+              const identifierParts = identity.parts.map((part) => part.value);
+              const tableLookupFilter = identity.name;
+              const objectNameFilter = identity.name;
+              // 3-part schema.package.member; 2-part stays ambiguous until metadata resolves it.
+              const objectParentHint = identity.parts.length >= 3 ? identity.qualifier : undefined;
+              const objectSchemaHint = identity.parts.length >= 3 ? identity.schema : identity.parts.length === 1 ? props.schema : undefined;
+              const isRoutineCall = identity.role === "routine_call";
+              const isRelationColumnList = identity.role === "relation_column_list";
+
+              // 1. Local table cache (sync). Relation column lists always prefer tables over routines.
               if (cachedTables.length === 0) {
-                // Some metadata providers only accept table-name masks, not schema.table masks.
-                cachedTables = usesLocalOnlyCompletionMetadata()
-                  ? connectionStore.lookupLocalCompletionTables(props.connectionId!, props.database!, tableLookupFilter, MAX_COMPLETION_TABLES, props.schema, props.catalog)
-                  : await connectionStore.listCompletionTables(props.connectionId!, props.database!, tableLookupFilter, MAX_COMPLETION_TABLES, props.schema, false, props.schema, props.catalog);
+                cachedTables = connectionStore.lookupLocalCompletionTables(props.connectionId!, props.database!, tableLookupFilter, MAX_COMPLETION_TABLES, props.schema, props.catalog);
               }
 
-              // 1. Check if it's a table name
-              const matchedTable = matchTable(identifier, cachedTables);
+              let matchedTable = matchTable(identifier, cachedTables);
               if (matchedTable) {
                 emit("clickTable", sqlObjectNavigationTarget(matchedTable));
                 return;
+              }
+
+              const preserveOracleStoreCase = (value?: string) => !!value && value !== value.toUpperCase();
+              const openMatchedObject = (matchedObject: { name: string; schema?: string; type: string; signature?: string; parentName?: string; parentSchema?: string }) => {
+                const navigationType = sqlObjectNavigationTypeFromCompletionObjectType(matchedObject.type);
+                if (!navigationType) return false;
+                // Metadata names are store-correct; mark mixed-case (or click-quoted) so Oracle normalize won't force UPPER.
+                emit(
+                  "openObjectSource",
+                  sqlObjectNavigationTarget({
+                    name: matchedObject.name,
+                    schema: matchedObject.schema,
+                    type: navigationType,
+                    signature: matchedObject.signature,
+                    parentName: matchedObject.parentName,
+                    parentSchema: matchedObject.parentSchema,
+                    nameQuoted: identity.nameQuoted || preserveOracleStoreCase(matchedObject.name),
+                    schemaQuoted: matchedObject.schema ? identity.schemaQuoted || identity.qualifierQuoted || preserveOracleStoreCase(matchedObject.schema) : undefined,
+                    parentNameQuoted: matchedObject.parentName ? identity.qualifierQuoted || preserveOracleStoreCase(matchedObject.parentName) : undefined,
+                    parentSchemaQuoted: matchedObject.parentSchema ? identity.schemaQuoted || preserveOracleStoreCase(matchedObject.parentSchema) : undefined,
+                  }),
+                  false,
+                );
+                return true;
+              };
+
+              // 1b. Local routine cache — skip for pure relation column lists (INSERT INTO t(...)).
+              if (!isRelationColumnList) {
+                const localObjects = connectionStore.lookupLocalCompletionObjects(props.connectionId!, props.database!, objectNameFilter, MAX_COMPLETION_TABLES, props.schema);
+                let matchedObject = matchSqlObject(identifier, localObjects);
+                if (matchedObject && openMatchedObject(matchedObject)) return;
+
+                if (!usesLocalOnlyCompletionMetadata()) {
+                  // Disambiguate schema.routine vs package.member with small scoped lookups (no global scan).
+                  if (identity.parts.length === 2 && identity.qualifier) {
+                    // Prefer package.member under session schema (Oracle common: PKG.MEMBER()).
+                    const packageObjects = await connectionStore.listCompletionObjects(props.connectionId!, props.database!, objectNameFilter, 20, props.schema, identity.qualifier, false, props.schema, ["routine"]);
+                    matchedObject = matchSqlObject(identifier, packageObjects);
+                    if (matchedObject && openMatchedObject(matchedObject)) return;
+
+                    // Then schema.routine with qualifier as owner.
+                    const schemaObjects = await connectionStore.listCompletionObjects(props.connectionId!, props.database!, objectNameFilter, 20, identity.qualifier, undefined, false, props.schema, ["routine"]);
+                    matchedObject = matchSqlObject(identifier, schemaObjects);
+                    if (matchedObject && openMatchedObject(matchedObject)) return;
+                  } else {
+                    const scopedObjects = await connectionStore.listCompletionObjects(props.connectionId!, props.database!, objectNameFilter, 20, objectSchemaHint, objectParentHint, false, props.schema, ["routine"]);
+                    matchedObject = matchSqlObject(identifier, scopedObjects);
+                    if (matchedObject && openMatchedObject(matchedObject)) return;
+                  }
+                }
+              }
+
+              // 1c. Remote table metadata — never skip for relation column lists or unknown identifiers.
+              // Routine-call sites may still hit this when a table and procedure share a name and
+              // local caches were empty; table wins only if listed as a relation.
+              if (!usesLocalOnlyCompletionMetadata() && (!isRoutineCall || isRelationColumnList || identity.role === "unknown")) {
+                cachedTables = await connectionStore.listCompletionTables(props.connectionId!, props.database!, tableLookupFilter, MAX_COMPLETION_TABLES, props.schema, false, props.schema, props.catalog);
+                matchedTable = matchTable(identifier, cachedTables);
+                if (matchedTable) {
+                  emit("clickTable", sqlObjectNavigationTarget(matchedTable));
+                  return;
+                }
+              } else if (!usesLocalOnlyCompletionMetadata() && isRoutineCall) {
+                // Lightweight table check so INSERT INTO ORDERS(…) is not the only guarded path —
+                // still avoid global scans: only session-scoped prefix lookup.
+                cachedTables = await connectionStore.listCompletionTables(props.connectionId!, props.database!, tableLookupFilter, 20, props.schema, false, props.schema, props.catalog);
+                matchedTable = matchTable(identifier, cachedTables);
+                if (matchedTable) {
+                  emit("clickTable", sqlObjectNavigationTarget(matchedTable));
+                  return;
+                }
+              }
+
+              // 1d. Optimistic routine open only for confirmed call sites after metadata + table checks.
+              if (isRoutineCall) {
+                const optimistic = sqlObjectNavigationTargetFromIdentity(identity, {
+                  fallbackSchema: props.schema,
+                  preferType: "procedure",
+                  // 2-part: package.member under session schema (not schema.routine).
+                  asPackageMember: identity.twoPartAmbiguous,
+                });
+                if (optimistic) {
+                  emit("openObjectSource", optimistic, false);
+                  return;
+                }
               }
 
               // 2. Parse SQL at click position to get referenced tables
