@@ -25,6 +25,7 @@ import { blankLineDeletionChanges, replaceSelectedEditorText } from "@/lib/edito
 import { createSqlSignatureTooltipDom } from "@/lib/editor/sqlSignatureTooltip";
 import { buildSqlInConditionFromPasteSource, insertTextForSqlInCondition } from "@/lib/sql/sqlInListPaste";
 import { resolveSqlSingleQuoteKeyAction } from "@/lib/sql/sqlQuoteCaret";
+import { convertSqlSelectionCase, type SqlSelectionCaseMode } from "@/lib/sql/sqlSelectionCase";
 import { formatMongoShellText } from "@/lib/mongo/mongoFormatter";
 import { useConnectionStore, COMPLETION_METADATA_CONCURRENCY } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -420,7 +421,6 @@ function runStatementGutterExtension(markers = props.statementExecutionMarkers ?
   return shouldShowStatementGutter(showRunButtons, markers.length) ? (buildRunStatementGutterExtension?.() ?? []) : [];
 }
 
-type SelectionCaseMode = "upper" | "lower";
 let executableStatementRangeCache: ExecutableStatementRangeCache | null = null;
 let editorScrollbarPointerCleanup: (() => void) | null = null;
 let editorSelectionDragCleanup: (() => void) | null = null;
@@ -1078,17 +1078,17 @@ function selectAllSqlFromContextMenu() {
   focusEditor();
 }
 
-function convertSelectedSqlCase(mode: SelectionCaseMode): boolean {
+function convertSelectedSqlCase(mode: SqlSelectionCaseMode): boolean {
   const currentView = view.value;
   const EditorSelection = codeMirrorEditorSelection;
   if (!currentView || !EditorSelection) return false;
 
   const state = currentView.state;
+  const documentText = state.doc.toString();
   const transaction = state.changeByRange((range) => {
     if (range.empty) return { range };
 
-    const selectedText = state.sliceDoc(range.from, range.to);
-    const convertedText = mode === "upper" ? selectedText.toUpperCase() : selectedText.toLowerCase();
+    const convertedText = convertSqlSelectionCase(documentText, { from: range.from, to: range.to }, mode, sqlBehaviorDialect());
     return {
       changes: { from: range.from, to: range.to, insert: convertedText },
       range: EditorSelection.range(range.from, range.from + convertedText.length),
