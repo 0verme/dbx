@@ -2014,7 +2014,8 @@ impl AppState {
                     Some(&db_config.password),
                     db_config.ssl,
                     connect_timeout,
-                );
+                )
+                .with_database(db_config.database.as_deref());
                 db::vector_driver::test_connection(&client, connect_timeout).await?;
                 PoolKind::VectorDb(client)
             }
