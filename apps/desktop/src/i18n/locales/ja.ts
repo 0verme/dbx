@@ -2440,6 +2440,8 @@ export default withEnglishFallback({
     createTrigger: "新規トリガー",
     changeOpenMode: "開き方を変更",
     closeRightTabs: "右側のタブを閉じる",
+    compileObject: "コンパイル",
+    compileObjectSuccess: "\"{name}\" のコンパイルに成功しました",
   },
   visibleDatabases: {
     title: "表示するデータベース",

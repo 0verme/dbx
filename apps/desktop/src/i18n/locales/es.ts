@@ -2415,6 +2415,8 @@ export default withEnglishFallback({
     createTrigger: "Nuevo disparador",
     changeOpenMode: "Modificar modo de apertura",
     closeRightTabs: "Cerrar pestañas a la derecha",
+    compileObject: "Compilar",
+    compileObjectSuccess: "\"{name}\" compilado con éxito",
   },
   visibleDatabases: {
     title: "Bases de datos visibles",

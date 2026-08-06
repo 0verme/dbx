@@ -2326,6 +2326,8 @@ export default {
     batchTruncate: "Truncate selected ({count})",
     batchDropIndexes: "Drop Indexes ({count})",
     executeProcedure: "Execute Procedure",
+    compileObject: "Compile",
+    compileObjectSuccess: '"{name}" compiled successfully',
     confirmExecuteProcedureTitle: "Execute Procedure",
     confirmExecuteProcedureMessage: 'Execute procedure "{name}"? You can fill or adjust parameter values first.',
     loadingProcedureParameters: "Loading parameters...",

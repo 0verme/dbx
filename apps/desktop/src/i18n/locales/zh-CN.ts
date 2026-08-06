@@ -2327,6 +2327,8 @@ export default withEnglishFallback({
     batchTruncate: "截断所选（{count}）",
     batchDropIndexes: "删除索引（{count}）",
     executeProcedure: "执行过程",
+    compileObject: "编译",
+    compileObjectSuccess: '"{name}" 编译成功',
     confirmExecuteProcedureTitle: "执行存储过程",
     confirmExecuteProcedureMessage: "确认执行存储过程「{name}」？可先补充或调整参数值。",
     loadingProcedureParameters: "正在读取参数...",

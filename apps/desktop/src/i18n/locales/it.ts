@@ -2413,6 +2413,8 @@ export default withEnglishFallback({
     createTrigger: "Nuovo trigger",
     changeOpenMode: "Modifica modalità apertura",
     closeRightTabs: "Chiudi le schede a destra",
+    compileObject: "Compila",
+    compileObjectSuccess: "\"{name}\" compilato con successo",
   },
   visibleDatabases: {
     title: "Database Visibili",
