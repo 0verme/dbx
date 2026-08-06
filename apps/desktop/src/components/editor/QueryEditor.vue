@@ -18,7 +18,7 @@ import { executableStatementRangeAtCursor, executableStatementRangeCacheForDoc, 
 import { currentStatementFrameRangeTo, shouldRebuildCurrentStatementFrame, visualSqlColumnsWithInlineHints } from "@/lib/sql/currentStatementFrame";
 import { expandToSqlStatementWindow, parseInsertValueHints } from "@/lib/sql/insertValueHints";
 import { insertValueHintColumnNames } from "@/lib/sql/insertValueHintColumns";
-import { formatSqlText, compressSqlText, type SqlFormatDialect } from "@/lib/sql/sqlFormatter";
+import { formatSqlForEditing, compressSqlText, type SqlFormatDialect } from "@/lib/sql/sqlFormatter";
 import { detectAndFormatStructured } from "@/lib/sql/autoFormat";
 import { enabledSqlParameterSyntaxes, resolveSqlVariableSyntaxToggles } from "@/lib/sql/sqlVariableSyntax";
 import { blankLineDeletionChanges, replaceSelectedEditorText } from "@/lib/editor/queryEditorTextEdits";
@@ -2563,7 +2563,7 @@ async function formatCurrentSql() {
         toast(t("toolbar.formatAutoDetectFailed"), 3000);
         return;
       } else {
-        formatted = await formatSqlText(source, props.formatDialect ?? props.dialect ?? "generic", settingsStore.editorSettings.sqlFormatter);
+        formatted = await formatSqlForEditing(source, props.formatDialect ?? props.dialect ?? "generic", settingsStore.editorSettings.sqlFormatter);
       }
     }
     if (view.value !== currentView || currentView.state !== originalState || currentView.state.sliceDoc(from, to) !== source) {
