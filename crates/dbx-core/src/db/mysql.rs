@@ -1984,6 +1984,17 @@ pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableIn
     list_tables_filtered(pool, database, None, None, None, None, None).await
 }
 
+fn normalize_mysql_table_type(table_type: &str) -> String {
+    let trimmed = table_type.trim();
+    if trimmed.is_empty() {
+        return "TABLE".to_string();
+    }
+    if trimmed.eq_ignore_ascii_case("VIEW") || trimmed.eq_ignore_ascii_case("SYSTEM VIEW") {
+        return "VIEW".to_string();
+    }
+    trimmed.to_string()
+}
+
 pub async fn list_tables_filtered(
     pool: &MySqlPool,
     database: &str,
@@ -2014,7 +2025,7 @@ pub async fn list_tables_filtered(
             let name = get_str_by_name(row, "TABLE_NAME").trim().to_string();
             (!name.is_empty()).then_some(TableInfo {
                 name,
-                table_type: get_str_by_name(row, "TABLE_TYPE"),
+                table_type: normalize_mysql_table_type(&get_str_by_name(row, "TABLE_TYPE")),
                 comment: get_opt_str(row, "TABLE_COMMENT")
                     .map(|s| fix_potential_double_encoding(&s))
                     .filter(|s| !s.is_empty()),
@@ -2088,8 +2099,8 @@ fn list_tables_sql(
             .map(|object_type| object_type.to_ascii_uppercase().replace(' ', "_"))
             .any(|object_type| object_type == "VIEW");
         match (wants_table, wants_view) {
-            (true, false) => sql.push_str(" AND TABLE_TYPE <> 'VIEW'"),
-            (false, true) => sql.push_str(" AND TABLE_TYPE = 'VIEW'"),
+            (true, false) => sql.push_str(" AND TABLE_TYPE NOT IN ('VIEW', 'SYSTEM VIEW')"),
+            (false, true) => sql.push_str(" AND TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW')"),
             (false, false) => sql.push_str(" AND 1 = 0"),
             (true, true) => {}
         }
@@ -2514,14 +2525,8 @@ async fn list_table_names_show_filtered(
             if name.is_empty() {
                 return None;
             }
-            let table_type = get_str(row, 1);
-            Some(TableInfo {
-                name,
-                table_type: if table_type.is_empty() { "TABLE".to_string() } else { table_type },
-                comment: None,
-                parent_schema: None,
-                parent_name: None,
-            })
+            let table_type = normalize_mysql_table_type(&get_str(row, 1));
+            Some(TableInfo { name, table_type, comment: None, parent_schema: None, parent_name: None })
         })
         .collect();
     tables.sort_by(|a, b| a.name.cmp(&b.name));
@@ -2822,18 +2827,18 @@ fn list_tables_objects_sql(
     let wants_tables = requested_object_type(object_types, "TABLE");
     let wants_views = requested_object_type(object_types, "VIEW");
     let type_filter = match (wants_tables, wants_views) {
-        (true, false) => " AND TABLE_TYPE <> 'VIEW'",
-        (false, true) => " AND TABLE_TYPE = 'VIEW'",
+        (true, false) => " AND TABLE_TYPE NOT IN ('VIEW', 'SYSTEM VIEW')",
+        (false, true) => " AND TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW')",
         _ => "",
     };
     format!(
         "SELECT TABLE_NAME AS object_name, \
-           CASE WHEN TABLE_TYPE = 'VIEW' THEN 'VIEW' ELSE 'TABLE' END AS object_type, \
+           CASE WHEN TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW') THEN 'VIEW' ELSE 'TABLE' END AS object_type, \
            TABLE_COMMENT AS object_comment, \
            CREATE_TIME AS created_at, \
            UPDATE_TIME AS updated_at, \
            NULL AS parent_schema, NULL AS parent_name, \
-           CASE WHEN TABLE_TYPE = 'VIEW' THEN 1 ELSE 0 END AS sort_order \
+           CASE WHEN TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW') THEN 1 ELSE 0 END AS sort_order \
          FROM information_schema.TABLES \
          WHERE TABLE_SCHEMA = {db}{type_filter} \
          ORDER BY sort_order, object_name{pagination}",
@@ -5278,13 +5283,22 @@ mod tests {
     fn mysql_list_tables_sql_filters_table_type_before_pagination() {
         let tables = vec!["TABLE".to_string()];
         let table_sql = list_tables_sql("app", None, Some(1000), None, Some(&tables), None);
-        assert!(table_sql.contains("TABLE_TYPE <> 'VIEW'"));
-        assert!(table_sql.find("TABLE_TYPE <> 'VIEW'") < table_sql.find("ORDER BY TABLE_NAME"));
+        assert!(table_sql.contains("TABLE_TYPE NOT IN ('VIEW', 'SYSTEM VIEW')"));
+        assert!(table_sql.find("TABLE_TYPE NOT IN ('VIEW', 'SYSTEM VIEW')") < table_sql.find("ORDER BY TABLE_NAME"));
         assert!(table_sql.find("ORDER BY TABLE_NAME") < table_sql.find("LIMIT 1000"));
 
         let views = vec!["VIEW".to_string()];
         let view_sql = list_tables_sql("app", None, Some(1000), None, Some(&views), None);
-        assert!(view_sql.contains("TABLE_TYPE = 'VIEW'"));
+        assert!(view_sql.contains("TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW')"));
+    }
+
+    #[test]
+    fn mysql_system_views_are_normalized_as_views() {
+        assert_eq!(normalize_mysql_table_type("SYSTEM VIEW"), "VIEW");
+        assert_eq!(normalize_mysql_table_type("view"), "VIEW");
+        assert_eq!(normalize_mysql_table_type("BASE TABLE"), "BASE TABLE");
+        assert_eq!(normalize_mysql_table_type("MATERIALIZED VIEW"), "MATERIALIZED VIEW");
+        assert_eq!(normalize_mysql_table_type(""), "TABLE");
     }
 
     #[test]
@@ -5690,7 +5704,8 @@ mod tests {
         let object_types = vec!["VIEW".to_string()];
         let sql = list_tables_objects_sql("app", Some(&object_types), Some(51), Some(100));
 
-        assert!(sql.contains("TABLE_TYPE = 'VIEW'"));
+        assert!(sql.contains("TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW')"));
+        assert!(sql.contains("CASE WHEN TABLE_TYPE IN ('VIEW', 'SYSTEM VIEW') THEN 'VIEW' ELSE 'TABLE' END"));
         assert!(sql.ends_with("LIMIT 51 OFFSET 100"));
     }
 
