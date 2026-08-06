@@ -7,7 +7,7 @@ use crate::sql::find_statement_at_cursor;
 use crate::sql_dialect::{
     firebird_rows_clause, pagination_strategy, quote_table_identifier, PaginationContext, TablePaginationStrategy,
 };
-use sqlparser::ast::{Expr, GroupByExpr, SelectItem, SetExpr, Statement};
+use sqlparser::ast::{Expr, GroupByExpr, Select, SelectItem, SetExpr, Statement};
 use sqlparser::dialect::{ClickHouseDialect, GenericDialect, MsSqlDialect};
 use sqlparser::parser::Parser;
 
@@ -229,13 +229,12 @@ pub fn build_count_query_sql(options: CountQuerySqlOptions) -> QuerySqlBuildResu
     if matches!(options.database_type, Some(DatabaseType::Elasticsearch | DatabaseType::Easysearch)) {
         return err("unsupported");
     }
-    if options.database_type == Some(DatabaseType::SqlServer) && !sql_server_derived_table_projection_safe(&statement) {
-        return err("unsupported");
+    if options.database_type == Some(DatabaseType::SqlServer) {
+        return sql_server_count_sql(&statement).map(ok).unwrap_or_else(|| err("unsupported"));
     }
 
     let alias = quote_table_identifier(options.database_type, "dbx_count");
     let wrapped_sql = match options.database_type {
-        Some(DatabaseType::SqlServer) => sql_server_statement_for_derived_table(&statement),
         Some(DatabaseType::Iris) => iris_statement_for_derived_table(&statement),
         _ => statement,
     };
@@ -766,6 +765,10 @@ fn sql_server_derived_table_projection_safe(statement: &str) -> bool {
         return false;
     };
 
+    sql_server_derived_table_select_projection_safe(select)
+}
+
+fn sql_server_derived_table_select_projection_safe(select: &Select) -> bool {
     if matches!(select.projection.as_slice(), [SelectItem::Wildcard(_)]) {
         return select.from.len() == 1 && select.from[0].joins.is_empty();
     }
@@ -777,6 +780,68 @@ fn sql_server_derived_table_projection_safe(statement: &str) -> bool {
         };
         column_names.insert(name.to_lowercase())
     })
+}
+
+fn sql_server_count_sql(statement: &str) -> Option<String> {
+    let dialect = MsSqlDialect {};
+    let mut statements = Parser::parse_sql(&dialect, statement).ok()?;
+    let derived_table_projection_safe = {
+        let [Statement::Query(query)] = statements.as_slice() else {
+            return None;
+        };
+        let SetExpr::Select(select) = query.body.as_ref() else {
+            return None;
+        };
+        sql_server_derived_table_select_projection_safe(select)
+    };
+    if derived_table_projection_safe {
+        let alias = quote_table_identifier(Some(DatabaseType::SqlServer), "dbx_count");
+        let wrapped_sql = sql_server_statement_for_derived_table(statement);
+        return Some(derived_table_sql("SELECT COUNT(*) AS dbx_total_rows FROM", &wrapped_sql, &format!("{alias};")));
+    }
+
+    let count_projection = match Parser::parse_sql(&dialect, "SELECT COUNT(*) AS dbx_total_rows").ok()?.pop()? {
+        Statement::Query(query) => match query.body.as_ref() {
+            SetExpr::Select(select) => select.projection.clone(),
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    {
+        let [Statement::Query(query)] = statements.as_mut_slice() else {
+            return None;
+        };
+        if query.limit_clause.is_some()
+            || query.fetch.is_some()
+            || query.for_clause.is_some()
+            || !query.locks.is_empty()
+        {
+            return None;
+        }
+        let SetExpr::Select(select) = query.body.as_mut() else {
+            return None;
+        };
+        let group_by_is_empty = matches!(&select.group_by, GroupByExpr::Expressions(expressions, modifiers) if expressions.is_empty() && modifiers.is_empty());
+        if select.distinct.is_some()
+            || select.top.is_some()
+            || select.into.is_some()
+            || select.from.is_empty()
+            || !group_by_is_empty
+            || select.having.is_some()
+            || !select
+                .projection
+                .iter()
+                .all(|item| matches!(item, SelectItem::Wildcard(_) | SelectItem::QualifiedWildcard(_, _)))
+        {
+            return None;
+        }
+
+        select.projection = count_projection;
+        query.order_by = None;
+    }
+
+    Some(format!("{};", statements.pop()?))
 }
 
 fn sql_server_derived_projection_name(item: &SelectItem) -> Option<&str> {
@@ -1671,6 +1736,77 @@ mod tests {
         });
 
         assert_eq!(result, err("unsupported"));
+    }
+
+    #[test]
+    fn sqlserver_join_wildcard_injects_count_projection() {
+        let result = build_count_query_sql(CountQuerySqlOptions {
+            original_sql:
+                "SELECT * FROM WZ_CKGL_WZLLDSQ_DETAIL d LEFT JOIN WZ_CKGL_WZLLDSQ_MAIN AS m ON m.ID = d.ParentID"
+                    .to_string(),
+            database_type: Some(DatabaseType::SqlServer),
+        });
+
+        assert!(result.ok);
+        assert_eq!(
+            result.sql.unwrap(),
+            "SELECT COUNT(*) AS dbx_total_rows FROM WZ_CKGL_WZLLDSQ_DETAIL d LEFT JOIN WZ_CKGL_WZLLDSQ_MAIN AS m ON m.ID = d.ParentID;"
+        );
+    }
+
+    #[test]
+    fn sqlserver_join_wildcard_count_removes_top_level_order_by() {
+        let result = build_count_query_sql(CountQuerySqlOptions {
+            original_sql: "SELECT * FROM AAA a JOIN BBB b ON a.id = b.id ORDER BY a.id".to_string(),
+            database_type: Some(DatabaseType::SqlServer),
+        });
+
+        assert_eq!(
+            result.sql.as_deref(),
+            Some("SELECT COUNT(*) AS dbx_total_rows FROM AAA a JOIN BBB b ON a.id = b.id;")
+        );
+    }
+
+    #[test]
+    fn sqlserver_join_wildcard_plan_exposes_count_without_changing_first_page() {
+        let sql = "SELECT d.*, m.* FROM WZ_CKGL_WZLLDSQ_DETAIL d LEFT JOIN WZ_CKGL_WZLLDSQ_MAIN m ON m.ID = d.ParentID";
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.to_string(),
+            query_base_sql: sql.to_string(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 500, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(
+            plan.sql_to_execute,
+            "SELECT TOP (500) d.*, m.* FROM WZ_CKGL_WZLLDSQ_DETAIL d LEFT JOIN WZ_CKGL_WZLLDSQ_MAIN m ON m.ID = d.ParentID"
+        );
+        assert_eq!(
+            plan.count_sql.as_deref(),
+            Some(
+                "SELECT COUNT(*) AS dbx_total_rows FROM WZ_CKGL_WZLLDSQ_DETAIL d LEFT JOIN WZ_CKGL_WZLLDSQ_MAIN m ON m.ID = d.ParentID;"
+            )
+        );
+    }
+
+    #[test]
+    fn sqlserver_wildcard_count_rejects_semantic_modifiers() {
+        for sql in [
+            "SELECT DISTINCT * FROM AAA a JOIN BBB b ON a.id = b.id",
+            "SELECT TOP 10 * FROM AAA a JOIN BBB b ON a.id = b.id",
+            "SELECT * INTO #joined FROM AAA a JOIN BBB b ON a.id = b.id",
+            "SELECT * FROM AAA a JOIN BBB b ON a.id = b.id GROUP BY a.id",
+            "SELECT * FROM AAA a JOIN BBB b ON a.id = b.id ORDER BY a.id OFFSET 10 ROWS FETCH NEXT 10 ROWS ONLY",
+        ] {
+            let result = build_count_query_sql(CountQuerySqlOptions {
+                original_sql: sql.to_string(),
+                database_type: Some(DatabaseType::SqlServer),
+            });
+
+            assert!(!result.ok, "must not rewrite {sql}");
+        }
     }
 
     #[test]
