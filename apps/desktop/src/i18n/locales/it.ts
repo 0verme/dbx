@@ -1513,6 +1513,7 @@ export default withEnglishFallback({
     xlsxHeaderPrompt: "Seleziona il formato dell'intestazione da utilizzare per l'esportazione in Excel:",
     xlsxHeaderOriginal: "Intestazione con nome campo",
     xlsxHeaderComment: "Intestazione con commento",
+    jumpToPage: "Vai alla pagina",
   },
   exportProgress: {
     streamingUnsupported: "L'esportazione in streaming non è supportata per questa query. Semplificala o usa un driver supportato.",

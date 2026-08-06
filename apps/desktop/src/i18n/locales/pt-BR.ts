@@ -1515,6 +1515,7 @@ export default withEnglishFallback({
     xlsxHeaderPrompt: "Selecione o formato do cabeçalho a ser usado ao exportar Excel:",
     xlsxHeaderOriginal: "Cabeçalho usa nome do campo",
     xlsxHeaderComment: "Cabeçalho usa comentário",
+    jumpToPage: "Ir para a página",
   },
   exportProgress: {
     streamingUnsupported: "A exportação em streaming não é compatível com esta consulta. Simplifique-a ou use um driver compatível.",

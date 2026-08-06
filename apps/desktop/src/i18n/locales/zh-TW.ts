@@ -1257,6 +1257,7 @@ export default withEnglishFallback({
     filterAllRows: "全部列",
     filterChangedRows: "變更列",
     page: "第 {page} 頁",
+    jumpToPage: "跳至頁碼",
     rowsPerPage: "每頁筆數",
     customRowsPerPage: "自訂筆數",
     applyPageSize: "套用",

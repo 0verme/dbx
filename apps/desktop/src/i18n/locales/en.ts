@@ -1377,6 +1377,7 @@ export default {
     filterAllRows: "All rows",
     filterChangedRows: "Changed",
     page: "Page {page}",
+    jumpToPage: "Jump to page",
     rowsPerPage: "Rows per page",
     customRowsPerPage: "Custom rows",
     applyPageSize: "Apply",

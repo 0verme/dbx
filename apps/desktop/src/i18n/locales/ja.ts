@@ -1540,6 +1540,7 @@ export default withEnglishFallback({
     searchModeFilter: "フィルター",
     searchModeHighlight: "ハイライト",
     emptyStringValue: "空文字",
+    jumpToPage: "ページ番号に移動",
   },
   exportProgress: {
     streamingUnsupported: "このクエリはストリーミングエクスポートに対応していません。クエリを簡略化するか、対応しているドライバーを使用してください。",
