@@ -2387,6 +2387,14 @@ export async function redisHashDel(connectionId: string, db: number, keyRaw: str
   return post("/api/redis/hash-del", { connectionId, db, keyRaw, field });
 }
 
+export async function redisHashFieldSetTtl(connectionId: string, db: number, keyRaw: string, field: string, ttl: number): Promise<void> {
+  return post("/api/redis/hash-field-set-ttl", { connectionId, db, keyRaw, field, ttl });
+}
+
+export async function redisHashFieldSetExpireAt(connectionId: string, db: number, keyRaw: string, field: string, expireAt: number): Promise<void> {
+  return post("/api/redis/hash-field-set-expire-at", { connectionId, db, keyRaw, field, expireAt });
+}
+
 export async function redisListPush(connectionId: string, db: number, keyRaw: string, value: string, ttl?: number): Promise<void> {
   return post("/api/redis/list-push", { connectionId, db, keyRaw, value, ttl });
 }

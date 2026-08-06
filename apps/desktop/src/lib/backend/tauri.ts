@@ -2022,6 +2022,7 @@ export interface RedisSetItem {
 export interface RedisHashItem {
   field: RedisBlob;
   value: RedisBlob;
+  field_ttl?: number;
 }
 
 export interface RedisZsetItem {
@@ -2233,6 +2234,14 @@ export async function redisHashSet(connectionId: string, db: number, keyRaw: str
 
 export async function redisHashDel(connectionId: string, db: number, keyRaw: string, field: string): Promise<void> {
   return invoke("redis_hash_del", { connectionId, db, keyRaw, field });
+}
+
+export async function redisHashFieldSetTtl(connectionId: string, db: number, keyRaw: string, field: string, ttl: number): Promise<void> {
+  return invoke("redis_hash_field_set_ttl", { connectionId, db, keyRaw, field, ttl });
+}
+
+export async function redisHashFieldSetExpireAt(connectionId: string, db: number, keyRaw: string, field: string, expireAt: number): Promise<void> {
+  return invoke("redis_hash_field_set_expire_at", { connectionId, db, keyRaw, field, expireAt });
 }
 
 export async function redisListPush(connectionId: string, db: number, keyRaw: string, value: string, ttl?: number): Promise<void> {

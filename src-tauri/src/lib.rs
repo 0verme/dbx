@@ -1740,6 +1740,8 @@ pub fn run() {
             commands::redis_cmd::redis_delete_key,
             commands::redis_cmd::redis_hash_set,
             commands::redis_cmd::redis_hash_del,
+            commands::redis_cmd::redis_hash_field_set_ttl,
+            commands::redis_cmd::redis_hash_field_set_expire_at,
             commands::redis_cmd::redis_list_push,
             commands::redis_cmd::redis_list_set,
             commands::redis_cmd::redis_list_remove,

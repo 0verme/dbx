@@ -507,6 +507,8 @@ async fn main() {
         .route("/redis/delete-key", post(routes::redis::delete_key))
         .route("/redis/hash-set", post(routes::redis::hash_set))
         .route("/redis/hash-del", post(routes::redis::hash_del))
+        .route("/redis/hash-field-set-ttl", post(routes::redis::hash_field_set_ttl))
+        .route("/redis/hash-field-set-expire-at", post(routes::redis::hash_field_set_expire_at))
         .route("/redis/list-push", post(routes::redis::list_push))
         .route("/redis/list-set", post(routes::redis::list_set))
         .route("/redis/list-remove", post(routes::redis::list_remove))
