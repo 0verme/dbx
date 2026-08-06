@@ -2443,6 +2443,8 @@ export default withEnglishFallback({
   },
   visibleDatabases: {
     title: "表示するデータベース",
+    detailLabel: "表示データベース",
+    detailActionLabel: "「{connection}」の表示データベースを設定",
     description: "「{connection}」の下に表示するデータベースを選択してください。",
     searchPlaceholder: "データベースを検索...",
     selectedCount: "{selected}/{total}件選択中",
@@ -2457,6 +2459,8 @@ export default withEnglishFallback({
   },
   visibleSchemas: {
     title: "スキーマフィルター",
+    detailLabel: "表示スキーマ",
+    detailActionLabel: "「{connection}」の表示スキーマを設定",
     description: "「{connection}」の下に表示するスキーマを選択してください。",
     searchPlaceholder: "スキーマを検索...",
     selectedCount: "{selected}/{total}件選択中",

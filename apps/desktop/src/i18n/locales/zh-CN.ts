@@ -2477,6 +2477,8 @@ export default withEnglishFallback({
   },
   visibleDatabases: {
     title: "显示数据库",
+    detailLabel: "可见数据库",
+    detailActionLabel: "配置「{connection}」的可见数据库",
     description: "选择「{connection}」下要在侧边栏显示的数据库。",
     searchPlaceholder: "搜索数据库...",
     selectedCount: "已选择 {selected}/{total}",
@@ -2491,6 +2493,8 @@ export default withEnglishFallback({
   },
   visibleSchemas: {
     title: "Schema 过滤器",
+    detailLabel: "可见 Schema",
+    detailActionLabel: "配置「{connection}」的可见 Schema",
     description: "选择「{connection}」下要在侧边栏显示的 Schema。",
     searchPlaceholder: "搜索 Schema...",
     selectedCount: "已选择 {selected}/{total}",

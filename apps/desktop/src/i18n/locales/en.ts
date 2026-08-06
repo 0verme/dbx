@@ -2476,6 +2476,8 @@ export default {
   },
   visibleDatabases: {
     title: "Visible Databases",
+    detailLabel: "Visible databases",
+    detailActionLabel: 'Configure visible databases for "{connection}"',
     description: 'Choose which databases are shown under "{connection}".',
     searchPlaceholder: "Search databases...",
     selectedCount: "{selected}/{total} selected",
@@ -2490,6 +2492,8 @@ export default {
   },
   visibleSchemas: {
     title: "Schema Filter",
+    detailLabel: "Visible schemas",
+    detailActionLabel: 'Configure visible schemas for "{connection}"',
     description: 'Choose which schemas are shown under "{connection}".',
     searchPlaceholder: "Search schemas...",
     selectedCount: "{selected}/{total} selected",

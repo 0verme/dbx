@@ -2353,6 +2353,8 @@ export default withEnglishFallback({
   },
   visibleDatabases: {
     title: "표시할 데이터베이스",
+    detailLabel: "표시할 데이터베이스",
+    detailActionLabel: '"{connection}"의 표시할 데이터베이스 구성',
     description: '"{connection}" 아래에 표시할 데이터베이스를 선택하세요.',
     searchPlaceholder: "데이터베이스 검색...",
     selectedCount: "{selected}/{total} 선택됨",
@@ -2367,6 +2369,8 @@ export default withEnglishFallback({
   },
   visibleSchemas: {
     title: "스키마 필터",
+    detailLabel: "표시할 스키마",
+    detailActionLabel: '"{connection}"의 표시할 스키마 구성',
     description: '"{connection}" 아래에 표시할 스키마를 선택하세요.',
     searchPlaceholder: "스키마 검색...",
     selectedCount: "{selected}/{total} 선택됨",
