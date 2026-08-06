@@ -445,7 +445,7 @@ export function splitSqlStatementRanges(sql: string, databaseType?: DatabaseType
     // Block comments consume until the closing */.
     if (ch === "/" && next === "*") {
       const hintMarker = sql[i + 2];
-      if (statementStart === -1 && pendingHintStart === -1 && (hintMarker === "+" || hintMarker === "@")) pendingHintStart = i;
+      if (statementStart === -1 && pendingHintStart === -1 && (hintMarker === "+" || hintMarker === "@" || hintMarker === "&")) pendingHintStart = i;
       const close = sql.indexOf("*/", i + 2);
       i = close === -1 ? len : close + 2;
       continue;
