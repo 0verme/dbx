@@ -122,7 +122,154 @@ fn parse_sqlserver(sql: &str) -> Result<Vec<Statement>, ParserError> {
     let dialect = MsSqlDialect {};
     let mut tokens = Tokenizer::new(&dialect, sql).tokenize_with_location()?;
     normalize_sqlserver_create_proc_tokens(&mut tokens);
-    Parser::new(&dialect).with_tokens_with_locations(tokens).parse_statements()
+    match Parser::new(&dialect).with_tokens_with_locations(tokens).parse_statements() {
+        Ok(statements) => Ok(statements),
+        Err(error) => {
+            let mut fallback_tokens = Tokenizer::new(&dialect, sql).tokenize_with_location()?;
+            normalize_sqlserver_create_proc_tokens(&mut fallback_tokens);
+            if remove_sqlserver_query_hint_tokens(&mut fallback_tokens) {
+                Parser::new(&dialect).with_tokens_with_locations(fallback_tokens).parse_statements()
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+fn remove_sqlserver_query_hint_tokens(tokens: &mut Vec<TokenWithSpan>) -> bool {
+    let mut depth = 0usize;
+    let mut ranges = Vec::new();
+
+    for index in 0..tokens.len() {
+        match &tokens[index].token {
+            Token::LParen => depth += 1,
+            Token::RParen => depth = depth.saturating_sub(1),
+            Token::Word(word)
+                if depth == 0 && word.quote_style.is_none() && word.value.eq_ignore_ascii_case("OPTION") =>
+            {
+                if let Some(range) = sqlserver_query_hint_range(tokens, index) {
+                    if sqlserver_query_hint_removal_parses_statement(tokens, range) {
+                        ranges.push(range);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let removed = !ranges.is_empty();
+    for (start, end) in ranges.into_iter().rev() {
+        tokens.drain(start..=end);
+    }
+    removed
+}
+
+fn sqlserver_query_hint_removal_parses_statement(tokens: &[TokenWithSpan], range: (usize, usize)) -> bool {
+    let statement_start = tokens[..range.0]
+        .iter()
+        .rposition(|token| matches!(token.token, Token::SemiColon))
+        .map_or(0, |index| index + 1);
+    let statement_end = next_significant_token_index(tokens, range.1 + 1).unwrap_or(tokens.len() - 1);
+    let mut statement_tokens = tokens[statement_start..=statement_end].to_vec();
+
+    if parse_sqlserver_tokens(statement_tokens.clone()).is_ok() {
+        return false;
+    }
+
+    statement_tokens.drain(range.0 - statement_start..=range.1 - statement_start);
+    parse_sqlserver_tokens(statement_tokens).is_ok()
+}
+
+fn parse_sqlserver_tokens(tokens: Vec<TokenWithSpan>) -> Result<Vec<Statement>, ParserError> {
+    Parser::new(&MsSqlDialect {}).with_tokens_with_locations(tokens).parse_statements()
+}
+
+fn sqlserver_query_hint_range(tokens: &[TokenWithSpan], option_index: usize) -> Option<(usize, usize)> {
+    let open_index = next_significant_token_index(tokens, option_index + 1)?;
+    if !matches!(tokens[open_index].token, Token::LParen) {
+        return None;
+    }
+
+    let close_index = matching_parenthesis_index(tokens, open_index)?;
+    let hint_index = next_significant_token_index(tokens, open_index + 1)?;
+    if hint_index >= close_index || !is_sqlserver_query_hint_starter(&tokens[hint_index]) {
+        return None;
+    }
+
+    if let Some(next_index) = next_significant_token_index(tokens, close_index + 1) {
+        if !matches!(tokens[next_index].token, Token::SemiColon | Token::EOF) {
+            return None;
+        }
+    }
+
+    Some((option_index, close_index))
+}
+
+fn next_significant_token_index(tokens: &[TokenWithSpan], mut index: usize) -> Option<usize> {
+    while index < tokens.len() {
+        if !matches!(tokens[index].token, Token::Whitespace(_)) {
+            return Some(index);
+        }
+        index += 1;
+    }
+    None
+}
+
+fn matching_parenthesis_index(tokens: &[TokenWithSpan], open_index: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(open_index) {
+        match token.token {
+            Token::LParen => depth += 1,
+            Token::RParen => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_sqlserver_query_hint_starter(token: &TokenWithSpan) -> bool {
+    let Token::Word(word) = &token.token else {
+        return false;
+    };
+    if word.quote_style.is_some() {
+        return false;
+    }
+
+    matches!(
+        word.value.to_ascii_uppercase().as_str(),
+        "CONCAT"
+            | "DISABLE"
+            | "DISABLE_OPTIMIZED_PLAN_FORCING"
+            | "EXPAND"
+            | "FAST"
+            | "FOR"
+            | "FORCE"
+            | "HASH"
+            | "IGNORE_NONCLUSTERED_COLUMNSTORE_INDEX"
+            | "KEEP"
+            | "KEEPFIXED"
+            | "LABEL"
+            | "LOOP"
+            | "MAX_GRANT_PERCENT"
+            | "MAXDOP"
+            | "MAXRECURSION"
+            | "MERGE"
+            | "MIN_GRANT_PERCENT"
+            | "NO_PERFORMANCE_SPOOL"
+            | "OPTIMIZE"
+            | "ORDER"
+            | "PARAMETERIZATION"
+            | "QUERYTRACEON"
+            | "RECOMPILE"
+            | "ROBUST"
+            | "TABLE"
+            | "USE"
+    )
 }
 
 fn normalize_sqlserver_create_proc_tokens(tokens: &mut [TokenWithSpan]) {
