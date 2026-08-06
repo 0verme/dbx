@@ -1,9 +1,11 @@
 import { withEnglishFallback } from "./fallback";
+import docs from "./docs/ja";
 
 export default withEnglishFallback({
   app: {
     name: "DBX",
   },
+  docs,
   auth: {
     rateLimited: "{seconds} 秒後に再試行してください",
     setupTitle: "アクセスパスワードを設定",
@@ -748,6 +750,9 @@ export default withEnglishFallback({
     jdbcMissingRuntimeDependencyHint: "現在のJDBCドライバーには実行依存関係が不足しています。「ドライバ管理」でMaven座標を使用してインストールするか、ドライバーとすべての依存JARを一度にインポートしてください。",
     showSystemSchemas: "システムスキーマを表示",
     showSystemSchemasHint: "現在の接続で、サイドバーとスキーマセレクターに組み込み/メタデータスキーマを表示します。",
+    docsNotesPath: "ノートファイル",
+    docsNotesPathPlaceholder: "docs/dbx-docs.json",
+    docsNotesPathHint: "ドキュメントのノートの保存先です。空のままにするとアプリのデータディレクトリに保存されます。リポジトリ内のファイルを指定すると、スキーマのドキュメントをプルリクエストでレビューできます。",
     sshHostKeyVerifyTitle: "不明なSSHホストキーの確認",
     sshHostKeyVerifyMessage: "ホスト '{host}:{port}' の正当性を確認できません。中間者攻撃を防ぐため、続行する前にサーバー管理者にホストキーのフィンガープリントを確認してください。",
     sshHostKeyVerifyKeyType: "キータイプ",

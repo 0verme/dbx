@@ -1,9 +1,11 @@
 import { withEnglishFallback } from "./fallback";
+import docs from "./docs/zh-TW";
 
 export default withEnglishFallback({
   app: {
     name: "DBX",
   },
+  docs,
   auth: {
     rateLimited: "請 {seconds} 秒後再試",
     setupTitle: "設定存取密碼",
@@ -748,6 +750,9 @@ export default withEnglishFallback({
     jdbcMissingRuntimeDependencyHint: "目前 JDBC 驅動缺少執行依賴。請在「驅動管理」中使用 Maven 座標安裝，或一次匯入驅動及全部依賴 JAR。",
     showSystemSchemas: "顯示系統 Schema",
     showSystemSchemasHint: "為目前連線在側邊欄和 Schema 選擇器中顯示內建/中繼資料 Schema。",
+    docsNotesPath: "筆記檔案",
+    docsNotesPathPlaceholder: "docs/dbx-docs.json",
+    docsNotesPathHint: "文件筆記的儲存位置。留空則儲存在應用程式資料目錄中；指向存放庫中的檔案後，即可在 Pull Request 中審閱 Schema 文件。",
     sshHostKeyVerifyTitle: "確認未知的 SSH 主機金鑰",
     sshHostKeyVerifyMessage: "無法確認主機 '{host}:{port}' 的真實性。為防止中間人攻擊，請在繼續前與伺服器管理員核對主機金鑰指紋。",
     sshHostKeyVerifyKeyType: "金鑰類型",

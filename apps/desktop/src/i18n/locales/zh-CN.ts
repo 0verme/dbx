@@ -1,9 +1,11 @@
 import { withEnglishFallback } from "./fallback";
+import docs from "./docs/zh-CN";
 
 export default withEnglishFallback({
   app: {
     name: "DBX",
   },
+  docs,
   auth: {
     rateLimited: "请 {seconds} 秒后再试",
     setupTitle: "设置访问密码",
@@ -774,6 +776,9 @@ export default withEnglishFallback({
     readOnlyHint: "阻止所有写操作（INSERT、UPDATE、DELETE 等）",
     showSystemSchemas: "显示系统 Schema",
     showSystemSchemasHint: "为当前连接在侧边栏和 Schema 选择器中显示内置/元数据 Schema。",
+    docsNotesPath: "笔记文件",
+    docsNotesPathPlaceholder: "docs/dbx-docs.json",
+    docsNotesPathHint: "文档笔记的存储位置。留空则保存在应用数据目录中；指向仓库中的文件后，即可在 Pull Request 中审阅 Schema 文档。",
     readOnlyBadge: "只读",
     proxy: "代理",
     proxyEnable: "通过代理连接数据库",

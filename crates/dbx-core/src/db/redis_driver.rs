@@ -5333,6 +5333,7 @@ mod tests {
 
     fn redis_test_connection_config() -> ConnectionConfig {
         ConnectionConfig {
+            docs_notes_path: None,
             id: "redis".to_string(),
             name: "Redis".to_string(),
             note: String::new(),

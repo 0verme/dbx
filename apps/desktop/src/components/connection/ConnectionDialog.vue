@@ -298,6 +298,7 @@ const defaultForm = (): ConnectionForm => ({
   informix_server: "",
   external_config: undefined,
   init_script: undefined,
+  docs_notes_path: undefined,
   read_only: false,
   show_system_schemas: false,
   is_production: false,
@@ -2273,6 +2274,7 @@ watch(
         external_config: config.external_config,
         attached_databases: config.attached_databases || [],
         init_script: config.init_script,
+        docs_notes_path: config.docs_notes_path,
         read_only: config.read_only || false,
         show_system_schemas: config.show_system_schemas || false,
         is_production: config.is_production || false,
@@ -7336,6 +7338,17 @@ function openExternalUrl(url: string) {
                     <input type="checkbox" v-model="form.show_system_schemas" class="mr-0" />
                     <span class="text-xs text-muted-foreground">{{ t("connection.showSystemSchemasHint") }}</span>
                   </label>
+                </div>
+                <!-- Documentation notes are a relational-only feature, so this
+                     follows the same isSchemaAware gate as the row above. -->
+                <div v-if="isSchemaAware(form.db_type)" class="grid grid-cols-4 items-start gap-4">
+                  <Label :class="connectionLabelTopClass">{{ t("connection.docsNotesPath") }}</Label>
+                  <div class="col-span-3 space-y-1">
+                    <Input v-model="form.docs_notes_path" :placeholder="t('connection.docsNotesPathPlaceholder')" spellcheck="false" />
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("connection.docsNotesPathHint") }}
+                    </p>
+                  </div>
                 </div>
                 <div class="grid grid-cols-4 items-start gap-4 rounded-[6px] border border-red-500/25 bg-red-500/[0.035] px-3 py-2.5">
                   <Label :class="[connectionLabelSmallClass, 'pt-0.5 text-red-700 dark:text-red-300']">

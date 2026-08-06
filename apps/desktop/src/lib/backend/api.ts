@@ -179,6 +179,12 @@ export const prepareSchemaDiff = forward("prepareSchemaDiff");
 export const generateSchemaSyncSql = forward("generateSchemaSyncSql");
 export const listDialectDataTypes = forward("listDialectDataTypes");
 
+// Docs
+export const collectDocsSnapshot = forward("collectDocsSnapshot");
+export const loadDocsAnnotations = forward("loadDocsAnnotations");
+export const applyDocsAnnotations = forward("applyDocsAnnotations");
+export const saveDocsAnnotations = forward("saveDocsAnnotations");
+
 // Query
 export const executeQuery = forward("executeQuery");
 export const executeMulti = forward("executeMulti");

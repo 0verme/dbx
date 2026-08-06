@@ -59,6 +59,7 @@ import type {
   ExternalSqlFileVersion,
 } from "@/types/database";
 import { isTauriCommandUnavailable, normalizeConnectionTestResult } from "@/lib/connection/connectionDatabaseInfo";
+import type { AnnotationFile, SchemaSnapshot } from "@/docs/types";
 import type { CollectionInfo } from "@/types/database";
 import type { SidebarObjectKind } from "@/lib/database/databaseObjectCapabilities";
 import type { AiChatSelectionState, AiConfig, AiConfigItem, AiEffortCapability, AiEffortLevel, AiTestConnectionResult } from "@/types/ai";
@@ -1660,6 +1661,24 @@ export async function listExtensions(connectionId: string, database: string, sch
 
 export async function listAvailableExtensions(connectionId: string, database: string): Promise<ExtensionInfo[]> {
   return invoke("list_available_extensions", { connectionId, database });
+}
+
+// --- Docs ---
+
+export async function collectDocsSnapshot(connectionId: string, database: string, schemas: string[], tables: string[], projectName?: string): Promise<SchemaSnapshot> {
+  return invoke("docs_collect_snapshot", { connectionId, database, schemas, tables, projectName });
+}
+
+export async function loadDocsAnnotations(connectionId: string): Promise<AnnotationFile | null> {
+  return invoke("docs_load_annotations", { connectionId });
+}
+
+export async function applyDocsAnnotations(connectionId: string, snapshot: SchemaSnapshot, annotations: AnnotationFile): Promise<SchemaSnapshot> {
+  return invoke("docs_apply_annotations", { connectionId, snapshot, annotations });
+}
+
+export async function saveDocsAnnotations(connectionId: string, annotations: AnnotationFile): Promise<void> {
+  return invoke("docs_save_annotations", { connectionId, annotations });
 }
 
 export async function saveConnections(configs: ConnectionConfig[]): Promise<void> {

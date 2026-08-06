@@ -1,9 +1,11 @@
 import { withEnglishFallback } from "./fallback";
+import docs from "./docs/pt-BR";
 
 export default withEnglishFallback({
   app: {
     name: "DBX",
   },
+  docs,
   auth: {
     rateLimited: "Tente novamente em {seconds}s",
     setupTitle: "Configurar senha de acesso",
@@ -749,6 +751,9 @@ export default withEnglishFallback({
     jdbcMissingRuntimeDependencyHint: "O driver JDBC atual está sem dependências de execução. Por favor, instale-o usando as coordenadas Maven no 'Gerenciamento de Drivers' ou importe o driver e todos os JARs de dependência de uma só vez.",
     showSystemSchemas: "Mostrar Schema do sistema",
     showSystemSchemasHint: "Exibir Schemas de sistema/metadados integrados na barra lateral e no seletor de Schema para a conexão atual.",
+    docsNotesPath: "Arquivo de notas",
+    docsNotesPathPlaceholder: "docs/dbx-docs.json",
+    docsNotesPathHint: "Onde as notas da documentação são gravadas. Deixe vazio para mantê-las no diretório de dados do aplicativo, ou aponte para um arquivo do seu repositório para revisar a documentação do schema em pull requests.",
     sshHostKeyVerifyTitle: "Confirmar chave de host SSH desconhecida",
     sshHostKeyVerifyMessage: "Não foi possível confirmar a autenticidade do host '{host}:{port}'. Para evitar ataques man-in-the-middle, verifique a impressão digital da chave do host com o administrador do servidor antes de continuar.",
     sshHostKeyVerifyKeyType: "Tipo de chave",

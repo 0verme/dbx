@@ -1,7 +1,10 @@
+import docs from "./docs/en";
+
 export default {
   app: {
     name: "DBX",
   },
+  docs,
   auth: {
     rateLimited: "Please try again in {seconds}s",
     setupTitle: "Set up access password",
@@ -770,6 +773,9 @@ export default {
     readOnlyHint: "Block all write operations (INSERT, UPDATE, DELETE, etc.)",
     showSystemSchemas: "Show System Schemas",
     showSystemSchemasHint: "Show built-in and metadata schemas in the sidebar and schema pickers for this connection.",
+    docsNotesPath: "Notes file",
+    docsNotesPathPlaceholder: "docs/dbx-docs.json",
+    docsNotesPathHint: "Where documentation notes are stored. Leave empty to keep them in the app data directory, or point this at a file in your repository to review schema documentation in pull requests.",
     readOnlyBadge: "Read-only",
     proxy: "Proxy",
     proxyEnable: "Connect database through proxy",
