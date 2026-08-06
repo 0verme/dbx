@@ -502,11 +502,34 @@ fn apply_linux_webkit_rendering_workarounds() {
     }
 }
 
-fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+/// Brings the main window to the foreground, reporting whether it ended up visible.
+///
+/// The individual calls used to be discarded with `let _ =`, which made a failed
+/// reveal completely silent. That matters on macOS: an instance that has lost its
+/// WindowServer connection stays alive and idle but can no longer present a window
+/// or a tray icon, and the single-instance guard keeps handing later launches to it,
+/// so the app looks like it simply does not start. Logging here is what makes that
+/// state diagnosable at all.
+fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    let Some(window) = app.get_webview_window("main") else {
+        eprintln!("[WINDOW] show_main_window: no \"main\" webview window to reveal");
+        return false;
+    };
+    if let Err(err) = window.show() {
+        eprintln!("[WINDOW] show_main_window: show() failed: {err}");
+    }
+    if let Err(err) = window.unminimize() {
+        eprintln!("[WINDOW] show_main_window: unminimize() failed: {err}");
+    }
+    if let Err(err) = window.set_focus() {
+        eprintln!("[WINDOW] show_main_window: set_focus() failed: {err}");
+    }
+    match window.is_visible() {
+        Ok(visible) => visible,
+        Err(err) => {
+            eprintln!("[WINDOW] show_main_window: is_visible() failed: {err}");
+            false
+        }
     }
 }
 
@@ -762,7 +785,9 @@ fn setup_desktop_tray<R: tauri::Runtime, M: Manager<R>>(
     })
     .on_tray_icon_event(|tray, event| match event {
         TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. }
-        | TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => show_main_window(tray.app_handle()),
+        | TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
+            show_main_window(tray.app_handle());
+        }
         _ => {}
     })
     .build(manager)?;
@@ -1280,7 +1305,16 @@ pub fn run() {
                 }
                 let _ = app.emit("dbx-open-db-files", db_paths);
             }
-            show_main_window(app);
+            // This runs inside the *existing* instance: a second launch has already
+            // handed over its arguments and exited. If we cannot reveal a window here
+            // the user is left with no feedback whatsoever - the app they clicked
+            // simply vanished - so make the reason recoverable from the logs.
+            if !show_main_window(app) {
+                eprintln!(
+                    "[WINDOW] single-instance handoff could not reveal the main window; {}",
+                    main_window_probe_state(app)
+                );
+            }
         }))
     } else {
         builder
@@ -2176,8 +2210,13 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { has_visible_windows, .. } = &event {
-                if !has_visible_windows {
-                    show_main_window(app_handle);
+                if !has_visible_windows && !show_main_window(app_handle) {
+                    // Dock / Finder reopen is the other way back into a hidden
+                    // instance, and it fails silently for the same reason.
+                    eprintln!(
+                        "[WINDOW] reopen could not reveal the main window; {}",
+                        main_window_probe_state(app_handle)
+                    );
                 }
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
