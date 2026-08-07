@@ -2448,7 +2448,7 @@ export default withEnglishFallback({
     changeOpenMode: "開き方を変更",
     closeRightTabs: "右側のタブを閉じる",
     compileObject: "コンパイル",
-    compileObjectSuccess: "\"{name}\" のコンパイルに成功しました",
+    compileObjectSuccess: '"{name}" のコンパイルに成功しました',
   },
   visibleDatabases: {
     title: "表示するデータベース",
