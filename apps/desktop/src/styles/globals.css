@@ -1537,7 +1537,6 @@ html.dbx-data-grid-native-selection-blocked [role="textbox"] * {
   [role="button"],
   [role="menuitem"],
   [role="option"],
-  [role="tab"],
   [role="checkbox"],
   [role="radio"],
   [role="switch"],
@@ -1546,6 +1545,9 @@ html.dbx-data-grid-native-selection-blocked [role="textbox"] * {
   label,
   a[href] {
     cursor: pointer;
+    user-select: none;
+  }
+  [role="tab"] {
     user-select: none;
   }
 }
