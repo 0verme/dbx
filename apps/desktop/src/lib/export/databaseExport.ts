@@ -46,6 +46,7 @@ export interface BuildExportInsertStatementsOptions {
 
 export interface BuildExportPageSqlOptions {
   databaseType?: DatabaseType;
+  driverProfile?: string;
   identifierQuote?: string;
   schema?: string;
   tableName: string;
@@ -79,6 +80,7 @@ export function buildInsertStatements(options: BuildExportInsertStatementsOption
 export async function buildExportPageSql(options: BuildExportPageSqlOptions): Promise<string> {
   return buildTableSelectSql({
     databaseType: options.databaseType,
+    driverProfile: options.driverProfile,
     identifierQuote: options.identifierQuote,
     schema: options.schema,
     tableName: options.tableName,
