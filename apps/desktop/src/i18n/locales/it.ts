@@ -1023,6 +1023,7 @@ export default withEnglishFallback({
     objects: "Oggetti",
     users: "Utenti e Privilegi",
     executionSummary: "Riepilogo",
+    messages: "Messaggi",
     tooltipTitle: "Titolo:",
     tooltipFileStatus: "Stato file:",
     externalFileMissing: "Eliminato o spostato fuori da DBX",
@@ -1089,6 +1090,10 @@ export default withEnglishFallback({
       skipped: "Non eseguita",
       cancelled: "Annullata",
     },
+  },
+  queryMessages: {
+    empty: "Nessun messaggio",
+    code: "Codice: {code}",
   },
   chart: {
     title: "Grafico",

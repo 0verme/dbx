@@ -1047,6 +1047,7 @@ export default {
     objects: "Objects",
     users: "Users & Privileges",
     executionSummary: "Summary",
+    messages: "Messages",
     tooltipTitle: "Title:",
     tooltipFilePath: "File Path:",
     tooltipFileStatus: "File Status:",
@@ -1144,6 +1145,10 @@ export default {
       skipped: "Not run",
       cancelled: "Cancelled",
     },
+  },
+  queryMessages: {
+    empty: "No messages",
+    code: "Code: {code}",
   },
   chart: {
     title: "Chart",

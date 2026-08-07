@@ -1047,6 +1047,7 @@ export default withEnglishFallback({
     objects: "对象",
     users: "用户与权限",
     executionSummary: "摘要",
+    messages: "消息",
     tooltipTitle: "标题：",
     tooltipFilePath: "文件路径：",
     tooltipFileStatus: "文件状态：",
@@ -1144,6 +1145,10 @@ export default withEnglishFallback({
       skipped: "未执行",
       cancelled: "已取消",
     },
+  },
+  queryMessages: {
+    empty: "没有消息",
+    code: "代码：{code}",
   },
   chart: {
     title: "图表",

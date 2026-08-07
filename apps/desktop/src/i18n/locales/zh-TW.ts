@@ -1023,6 +1023,7 @@ export default withEnglishFallback({
     objects: "物件",
     users: "使用者與權限",
     executionSummary: "摘要",
+    messages: "訊息",
     tooltipTitle: "標題：",
     tooltipFilePath: "檔案路徑：",
     tooltipFileStatus: "檔案狀態：",
@@ -1090,6 +1091,10 @@ export default withEnglishFallback({
       skipped: "未執行",
       cancelled: "已取消",
     },
+  },
+  queryMessages: {
+    empty: "沒有訊息",
+    code: "代碼：{code}",
   },
   chart: {
     title: "圖表",

@@ -1023,6 +1023,7 @@ export default withEnglishFallback({
     vector: "Vector",
     users: "Usuarios y Privilegios",
     executionSummary: "Resumen",
+    messages: "Mensajes",
     mongo: "Mongo",
     objects: "Objetos",
     tooltipTitle: "Título:",
@@ -1091,6 +1092,10 @@ export default withEnglishFallback({
       skipped: "No ejecutada",
       cancelled: "Cancelada",
     },
+  },
+  queryMessages: {
+    empty: "Sin mensajes",
+    code: "Código: {code}",
   },
   chart: {
     title: "Gráfico",
