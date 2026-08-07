@@ -881,6 +881,30 @@ impl DbxBackend for WebBackend {
                     .map_err(|error| format!("Invalid MongoDB find response: {error}"))?;
                 Ok(mongo_documents_query_result(result.documents))
             }
+            MongoCommand::FindExplain { collection, filter, projection, sort, collation, skip, limit, verbosity } => {
+                let result = self
+                    .request(
+                        reqwest::Method::POST,
+                        "/api/mongo/explain-find",
+                        Some(json!({
+                            "connectionId": connection_id,
+                            "database": database,
+                            "collection": collection,
+                            "skip": skip,
+                            "limit": limit,
+                            "filter": filter,
+                            "projection": projection,
+                            "sort": sort,
+                            "collation": collation,
+                            "verbosity": verbosity,
+                        })),
+                    )
+                    .await?
+                    .json::<Value>()
+                    .await
+                    .map_err(|error| format!("Invalid MongoDB explain response: {error}"))?;
+                Ok(mongo_documents_query_result(vec![result]))
+            }
             MongoCommand::FindOne { collection, filter, projection, options } => {
                 let result = self
                     .request(
@@ -1588,6 +1612,98 @@ mod tests {
             ]]
         );
         assert_eq!(result.affected_rows, 1);
+    }
+
+    #[tokio::test]
+    async fn web_mongo_find_explain_uses_explain_endpoint_and_preserves_options() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_sender, request_receiver) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            let header_end = loop {
+                let count = stream.read(&mut buffer).unwrap();
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(position) = request.windows(4).position(|window| window == b"\r\n\r\n") {
+                    break position + 4;
+                }
+            };
+            let headers = String::from_utf8_lossy(&request[..header_end]);
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length").then_some(value.trim())
+                })
+                .unwrap()
+                .parse::<usize>()
+                .unwrap();
+            while request.len() < header_end + content_length {
+                let count = stream.read(&mut buffer).unwrap();
+                request.extend_from_slice(&buffer[..count]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            let body = request[header_end..header_end + content_length].to_string();
+            request_sender.send((request.lines().next().unwrap().to_string(), body)).unwrap();
+
+            let response_body = r#"{"queryPlanner":{"winningPlan":{"stage":"COLLSCAN"}}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            )
+            .unwrap();
+        });
+
+        let backend = WebBackend::new(format!("http://{address}"), String::new()).unwrap();
+        backend.auth.lock().await.checked = true;
+        let connection = new_connection_config(
+            "legacy".to_string(),
+            "Legacy MongoDB".to_string(),
+            DatabaseType::MongoDb,
+            "localhost".to_string(),
+            27017,
+            String::new(),
+            String::new(),
+            Some("app".to_string()),
+            false,
+            Some("mongodb-legacy".to_string()),
+        )
+        .unwrap();
+        backend.connected.lock().await.insert(connection.id.clone(), connection.clone());
+
+        let command = MongoCommand::FindExplain {
+            collection: "im_msg".to_string(),
+            filter: r#"{"active":true}"#.to_string(),
+            projection: Some(r#"{"email":1}"#.to_string()),
+            sort: Some(r#"{"email":1}"#.to_string()),
+            collation: Some(r#"{"locale":"en","strength":1}"#.to_string()),
+            skip: 2,
+            limit: 5,
+            verbosity: "executionStats".to_string(),
+        };
+        let result = backend.execute_mongo_command(&connection, "app", &command).await.unwrap();
+
+        server.join().unwrap();
+        let (request_line, body) = request_receiver.recv().unwrap();
+        assert_eq!(request_line, "POST /api/mongo/explain-find HTTP/1.1");
+        let request: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(request["connectionId"], "legacy");
+        assert_eq!(request["database"], "app");
+        assert_eq!(request["collection"], "im_msg");
+        assert_eq!(request["skip"], 2);
+        assert_eq!(request["limit"], 5);
+        assert_eq!(request["filter"], r#"{"active":true}"#);
+        assert_eq!(request["projection"], r#"{"email":1}"#);
+        assert_eq!(request["sort"], r#"{"email":1}"#);
+        assert_eq!(request["collation"], r#"{"locale":"en","strength":1}"#);
+        assert_eq!(request["verbosity"], "executionStats");
+        assert_eq!(result.columns, ["queryPlanner"]);
+        assert_eq!(result.rows.len(), 1);
     }
 
     #[tokio::test]

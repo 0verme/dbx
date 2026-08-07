@@ -232,6 +232,49 @@ pub async fn mongo_find_one_core(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn mongo_explain_find_core(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    collection: &str,
+    skip: u64,
+    limit: i64,
+    filter: Option<&str>,
+    projection: Option<&str>,
+    sort: Option<&str>,
+    collation: Option<&str>,
+    verbosity: &str,
+) -> Result<serde_json::Value, String> {
+    ensure_document_pool(state, connection_id).await?;
+    let connections = state.connections.read().await;
+    match connections.get(connection_id).ok_or("Not found")? {
+        PoolKind::MongoDb(client) => {
+            mongo_driver::explain_find(
+                client, database, collection, skip, limit, filter, projection, sort, collation, verbosity,
+            )
+            .await
+        }
+        PoolKind::Agent(client) => {
+            let mut client = client.lock().await;
+            client
+                .mongo_explain_find(serde_json::json!({
+                    "database": database,
+                    "collection": collection,
+                    "skip": skip,
+                    "limit": limit,
+                    "filter": filter,
+                    "projection": projection,
+                    "sort": sort,
+                    "collation": collation,
+                    "verbosity": verbosity,
+                }))
+                .await
+        }
+        _ => Err("Not a MongoDB connection".to_string()),
+    }
+}
+
 pub async fn mongo_count_documents_core(
     state: &AppState,
     connection_id: &str,
@@ -711,6 +754,24 @@ pub async fn execute_mongo_command_core(
             )
             .await?;
             Ok(mongo_documents_query_result(result.documents))
+        }
+        MongoCommand::FindExplain { collection, filter, projection, sort, collation, skip, limit, verbosity } => {
+            let limit = bounded_mongo_find_limit(*limit, max_rows);
+            let plan = mongo_explain_find_core(
+                state,
+                connection_id,
+                database,
+                collection,
+                *skip,
+                limit,
+                Some(filter),
+                projection.as_deref(),
+                sort.as_deref(),
+                collation.as_deref(),
+                verbosity,
+            )
+            .await?;
+            Ok(mongo_documents_query_result(vec![plan]))
         }
         MongoCommand::FindOne { collection, filter, projection, options } => {
             let result = mongo_find_one_core(
