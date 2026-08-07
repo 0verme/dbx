@@ -924,7 +924,9 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = [0_u8; 2048];
-            stream.read(&mut request).await.unwrap();
+            // Mock HTTP server only needs to drain the request before writing the canned response;
+            // the byte count is irrelevant, so discard it explicitly to satisfy clippy::unused_io_amount.
+            let _ = stream.read(&mut request).await.unwrap();
             let response = format!(
                 "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                 body.len(),
