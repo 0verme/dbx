@@ -214,6 +214,80 @@ fn format_pg_interval(interval: PgInterval) -> String {
     parts.join(" ")
 }
 
+struct PgDateRange(String);
+
+impl<'a> FromSql<'a> for PgDateRange {
+    fn from_sql(_: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        decode_pg_daterange_bytes(raw).map(Self).ok_or_else(|| "invalid PostgreSQL daterange binary value".into())
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        *ty == Type::DATE_RANGE
+    }
+}
+
+const PG_RANGE_EMPTY: u8 = 0b0000_0001;
+const PG_RANGE_LOWER_INCLUSIVE: u8 = 0b0000_0010;
+const PG_RANGE_UPPER_INCLUSIVE: u8 = 0b0000_0100;
+const PG_RANGE_LOWER_UNBOUNDED: u8 = 0b0000_1000;
+const PG_RANGE_UPPER_UNBOUNDED: u8 = 0b0001_0000;
+const PG_RANGE_KNOWN_FLAGS: u8 = PG_RANGE_EMPTY
+    | PG_RANGE_LOWER_INCLUSIVE
+    | PG_RANGE_UPPER_INCLUSIVE
+    | PG_RANGE_LOWER_UNBOUNDED
+    | PG_RANGE_UPPER_UNBOUNDED;
+
+fn decode_pg_date_bound(raw: &[u8], cursor: &mut usize, unbounded: bool) -> Option<String> {
+    if unbounded {
+        return Some(String::new());
+    }
+
+    let length = read_i32_be(raw, cursor)?;
+    if length != 4 {
+        return None;
+    }
+    let days = read_i32_be(raw, cursor)?;
+    match days {
+        i32::MIN => Some("-infinity".to_string()),
+        i32::MAX => Some("infinity".to_string()),
+        days => NaiveDate::from_ymd_opt(2000, 1, 1)?
+            .checked_add_signed(chrono::Duration::days(i64::from(days)))
+            .map(|date| date.to_string()),
+    }
+}
+
+fn decode_pg_daterange_bytes(raw: &[u8]) -> Option<String> {
+    let (&flags, _) = raw.split_first()?;
+    if flags & !PG_RANGE_KNOWN_FLAGS != 0 {
+        return None;
+    }
+    if flags == PG_RANGE_EMPTY {
+        return (raw.len() == 1).then(|| "empty".to_string());
+    }
+    if flags & PG_RANGE_EMPTY != 0 {
+        return None;
+    }
+
+    let lower_unbounded = flags & PG_RANGE_LOWER_UNBOUNDED != 0;
+    let upper_unbounded = flags & PG_RANGE_UPPER_UNBOUNDED != 0;
+    if (lower_unbounded && flags & PG_RANGE_LOWER_INCLUSIVE != 0)
+        || (upper_unbounded && flags & PG_RANGE_UPPER_INCLUSIVE != 0)
+    {
+        return None;
+    }
+
+    let mut cursor = 1;
+    let lower = decode_pg_date_bound(raw, &mut cursor, lower_unbounded)?;
+    let upper = decode_pg_date_bound(raw, &mut cursor, upper_unbounded)?;
+    if cursor != raw.len() {
+        return None;
+    }
+
+    let lower_delimiter = if flags & PG_RANGE_LOWER_INCLUSIVE != 0 { '[' } else { '(' };
+    let upper_delimiter = if flags & PG_RANGE_UPPER_INCLUSIVE != 0 { ']' } else { ')' };
+    Some(format!("{lower_delimiter}{lower},{upper}{upper_delimiter}"))
+}
+
 /// Decode pgvector binary format into a Vec<f32>.
 ///
 /// pgvector binary layout (big-endian):
@@ -451,6 +525,7 @@ pub(crate) enum PgColType {
     Json,
     Bool,
     Interval,
+    DateRange,
     Temporal { fallback: PgTemporalFallback },
     Numeric,
     Uuid,
@@ -499,6 +574,9 @@ pub(crate) fn classify_pg_type(type_name: &str) -> PgColType {
     }
     if upper == "INTERVAL" {
         return PgColType::Interval;
+    }
+    if upper == "DATERANGE" {
+        return PgColType::DateRange;
     }
     if upper.contains("TIMESTAMP")
         || upper == "DATE"
@@ -580,6 +658,10 @@ pub(crate) fn pg_value_to_json_classified(row: &Row, idx: usize, col_type: PgCol
         PgColType::Interval => row
             .try_get::<_, PgInterval>(idx)
             .map(|interval| serde_json::Value::String(format_pg_interval(interval)))
+            .unwrap_or_else(|_| pg_fallback_value_to_json(row, idx)),
+        PgColType::DateRange => row
+            .try_get::<_, PgDateRange>(idx)
+            .map(|range| serde_json::Value::String(range.0))
             .unwrap_or_else(|_| pg_fallback_value_to_json(row, idx)),
         PgColType::Temporal { fallback } => {
             if let Some(v) = pg_temporal_to_json_value(row, idx) {
@@ -5177,6 +5259,70 @@ mod tests {
         assert_eq!(classify_pg_type("interval"), PgColType::Interval);
         assert_eq!(classify_pg_type("_interval"), PgColType::Temporal { fallback: PgTemporalFallback::GenericArray });
         assert!(!pg_type_requires_text_protocol(&Type::INTERVAL, PgColType::Interval));
+    }
+
+    fn pg_date_range_bytes(flags: u8, lower: Option<i32>, upper: Option<i32>) -> Vec<u8> {
+        let mut raw = vec![flags];
+        for days in [lower, upper].into_iter().flatten() {
+            raw.extend_from_slice(&4_i32.to_be_bytes());
+            raw.extend_from_slice(&days.to_be_bytes());
+        }
+        raw
+    }
+
+    #[test]
+    fn postgres_daterange_binary_decodes_reported_value() {
+        let raw = pg_date_range_bytes(PG_RANGE_LOWER_INCLUSIVE, Some(9_163), Some(9_168));
+        let range = PgDateRange::from_sql(&Type::DATE_RANGE, &raw).unwrap();
+
+        assert_eq!(range.0, "[2025-02-01,2025-02-06)");
+    }
+
+    #[test]
+    fn postgres_daterange_binary_handles_empty_unbounded_and_infinite_bounds() {
+        assert_eq!(PgDateRange::from_sql(&Type::DATE_RANGE, &[PG_RANGE_EMPTY]).unwrap().0, "empty");
+        assert_eq!(
+            PgDateRange::from_sql(
+                &Type::DATE_RANGE,
+                &pg_date_range_bytes(PG_RANGE_UPPER_UNBOUNDED | PG_RANGE_LOWER_INCLUSIVE, Some(9_163), None),
+            )
+            .unwrap()
+            .0,
+            "[2025-02-01,)"
+        );
+        assert_eq!(
+            PgDateRange::from_sql(
+                &Type::DATE_RANGE,
+                &pg_date_range_bytes(PG_RANGE_LOWER_UNBOUNDED, None, Some(9_168)),
+            )
+            .unwrap()
+            .0,
+            "(,2025-02-06)"
+        );
+        assert_eq!(
+            PgDateRange::from_sql(
+                &Type::DATE_RANGE,
+                &pg_date_range_bytes(PG_RANGE_LOWER_INCLUSIVE, Some(i32::MIN), Some(i32::MAX)),
+            )
+            .unwrap()
+            .0,
+            "[-infinity,infinity)"
+        );
+    }
+
+    #[test]
+    fn postgres_daterange_rejects_malformed_binary_and_keeps_binary_protocol() {
+        assert!(PgDateRange::from_sql(&Type::DATE_RANGE, &[]).is_err());
+        assert!(PgDateRange::from_sql(&Type::DATE_RANGE, &[PG_RANGE_EMPTY, 0]).is_err());
+        assert!(PgDateRange::from_sql(
+            &Type::DATE_RANGE,
+            &pg_date_range_bytes(PG_RANGE_LOWER_UNBOUNDED | PG_RANGE_LOWER_INCLUSIVE, None, Some(9_168)),
+        )
+        .is_err());
+        assert!(PgDateRange::from_sql(&Type::DATE_RANGE, &[PG_RANGE_LOWER_INCLUSIVE, 0, 0, 0, 3, 0, 0, 0]).is_err());
+        assert_eq!(classify_pg_type("daterange"), PgColType::DateRange);
+        assert_eq!(classify_pg_type("_daterange"), PgColType::GenericArray);
+        assert!(!pg_type_requires_text_protocol(&Type::DATE_RANGE, PgColType::DateRange));
     }
 
     #[test]
