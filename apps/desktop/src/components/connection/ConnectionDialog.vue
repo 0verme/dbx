@@ -641,6 +641,73 @@ const dbPickerView = ref<DbPickerView>(loadConnectionPickerView());
 const dbSearchQuery = ref("");
 const selectedDbCategory = ref<DbCategoryKey>("sql");
 const configTab = ref<ConfigTab>("connection");
+
+// 对话框拖动功能
+const dragOffset = ref({ x: 0, y: 0 });
+const isDraggingDialog = ref(false);
+const dragStartPos = ref({ x: 0, y: 0 });
+const dragStartOffset = ref({ x: 0, y: 0 });
+const activePointerId = ref<number | null>(null);
+
+// 计算对话框的定位样式（通过 transform 实现拖动）
+const dialogContentStyle = computed(() => {
+  if (isDraggingDialog.value || dragOffset.value.x !== 0 || dragOffset.value.y !== 0) {
+    return {
+      transform: `translate(${dragOffset.value.x}px, ${dragOffset.value.y}px)`,
+      transition: isDraggingDialog.value ? "none" : "transform 0.15s ease-out",
+    };
+  }
+  return {};
+});
+
+// 开始拖动（在 DialogHeader 上按下鼠标/触摸）
+function onDialogHeaderPointerDown(e: PointerEvent) {
+  if (e.button !== undefined && e.button !== 0) return;
+  isDraggingDialog.value = true;
+  activePointerId.value = e.pointerId;
+  dragStartPos.value = { x: e.clientX, y: e.clientY };
+  dragStartOffset.value = { ...dragOffset.value };
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+// 拖动中
+function onDialogHeaderPointerMove(e: PointerEvent) {
+  if (!isDraggingDialog.value || e.pointerId !== activePointerId.value) return;
+  const dx = e.clientX - dragStartPos.value.x;
+  const dy = e.clientY - dragStartPos.value.y;
+  dragOffset.value = {
+    x: dragStartOffset.value.x + dx,
+    y: dragStartOffset.value.y + dy,
+  };
+}
+
+// 结束拖动
+function onDialogHeaderPointerEnd(e: PointerEvent) {
+  if (!isDraggingDialog.value || e.pointerId !== activePointerId.value) return;
+  isDraggingDialog.value = false;
+  activePointerId.value = null;
+  try {
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  } catch {
+    // 忽略 release 失败的错误
+  }
+}
+
+// 重置拖动位置
+function resetDialogDragOffset() {
+  dragOffset.value = { x: 0, y: 0 };
+  isDraggingDialog.value = false;
+  activePointerId.value = null;
+}
+
+// 监听对话框 open 状态，重置位置
+watch(open, (isOpen) => {
+  if (isOpen) {
+    nextTick(() => resetDialogDragOffset());
+  } else {
+    resetDialogDragOffset();
+  }
+});
 watch([() => form.value.note, configTab, dialogStep, open], () => {
   void nextTick(resizeNoteTextarea);
 });
@@ -5149,8 +5216,8 @@ function openExternalUrl(url: string) {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent class="connection-dialog-content" :class="connectionDialogContentClass" :data-wide="shouldUseWideConnectionDialog ? 'true' : undefined" @interact-outside.prevent @escape-key-down="handleDialogEscape" @keydown="preventDialogDocumentSelectAll">
-      <DialogHeader>
+    <DialogContent :style="dialogContentStyle" class="connection-dialog-content" :class="connectionDialogContentClass" :data-wide="shouldUseWideConnectionDialog ? 'true' : undefined" @interact-outside.prevent @escape-key-down="handleDialogEscape" @keydown="preventDialogDocumentSelectAll">
+      <DialogHeader class="cursor-move select-none" @pointerdown="onDialogHeaderPointerDown" @pointermove="onDialogHeaderPointerMove" @pointerup="onDialogHeaderPointerEnd" @pointercancel="onDialogHeaderPointerEnd">
         <DialogTitle>{{ editingId ? t("connection.editTitle") : t("connection.title") }}</DialogTitle>
       </DialogHeader>
 
