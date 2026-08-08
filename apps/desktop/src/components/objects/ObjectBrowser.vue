@@ -67,12 +67,10 @@ import { buildTableSelectSql } from "@/lib/table/tableSelectSql";
 import {
   buildDropObjectSql,
   buildDropTableSql,
-  buildDuplicateTableStructureSql,
+  buildDuplicateTableStructurePlan as buildSharedDuplicateTableStructurePlan,
   buildCopyTableDataSql,
   buildEmptyTableSql,
   buildTruncateTableSql,
-  collectDuplicateTableColumnComments,
-  duplicateTableStructureRequiresScript,
   supportsDropTableCascade,
   supportsTruncateTableCascade,
   type TableAdminSqlOptions,
@@ -1933,24 +1931,17 @@ function requestDuplicateStructure(row: ObjectBrowserRow) {
 }
 
 async function buildDuplicateStructurePlan(sourceName: string, targetName: string, schema: string | undefined, tableComment?: string | null, sourceColumns?: ColumnInfo[]) {
-  let columns = sourceColumns;
-  if (effectiveDatabaseType.value === "dameng" && !columns) {
-    try {
-      columns = await api.getColumns(props.connection.id, props.database, schema || "", sourceName, props.catalog);
-    } catch (error) {
-      console.warn(`Failed to load Dameng column comments for table clone: ${sourceName}`, error);
-    }
-  }
-  const columnComments = effectiveDatabaseType.value === "dameng" ? collectDuplicateTableColumnComments(columns ?? []) : [];
-  const sql = await buildDuplicateTableStructureSql({
+  return buildSharedDuplicateTableStructurePlan({
+    connectionId: props.connection.id,
+    database: props.database,
+    catalog: props.catalog,
     databaseType: effectiveDatabaseType.value,
     schema,
     sourceName,
     targetName,
     tableComment,
-    columnComments,
+    sourceColumns,
   });
-  return { sql, sourceColumns: columns, executeAsScript: duplicateTableStructureRequiresScript(sql) };
 }
 
 function executeDuplicateStructurePlan(plan: { sql: string; executeAsScript: boolean }, schema: string | undefined) {
