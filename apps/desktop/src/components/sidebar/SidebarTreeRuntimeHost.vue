@@ -338,6 +338,7 @@ const emit = defineEmits<{
   "open-data": [node: TreeNode, requireSelection: boolean, openMode: DataTabOpenMode, runner: (node: TreeNode, request: SidebarDataOpenRequest) => Promise<void>];
   "open-visible-databases": [node: TreeNode];
   "open-visible-schemas": [node: TreeNode];
+  "open-visible-nacos-namespaces": [node: TreeNode];
   "open-table-name-filters": [node: TreeNode];
   "open-danger-dialog": [request: SidebarDangerDialogRequest];
   "open-dialog-controller": [controller: Record<string, any> | null];
@@ -4097,6 +4098,13 @@ function buildConnectionSidebarMenu(context: SidebarMenuFactoryContext): boolean
         icon: ListFilter,
       });
     }
+    if (currentDatabaseType() === "nacos") {
+      items.push({
+        label: t("nacos.nacosVisibleNamespacesTitle"),
+        action: openVisibleNacosNamespacesDialog,
+        icon: ListFilter,
+      });
+    }
     items.push({ label: t("contextMenu.editConnection"), action: editConnection, icon: Pencil, shortcut: shortcutEditConnection.value });
     if (revealConnectionFilePath.value) {
       items.push({
@@ -4866,7 +4874,17 @@ function handleRowKeydown(node: TreeNode, event: KeyboardEvent) {
 
 function openPrimaryVisibleFilter(node: TreeNode) {
   activateRuntimeNode(node);
+  if (currentDatabaseType() === "nacos") {
+    openVisibleNacosNamespacesDialog();
+    return;
+  }
   openVisibleDatabasesDialog();
+}
+
+function openVisibleNacosNamespacesDialog() {
+  const node = activeNode.value;
+  if (node.type !== "connection" || !node.connectionId || connectionStore.getConfig(node.connectionId)?.db_type !== "nacos") return;
+  emit("open-visible-nacos-namespaces", node);
 }
 
 function openDataInNewTab(node: TreeNode) {
