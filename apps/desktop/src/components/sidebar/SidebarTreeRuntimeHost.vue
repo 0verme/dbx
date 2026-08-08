@@ -11,6 +11,7 @@ import { useSidebarTreeToolRuntime } from "@/composables/useSidebarTreeToolRunti
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
 import {
+  BookOpen,
   Database,
   ChevronsDown,
   FolderOpen,
@@ -315,7 +316,7 @@ const { copyStructureAs, copyStructureDocText, copyStructurePreview, exportData,
   acceptedSelectionIds: () => acceptedSelectionIds,
 });
 
-const { openAllDatabasesExport, openDataCompare, openDatabaseExport, openDatabaseSearch, openDiagram, openFieldLineage, openScheduledBackups, openSchemaDiff, openSqlFileExecution, openStructureEditor, openTableImport, openTransfer } = useSidebarTreeToolRuntime({
+const { openAllDatabasesExport, openDataCompare, openDatabaseExport, openDatabaseSearch, openDiagram, openDocs, openFieldLineage, openScheduledBackups, openSchemaDiff, openSqlFileExecution, openStructureEditor, openTableImport, openTransfer } = useSidebarTreeToolRuntime({
   activeNode,
   connectionStore,
   queryStore,
@@ -4203,6 +4204,7 @@ function buildDatabaseSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     }
     if (canOpenDiagram.value) {
       items.push({ label: t("diagram.open"), action: openDiagram, icon: Network });
+      items.push({ label: t("docs.title"), action: openDocs, icon: BookOpen });
     }
     if (canOpenDatabaseSearch.value) {
       items.push({ label: t("databaseSearch.open"), action: openDatabaseSearch, icon: Search });

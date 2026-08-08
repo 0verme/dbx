@@ -6,7 +6,6 @@ import {
   ArrowDown,
   ArrowRightLeft,
   ArrowUp,
-  BookOpen,
   Braces,
   CheckSquare,
   Clipboard,
@@ -1463,16 +1462,6 @@ function openDiagram(row: ObjectBrowserRow) {
   };
 }
 
-function openDocs(row: ObjectBrowserRow) {
-  // The docs viewer documents the whole schema rather than one object, so the
-  // row only supplies which schema to collect.
-  connectionStore.docsSource = {
-    connectionId: props.connection.id,
-    database: props.database,
-    schema: row.schema || selectedSchema.value,
-  };
-}
-
 function openTableImport(row: ObjectBrowserRow) {
   if (row.type !== "TABLE") return;
   connectionStore.tableImportSource = {
@@ -2663,12 +2652,7 @@ function getTableMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
     ...(canOpenStructureEditor.value ? [{ label: t("contextMenu.editStructure"), action: () => openStructureEditor(item), icon: PencilRuler }] : []),
     ...(canRename(item) ? [{ label: t("contextMenu.renameObject"), action: () => requestRename(item), icon: Pencil }] : []),
     { label: t("contextMenu.newQuery"), action: () => openNewQuery(item), icon: TerminalSquare },
-    ...(canOpenDiagram.value
-      ? [
-          { label: t("diagram.open"), action: () => openDiagram(item), icon: Network },
-          { label: t("docs.title"), action: () => openDocs(item), icon: BookOpen },
-        ]
-      : []),
+    ...(canOpenDiagram.value ? [{ label: t("diagram.open"), action: () => openDiagram(item), icon: Network }] : []),
     ...(canOpenTableImport.value ? [{ label: t("contextMenu.importData"), action: () => openTableImport(item), icon: Download }] : []),
     { label: t("dataCompare.title"), action: () => openDataCompare(item), icon: ArrowRightLeft },
     { label: "", separator: true },
@@ -2718,12 +2702,7 @@ function getViewMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
     },
     ...(canRename(item) ? [{ label: t("contextMenu.renameObject"), action: () => requestRename(item), icon: Pencil }] : []),
     { label: t("contextMenu.newQuery"), action: () => openNewQuery(item), icon: TerminalSquare },
-    ...(canOpenDiagram.value
-      ? [
-          { label: t("diagram.open"), action: () => openDiagram(item), icon: Network },
-          { label: t("docs.title"), action: () => openDocs(item), icon: BookOpen },
-        ]
-      : []),
+    ...(canOpenDiagram.value ? [{ label: t("diagram.open"), action: () => openDiagram(item), icon: Network }] : []),
     { label: "", separator: true },
     exportDataSubmenu(item),
     { label: t("contextMenu.exportDatabase"), action: () => openDatabaseExport(item), icon: Upload },
