@@ -342,6 +342,7 @@ const emit = defineEmits<{
   "open-danger-dialog": [request: SidebarDangerDialogRequest];
   "open-dialog-controller": [controller: Record<string, any> | null];
   "open-install-extension": [node: TreeNode];
+  "open-extension-details": [node: TreeNode];
 }>();
 
 const {
@@ -760,6 +761,8 @@ function runRowClickAction(clickDetail: number) {
     scheduleOpenData(node);
   } else if (action === "open-source") {
     openObjectSourceDialog(false);
+  } else if (action === "open-extension-details") {
+    emit("open-extension-details", node);
   } else if (isDocumentBrowserTreeNode(node.type)) {
     openMongoTreeData(node);
   } else if (action === "toggle") {
@@ -1067,6 +1070,8 @@ function onDoubleClick(event: MouseEvent) {
     activateDataTableFromDoubleClick();
   } else if (action === "open-source") {
     openObjectSourceDialog(false);
+  } else if (action === "open-extension-details") {
+    emit("open-extension-details", activeNode.value);
   } else if (action === "open-saved-sql") {
     openSavedSqlFile();
   } else if (action === "toggle" && (activeNode.value.type === "mongo-gridfs" || isDocumentBrowserTreeNode(activeNode.value.type))) {
@@ -4395,6 +4400,8 @@ function buildSpecialSidebarMenu(context: SidebarMenuFactoryContext): boolean {
 
   // 8.5 Extension
   if (node.type === "extension") {
+    items.push({ label: t("extension.viewDetails"), action: () => emit("open-extension-details", node), icon: Info });
+    items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     return true;
   }
