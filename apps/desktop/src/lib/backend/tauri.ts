@@ -3725,6 +3725,7 @@ export interface QueryResultExportRequest {
   connectionId: string;
   database: string;
   schema?: string;
+  catalog?: string;
   sql: string;
   queryBaseSql: string;
   setupSql?: string[];
