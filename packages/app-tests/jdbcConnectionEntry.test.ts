@@ -27,13 +27,15 @@ test("opens driver management on the JDBC tab from JDBC connection settings", ()
   const appDialogs = source("apps/desktop/src/components/layout/AppDialogs.vue");
   const app = source("apps/desktop/src/App.vue");
   const driverStore = source("apps/desktop/src/components/config/DriverStoreDialog.vue");
+  const driverStoreTypes = source("apps/desktop/src/lib/connection/agentDriverInstallHint.ts");
 
   assert.equal(connectionDialog.match(/emit\('openDriverStore', \{ target: 'tab', tab: 'jdbc' \}\)/g)?.length, 1);
   assert.match(connectionDialog, /isJdbcProductConnection\.value \? agentDriverFocus\.value : \{ target: "tab", tab: "jdbc" \}/);
   assert.match(appDialogs, /@open-driver-store="emit\('openDriverStore', \$event\)"/);
   assert.match(app, /openDriverStorePage\(\$event\)/);
   assert.match(app, /v-model:active-tab="driverStoreActiveTab"/);
-  assert.match(driverStore, /"update:activeTab": \[tab: "agent" \| "jdbc" \| "storage" \| "runtime"\]/);
+  assert.match(driverStore, /"update:activeTab": \[tab: DriverStoreTab\]/);
+  assert.match(driverStoreTypes, /DriverStoreTab = "agent" \| "jdbc" \| "storage" \| "runtime"/);
 });
 
 test("resets the driver management tab after the page is closed", () => {

@@ -611,6 +611,9 @@ async function toggle() {
         await connectionStore.loadNacosNamespaces(node.connectionId);
       } else if (config?.db_type === "mqtt") {
         await connectionStore.loadMqttTopics(node.connectionId);
+      } else if (config?.db_type === "plugin") {
+        await queryStore.openPluginConnection(node.connectionId);
+        return;
       } else {
         await connectionStore.loadDatabases(node.connectionId);
       }
@@ -1147,6 +1150,10 @@ async function openObjectBrowser() {
 
     const connection = connectionStore.getConfig(node.connectionId);
     if (!connection) return;
+    if (connection.db_type === "plugin") {
+      await queryStore.openPluginConnection(node.connectionId);
+      return;
+    }
     const options = await getDatabaseOptions(node.connectionId);
     const database = resolveDefaultDatabase(connection, options);
     if (database) {

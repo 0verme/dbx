@@ -22,6 +22,7 @@ plugins/jdbc/lib/*.jar
 plugins/jdbc/.gradle/
 plugins/jdbc/build/
 plugins/jdbc/dist/
+packages/plugin-cli/sdk-root/
 docs/.next/
 docs/out/
 docs/.source/
@@ -50,6 +51,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+.dbx-plugin-signing-key.env
 
 # Temp
 tmp/

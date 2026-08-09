@@ -161,6 +161,19 @@ pub struct ConnectionConfig {
     /// Typed configuration for external tabular sources.
     #[serde(default)]
     pub external_config: Option<serde_json::Value>,
+    /// Owning plugin for a first-class plugin connection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
+    /// `connection-provider` contribution id inside `plugin_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_connection_provider: Option<String>,
+    /// Provider-defined connection kind, such as `ssh` or `s3`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_connection_type: Option<String>,
+    /// Provider-defined sensitive values. Persistence moves these into the
+    /// connection secret store rather than keeping them in `config_json`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub connection_secrets: HashMap<String, String>,
     #[serde(default)]
     pub jdbc_driver_class: Option<String>,
     #[serde(default)]
@@ -547,6 +560,9 @@ pub enum DatabaseType {
     #[serde(rename = "questdb")]
     Questdb,
     Jdbc,
+    /// A non-tabular or plugin-owned connection. The actual type and lifecycle
+    /// provider live in the plugin binding fields on [`ConnectionConfig`].
+    Plugin,
     /// Message queue admin connection (Pulsar / Kafka / RocketMQ). The specific
     /// system is determined by `external_config.systemKind`.
     #[serde(rename = "mq")]
@@ -644,6 +660,14 @@ struct ConnectionConfigData {
     #[serde(default)]
     pub external_config: Option<serde_json::Value>,
     #[serde(default)]
+    pub plugin_id: Option<String>,
+    #[serde(default)]
+    pub plugin_connection_provider: Option<String>,
+    #[serde(default)]
+    pub plugin_connection_type: Option<String>,
+    #[serde(default)]
+    pub connection_secrets: HashMap<String, String>,
+    #[serde(default)]
     pub jdbc_driver_class: Option<String>,
     #[serde(default)]
     pub jdbc_driver_paths: Vec<String>,
@@ -708,6 +732,10 @@ impl From<ConnectionConfigData> for ConnectionConfig {
             gbase_server: data.gbase_server,
             informix_server: data.informix_server,
             external_config: data.external_config,
+            plugin_id: data.plugin_id,
+            plugin_connection_provider: data.plugin_connection_provider,
+            plugin_connection_type: data.plugin_connection_type,
+            connection_secrets: data.connection_secrets,
             jdbc_driver_class: data.jdbc_driver_class,
             jdbc_driver_paths: data.jdbc_driver_paths,
             one_time: data.one_time,
@@ -1115,6 +1143,11 @@ impl ConnectionConfig {
                 format!("{scheme}://{host}:{port}")
             }
             DatabaseType::Jdbc => "jdbc:<redacted>".to_string(),
+            DatabaseType::Plugin => format!(
+                "plugin://{}/{}",
+                self.plugin_id.as_deref().unwrap_or("unknown"),
+                self.plugin_connection_type.as_deref().unwrap_or("unknown")
+            ),
             DatabaseType::MessageQueue => self.message_queue_admin_url(),
             DatabaseType::Mqtt => self.mqtt_broker_url(),
             DatabaseType::Nacos => self.nacos_admin_url(),
@@ -1357,6 +1390,11 @@ impl ConnectionConfig {
             DatabaseType::Jdbc => {
                 self.connection_string.as_deref().filter(|value| !value.is_empty()).unwrap_or("jdbc:").to_string()
             }
+            DatabaseType::Plugin => format!(
+                "plugin://{}/{}",
+                self.plugin_id.as_deref().unwrap_or("unknown"),
+                self.plugin_connection_type.as_deref().unwrap_or("unknown")
+            ),
             DatabaseType::MessageQueue => self.message_queue_admin_url(),
             DatabaseType::Mqtt => self.mqtt_broker_url(),
             DatabaseType::Nacos => self.nacos_admin_url(),
@@ -2330,6 +2368,10 @@ mod tests {
             gbase_server: String::new(),
             informix_server: String::new(),
             external_config: None,
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: Default::default(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,

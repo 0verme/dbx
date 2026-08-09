@@ -1668,6 +1668,9 @@ async fn do_execute_typed(
             .await
             .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
+        PoolKind::PluginConnection(_) => {
+            Err("SQL execution is not supported for plugin workbench connections".to_string())
+        }
         PoolKind::HBase(_) => Err("SQL execution is not supported for HBase connections".to_string()),
     };
     result
@@ -2852,6 +2855,7 @@ fn pool_kind_has_transactional_path(pool: &PoolKind) -> bool {
         | PoolKind::Agent(_) => true,
         PoolKind::MessageQueue
         | PoolKind::Nacos
+        | PoolKind::PluginConnection(_)
         | PoolKind::HBase(_)
         | PoolKind::DuckDbWorker(_)
         | PoolKind::Redis(_)
@@ -3095,7 +3099,9 @@ pub async fn execute_statements_in_transaction_on_pool_typed(
                 TxPath::Explicit
             }
             PoolKind::Agent(client) => TxPath::Agent(client.clone()),
-            PoolKind::MessageQueue | PoolKind::Nacos | PoolKind::HBase(_) => TxPath::None,
+            PoolKind::MessageQueue | PoolKind::Nacos | PoolKind::PluginConnection(_) | PoolKind::HBase(_) => {
+                TxPath::None
+            }
             #[cfg(feature = "mq-admin")]
             PoolKind::Mqtt(_) => TxPath::None,
             PoolKind::DuckDbWorker(_)
@@ -4537,6 +4543,10 @@ for line in sys.stdin:
             gbase_server: String::new(),
             informix_server: String::new(),
             external_config: None,
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: Default::default(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
@@ -5368,8 +5378,8 @@ for line in sys.stdin:
         permissions.set_mode(0o755);
         std::fs::set_permissions(&executable, permissions).unwrap();
 
-        let plugin = InstalledPlugin {
-            manifest: PluginManifest {
+        let plugin = InstalledPlugin::new(
+            PluginManifest {
                 id: "jdbc".to_string(),
                 name: "JDBC".to_string(),
                 version: "legacy".to_string(),
@@ -5382,9 +5392,12 @@ for line in sys.stdin:
                     kind: "external".to_string(),
                     database_type: Some("jdbc".to_string()),
                 }],
+                contributions: Vec::new(),
+                ..PluginManifest::default()
             },
-            path: dir.clone(),
-        };
+            dir.clone(),
+            env!("CARGO_PKG_VERSION"),
+        );
         let session = PluginDriverSession::start_for_test(plugin, "jdbc".to_string(), PluginRuntimeEnv::default())
             .await
             .expect("legacy plugin should start");
@@ -5426,8 +5439,8 @@ for line in sys.stdin:
         permissions.set_mode(0o755);
         std::fs::set_permissions(&executable, permissions).unwrap();
 
-        let plugin = InstalledPlugin {
-            manifest: PluginManifest {
+        let plugin = InstalledPlugin::new(
+            PluginManifest {
                 id: "jdbc".to_string(),
                 name: "JDBC".to_string(),
                 version: "current".to_string(),
@@ -5440,9 +5453,12 @@ for line in sys.stdin:
                     kind: "external".to_string(),
                     database_type: Some("jdbc".to_string()),
                 }],
+                contributions: Vec::new(),
+                ..PluginManifest::default()
             },
-            path: dir.clone(),
-        };
+            dir.clone(),
+            env!("CARGO_PKG_VERSION"),
+        );
         let session = PluginDriverSession::start_for_test(plugin, "jdbc".to_string(), PluginRuntimeEnv::default())
             .await
             .expect("plugin should start");
@@ -5869,6 +5885,10 @@ for line in sys.stdin:
             gbase_server: String::new(),
             informix_server: String::new(),
             external_config: None,
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: Default::default(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,

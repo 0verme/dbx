@@ -2711,6 +2711,8 @@ export const useConnectionStore = defineStore("connection", () => {
       await loadMqttTopics(connectionId);
     } else if (config.db_type === "nacos") {
       await loadNacosNamespaces(connectionId, { force: true });
+    } else if (config.db_type === "plugin") {
+      return;
     } else {
       await loadDatabases(connectionId, { force: true });
     }
@@ -2732,8 +2734,10 @@ export const useConnectionStore = defineStore("connection", () => {
       await ensureLocalConnectionAttemptActiveAfterConnectResult(config.id, localAttempt, id);
       activeConnectionId.value = id;
       connectedIds.value.add(id);
-      void refreshConnectedDatabaseInfo(id, { ...config, id });
-      await refreshConnectionIdentifierQuote(id, { ...config, id });
+      if (config.db_type !== "plugin") {
+        void refreshConnectedDatabaseInfo(id, { ...config, id });
+        await refreshConnectionIdentifierQuote(id, { ...config, id });
+      }
       if (id !== config.id) markSuccessfulLocalConnectionAttempt(config.id, localAttempt);
       markSuccessfulLocalConnectionAttempt(id, localAttempt);
       markConnectionHealthChecked(id);
@@ -2910,8 +2914,10 @@ export const useConnectionStore = defineStore("connection", () => {
       await syncMongoLegacyDriverFallback(connectionId, config);
       await ensureLocalConnectionAttemptActiveAfterConnectResult(connectionId, localAttempt, id);
       connectedIds.value.add(connectionId);
-      void refreshConnectedDatabaseInfo(connectionId, config);
-      await refreshConnectionIdentifierQuote(connectionId, config);
+      if (config.db_type !== "plugin") {
+        void refreshConnectedDatabaseInfo(connectionId, config);
+        await refreshConnectionIdentifierQuote(connectionId, config);
+      }
       markSuccessfulLocalConnectionAttempt(connectionId, localAttempt);
       markConnectionHealthChecked(connectionId);
       clearConnectionError(connectionId);

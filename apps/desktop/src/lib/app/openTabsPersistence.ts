@@ -56,6 +56,8 @@ export interface SavedOpenTab {
   resultRuns?: SavedQueryResultRun[];
   activeResultRunId?: string;
   resultAutoSave?: boolean;
+  pluginWorkbench?: QueryTab["pluginWorkbench"];
+  pluginFilesystem?: QueryTab["pluginFilesystem"];
 }
 
 export interface RestoredOpenTabs {
@@ -144,6 +146,8 @@ export function serializeOpenTabs(tabs: QueryTab[]): SavedOpenTab[] {
       : {}),
     ...(tab.mode === "query" && tab.activeResultRunId !== undefined ? { activeResultRunId: tab.activeResultRunId } : {}),
     ...(tab.mode === "query" && tab.resultAutoSave ? { resultAutoSave: true } : {}),
+    ...(tab.pluginWorkbench ? { pluginWorkbench: tab.pluginWorkbench } : {}),
+    ...(tab.pluginFilesystem ? { pluginFilesystem: tab.pluginFilesystem } : {}),
   }));
 }
 

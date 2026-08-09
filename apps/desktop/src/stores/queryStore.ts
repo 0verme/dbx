@@ -3,6 +3,7 @@ import { uuid } from "@/lib/common/utils";
 import { computed, markRaw, onScopeDispose, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { BatchSqlExecution, ConnectionConfig, DatabaseType, IndexInfo, ObjectBrowserViewport, QueryResult, QueryTab, TableInfoTab, TableStructureEditorTarget } from "@/types/database";
+import { currentLocale } from "@/i18n";
 import { orderPinnedFirst } from "@/lib/app/pinnedItems";
 import { canCancelQueryExecution } from "@/lib/sql/queryExecutionState";
 import { buildExplainSql, parseExplainResult, parseDamengExplainText, parseOracleExplainText, sqlServerExplainResult, type BuildExplainSqlResult } from "@/lib/diagram/explainPlan";
@@ -57,6 +58,7 @@ import { queryResultBaseSql, queryResultExecutionSql } from "@/lib/tabs/tabPrese
 import { isQueryExecutionErrorResult } from "@/lib/query/queryResultError";
 import { decodeQueryResultArchive, encodeQueryResultArchive, type DecodedQueryResultArchive } from "@/lib/query/queryResultArchive";
 import * as api from "@/lib/backend/api";
+import { createFrontendPluginRegistry } from "@/lib/plugins/frontendPlugin";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
@@ -1780,6 +1782,104 @@ export const useQueryStore = defineStore("query", () => {
     tab.nacosTargetDataId = undefined;
     tab.nacosTargetGroup = undefined;
     tab.nacosTargetKeyword = undefined;
+  }
+
+  function openPluginWorkbench(pluginId: string, contributionId: string, options: { title?: string; connectionId?: string; database?: string; context?: Record<string, unknown>; forceNew?: boolean } = {}) {
+    if (!options.forceNew) {
+      const existing = tabs.value.find((tab) => tab.mode === "plugin-workbench" && tab.pluginWorkbench?.pluginId === pluginId && tab.pluginWorkbench?.contributionId === contributionId && tab.connectionId === (options.connectionId || ""));
+      if (existing) {
+        if (options.context) existing.pluginWorkbench = { ...existing.pluginWorkbench!, context: structuredClone(options.context) };
+        switchTab(existing.id);
+        return existing.id;
+      }
+    }
+
+    const id = uuid();
+    const tab: QueryTab = {
+      id,
+      title: options.title || contributionId,
+      connectionId: options.connectionId || "",
+      database: options.database || "",
+      sql: "",
+      isExecuting: false,
+      isCancelling: false,
+      isExplaining: false,
+      mode: "plugin-workbench",
+      pluginWorkbench: {
+        pluginId,
+        contributionId,
+        context: options.context ? structuredClone(options.context) : undefined,
+      },
+    };
+    tabs.value.push(tab);
+    activeTabId.value = id;
+    return id;
+  }
+
+  function openPluginFilesystem(pluginId: string, providerId: string, options: { title?: string; connectionId?: string; rootUri?: string; currentUri?: string; forceNew?: boolean } = {}) {
+    if (!options.forceNew) {
+      const existing = tabs.value.find((tab) => tab.mode === "plugin-filesystem" && tab.pluginFilesystem?.pluginId === pluginId && tab.pluginFilesystem?.providerId === providerId && tab.connectionId === (options.connectionId || ""));
+      if (existing) {
+        if (options.currentUri) existing.pluginFilesystem = { ...existing.pluginFilesystem!, currentUri: options.currentUri };
+        switchTab(existing.id);
+        return existing.id;
+      }
+    }
+
+    const id = uuid();
+    const tab: QueryTab = {
+      id,
+      title: options.title || providerId,
+      connectionId: options.connectionId || "",
+      database: "",
+      sql: "",
+      isExecuting: false,
+      isCancelling: false,
+      isExplaining: false,
+      mode: "plugin-filesystem",
+      pluginFilesystem: {
+        pluginId,
+        providerId,
+        rootUri: options.rootUri,
+        currentUri: options.currentUri,
+      },
+    };
+    tabs.value.push(tab);
+    activeTabId.value = id;
+    return id;
+  }
+
+  async function openPluginConnection(connectionId: string) {
+    const connectionStore = useConnectionStore();
+    const connection = connectionStore.getConfig(connectionId);
+    if (!connection || connection.db_type !== "plugin") throw new Error("Plugin connection config not found");
+    const pluginId = connection.plugin_id;
+    const providerId = connection.plugin_connection_provider;
+    if (!pluginId || !providerId) throw new Error("Plugin connection binding is incomplete");
+    const registry = createFrontendPluginRegistry(await api.listPlugins(), currentLocale());
+    const provider = registry.listConnectionProviders().find((entry) => entry.plugin.manifest.id === pluginId && entry.contribution.id === providerId);
+    if (!provider) throw new Error(`Plugin connection provider '${pluginId}/${providerId}' is unavailable`);
+    const workbench = provider.contribution.workbench ? registry.findWorkbench(pluginId, provider.contribution.workbench) : undefined;
+    await connectionStore.ensureConnected(connectionId);
+    if (workbench) {
+      return openPluginWorkbench(pluginId, workbench.contribution.id, {
+        title: `${connection.name} · ${workbench.contribution.label}`,
+        connectionId,
+        context: {
+          connectionId,
+          providerId,
+          connectionType: connection.plugin_connection_type,
+        },
+      });
+    }
+    const filesystemProviderId = provider.contribution.filesystem_provider;
+    const filesystem = filesystemProviderId ? registry.listFilesystemProviders().find((entry) => entry.plugin.manifest.id === pluginId && entry.contribution.id === filesystemProviderId) : undefined;
+    if (!filesystem) throw new Error(`Plugin connection provider '${pluginId}/${providerId}' does not declare a workbench or filesystem provider`);
+    return openPluginFilesystem(pluginId, filesystem.contribution.id, {
+      title: `${connection.name} · ${filesystem.contribution.label}`,
+      connectionId,
+      rootUri: filesystem.contribution.root_uri,
+    });
   }
 
   function applyTableStructureInitialTab(tab: QueryTab, initialTab?: TableInfoTab, initialTarget?: TableStructureEditorTarget) {
@@ -5455,6 +5555,9 @@ export const useQueryStore = defineStore("query", () => {
     openMqAdmin,
     openMqttAdmin,
     openNacosAdmin,
+    openPluginWorkbench,
+    openPluginFilesystem,
+    openPluginConnection,
     clearNacosNavigationTarget,
     openTableStructure,
     linkSavedSql,

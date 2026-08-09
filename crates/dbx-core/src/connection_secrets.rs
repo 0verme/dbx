@@ -24,6 +24,19 @@ pub const NACOS_AUTH_PASSWORD_KEY: &str = "nacos.auth.password";
 pub const NACOS_RNACOS_CONSOLE_PASSWORD_KEY: &str = "nacos.auth.rnacos_console_password";
 pub const MQTT_AUTH_SECRET_PREFIX: &str = "mqtt.auth.";
 pub const MQTT_AUTH_PASSWORD_KEY: &str = "mqtt.auth.password";
+pub const PLUGIN_CONNECTION_SECRET_PREFIX: &str = "plugin_connection.";
+
+pub fn plugin_connection_secret_key(key: &str) -> Result<String, String> {
+    if key.is_empty()
+        || key.len() > 128
+        || !key.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || matches!(character, '.' | '-' | '_')
+        })
+    {
+        return Err(format!("Invalid plugin connection secret key '{key}'"));
+    }
+    Ok(format!("{PLUGIN_CONNECTION_SECRET_PREFIX}{key}"))
+}
 
 pub trait ConnectionSecretStore {
     fn set_secret(&self, connection_id: &str, key: &str, secret: &str) -> Result<(), String>;
@@ -112,6 +125,10 @@ pub fn save_connections_to_file(
         persist_mq_auth_secrets(store, config)?;
         persist_mq_token_signing_secret(store, config)?;
         persist_mqtt_auth_secrets(store, config)?;
+        delete_secret_prefix(store, &config.id, PLUGIN_CONNECTION_SECRET_PREFIX)?;
+        for (key, secret) in &config.connection_secrets {
+            persist_secret(store, &config.id, &plugin_connection_secret_key(key)?, secret)?;
+        }
 
         // New configs persist transport-layer secrets only. Remove legacy transport secret slots after the
         // migrated layer values have been written so old configs do not keep two sources of truth.
@@ -181,6 +198,19 @@ pub fn load_connections_from_file(
         hydrate_mq_auth_secrets(store, config, &mut needs_rewrite)?;
         hydrate_mq_token_signing_secret(store, config, &mut needs_rewrite)?;
         hydrate_mqtt_auth_secrets(store, config, &mut needs_rewrite)?;
+        let plugin_secret_keys = config.connection_secrets.keys().cloned().collect::<Vec<_>>();
+        for key in plugin_secret_keys {
+            let storage_key = plugin_connection_secret_key(&key)?;
+            let current = config.connection_secrets.get(&key).cloned().unwrap_or_default();
+            if current.is_empty() {
+                if let Some(secret) = store.get_secret(&config.id, &storage_key)? {
+                    config.connection_secrets.insert(key, secret);
+                }
+            } else {
+                store.set_secret(&config.id, &storage_key, &current)?;
+                needs_rewrite = true;
+            }
+        }
     }
 
     if needs_rewrite {
@@ -745,9 +775,16 @@ fn sanitize_connections(configs: &[ConnectionConfig]) -> Vec<ConnectionConfig> {
             scrub_mq_auth_secrets(&mut config);
             scrub_mq_token_signing_secret(&mut config);
             scrub_mqtt_auth_secrets(&mut config);
+            scrub_plugin_connection_secrets(&mut config);
             config
         })
         .collect()
+}
+
+fn scrub_plugin_connection_secrets(config: &mut ConnectionConfig) {
+    for secret in config.connection_secrets.values_mut() {
+        secret.clear();
+    }
 }
 
 pub fn secret_account(connection_id: &str, key: &str) -> String {
@@ -759,7 +796,7 @@ mod tests {
     use super::{
         load_connections_from_file, save_connections_to_file, ConnectionSecretStore, CONNECTION_STRING_KEY,
         INIT_SCRIPT_KEY, MAIN_PASSWORD_KEY, MQTT_AUTH_PASSWORD_KEY, MQ_AUTH_PASSWORD_KEY, MQ_AUTH_TOKEN_KEY,
-        MQ_TOKEN_SIGNING_KEY, REDIS_SENTINEL_PASSWORD_KEY, SSH_PASSWORD_KEY,
+        MQ_TOKEN_SIGNING_KEY, PLUGIN_CONNECTION_SECRET_PREFIX, REDIS_SENTINEL_PASSWORD_KEY, SSH_PASSWORD_KEY,
     };
     use crate::models::connection::{
         ConnectionConfig, DatabaseType, HttpTunnelConfig, SshTunnelConfig, TransportLayerConfig,
@@ -870,6 +907,10 @@ mod tests {
             gbase_server: String::new(),
             informix_server: String::new(),
             external_config: None,
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: HashMap::new(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
@@ -1430,5 +1471,34 @@ mod tests {
         save_connections_to_file(&path, &[config], &store).unwrap();
 
         assert_eq!(store.get_existing("mqtt-broker", MQTT_AUTH_PASSWORD_KEY), None);
+    }
+
+    #[test]
+    fn save_connections_moves_plugin_secrets_to_secret_store_and_restores_them() {
+        let path = temp_connections_file("plugin-connection-secret");
+        let store = MemorySecretStore::default();
+        let mut config = connection("plugin-connection", "", "");
+        config.db_type = DatabaseType::Plugin;
+        config.plugin_id = Some("dbx.example.hello".to_string());
+        config.plugin_connection_provider = Some("hello.connection".to_string());
+        config.plugin_connection_type = Some("hello".to_string());
+        config.external_config = Some(serde_json::json!({ "greeting": "Hello" }));
+        config.connection_secrets.insert("access_token".to_string(), "plugin-secret".to_string());
+
+        save_connections_to_file(&path, &[config], &store).unwrap();
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("plugin-secret"));
+        let persisted: Vec<ConnectionConfig> = serde_json::from_str(&raw).unwrap();
+        assert_eq!(persisted[0].connection_secrets.get("access_token").map(String::as_str), Some(""));
+        assert_eq!(
+            store
+                .get_existing("plugin-connection", &format!("{PLUGIN_CONNECTION_SECRET_PREFIX}access_token"))
+                .as_deref(),
+            Some("plugin-secret")
+        );
+
+        let loaded = load_connections_from_file(&path, &store).unwrap();
+        assert_eq!(loaded[0].connection_secrets.get("access_token").map(String::as_str), Some("plugin-secret"));
     }
 }

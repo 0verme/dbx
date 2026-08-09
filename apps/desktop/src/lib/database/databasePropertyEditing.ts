@@ -83,6 +83,7 @@ export const DATABASE_PROPERTY_EDITING_MATRIX = {
   influxdb: { deferred: "database retention policies need a dedicated workflow" },
   victoriametrics: { deferred: "metric and retention settings are managed by VictoriaMetrics deployment configuration" },
   jdbc: { deferred: "generic JDBC does not expose reliable dialect-specific properties" },
+  plugin: { deferred: "plugin-owned properties are managed by the provider workbench" },
   mq: { deferred: "message queue namespaces are handled by MQ admin panels" },
   nacos: { deferred: "Nacos namespace editing already uses the Nacos admin flow" },
   mqtt: { deferred: "MQTT topics are managed via the MQTT console" },

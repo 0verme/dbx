@@ -11,8 +11,9 @@ use sha2::{Digest, Sha256};
 
 use crate::ai::AiConfigItem;
 use crate::connection_secrets::{
-    MQ_AUTH_API_KEY_VALUE_KEY, MQ_AUTH_CLIENT_SECRET_KEY, MQ_AUTH_PASSWORD_KEY, MQ_AUTH_TOKEN_KEY,
-    MQ_TOKEN_SIGNING_KEY, NACOS_AUTH_PASSWORD_KEY, NACOS_RNACOS_CONSOLE_PASSWORD_KEY,
+    plugin_connection_secret_key, MQ_AUTH_API_KEY_VALUE_KEY, MQ_AUTH_CLIENT_SECRET_KEY, MQ_AUTH_PASSWORD_KEY,
+    MQ_AUTH_TOKEN_KEY, MQ_TOKEN_SIGNING_KEY, NACOS_AUTH_PASSWORD_KEY, NACOS_RNACOS_CONSOLE_PASSWORD_KEY,
+    PLUGIN_CONNECTION_SECRET_PREFIX,
 };
 use crate::models::connection::{ConnectionConfig, DatabaseType, TransportLayerConfig};
 use crate::saved_sql::SavedSqlLibrary;
@@ -803,6 +804,9 @@ fn scrub_connection_secrets(config: &mut ConnectionConfig) {
     config.redis_sentinel_password.clear();
     config.connection_string = None;
     config.init_script = None;
+    for secret in config.connection_secrets.values_mut() {
+        secret.clear();
+    }
     scrub_mq_external_config_secrets(config);
     scrub_nacos_auth_secrets(config);
 }
@@ -864,6 +868,9 @@ async fn build_sensitive_payload(
         }
         push_mq_external_config_secrets(&mut connection_secrets, config);
         push_nacos_external_config_secrets(&mut connection_secrets, config);
+        for (key, secret) in &config.connection_secrets {
+            push_secret(&mut connection_secrets, &config.id, &plugin_connection_secret_key(key)?, secret);
+        }
     }
 
     Ok(SensitiveSyncPayload {
@@ -1001,6 +1008,7 @@ async fn apply_sensitive_payload(storage: &Storage, payload: &SensitiveSyncPaylo
         if !SECRET_KEYS.contains(&secret.key.as_str())
             && !secret.key.starts_with(SSH_TUNNEL_SECRET_PREFIX)
             && !secret.key.starts_with(TRANSPORT_LAYER_SECRET_PREFIX)
+            && !secret.key.starts_with(PLUGIN_CONNECTION_SECRET_PREFIX)
         {
             continue;
         }
@@ -1032,6 +1040,9 @@ async fn clear_connection_secrets(storage: &Storage, connections: &[ConnectionCo
     for config in connections {
         for key in SECRET_KEYS {
             storage.delete_secret(&config.id, key).await?;
+        }
+        for key in config.connection_secrets.keys() {
+            storage.delete_secret(&config.id, &plugin_connection_secret_key(key)?).await?;
         }
         for (index, layer) in config.transport_layers.iter().enumerate() {
             match layer {
@@ -1384,7 +1395,7 @@ mod tests {
         SnippetSyncConfig, DEFAULT_SNIPPET_FILE_NAME,
     };
     use crate::ai::{AiApiStyle, AiAuthMethod, AiConfig, AiConfigItem};
-    use crate::connection_secrets::NACOS_AUTH_PASSWORD_KEY;
+    use crate::connection_secrets::{plugin_connection_secret_key, NACOS_AUTH_PASSWORD_KEY};
     use crate::models::connection::{
         default_redis_key_separator, ConnectionConfig, DatabaseType, SshTunnelConfig, TransportLayerConfig,
     };
@@ -1519,6 +1530,10 @@ mod tests {
             gbase_server: String::new(),
             informix_server: String::new(),
             external_config: None,
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: Default::default(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
@@ -1527,6 +1542,24 @@ mod tests {
             production_databases: vec![],
             database_info: None,
         }
+    }
+
+    fn plugin_connection(id: &str, secret: &str) -> ConnectionConfig {
+        let mut config = postgres_connection(id, "");
+        config.name = "Hello plugin".to_string();
+        config.db_type = DatabaseType::Plugin;
+        config.driver_profile = Some("plugin".to_string());
+        config.driver_label = Some("Hello connection".to_string());
+        config.host = "localhost".to_string();
+        config.port = 22;
+        config.username.clear();
+        config.database = None;
+        config.external_config = Some(serde_json::json!({ "greeting": "Hello" }));
+        config.plugin_id = Some("dbx.example.hello".to_string());
+        config.plugin_connection_provider = Some("dbx.example.hello.connection".to_string());
+        config.plugin_connection_type = Some("hello".to_string());
+        config.connection_secrets.insert("api_token".to_string(), secret.to_string());
+        config
     }
 
     fn nacos_connection(id: &str, password: &str) -> ConnectionConfig {
@@ -1585,6 +1618,10 @@ mod tests {
                     "password": password
                 }
             })),
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: Default::default(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
@@ -1700,6 +1737,10 @@ mod tests {
             gbase_server: String::new(),
             informix_server: String::new(),
             external_config: None,
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: Default::default(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
@@ -1708,6 +1749,7 @@ mod tests {
             production_databases: vec![],
             database_info: None,
         };
+        config.connection_secrets.insert("api_token".to_string(), "plugin-secret".to_string());
         scrub_connection_secrets(&mut config);
         assert!(config.password.is_empty());
         match &config.transport_layers[0] {
@@ -1724,8 +1766,10 @@ mod tests {
         assert!(config.redis_sentinel_password.is_empty());
         assert!(config.connection_string.is_none());
         assert!(config.init_script.is_none());
+        assert_eq!(config.connection_secrets.get("api_token").map(String::as_str), Some(""));
         let public_json = serde_json::to_string(&config).unwrap();
         assert!(!public_json.contains("token-value"));
+        assert!(!public_json.contains("plugin-secret"));
         assert!(super::SECRET_KEYS.contains(&"init_script"));
     }
 
@@ -2135,6 +2179,36 @@ mod tests {
         assert!(decrypted.connection_secrets.iter().any(|secret| {
             secret.connection_id == "pg" && secret.key == "password" && secret.secret == "db-secret"
         }));
+    }
+
+    #[tokio::test]
+    async fn sync_snapshot_encrypts_and_restores_plugin_connection_secrets() {
+        let storage = Storage::open(&temp_db_path("plugin-sync-source")).await.unwrap();
+        storage.save_connections(&[plugin_connection("plugin", "plugin-secret")]).await.unwrap();
+
+        let snapshot = build_sync_snapshot(&storage, "test-version", None, Some("sync-pass")).await.unwrap();
+
+        assert_eq!(snapshot.connections[0].connection_secrets.get("api_token").map(String::as_str), Some(""));
+        let public_json = serde_json::to_string(&snapshot.connections).unwrap();
+        assert!(!public_json.contains("plugin-secret"));
+        let encrypted = snapshot.encrypted_secrets.as_ref().expect("encrypted secrets");
+        let decrypted = decrypt_sensitive_payload(encrypted, "sync-pass").unwrap();
+        assert!(decrypted.connection_secrets.iter().any(|secret| {
+            secret.connection_id == "plugin"
+                && secret.key == plugin_connection_secret_key("api_token").unwrap()
+                && secret.secret == "plugin-secret"
+        }));
+
+        let target = Storage::open(&temp_db_path("plugin-sync-target")).await.unwrap();
+        apply_sync_snapshot(
+            &target,
+            &snapshot,
+            ApplySnapshotOptions { secrets_passphrase: Some("sync-pass"), restore_secrets: true },
+        )
+        .await
+        .unwrap();
+        let restored = target.load_connections().await.unwrap();
+        assert_eq!(restored[0].connection_secrets.get("api_token").map(String::as_str), Some("plugin-secret"));
     }
 
     #[tokio::test]

@@ -2,7 +2,7 @@
 import { computed, ref, watch, nextTick, onUnmounted } from "vue";
 import type { CSSProperties } from "vue";
 import { useI18n } from "vue-i18n";
-import { X, Pin, ChevronDown, Table2, Code2, TableProperties, PencilRuler, KeyRound, Pencil, Package, Lock, Copy, AlertTriangle, Network, Minimize2, Maximize2, Settings, CalendarClock, Activity, Gauge, ShieldCheck } from "@lucide/vue";
+import { X, Pin, ChevronDown, Table2, Code2, TableProperties, PencilRuler, KeyRound, Pencil, Package, Lock, Copy, AlertTriangle, Network, Minimize2, Maximize2, Settings, CalendarClock, Activity, Gauge, ShieldCheck, PlugZap, FolderTree } from "@lucide/vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,6 +23,8 @@ import type { QueryTab } from "@/types/database";
 const props = defineProps<{
   driverStoreOpen?: boolean;
   driverStoreActive?: boolean;
+  pluginCenterOpen?: boolean;
+  pluginCenterActive?: boolean;
   settingsPageOpen?: boolean;
   settingsPageActive?: boolean;
   agentDriverUpdateCount?: number;
@@ -32,6 +34,8 @@ const emit = defineEmits<{
   "activate-tab": [];
   "activate-driver-store": [];
   "close-driver-store": [];
+  "activate-plugin-center": [];
+  "close-plugin-center": [];
   "activate-settings-page": [];
   "close-settings-page": [];
   "save-tab": [tabId: string];
@@ -56,7 +60,7 @@ const isWrapLayout = computed(() => settingsStore.editorSettings.tabLayout === "
 const fixedTabs = computed(() => queryStore.tabs.filter((tab) => tab.pinned));
 const regularTabs = computed(() => queryStore.tabs.filter((tab) => !tab.pinned));
 const hasFixedTabs = computed(() => fixedTabs.value.length > 0);
-const regularSurfaceCount = computed(() => regularTabs.value.length + (props.driverStoreOpen ? 1 : 0) + (props.settingsPageOpen ? 1 : 0));
+const regularSurfaceCount = computed(() => regularTabs.value.length + (props.driverStoreOpen ? 1 : 0) + (props.pluginCenterOpen ? 1 : 0) + (props.settingsPageOpen ? 1 : 0));
 const closeConfirmDirtyCount = computed(() => queryStore.closeConfirmDirtyTabIds.length);
 const showCloseConfirmBulkActions = computed(() => closeConfirmDirtyCount.value > 1);
 const closeConfirmDirtyTabs = computed(() => queryStore.closeConfirmDirtyTabIds.map((id) => queryStore.tabs.find((tab) => tab.id === id)).filter((tab): tab is QueryTab => !!tab));
@@ -172,10 +176,11 @@ function tabTitleStyle(tab: QueryTab): CSSProperties | undefined {
   };
 }
 
-type SpecialRegularSurface = "driverStore" | "settings";
+type SpecialRegularSurface = "driverStore" | "pluginCenter" | "settings";
 
 function closeSpecialRegularSurfaces(keep?: SpecialRegularSurface) {
   if (keep !== "driverStore" && props.driverStoreOpen) emit("close-driver-store");
+  if (keep !== "pluginCenter" && props.pluginCenterOpen) emit("close-plugin-center");
   if (keep !== "settings" && props.settingsPageOpen) emit("close-settings-page");
 }
 
@@ -230,6 +235,11 @@ function closeOtherActiveTabs() {
     closeSpecialRegularSurfaces("driverStore");
     return;
   }
+  if (props.pluginCenterActive) {
+    queryStore.closeRegularTabs();
+    closeSpecialRegularSurfaces("pluginCenter");
+    return;
+  }
 
   const tab = queryStore.tabs.find((item) => item.id === queryStore.activeTabId);
   if (!tab) return;
@@ -241,7 +251,7 @@ defineExpose({ closeOtherActiveTabs });
 
 function getSpecialRegularTabMenuItems(surface: SpecialRegularSurface): ContextMenuItem[] {
   const keep = surface;
-  const closeCurrent = surface === "driverStore" ? () => emit("close-driver-store") : () => emit("close-settings-page");
+  const closeCurrent = surface === "driverStore" ? () => emit("close-driver-store") : surface === "pluginCenter" ? () => emit("close-plugin-center") : () => emit("close-settings-page");
   const closeOtherDisabled = regularSurfaceCount.value <= 1;
   const closeOtherLabel = hasFixedTabs.value ? t("contextMenu.closeOtherRegularTabs") : t("contextMenu.closeOtherTabs");
   const closeAllLabel = hasFixedTabs.value ? t("contextMenu.closeAllRegularTabs") : t("contextMenu.closeAllTabs");
@@ -445,6 +455,23 @@ watch(
 );
 
 watch(
+  () => props.pluginCenterActive,
+  (show) => {
+    if (!show) return;
+    nextTick(() => {
+      if (isWrapLayout.value) return;
+      const container = tabsContainerRef.value;
+      if (!container) return;
+      const el = container.querySelector("[data-plugin-center-tab]");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+      updateAllScrollButtons();
+    });
+  },
+);
+
+watch(
   () => props.settingsPageActive,
   (show) => {
     if (!show) return;
@@ -463,7 +490,7 @@ watch(
 
 function tabColorStyle(tab: QueryTab) {
   const color = connectionColor(tab.connectionId);
-  const isActive = tab.id === queryStore.activeTabId && !props.driverStoreActive && !props.settingsPageActive;
+  const isActive = tab.id === queryStore.activeTabId && !props.driverStoreActive && !props.pluginCenterActive && !props.settingsPageActive;
   const isClassic = isClassicLayout.value;
   if (!color) {
     if (isClassic) {
@@ -627,7 +654,7 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
 </script>
 
 <template>
-  <div v-if="queryStore.tabs.length > 0 || driverStoreOpen || settingsPageOpen" class="app-tab-bar relative flex w-full min-w-0 shrink-0 overflow-hidden" :class="tabBarClass">
+  <div v-if="queryStore.tabs.length > 0 || driverStoreOpen || pluginCenterOpen || settingsPageOpen" class="app-tab-bar relative flex w-full min-w-0 shrink-0 overflow-hidden" :class="tabBarClass">
     <div class="flex w-full min-w-0 shrink-0 overflow-hidden" :class="regularTabRowClass">
       <div class="app-tab-strip relative h-full min-w-0 flex-1 overflow-hidden">
         <div v-if="showRegularTabScrollbar" class="app-tab-scrollbar" :class="{ 'app-tab-scrollbar--dragging': isScrollbarDragging }" @pointerdown="startScrollbarDrag">
@@ -652,12 +679,16 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                         ? [
                             compactTabTitle ? 'min-w-24' : 'min-w-38',
                             'h-full border-r border-border/80 font-medium dark:border-border/45',
-                            tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive ? 'bg-background text-foreground' : 'text-foreground/70 hover:text-foreground/90',
+                            tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive ? 'bg-background text-foreground' : 'text-foreground/70 hover:text-foreground/90',
                           ]
-                        : [compactTabTitle ? 'min-w-24' : 'min-w-38', 'h-7 rounded-md border', tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive ? 'text-foreground font-medium' : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90']
+                        : [
+                            compactTabTitle ? 'min-w-24' : 'min-w-38',
+                            'h-7 rounded-md border',
+                            tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive ? 'text-foreground font-medium' : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90',
+                          ]
                     "
                     :style="[tabColorStyle(tab), tabDropStyle(tab.id)]"
-                    :data-active-tab="tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive"
+                    :data-active-tab="tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive"
                     @click="handleTabClick(tab)"
                     @dblclick.stop="startRenameTab(tab)"
                     @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
@@ -680,6 +711,8 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                       <CalendarClock v-else-if="tab.mode === 'dameng-jobs'" class="h-3.5 w-3.5" />
                       <Activity v-else-if="tab.mode === 'processlist'" class="h-3.5 w-3.5" />
                       <Gauge v-else-if="tab.mode === 'mysql-dashboard' || tab.mode === 'postgres-dashboard' || tab.mode === 'nacos-dashboard'" class="h-3.5 w-3.5" />
+                      <PlugZap v-else-if="tab.mode === 'plugin-workbench'" class="h-3.5 w-3.5" />
+                      <FolderTree v-else-if="tab.mode === 'plugin-filesystem'" class="h-3.5 w-3.5" />
                       <Code2 v-else class="h-3.5 w-3.5" />
                     </span>
                     <input
@@ -746,6 +779,33 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
             </div>
           </CustomContextMenu>
 
+          <!-- Plugin Center Tab -->
+          <CustomContextMenu v-if="pluginCenterOpen" :items="getSpecialRegularTabMenuItems('pluginCenter')" v-slot="{ onContextMenu }">
+            <div :class="isClassicLayout ? 'h-full' : ''" @contextmenu="onContextMenu">
+              <div
+                data-plugin-center-tab
+                class="app-tab-pill group flex min-w-36 items-center gap-1 px-2 text-xs cursor-pointer transition-colors whitespace-nowrap"
+                :class="
+                  isClassicLayout
+                    ? ['h-full border-r border-border/80 dark:border-border/45 font-medium', pluginCenterActive ? 'bg-background text-foreground' : 'text-foreground/70 hover:text-foreground/90']
+                    : ['h-7 rounded-md border font-medium', pluginCenterActive ? 'border-ring text-foreground' : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90']
+                "
+                :style="isClassicLayout && pluginCenterActive ? { boxShadow: '0 1px 0 0 var(--color-background)' } : {}"
+                :data-active-tab="pluginCenterActive"
+                @click="emit('activate-plugin-center')"
+                @mousedown.middle.prevent="emit('close-plugin-center')"
+              >
+                <span class="shrink-0 text-violet-600 dark:text-violet-400">
+                  <PlugZap class="h-3.5 w-3.5" />
+                </span>
+                <span class="min-w-0 truncate flex-1">{{ t("toolbar.pluginCenter") }}</span>
+                <button class="rounded hover:bg-muted-foreground/20 p-0.5 shrink-0" @click.stop="emit('close-plugin-center')">
+                  <X class="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          </CustomContextMenu>
+
           <!-- Driver Store Tab -->
           <CustomContextMenu v-if="driverStoreOpen" :items="getSpecialRegularTabMenuItems('driverStore')" v-slot="{ onContextMenu }">
             <div :class="isClassicLayout ? 'h-full' : ''" @contextmenu="onContextMenu">
@@ -789,7 +849,7 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
             <CustomContextMenu v-for="tab in queryStore.tabs" :key="tab.id" :items="getTabMenuItems(tab)" v-slot="{ onContextMenu }">
               <div
                 class="group flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm outline-hidden hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
-                :class="tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive ? 'bg-accent/70 text-accent-foreground' : ''"
+                :class="tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive ? 'bg-accent/70 text-accent-foreground' : ''"
                 :title="tabTitleLabel(tab)"
                 role="menuitem"
                 tabindex="0"
@@ -848,12 +908,16 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                         ? [
                             compactTabTitle ? 'min-w-24' : 'min-w-38',
                             'h-full border-r border-border/80 font-medium dark:border-border/45',
-                            tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive ? 'bg-background text-foreground' : 'text-foreground/70 hover:text-foreground/90',
+                            tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive ? 'bg-background text-foreground' : 'text-foreground/70 hover:text-foreground/90',
                           ]
-                        : [compactTabTitle ? 'min-w-24' : 'min-w-38', 'h-7 rounded-md border', tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive ? 'text-foreground font-medium' : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90']
+                        : [
+                            compactTabTitle ? 'min-w-24' : 'min-w-38',
+                            'h-7 rounded-md border',
+                            tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive ? 'text-foreground font-medium' : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90',
+                          ]
                     "
                     :style="[tabColorStyle(tab), tabDropStyle(tab.id)]"
-                    :data-active-tab="tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive"
+                    :data-active-tab="tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive"
                     @click="handleTabClick(tab)"
                     @dblclick.stop="startRenameTab(tab)"
                     @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
@@ -876,6 +940,8 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
                       <CalendarClock v-else-if="tab.mode === 'dameng-jobs'" class="h-3.5 w-3.5" />
                       <Activity v-else-if="tab.mode === 'processlist'" class="h-3.5 w-3.5" />
                       <Gauge v-else-if="tab.mode === 'mysql-dashboard' || tab.mode === 'postgres-dashboard' || tab.mode === 'nacos-dashboard'" class="h-3.5 w-3.5" />
+                      <PlugZap v-else-if="tab.mode === 'plugin-workbench'" class="h-3.5 w-3.5" />
+                      <FolderTree v-else-if="tab.mode === 'plugin-filesystem'" class="h-3.5 w-3.5" />
                       <Code2 v-else class="h-3.5 w-3.5" />
                     </span>
                     <input
@@ -931,7 +997,7 @@ function onOverflowItemKeydown(event: KeyboardEvent, tabId: string, kind: "regul
             <CustomContextMenu v-for="tab in fixedTabs" :key="tab.id" :items="getTabMenuItems(tab)" v-slot="{ onContextMenu }">
               <div
                 class="group flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm outline-hidden hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
-                :class="tab.id === queryStore.activeTabId && !driverStoreActive && !settingsPageActive ? 'bg-accent/70 text-accent-foreground' : ''"
+                :class="tab.id === queryStore.activeTabId && !driverStoreActive && !pluginCenterActive && !settingsPageActive ? 'bg-accent/70 text-accent-foreground' : ''"
                 :title="tabTitleLabel(tab)"
                 role="menuitem"
                 tabindex="0"

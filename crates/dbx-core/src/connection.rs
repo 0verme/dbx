@@ -27,7 +27,10 @@ use crate::models::connection::{
     ConnectionConfig, ConnectionTestResult, DatabaseConnectionInfo, DatabaseType, TransportLayerConfig,
 };
 use crate::path_utils::expand_tilde;
-use crate::plugins::{PluginDriverSession, PluginRegistry, PluginRuntimeEnv};
+use crate::plugins::{
+    PluginConnectionActionResult, PluginConnectionHandle, PluginDriverSession, PluginHost, PluginRegistry,
+    PluginRuntimeEnv,
+};
 use crate::query_cancel::RunningQueries;
 use crate::storage::{normalize_duckdb_worker_max_processes, Storage, DUCKDB_WORKER_MAX_PROCESSES_DEFAULT};
 use crate::task_supervisor::TaskSupervisor;
@@ -113,6 +116,7 @@ pub enum PoolKind {
         config: Arc<ConnectionConfig>,
         session: Arc<PluginDriverSession>,
     },
+    PluginConnection(PluginConnectionHandle),
     /// Message queue admin connection (not a data query pool; serves as a
     /// marker that this connection_id is a valid MQ admin connection).
     MessageQueue,
@@ -214,6 +218,7 @@ pub struct AppState {
     pub http_tunnels: HttpTunnelManager,
     pub storage: Storage,
     pub plugins: PluginRegistry,
+    pub plugin_host: PluginHost,
     pub agent_manager: crate::agent_manager::AgentManager,
     pub nacos_registry: crate::nacos::NacosAdminRegistry,
     duckdb_worker_process_isolation: AtomicBool,
@@ -1016,7 +1021,10 @@ impl AppState {
         agent_dir: PathBuf,
         app_version: impl Into<String>,
     ) -> Self {
+        let app_version = app_version.into();
         let data_dir = storage.data_dir().to_path_buf();
+        let plugins = PluginRegistry::new_with_app_version(plugin_dir, app_version.clone());
+        let plugin_host = PluginHost::new(plugins.clone());
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             task_supervisor: TaskSupervisor::new(),
@@ -1029,7 +1037,8 @@ impl AppState {
             proxy_tunnels: ProxyTunnelManager::new(),
             http_tunnels: HttpTunnelManager::new(),
             storage,
-            plugins: PluginRegistry::new(plugin_dir),
+            plugins,
+            plugin_host,
             agent_manager: crate::agent_manager::AgentManager::new_with_base_dir_and_app_version(
                 agent_dir,
                 app_version,
@@ -1619,6 +1628,7 @@ impl AppState {
                 self.proxy_tunnels.stop_all_tunnels(),
                 self.http_tunnels.stop_all_tunnels(),
                 self.agent_manager.stop_daemons(),
+                self.plugin_host.stop_all(),
             );
         };
         if tokio::time::timeout(deadline, shutdown).await.is_err() {
@@ -1759,7 +1769,9 @@ impl AppState {
             self.reset_connection_transport_for_config(connection_id, &db_config).await;
             return Err(err);
         }
-        probe_connection_endpoint(&db_config, &host, port).await?;
+        if db_config.db_type != DatabaseType::Plugin {
+            probe_connection_endpoint(&db_config, &host, port).await?;
+        }
         if let Err(err) = self.ensure_current_connection_attempt(connection_id, connection_attempt).await {
             self.reset_connection_transport_for_config(connection_id, &db_config).await;
             return Err(err);
@@ -2248,6 +2260,9 @@ impl AppState {
                 }
                 self.external_driver_pool("jdbc", &jdbc_config).await?
             }
+            DatabaseType::Plugin => {
+                PoolKind::PluginConnection(self.plugin_host.connect_connection(&db_config, &host, port).await?)
+            }
             #[cfg(feature = "mq-admin")]
             DatabaseType::MessageQueue => {
                 // MQ admin connections don't hold a data query pool. We just test
@@ -2466,6 +2481,28 @@ impl AppState {
         .await?;
 
         Ok(("127.0.0.1".to_string(), local_port))
+    }
+
+    pub async fn invoke_plugin_connection_action(
+        &self,
+        config: ConnectionConfig,
+        action_id: &str,
+    ) -> Result<PluginConnectionActionResult, String> {
+        if config.db_type != DatabaseType::Plugin {
+            return Err("Connection is not owned by a plugin".to_string());
+        }
+        let config = config.canonicalized();
+        let transport_id = format!("{}:plugin-action:{action_id}", config.id);
+        let has_transport_layers = config.has_effective_transport_layers();
+        let connection_id = if has_transport_layers { transport_id.as_str() } else { config.id.as_str() };
+        let result = match self.connection_host_port(connection_id, &config).await {
+            Ok((host, port)) => self.plugin_host.invoke_connection_action(&config, action_id, &host, port).await,
+            Err(error) => Err(error),
+        };
+        if has_transport_layers {
+            self.reset_connection_transport_for_config(&transport_id, &config).await;
+        }
+        result
     }
 
     pub async fn connect_redis_sentinel(
@@ -3053,6 +3090,7 @@ impl AppState {
                         }
                     }
                 }
+                PoolKind::PluginConnection(handle) => !handle.is_running(),
                 PoolKind::Sqlite(_)
                 | PoolKind::DuckDbWorker(_)
                 | PoolKind::ExternalDriver { .. }
@@ -3952,6 +3990,7 @@ impl AppState {
                 | PoolKind::Nacos => true,
                 #[cfg(feature = "mq-admin")]
                 PoolKind::Mqtt(_) => true,
+                PoolKind::PluginConnection(handle) => handle.is_running(),
                 PoolKind::Redis(_) => unreachable!("Redis handled separately"),
             };
             if !healthy && !matches!(pool, PoolKind::Agent(_)) {
@@ -4053,6 +4092,20 @@ impl AppState {
     pub async fn remove_external_driver_pools(&self, driver_id: &str) {
         let removed = self.drain_external_driver_pools(driver_id).await;
         self.pool_routing_control().close_removed(removed).await;
+    }
+
+    pub async fn remove_plugin_connection_pools(&self, plugin_id: &str) {
+        let connection_ids = self
+            .configs
+            .read()
+            .await
+            .values()
+            .filter(|config| config.db_type == DatabaseType::Plugin && config.plugin_id.as_deref() == Some(plugin_id))
+            .map(|config| config.id.clone())
+            .collect::<Vec<_>>();
+        for connection_id in connection_ids {
+            self.remove_connection_pools(&connection_id).await;
+        }
     }
 
     async fn drain_connection_pools(&self, connection_id: &str) -> Vec<(String, PoolKind)> {
@@ -4562,6 +4615,7 @@ fn clone_pool_kind(pool: &PoolKind) -> PoolKind {
         PoolKind::ExternalDriver { driver_id, config, session } => {
             PoolKind::ExternalDriver { driver_id: driver_id.clone(), config: config.clone(), session: session.clone() }
         }
+        PoolKind::PluginConnection(handle) => PoolKind::PluginConnection(handle.clone()),
         PoolKind::MessageQueue => PoolKind::MessageQueue,
         PoolKind::Nacos => PoolKind::Nacos,
         #[cfg(feature = "mq-admin")]
@@ -4622,6 +4676,16 @@ async fn close_pool_kind(pool: PoolKind) -> Result<(), String> {
         }
         PoolKind::ExternalDriver { session, .. } => {
             session.shutdown().await;
+        }
+        PoolKind::PluginConnection(handle) => {
+            if let Err(error) = handle.disconnect().await {
+                log::warn!(
+                    "Failed to disconnect plugin connection '{}' ({}/{}): {error}",
+                    handle.connection_id,
+                    handle.plugin_id,
+                    handle.provider_id
+                );
+            }
         }
         PoolKind::MessageQueue => {}
         PoolKind::Nacos => {}
@@ -5033,6 +5097,10 @@ mod tests {
             gbase_server: String::new(),
             informix_server: String::new(),
             external_config: None,
+            plugin_id: None,
+            plugin_connection_provider: None,
+            plugin_connection_type: None,
+            connection_secrets: Default::default(),
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,

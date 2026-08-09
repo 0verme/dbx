@@ -70,6 +70,8 @@ const ProcessListPanel = defineAsyncComponent(() => import("@/components/admin/P
 const MySqlDashboard = defineAsyncComponent(() => import("@/components/admin/MySqlDashboard.vue"));
 const PostgresDashboard = defineAsyncComponent(() => import("@/components/admin/PostgresDashboard.vue"));
 const DamengJobAdmin = defineAsyncComponent(() => import("@/components/admin/DamengJobAdmin.vue"));
+const PluginWorkbenchTab = defineAsyncComponent(() => import("@/components/plugins/PluginWorkbenchTab.vue"));
+const PluginFilesystemTab = defineAsyncComponent(() => import("@/components/plugins/PluginFilesystemTab.vue"));
 const ExplainPlanViewer = defineAsyncComponent(() => import("@/components/explain/ExplainPlanViewer.vue"));
 const QueryChart = defineAsyncComponent(() => import("@/components/chart/QueryChart.vue"));
 import { useQueryStore } from "@/stores/queryStore";
@@ -1975,6 +1977,24 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
           :target-keyword="activeTab.nacosTargetKeyword"
           :target-request-id="activeTab.nacosTargetRequestId"
           :read-only="activeConnection?.read_only ?? false"
+        />
+      </div>
+    </template>
+
+    <template v-else-if="activeTab.mode === 'plugin-workbench' && activeTab.pluginWorkbench">
+      <div class="flex-1 min-h-0">
+        <PluginWorkbenchTab :key="activeTab.id" :plugin-id="activeTab.pluginWorkbench.pluginId" :contribution-id="activeTab.pluginWorkbench.contributionId" :context="activeTab.pluginWorkbench.context" />
+      </div>
+    </template>
+    <template v-else-if="activeTab.mode === 'plugin-filesystem' && activeTab.pluginFilesystem">
+      <div class="flex h-full min-h-0 flex-col">
+        <PluginFilesystemTab
+          :key="activeTab.id"
+          :plugin-id="activeTab.pluginFilesystem.pluginId"
+          :provider-id="activeTab.pluginFilesystem.providerId"
+          :connection-id="activeTab.connectionId || undefined"
+          :root-uri="activeTab.pluginFilesystem.rootUri"
+          :initial-uri="activeTab.pluginFilesystem.currentUri"
         />
       </div>
     </template>
