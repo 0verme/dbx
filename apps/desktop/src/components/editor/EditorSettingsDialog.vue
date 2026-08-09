@@ -821,6 +821,7 @@ const formatterEditorShortcutIds: ShortcutActionId[] = [
   "acceptCompletion",
   "indentMore",
   "indentLess",
+  "insertLineBelow",
   "duplicateLine",
   "deleteLine",
   "moveLineUp",
