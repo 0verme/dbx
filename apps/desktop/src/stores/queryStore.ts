@@ -4043,6 +4043,7 @@ export const useQueryStore = defineStore("query", () => {
               case "update":
               case "delete":
               case "createIndex":
+              case "createUser":
               case "dropIndex":
               case "dropIndexes":
               case "dropCollection": {
@@ -4054,7 +4055,7 @@ export const useQueryStore = defineStore("query", () => {
                   traceId,
                   database: currentDatabase,
                   kind: mongoCommand.kind,
-                  collection: mongoCommand.collection,
+                  ...(mongoCommand.kind === "createUser" ? {} : { collection: mongoCommand.collection }),
                 });
                 mongoEditTarget = undefined;
                 if (mongoCommand.kind === "insert") {
@@ -4066,6 +4067,9 @@ export const useQueryStore = defineStore("query", () => {
                 } else if (mongoCommand.kind === "createIndex") {
                   const result = await api.mongoCreateIndex(executionConnectionId, currentDatabase, mongoCommand.collection, mongoCommand.keys, mongoCommand.options);
                   allResults.push(markQueryResultRowsRaw(annotateMongoResult(mongoCreateIndexToQueryResult(result.name, performance.now() - commandStartedAt))));
+                } else if (mongoCommand.kind === "createUser") {
+                  const result = await api.mongoCreateUser(executionConnectionId, currentDatabase, mongoCommand.userJson, mongoCommand.writeConcernJson);
+                  allResults.push(markQueryResultRowsRaw(annotateMongoResult(mongoWriteToQueryResult(result.affected_rows, performance.now() - commandStartedAt))));
                 } else if (mongoCommand.kind === "dropIndex" || mongoCommand.kind === "dropIndexes") {
                   try {
                     const result = await api.mongoDropIndexes(executionConnectionId, currentDatabase, mongoCommand.collection, mongoCommand.kind === "dropIndex" ? mongoCommand.index : mongoCommand.indexes, mongoCommand.kind === "dropIndex");
@@ -4084,7 +4088,7 @@ export const useQueryStore = defineStore("query", () => {
                   traceId,
                   database: currentDatabase,
                   kind: mongoCommand.kind,
-                  collection: mongoCommand.collection,
+                  ...(mongoCommand.kind === "createUser" ? {} : { collection: mongoCommand.collection }),
                   elapsed: elapsed(),
                 });
                 break;
