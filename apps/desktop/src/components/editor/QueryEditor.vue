@@ -223,6 +223,7 @@ const snippetDatabaseType = computed(() => {
   const connection = props.connectionId ? connectionStore.getConfig(props.connectionId) : undefined;
   return sqlSnippetDatabaseTypeForConnection(connection) ?? props.databaseType;
 });
+const sqlDriverProfile = computed(() => (props.connectionId ? connectionStore.getConfig(props.connectionId)?.driver_profile : undefined));
 
 const SQL_FUNCTION_NAMES = [
   "COUNT",
@@ -3192,6 +3193,7 @@ async function provideSqlCompletions(context: CompletionContext) {
         snippets: settingsStore.editorSettings.snippets,
         dialect: props.dialect,
         databaseType: snippetDatabaseType.value,
+        driverProfile: sqlDriverProfile.value,
         currentSchema: props.schema,
         keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
         functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
@@ -3252,6 +3254,7 @@ async function provideSqlCompletions(context: CompletionContext) {
         snippets: settingsStore.editorSettings.snippets,
         dialect: props.dialect,
         databaseType: snippetDatabaseType.value,
+        driverProfile: sqlDriverProfile.value,
         currentSchema: props.schema,
         keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
         functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
@@ -3519,6 +3522,7 @@ function buildLocalSqlCompletionResult(completionContext: ReturnType<typeof getS
     snippets: settingsStore.editorSettings.snippets,
     dialect: props.dialect,
     databaseType: snippetDatabaseType.value,
+    driverProfile: sqlDriverProfile.value,
     currentSchema: scope.schema,
     keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
     functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
@@ -3979,6 +3983,7 @@ async function performAsyncCompletionWithResult(epoch: number, completionContext
     snippets: settingsStore.editorSettings.snippets,
     dialect: props.dialect,
     databaseType: snippetDatabaseType.value,
+    driverProfile: sqlDriverProfile.value,
     currentSchema: scope.schema,
     keywordCase: settingsStore.editorSettings.sqlFormatter.keywordCase,
     functionCase: settingsStore.editorSettings.sqlFormatter.functionCase,
@@ -4358,7 +4363,7 @@ onMounted(async () => {
   };
   buildSqlSignatureExtension = () =>
     showTooltip.compute(["doc", "selection"], (currentState) => {
-      const signature = getSqlFunctionSignatureHelp(currentState.doc.toString(), currentState.selection.main.head, props.databaseType);
+      const signature = getSqlFunctionSignatureHelp(currentState.doc.toString(), currentState.selection.main.head, props.databaseType, sqlDriverProfile.value);
       if (!signature) return null;
       return {
         pos: currentState.selection.main.head,
@@ -4376,7 +4381,7 @@ onMounted(async () => {
 
   buildSqlLanguageExtension = () =>
     langSql.sql({
-      dialect: createDbxCodeMirrorSqlDialect(langSql, props.syntaxDialect ?? props.dialect, props.databaseType),
+      dialect: createDbxCodeMirrorSqlDialect(langSql, props.syntaxDialect ?? props.dialect, props.databaseType, sqlDriverProfile.value),
     });
   buildSqlSemanticHighlightExtension = () => [
     ViewPlugin.fromClass(
@@ -5112,7 +5117,7 @@ watch([() => props.clientSessionId, () => props.completionContextVersion], () =>
   scheduleSemanticDiagnostics();
 });
 
-watch([() => props.databaseType, () => props.dialect, () => props.syntaxDialect], () => {
+watch([() => props.databaseType, () => props.dialect, () => props.syntaxDialect, sqlDriverProfile], () => {
   executableStatementRangeCache = null;
   if (!view.value || !sqlLanguageComp || !buildSqlLanguageExtension || !sqlSemanticHighlightComp || !buildSqlSemanticHighlightExtension || !sqlSignatureComp || !buildSqlSignatureExtension) return;
   // Signature tooltips depend on the external dialect, so refresh them even when the document and selection stay unchanged.
