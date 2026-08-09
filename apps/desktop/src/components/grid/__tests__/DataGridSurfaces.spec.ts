@@ -25,8 +25,10 @@ vi.mock("@lucide/vue", async () => {
     ChevronRight: icon,
     ChevronsLeft: icon,
     ChevronsRight: icon,
+    Download: icon,
     Filter: icon,
     Loader2: icon,
+    FileUp: icon,
     Upload: icon,
     Search: icon,
     X: icon,
@@ -873,7 +875,20 @@ describe("cell detail surfaces", () => {
     const copyText = vi.fn();
     const edit = vi.fn();
     const updateOpen = vi.fn();
-    const mounted = mountComponent(DataGridCellDetailDialog, { open: true, detail: detail(), typeColorClass: () => "", openImagePreview: vi.fn(), copyText, canDownloadBinaryValue: () => false, downloadBinaryValue: vi.fn(), onEdit: edit, "onUpdate:open": updateOpen });
+    const importBinaryValue = vi.fn();
+    const mounted = mountComponent(DataGridCellDetailDialog, {
+      open: true,
+      detail: detail({ type: "BYTEA", isEditable: true }),
+      typeColorClass: () => "",
+      openImagePreview: vi.fn(),
+      copyText,
+      canDownloadBinaryValue: () => false,
+      downloadBinaryValue: vi.fn(),
+      canImportBinaryValue: () => true,
+      importBinaryValue,
+      onEdit: edit,
+      "onUpdate:open": updateOpen,
+    });
     await nextTick();
     await nextTick();
 
@@ -885,6 +900,11 @@ describe("cell detail surfaces", () => {
       "click",
     );
     expect(edit).toHaveBeenCalledOnce();
+    dispatch(
+      findOne(mounted.root, (node) => node.props.title === "grid.importBinaryValue"),
+      "click",
+    );
+    expect(importBinaryValue).toHaveBeenCalledOnce();
 
     await mounted.setProps({ detail: detail({ rawValue: '{"b":2}', formattedJson: '{\n  "b": 2\n}' }) });
     expect(mocks.editor.setValue).toHaveBeenCalledWith('{\n  "b": 2\n}', "json");
@@ -912,6 +932,8 @@ describe("cell detail surfaces", () => {
       typeColorClass: () => "",
       canDownloadBinaryValue: () => false,
       downloadBinaryValue: vi.fn(),
+      canImportBinaryValue: () => false,
+      importBinaryValue: vi.fn(),
       openImagePreview: vi.fn(),
       canCopySqlCondition: () => true,
       onStartEdit: startEdit,

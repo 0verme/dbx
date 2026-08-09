@@ -6,7 +6,8 @@ import {
   ArrowDown,
   ArrowUpDown,
   ArrowUpRight,
-  Upload,
+  Download,
+  FileUp,
   Trash2,
   ChevronDown,
   ChevronUp,
@@ -122,12 +123,17 @@ import { getApplicablePreviewActions } from "@/lib/dataGrid/resultPreviewRegistr
 import "@/lib/dataGrid/geometryMapPreview";
 import {
   BINARY_CELL_DOWNLOAD_MODES,
+  BinaryCellImportTooLargeError,
+  binaryCellBytesToHexValue,
   binaryCellDisplayText,
   binaryCellDownloadFileName,
   binaryCellDownloadPayload,
+  canImportBinaryCellFile,
   canDownloadBinaryCellValue,
   downloadBinaryCellPayload,
+  formatBinaryCellByteSize,
   isBinaryCellColumnType,
+  openBinaryCellFile,
   parseBinaryCellBytes,
   retainBinaryCellDownloadMenuForHover,
   type BinaryCellDownloadMode,
@@ -7063,6 +7069,39 @@ function canDownloadDetailBinaryValue(detail: DataGridCellDetail | null): boolea
   return !!detail && canDownloadBinaryCellValue(detail.value, detail.type);
 }
 
+function canImportDetailBinaryValue(detail: DataGridCellDetail | null): boolean {
+  return !!detail?.isEditable && canImportBinaryCellFile(resolvedDatabaseType.value, detail.type);
+}
+
+async function importDetailBinaryValue(detail: DataGridCellDetail | null) {
+  if (!detail || !canImportDetailBinaryValue(detail)) return;
+  try {
+    const bytes = await openBinaryCellFile();
+    if (!bytes) return;
+    const value = binaryCellBytesToHexValue(bytes);
+    applyCellValue(detail.rowId, detail.colIndex, value);
+    if (activeCellDetail.value?.rowId === detail.rowId && activeCellDetail.value.colIndex === detail.colIndex) {
+      detailEditValue.value = value;
+      detailEditOriginalValue.value = value;
+      syncEditorFromDetailEdit();
+      detailCell.value = detailCell.value ? { ...detailCell.value } : null;
+    }
+    toast(t("grid.binaryImportApplied", { count: bytes.length }));
+  } catch (e: any) {
+    if (e instanceof BinaryCellImportTooLargeError) {
+      toast(
+        t("grid.binaryImportTooLarge", {
+          size: formatBinaryCellByteSize(e.bytes),
+          limit: formatBinaryCellByteSize(e.limit),
+        }),
+        5000,
+      );
+      return;
+    }
+    toast(t("grid.binaryImportFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
 function canQuickDownloadCellValue(rowIndex: number, columnIndex: number): boolean {
   return canDownloadDetailBinaryValue(cellDetailFor(rowIndex, columnIndex));
 }
@@ -7096,13 +7135,24 @@ function binaryDownloadSubmenu(detail: DataGridCellDetail | null): ContextMenuIt
   if (!canDownloadDetailBinaryValue(detail)) return null;
   return {
     label: t("grid.downloadBinaryValue"),
-    icon: Upload,
+    icon: Download,
     children: BINARY_CELL_DOWNLOAD_MODES.map((mode) => ({
       label: t(`grid.binaryDownload.${mode}`),
       action: () => {
         void downloadDetailBinaryValue(detail, mode);
       },
     })),
+  };
+}
+
+function binaryImportItem(detail: DataGridCellDetail | null): ContextMenuItem | null {
+  if (!canImportDetailBinaryValue(detail)) return null;
+  return {
+    label: t("grid.importBinaryValue"),
+    icon: FileUp,
+    action: () => {
+      void importDetailBinaryValue(detail);
+    },
   };
 }
 
@@ -8846,7 +8896,7 @@ function exportSubmenu(): ContextMenuItem {
       { label: t("grid.exportSelectedRowsTxt"), action: exportSelectedRowsTxt },
     );
   }
-  return { label: t("grid.export"), icon: Upload, children: items };
+  return { label: t("grid.export"), icon: Download, children: items };
 }
 
 const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
@@ -8939,6 +8989,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       },
       icons: { cellDetails: Maximize2, columnDetails: TableProperties, rowDetails: ListTree, setNull: X, bulkEdit: Pencil, transpose: Rows3 },
       actions: { cellDetails: openContextCellDetailDialog, columnDetails: openContextColumnDetailDialog, rowDetails: openContextRowDetailDialog, setNull: setSelectionNull, bulkEdit: openBulkEditDialog, transpose: openContextTranspose },
+      importItem: binaryImportItem(contextCellDetail.value),
       downloadItem: binaryDownloadSubmenu(contextCellDetail.value),
       foreignKeyItem: contextForeignKeyMenuItem(),
       copySubmenu: copySubmenu(),
@@ -9376,7 +9427,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           >
                             <template #trigger="{ open, toggle }">
                               <button class="flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground" :title="t('grid.downloadBinaryValue')" :aria-expanded="open" @mousedown.stop @click.stop="toggle">
-                                <Upload class="h-3 w-3" />
+                                <Download class="h-3 w-3" />
                               </button>
                             </template>
                           </LightDropdownMenu>
@@ -9890,7 +9941,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                       >
                         <template #trigger="{ open, toggle }">
                           <button class="flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground" :title="t('grid.downloadBinaryValue')" :aria-expanded="open" @mousedown.stop @click.stop="toggle">
-                            <Upload class="h-3 w-3" />
+                            <Download class="h-3 w-3" />
                           </button>
                         </template>
                       </LightDropdownMenu>
@@ -10093,7 +10144,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                             >
                               <template #trigger="{ open, toggle }">
                                 <button class="flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground" :title="t('grid.downloadBinaryValue')" :aria-expanded="open" @mousedown.stop @click.stop="toggle">
-                                  <Upload class="h-3 w-3" />
+                                  <Download class="h-3 w-3" />
                                 </button>
                               </template>
                             </LightDropdownMenu>
@@ -10408,6 +10459,8 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 :type-color-class="typeColorClass"
                 :can-download-binary-value="canDownloadDetailBinaryValue"
                 :download-binary-value="downloadDetailBinaryValue"
+                :can-import-binary-value="canImportDetailBinaryValue"
+                :import-binary-value="importDetailBinaryValue"
                 :open-image-preview="openImagePreview"
                 :can-copy-sql-condition="canCopyPreparedDetailSqlCondition"
                 @start-edit="startDetailEdit"
@@ -10582,6 +10635,8 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       :copy-text="copyText"
       :can-download-binary-value="canDownloadDetailBinaryValue"
       :download-binary-value="downloadDetailBinaryValue"
+      :can-import-binary-value="canImportDetailBinaryValue"
+      :import-binary-value="importDetailBinaryValue"
       @edit="openDialogCellInSidePanel"
     />
 
