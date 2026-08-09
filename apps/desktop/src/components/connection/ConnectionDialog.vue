@@ -2230,6 +2230,13 @@ function applyProfile(val: string, preserveConnectionFields = false) {
       jdbcManualClasspathOpen.value = true;
       applyPrestoSqlBuiltinDriverPathsIfAvailable();
     }
+    if (profile.type === "bigquery") {
+      form.value.connection_string = undefined;
+      form.value.jdbc_driver_class = "";
+      form.value.jdbc_driver_paths = [];
+      jdbcDriverPathsInput.value = "";
+      jdbcManualClasspathOpen.value = true;
+    }
     if (profile.type === "mq") {
       resetMqFields(defaultMqFieldsForProfile(val));
       syncMqSystemKindFromSelectedType();
@@ -2405,7 +2412,7 @@ watch(
       resetJdbcProductConnectionFields(jdbcProductProfileForConfig(config), config);
       mongoUseUrl.value = !!config.connection_string;
       jdbcDriverPathsInput.value = (config.jdbc_driver_paths || []).join("\n");
-      jdbcManualClasspathOpen.value = config.db_type === "prestosql" || (config.jdbc_driver_paths || []).length > 0;
+      jdbcManualClasspathOpen.value = supportsNativeAgentJdbcDriverConfigType(config.db_type) || (config.jdbc_driver_paths || []).length > 0;
       customDriverName.value = isCustomCompatibleProfile() ? config.driver_label || "" : "";
       dialogStep.value = "config";
       configTab.value = initialConfigTab();
@@ -2861,7 +2868,11 @@ function dbCategoryForOption(value: string): DbCategoryKey | undefined {
 }
 
 const selectedDbIcon = computed(() => iconTypeMap[selectedType.value] || selectedProfile().icon || selectedType.value);
-const jdbcBackedDatabaseTypes = new Set<DatabaseType>(["jdbc", "prestosql"]);
+function supportsNativeAgentJdbcDriverConfigType(dbType: DatabaseType): boolean {
+  return dbType === "prestosql" || dbType === "bigquery";
+}
+
+const jdbcBackedDatabaseTypes = new Set<DatabaseType>(["jdbc", "prestosql", "bigquery"]);
 const isJdbcConnection = computed(() => form.value.db_type === "jdbc");
 const isJdbcxConnection = computed(() => isJdbcConnection.value && form.value.driver_profile === JDBCX_DRIVER_PROFILE);
 const isJdbcProductConnection = computed(() => Boolean(activeJdbcProductProfile.value));
@@ -2872,7 +2883,7 @@ const jdbcxHighPrivilegeExtensionsAllowed = computed({
     resetTestState();
   },
 });
-const isPrestoSqlConnection = computed(() => form.value.db_type === "prestosql");
+const supportsNativeAgentJdbcDriverConfig = computed(() => supportsNativeAgentJdbcDriverConfigType(form.value.db_type));
 const isH2FileMode = computed(() => form.value.db_type === "h2" && h2ConnectionMode.value === "file");
 const usesLocalFilePathInput = computed(() => isLocalFileTypeDb(form.value.db_type) && (form.value.db_type !== "h2" || isH2FileMode.value));
 
@@ -6848,7 +6859,7 @@ function openExternalUrl(url: string) {
                     </div>
                   </div>
 
-                  <template v-if="isPrestoSqlConnection">
+                  <template v-if="supportsNativeAgentJdbcDriverConfig">
                     <div class="grid grid-cols-4 items-start gap-4">
                       <Label :class="connectionLabelTopClass">{{ t("connection.jdbcDriverPaths") }}</Label>
                       <div class="col-span-3 space-y-2">
