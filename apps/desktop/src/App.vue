@@ -2182,7 +2182,7 @@ function handleNativeSelectAll(e: KeyboardEvent) {
   if (shouldBlockAppNativeSelectAll(e)) e.preventDefault();
 }
 
-function handleKeydown(e: KeyboardEvent) {
+async function handleKeydown(e: KeyboardEvent) {
   if (e.defaultPrevented) return;
 
   const shortcuts = settingsStore.editorSettings.shortcuts;
@@ -2260,6 +2260,7 @@ function handleKeydown(e: KeyboardEvent) {
     } else if (showDriverStore.value) {
       closeDriverStorePage();
     } else if (queryStore.activeTabId) {
+      if (await queryStore.clearQueryResults(queryStore.activeTabId)) return;
       queryStore.closeTab(queryStore.activeTabId);
     }
     return;
