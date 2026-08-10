@@ -62,7 +62,7 @@ import { mergeSqlObjectNavigationType, sqlObjectNavigationTypeFromTableType } fr
 import * as api from "@/lib/backend/api";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { useTunnelProfileStore } from "@/stores/tunnelProfileStore";
-import { connectionIsDorisFamilyCatalogCapable, isInternalDorisCatalog, isSchemaAware, normalizeSidebarObjectKind, sidebarObjectKindsForDatabase, usesTreeSchemaMode } from "@/lib/database/databaseCapabilities";
+import { connectionIsDorisFamilyCatalogCapable, isInternalDorisCatalog, isSchemaAware, normalizeSidebarObjectKind, sidebarObjectKindsForDatabase, supportsPackageMemberExpansion, usesTreeSchemaMode } from "@/lib/database/databaseCapabilities";
 import { connectionObjectTreeNodeSchema, connectionObjectTreeQuerySchema, connectionShouldDiscoverJdbcSchemas, connectionShouldLoadIdentifierQuote, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection, gaussdbIdentifierQuoteOverride } from "@/lib/database/jdbcDialect";
 import { buildDatabaseTreeNodes, buildDuckDbConnectionTreeNodes, compareSidebarNames, sortSidebarDatabases, sortSidebarNames, shouldIncludeDefaultDatabaseNode } from "@/lib/database/databaseTree";
 import { buildSqlServerDatabaseTreeNodes } from "@/lib/database/sqlServerTree";
@@ -111,7 +111,7 @@ import { appendAgentDriverUpdateHint, hasAgentDriverUpdate, hasInstalledAgentVer
 import { appendConnectionErrorHints } from "@/lib/connection/connectionErrorHints";
 import { appendVisibleDatabaseSelection } from "@/lib/connection/connectionVisibleDatabases";
 import { filterNacosNamespacesForSidebar, normalizeNacosNamespacesForDisplay } from "@/lib/nacos/nacosNamespaceVisibility";
-import { buildXuguPackageMemberNodes, markXuguPackageNodesExpandable } from "@/lib/sidebar/xuguPackageMembers";
+import { buildPackageMemberNodes, markPackageNodesExpandable } from "@/lib/sidebar/packageMembers";
 import { configuredDatabaseProductName, connectionConfigFingerprint, normalizeDatabaseConnectionInfo } from "@/lib/connection/connectionDatabaseInfo";
 import { createMetadataLoadTrace, logMetadataLoadTrace, MetadataLoadCoordinator, type MetadataLoadTraceLogger } from "@/lib/metadata/metadataLoadCoordinator";
 import type { MetadataScopeInput } from "@/lib/metadata/metadataLoadScope";
@@ -1606,7 +1606,8 @@ export const useConnectionStore = defineStore("connection", () => {
     });
     const refreshedGroup = grouped.find((group) => group.type === options.node.type);
     const children = refreshedGroup?.children ?? [];
-    return options.node.connectionId && getConfig(options.node.connectionId)?.db_type === "xugu" ? markXuguPackageNodesExpandable(children) : children;
+    const databaseType = options.node.connectionId ? effectiveDatabaseTypeForConnection(getConfig(options.node.connectionId)) : undefined;
+    return supportsPackageMemberExpansion(databaseType) ? markPackageNodesExpandable(children) : children;
   }
 
   function tableInfosToCompletionTables(tables: readonly TableInfo[], schema?: string): SqlCompletionTable[] {
@@ -1870,8 +1871,8 @@ export const useConnectionStore = defineStore("connection", () => {
         schema: options.effectiveSchema,
         objects: supplementalObjects,
       });
-      if (getConfig(options.connectionId)?.db_type === "xugu") {
-        supplementalChildren = markXuguPackageNodesExpandable(supplementalChildren);
+      if (supportsPackageMemberExpansion(effectiveDatabaseTypeForConnection(getConfig(options.connectionId)))) {
+        supplementalChildren = markPackageNodesExpandable(supplementalChildren);
       }
       if (supplementalChildren.length === 0) return;
       if (isTreeLoadSearchChanged(searchFilter, options.loadOptions)) return;
@@ -5618,8 +5619,9 @@ export const useConnectionStore = defineStore("connection", () => {
     });
   }
 
-  async function loadXuguPackageMembers(node: TreeNode, options?: LoadTreeOptions): Promise<void> {
-    if (node.type !== "package" || !node.connectionId || !node.database || getConfig(node.connectionId)?.db_type !== "xugu") return;
+  async function loadPackageMembers(node: TreeNode, options?: LoadTreeOptions): Promise<void> {
+    if (node.type !== "package" || !node.connectionId || !node.database) return;
+    if (!supportsPackageMemberExpansion(effectiveDatabaseTypeForConnection(getConfig(node.connectionId)))) return;
     const connectionId = node.connectionId;
     const database = node.database;
     const schema = node.schema;
@@ -5629,7 +5631,7 @@ export const useConnectionStore = defineStore("connection", () => {
     try {
       await runTreeMetadataLoad(
         {
-          kind: "xugu-package-members",
+          kind: "package-members",
           connectionId,
           database,
           schema,
@@ -5656,7 +5658,7 @@ export const useConnectionStore = defineStore("connection", () => {
           });
           const targetNode = treeNodeLoadTarget(load);
           if (!targetNode) return;
-          setChildren(targetNode, buildXuguPackageMemberNodes(targetNode, response.candidates));
+          setChildren(targetNode, buildPackageMemberNodes(targetNode, response.candidates));
           targetNode.isExpanded = true;
         },
         options,
@@ -7280,7 +7282,7 @@ export const useConnectionStore = defineStore("connection", () => {
     loadTables,
     loadTableForLocate,
     loadObjectGroupChildren,
-    loadXuguPackageMembers,
+    loadPackageMembers,
     loadMoreObjectGroupChildren,
     loadAllObjectGroupChildren,
     loadTableGroups,

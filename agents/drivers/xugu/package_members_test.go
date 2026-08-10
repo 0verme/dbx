@@ -57,6 +57,21 @@ END;`
 	}
 }
 
+func TestParseXuguPackageMembersHandlesUnicodeIdentifiers(t *testing.T) {
+	spec := `CREATE PACKAGE 中文包 AS
+PROCEDURE 处理订单(订单号 IN VARCHAR, 数量 IN NUMERIC);
+FUNCTION 统计数量(分类 IN VARCHAR) RETURN NUMERIC;
+END;`
+	got := parseXuguPackageMembers(spec)
+	want := []xuguPackageMember{
+		{Name: "处理订单", Kind: "PROCEDURE", Signature: "订单号 IN VARCHAR, 数量 IN NUMERIC"},
+		{Name: "统计数量", Kind: "FUNCTION", Signature: "分类 IN VARCHAR", ReturnType: "NUMERIC"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected Unicode package members:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
 func TestParseXuguPackageMembersIgnoresBodyOnlyDeclarations(t *testing.T) {
 	spec := `CREATE PACKAGE pkg AS
 PROCEDURE public_proc(p_value INT);

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const xuguPackageSpecSQL = `
@@ -201,8 +202,8 @@ func stringPointerOrNil(value string) *string {
 	if value == "" {
 		return nil
 	}
-	copy := value
-	return &copy
+	result := value
+	return &result
 }
 
 func parseXuguPackageMembers(spec string) []xuguPackageMember {
@@ -212,20 +213,21 @@ func parseXuguPackageMembers(spec string) []xuguPackageMember {
 			index = next
 			continue
 		}
-		switch spec[index] {
+		current, width := utf8.DecodeRuneInString(spec[index:])
+		switch current {
 		case '(':
 			parenDepth++
-			index++
+			index += width
 			continue
 		case ')':
 			if parenDepth > 0 {
 				parenDepth--
 			}
-			index++
+			index += width
 			continue
 		}
-		if parenDepth != 0 || !isXuguIdentifierStart(rune(spec[index])) {
-			index++
+		if parenDepth != 0 || !isXuguIdentifierStart(current) {
+			index += width
 			continue
 		}
 		wordStart := index
@@ -277,8 +279,9 @@ func xuguFunctionReturnType(fragment string) string {
 			index = next
 			continue
 		}
-		if !isXuguIdentifierStart(rune(fragment[index])) {
-			index++
+		current, width := utf8.DecodeRuneInString(fragment[index:])
+		if !isXuguIdentifierStart(current) {
+			index += width
 			continue
 		}
 		start := index
@@ -298,7 +301,8 @@ func findXuguDeclarationEnd(value string, start int) int {
 			index = next
 			continue
 		}
-		switch value[index] {
+		current, width := utf8.DecodeRuneInString(value[index:])
+		switch current {
 		case '(':
 			depth++
 		case ')':
@@ -310,7 +314,7 @@ func findXuguDeclarationEnd(value string, start int) int {
 				return index
 			}
 		}
-		index++
+		index += width
 	}
 	return -1
 }
@@ -322,7 +326,8 @@ func findXuguClosingParen(value string, open int) (int, bool) {
 			index = next
 			continue
 		}
-		switch value[index] {
+		current, width := utf8.DecodeRuneInString(value[index:])
+		switch current {
 		case '(':
 			depth++
 		case ')':
@@ -331,7 +336,7 @@ func findXuguClosingParen(value string, open int) (int, bool) {
 				return index, true
 			}
 		}
-		index++
+		index += width
 	}
 	return 0, false
 }
@@ -342,21 +347,24 @@ func readXuguSQLIdentifier(value string, index int) (string, int, bool) {
 	}
 	if value[index] == '"' {
 		var builder strings.Builder
-		for cursor := index + 1; cursor < len(value); cursor++ {
-			if value[cursor] != '"' {
-				builder.WriteByte(value[cursor])
+		for cursor := index + 1; cursor < len(value); {
+			current, width := utf8.DecodeRuneInString(value[cursor:])
+			if current != '"' {
+				builder.WriteRune(current)
+				cursor += width
 				continue
 			}
 			if cursor+1 < len(value) && value[cursor+1] == '"' {
 				builder.WriteByte('"')
-				cursor++
+				cursor += 2
 				continue
 			}
 			return builder.String(), cursor + 1, true
 		}
 		return "", index, false
 	}
-	if !isXuguIdentifierStart(rune(value[index])) {
+	current, _ := utf8.DecodeRuneInString(value[index:])
+	if !isXuguIdentifierStart(current) {
 		return "", index, false
 	}
 	next := scanXuguIdentifier(value, index)
@@ -364,8 +372,12 @@ func readXuguSQLIdentifier(value string, index int) (string, int, bool) {
 }
 
 func scanXuguIdentifier(value string, index int) int {
-	for index < len(value) && isXuguIdentifierPart(rune(value[index])) {
-		index++
+	for index < len(value) {
+		current, width := utf8.DecodeRuneInString(value[index:])
+		if !isXuguIdentifierPart(current) {
+			break
+		}
+		index += width
 	}
 	return index
 }
@@ -380,8 +392,9 @@ func isXuguIdentifierPart(value rune) bool {
 
 func skipXuguSQLSpaceAndComments(value string, index int) int {
 	for index < len(value) {
-		if unicode.IsSpace(rune(value[index])) {
-			index++
+		current, width := utf8.DecodeRuneInString(value[index:])
+		if unicode.IsSpace(current) {
+			index += width
 			continue
 		}
 		if next, ok := skipXuguSQLComment(value, index); ok {
@@ -401,12 +414,14 @@ func skipXuguSQLLiteralOrComment(value string, index int) (int, bool) {
 		return index, false
 	}
 	quote := value[index]
-	for cursor := index + 1; cursor < len(value); cursor++ {
-		if value[cursor] != quote {
+	for cursor := index + 1; cursor < len(value); {
+		current, width := utf8.DecodeRuneInString(value[cursor:])
+		if current != rune(quote) {
+			cursor += width
 			continue
 		}
 		if cursor+1 < len(value) && value[cursor+1] == quote {
-			cursor++
+			cursor += 2
 			continue
 		}
 		return cursor + 1, true
@@ -442,9 +457,10 @@ func compactXuguSQLFragment(value string) string {
 			index = next
 			continue
 		}
-		if unicode.IsSpace(rune(value[index])) {
+		current, width := utf8.DecodeRuneInString(value[index:])
+		if unicode.IsSpace(current) {
 			spacePending = builder.Len() > 0
-			index++
+			index += width
 			continue
 		}
 		if spacePending && builder.Len() > 0 {
@@ -456,8 +472,8 @@ func compactXuguSQLFragment(value string) string {
 			index = next
 			continue
 		}
-		builder.WriteByte(value[index])
-		index++
+		builder.WriteRune(current)
+		index += width
 	}
 	return strings.TrimSpace(builder.String())
 }

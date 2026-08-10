@@ -1,10 +1,10 @@
 import type { CompletionAssistantCandidate, TreeNode } from "@/types/database";
 
-export function markXuguPackageNodesExpandable(nodes: TreeNode[]): TreeNode[] {
+export function markPackageNodesExpandable(nodes: TreeNode[]): TreeNode[] {
   return nodes.map((node) => (node.type === "package" ? { ...node, children: node.children ?? [] } : node));
 }
 
-export function buildXuguPackageMemberNodes(packageNode: TreeNode, candidates: readonly CompletionAssistantCandidate[]): TreeNode[] {
+export function buildPackageMemberNodes(packageNode: TreeNode, candidates: readonly CompletionAssistantCandidate[]): TreeNode[] {
   const parentName = packageNode.objectName || packageNode.label;
   const parentSchema = packageNode.schema;
   const seen = new Set<string>();

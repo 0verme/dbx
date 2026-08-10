@@ -91,6 +91,7 @@ import {
   supportsTableTruncate,
   supportsTableStructureEditing,
   supportsTransfer,
+  supportsPackageMemberExpansion,
   usesTreeSchemaMode,
   isSingleDatabase,
 } from "@/lib/database/databaseCapabilities";
@@ -622,8 +623,8 @@ async function toggle() {
       return;
     }
 
-    if (node.type === "package" && node.connectionId && connectionStore.getConfig(node.connectionId)?.db_type === "xugu") {
-      await connectionStore.loadXuguPackageMembers(node);
+    if (node.type === "package" && node.connectionId && supportsPackageMemberExpansion(currentDatabaseType())) {
+      await connectionStore.loadPackageMembers(node);
       emitNodeToggled(node, wasExpanded);
       return;
     }
