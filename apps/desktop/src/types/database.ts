@@ -105,6 +105,7 @@ export interface CompletionAssistantRequest {
   search_in_definitions?: boolean;
   parent_schema?: string | null;
   parent_name?: string | null;
+  parent_type?: "package" | "type" | null;
   match_mode?: CompletionAssistantMatchMode | null;
 }
 
@@ -433,6 +434,7 @@ export interface ObjectInfo {
   updated_at?: string | null;
   parent_schema?: string | null;
   parent_name?: string | null;
+  xugu_type_members_expandable?: boolean | null;
 }
 
 export interface ObjectStatistics {
@@ -829,6 +831,8 @@ export type TreeNodeType =
   | "table-search-control"
   | "load-more"
   | "column"
+  | "type-attribute"
+  | "type-method"
   | "index"
   | "fkey"
   | "trigger"
@@ -890,10 +894,12 @@ export interface TreeNode {
   tableName?: string;
   objectName?: string;
   signature?: string;
-  /** Owning package/type for nested routine members. */
+  /** Owning programmable object for a nested metadata member. */
   parentName?: string;
   parentSchema?: string;
   parentType?: TreeNodeType;
+  /** Set only for XuguDB object types whose members can be loaded lazily. */
+  xuguTypeMembersExpandable?: boolean;
   tableType?: string;
   comment?: string | null;
   valid?: boolean | null;
