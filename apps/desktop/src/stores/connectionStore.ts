@@ -5162,19 +5162,25 @@ export const useConnectionStore = defineStore("connection", () => {
       const triggers = await api.listTriggers(connectionId, database, querySchema, table, catalog);
       const targetNode = treeNodeLoadTarget(load);
       if (!targetNode) return;
+      const isXugu = effectiveDatabaseTypeForConnection(getConfig(connectionId)) === "xugu";
       setChildren(
         targetNode,
-        triggers.map((tr) => ({
-          id: `${parentId}:${tr.name}`,
-          label: `${tr.name} (${tr.timing} ${tr.event})`,
-          objectName: tr.name,
-          type: "trigger" as const,
-          connectionId,
-          database,
-          schema,
-          tableName: table,
-          meta: tr,
-        })),
+        triggers.map((tr) => {
+          const xuguDetails = isXugu ? [tr.timing, tr.event, tr.level, tr.enabled === false ? i18n.global.t("objects.disabled") : null, tr.valid === false ? i18n.global.t("objects.invalid") : null].filter(Boolean).join(" · ") : `${tr.timing} ${tr.event}`;
+          return {
+            id: `${parentId}:${tr.name}`,
+            label: `${tr.name} (${xuguDetails})`,
+            objectName: tr.name,
+            type: "trigger" as const,
+            connectionId,
+            database,
+            schema,
+            tableName: table,
+            comment: isXugu ? tr.comment : undefined,
+            valid: isXugu ? tr.valid : undefined,
+            meta: tr,
+          };
+        }),
       );
       targetNode.isExpanded = true;
     } catch (e) {

@@ -116,6 +116,37 @@ describe("programmable database objects", () => {
     );
   });
 
+  it("preserves Xugu trigger details for the schema trigger group", () => {
+    const trigger = {
+      name: "TRG_AUDIT",
+      event: "INSERT OR UPDATE",
+      timing: "BEFORE",
+      level: "FOR EACH ROW",
+      enabled: false,
+      valid: false,
+      condition: "NEW_VALUE >= 0",
+      language: "PL/SQL",
+      comment: "row audit trigger",
+      created_at: "2026-08-10 09:30:00",
+    };
+    const groups = buildGroupedObjectTreeNodes({
+      ...context,
+      schema: "APP",
+      objects: [{ name: trigger.name, object_type: "TRIGGER", schema: "APP", valid: false, comment: trigger.comment, trigger }],
+    });
+    const triggerGroup = groups.find((node) => node.type === "group-triggers");
+
+    expect(triggerGroup?.children).toEqual([
+      expect.objectContaining({
+        type: "trigger",
+        objectName: trigger.name,
+        valid: false,
+        comment: trigger.comment,
+        meta: trigger,
+      }),
+    ]);
+  });
+
   it("groups Xugu private synonyms as source objects", () => {
     const objects: ObjectInfo[] = [{ name: "SYN_SHOP_USERS", object_type: "SYNONYM", schema: "SYSDBA", valid: true }];
 

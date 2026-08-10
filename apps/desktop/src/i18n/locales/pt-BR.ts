@@ -2960,6 +2960,17 @@ export default withEnglishFallback({
     trigger: "Gatilho",
     typeDefinition: "Definição de tipo",
     typeBody: "Corpo do tipo",
+    triggerTiming: "Momento do gatilho",
+    triggerEvent: "Evento do gatilho",
+    triggerLevel: "Nível do gatilho",
+    triggerStatus: "Status",
+    triggerCondition: "Condição",
+    triggerLanguage: "Idioma",
+    enabled: "Habilitado",
+    disabled: "Desabilitado",
+    validity: "Validade",
+    valid: "Válido",
+    invalid: "Inválido",
   },
   structureEditor: {
     mysqlDataTypeHelp: {

@@ -2958,6 +2958,17 @@ export default withEnglishFallback({
     trigger: "Trigger",
     typeDefinition: "Definizione del tipo",
     typeBody: "Corpo del tipo",
+    triggerTiming: "momento di attivazione",
+    triggerEvent: "evento trigger",
+    triggerLevel: "livello di attivazione",
+    triggerStatus: "stato",
+    triggerCondition: "condizione",
+    triggerLanguage: "lingua",
+    enabled: "abilitato",
+    disabled: "disabilitato",
+    validity: "validità",
+    valid: "valido",
+    invalid: "non valido",
   },
   structureEditor: {
     mysqlDataTypeHelp: {

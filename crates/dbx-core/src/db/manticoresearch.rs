@@ -47,6 +47,7 @@ pub async fn list_objects(pool: &MySqlPool, database: &str) -> Result<Vec<Object
             updated_at: None,
             parent_schema: table.parent_schema,
             parent_name: table.parent_name,
+            trigger: None,
             xugu_type_members_expandable: None,
         })
         .collect();
@@ -109,6 +110,7 @@ fn plugin_object(
         updated_at: None,
         parent_schema: None,
         parent_name: None,
+        trigger: None,
         xugu_type_members_expandable: None,
     })
 }

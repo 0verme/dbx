@@ -2828,6 +2828,17 @@ export default withEnglishFallback({
     trigger: "觸發器",
     typeDefinition: "類型",
     typeBody: "類型體",
+    triggerTiming: "觸發時機",
+    triggerEvent: "觸發事件",
+    triggerLevel: "觸發級別",
+    triggerStatus: "狀態",
+    triggerCondition: "條件",
+    triggerLanguage: "語言",
+    enabled: "啟用",
+    disabled: "停用",
+    validity: "有效性",
+    valid: "有效",
+    invalid: "無效",
   },
   structureEditor: {
     mysqlDataTypeHelp: {

@@ -3020,6 +3020,17 @@ export default withEnglishFallback({
     trigger: "トリガー",
     typeDefinition: "タイプ",
     typeBody: "タイプ本体",
+    triggerTiming: "トリガータイミング",
+    triggerEvent: "トリガーイベント",
+    triggerLevel: "トリガーレベル",
+    triggerStatus: "状態",
+    triggerCondition: "条件",
+    triggerLanguage: "言語",
+    enabled: "有効",
+    disabled: "無効",
+    validity: "有効性",
+    valid: "有効",
+    invalid: "無効",
   },
   structureEditor: {
     mysqlDataTypeHelp: {
