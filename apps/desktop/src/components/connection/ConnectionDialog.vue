@@ -3034,6 +3034,7 @@ const tlsCapableDatabaseTypes = new Set<DatabaseType>([
 const supportsTlsToggle = computed(() => tlsCapableDatabaseTypes.has(form.value.db_type));
 const supportsCaCertificatePath = computed(() => form.value.db_type === "clickhouse" || form.value.db_type === "victoriametrics");
 const supportsGenericUrlParams = computed(() => form.value.db_type !== "manticoresearch" && form.value.db_type !== "hbase");
+const showGenericUrlParamsHint = computed(() => form.value.db_type === "mysql" || form.value.db_type === "doris" || form.value.db_type === "starrocks");
 const bareMysqlProfiles = new Set(["doris", "selectdb", "oceanbase"]);
 const supportsMysqlTlsOptions = computed(() => form.value.db_type === "starrocks" || (form.value.db_type === "mysql" && !bareMysqlProfiles.has(selectedType.value)));
 const supportsMysqlCleartextPasswordAuth = computed(() => form.value.db_type === "mysql" && !bareMysqlProfiles.has(selectedType.value));
@@ -7021,8 +7022,8 @@ function openExternalUrl(url: string) {
                     </label>
                   </div>
 
-                  <div v-if="supportsGenericUrlParams" class="grid grid-cols-4 items-start gap-4">
-                    <Label :class="connectionLabelClass">{{ t("connection.urlParams") }}</Label>
+                  <div v-if="supportsGenericUrlParams" class="connection-url-params-row grid grid-cols-4 items-start gap-4" :class="{ 'connection-url-params-row--compact': !showGenericUrlParamsHint, 'connection-url-params-row--with-hint': showGenericUrlParamsHint }">
+                    <Label :class="[connectionLabelClass, 'connection-url-params-label']">{{ t("connection.urlParams") }}</Label>
                     <div class="col-span-3 space-y-1.5">
                       <Input
                         v-model="form.url_params"
@@ -7046,7 +7047,7 @@ function openExternalUrl(url: string) {
                                           : 'sslmode=prefer'
                         "
                       />
-                      <p v-if="form.db_type === 'mysql' || form.db_type === 'doris' || form.db_type === 'starrocks'" class="text-xs leading-5 text-muted-foreground">
+                      <p v-if="showGenericUrlParamsHint" class="text-xs leading-5 text-muted-foreground">
                         {{ t("connection.localInfilePathHint") }}
                       </p>
                     </div>
@@ -7791,8 +7792,8 @@ function openExternalUrl(url: string) {
                         :key="hop.id"
                         type="button"
                         draggable="true"
-                        class="flex min-h-10 items-center gap-2 rounded-md border px-2 text-left text-xs transition-colors"
-                        :class="hop.id === selectedTransportLayer?.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'"
+                        class="connection-transport-layer-option flex min-h-10 items-center gap-2 rounded-md border px-2 text-left text-xs transition-colors"
+                        :class="hop.id === selectedTransportLayer?.id ? 'connection-transport-layer-option--selected border-primary bg-primary/5' : 'hover:bg-muted/50'"
                         @click="selectedTransportLayerId = hop.id"
                         @dragstart="draggedTransportLayerId = hop.id"
                         @dragover.prevent
@@ -8376,26 +8377,44 @@ function openExternalUrl(url: string) {
 
 /* Legacy responsive layout rules live in public/connection-dialog-legacy.css
  * so the production build cannot rewrite their classic media queries. */
-@supports not (color: oklch(0.5 0.1 180)) {
-  .connection-db-category-option--selected {
-    color: rgb(23, 23, 23) !important;
-    background-color: rgba(23, 23, 23, 0.08) !important;
-  }
+html.dbx-legacy-webview .connection-db-category-option--selected {
+  color: rgb(23, 23, 23) !important;
+  background-color: rgba(23, 23, 23, 0.08) !important;
+}
 
-  .connection-db-category-option--selected:hover {
-    color: rgb(23, 23, 23) !important;
-    background-color: rgba(23, 23, 23, 0.12) !important;
-  }
+html.dbx-legacy-webview .connection-db-category-option--selected:hover {
+  color: rgb(23, 23, 23) !important;
+  background-color: rgba(23, 23, 23, 0.12) !important;
+}
 
-  .dark .connection-db-category-option--selected {
-    color: rgb(244, 244, 245) !important;
-    background-color: rgba(255, 255, 255, 0.1) !important;
-  }
+html.dbx-legacy-webview .connection-transport-layer-option--selected {
+  color: rgb(23, 23, 23) !important;
+  border-color: rgb(23, 23, 23) !important;
+  background-color: rgba(23, 23, 23, 0.08) !important;
+}
 
-  .dark .connection-db-category-option--selected:hover {
-    color: rgb(244, 244, 245) !important;
-    background-color: rgba(255, 255, 255, 0.14) !important;
-  }
+html.dbx-legacy-webview .connection-transport-layer-option--selected:hover {
+  background-color: rgba(23, 23, 23, 0.12) !important;
+}
+
+html.dbx-legacy-webview.dark .connection-db-category-option--selected {
+  color: rgb(244, 244, 245) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dbx-legacy-webview.dark .connection-db-category-option--selected:hover {
+  color: rgb(244, 244, 245) !important;
+  background-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+html.dbx-legacy-webview.dark .connection-transport-layer-option--selected {
+  color: rgb(244, 244, 245) !important;
+  border-color: rgb(244, 244, 245) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dbx-legacy-webview.dark .connection-transport-layer-option--selected:hover {
+  background-color: rgba(255, 255, 255, 0.14) !important;
 }
 
 .connection-db-picker-option {
