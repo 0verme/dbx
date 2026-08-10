@@ -2414,7 +2414,7 @@ func (s *server) listIndexes(schema, table string) ([]indexInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	table = strings.ToUpper(strings.TrimSpace(table))
+	table = strings.TrimSpace(table)
 	rows, err := s.queryRows(`
 SELECT i.INDEX_NAME,
        ic.COLUMN_NAME,
@@ -2474,7 +2474,7 @@ func (s *server) listForeignKeys(schema, table string) ([]foreignKeyInfo, error)
 	if err != nil {
 		return nil, err
 	}
-	table = strings.ToUpper(strings.TrimSpace(table))
+	table = strings.TrimSpace(table)
 	rows, err := s.queryRows(`
 SELECT ac.CONSTRAINT_NAME,
        acc.COLUMN_NAME,
@@ -2510,7 +2510,7 @@ func (s *server) listTriggers(schema, table string) ([]triggerInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	table = strings.ToUpper(strings.TrimSpace(table))
+	table = strings.TrimSpace(table)
 	rows, err := s.queryRows(oracleListTriggersSQL, []any{schema, table})
 	if err != nil {
 		return nil, err

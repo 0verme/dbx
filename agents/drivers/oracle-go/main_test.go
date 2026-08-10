@@ -618,6 +618,44 @@ func TestGetTableDDLAppendsIndexesTriggersAndComments(t *testing.T) {
 	}
 }
 
+func TestListIndexesSeparatesQuotedCloneTableNamesByCase(t *testing.T) {
+	const schema = "HR"
+	db, scripted := openOracleViewSourceTestDB(t, []oracleViewSourceQueryStep{
+		{
+			queryContains: "FROM ALL_INDEXES",
+			args:          []driver.Value{schema, "ORDERS_COPY"},
+			columns:       []string{"INDEX_NAME", "COLUMN_NAME", "UNIQUENESS", "IS_PRIMARY", "INDEX_TYPE", "COLUMN_POSITION"},
+			rows:          [][]driver.Value{{"ORDERS_COPY_IDX1", "STATUS", "NONUNIQUE", int64(0), "NORMAL", int64(1)}},
+		},
+		{
+			queryContains: "FROM ALL_INDEXES",
+			args:          []driver.Value{schema, "ORDERS_copy"},
+			columns:       []string{"INDEX_NAME", "COLUMN_NAME", "UNIQUENESS", "IS_PRIMARY", "INDEX_TYPE", "COLUMN_POSITION"},
+			rows:          [][]driver.Value{{"ORDERS_copy_IDX1", "STATUS", "NONUNIQUE", int64(0), "NORMAL", int64(1)}},
+		},
+	})
+	s := newServer()
+	s.db = db
+
+	uppercaseIndexes, err := s.listIndexes(schema, "ORDERS_COPY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixedCaseIndexes, err := s.listIndexes(schema, "ORDERS_copy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(uppercaseIndexes) != 1 || uppercaseIndexes[0].Name != "ORDERS_COPY_IDX1" {
+		t.Fatalf("listIndexes(ORDERS_COPY) = %#v, want uppercase table index", uppercaseIndexes)
+	}
+	if len(mixedCaseIndexes) != 1 || mixedCaseIndexes[0].Name != "ORDERS_copy_IDX1" || !reflect.DeepEqual(mixedCaseIndexes[0].Columns, []string{"STATUS"}) {
+		t.Fatalf("listIndexes(ORDERS_copy) = %#v, want quoted clone index", mixedCaseIndexes)
+	}
+	if scripted.next != len(scripted.steps) {
+		t.Fatalf("expected %d queries, got %d", len(scripted.steps), scripted.next)
+	}
+}
+
 func TestGetTableCommentPreservesQuotedObjectName(t *testing.T) {
 	const schema = "HR"
 	const table = "OrderDetails"
@@ -702,6 +740,45 @@ func TestListForeignKeysIncludesReferencedSchemaAndDeleteRule(t *testing.T) {
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("listForeignKeys() = %#v, want %#v", got, want)
+	}
+	if scripted.next != len(scripted.steps) {
+		t.Fatalf("expected %d queries, got %d", len(scripted.steps), scripted.next)
+	}
+}
+
+func TestListForeignKeysAndTriggersPreserveQuotedCloneTableName(t *testing.T) {
+	const schema = "HR"
+	const table = "ORDERS_copy"
+	db, scripted := openOracleViewSourceTestDB(t, []oracleViewSourceQueryStep{
+		{
+			queryContains: "FROM ALL_CONSTRAINTS ac",
+			args:          []driver.Value{schema, table},
+			columns:       []string{"CONSTRAINT_NAME", "COLUMN_NAME", "REF_SCHEMA", "REF_TABLE", "REF_COLUMN", "DELETE_RULE"},
+			rows:          [][]driver.Value{{"ORDERS_copy_FK1", "CUSTOMER_ID", "CRM", "CUSTOMERS", "ID", "CASCADE"}},
+		},
+		{
+			queryContains: "FROM ALL_TRIGGERS",
+			args:          []driver.Value{schema, table},
+			columns:       []string{"TRIGGER_NAME", "TRIGGERING_EVENT", "TRIGGER_TYPE", "DESCRIPTION", "LINE", "TEXT"},
+			rows:          [][]driver.Value{{"ORDERS_copy_TRG1", "INSERT", "BEFORE EACH ROW", nil, nil, nil}},
+		},
+	})
+	s := newServer()
+	s.db = db
+
+	foreignKeys, err := s.listForeignKeys(schema, table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	triggers, err := s.listTriggers(schema, table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(foreignKeys) != 1 || foreignKeys[0].Name != "ORDERS_copy_FK1" {
+		t.Fatalf("listForeignKeys(%q) = %#v, want quoted clone foreign key", table, foreignKeys)
+	}
+	if len(triggers) != 1 || triggers[0].Name != "ORDERS_copy_TRG1" {
+		t.Fatalf("listTriggers(%q) = %#v, want quoted clone trigger", table, triggers)
 	}
 	if scripted.next != len(scripted.steps) {
 		t.Fatalf("expected %d queries, got %d", len(scripted.steps), scripted.next)
