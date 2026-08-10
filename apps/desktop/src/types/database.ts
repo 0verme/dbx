@@ -890,6 +890,10 @@ export interface TreeNode {
   tableName?: string;
   objectName?: string;
   signature?: string;
+  /** Owning package/type for nested routine members. */
+  parentName?: string;
+  parentSchema?: string;
+  parentType?: TreeNodeType;
   tableType?: string;
   comment?: string | null;
   valid?: boolean | null;

@@ -939,6 +939,16 @@ func (s *server) dispatch(method string, params map[string]json.RawMessage) (any
 		schema := stringParam(params, "schema")
 		result, err := s.listObjects(schema, metadataListConstraintsFromParams(params))
 		return result, false, err
+	case "completion_assistant_search_v1":
+		var request completionAssistantRequest
+		if err := decodeParams(params, &request); err != nil {
+			return nil, false, err
+		}
+		if err := s.useDatabase(request.Database); err != nil {
+			return nil, false, err
+		}
+		result, err := s.completionAssistantSearch(request)
+		return result, false, err
 	case "list_data_types":
 		return xuguDataTypes, false, nil
 	case "get_columns":

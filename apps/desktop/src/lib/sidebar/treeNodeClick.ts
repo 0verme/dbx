@@ -58,6 +58,32 @@ export function objectSourceKindForTreeNode(type: TreeNodeType): ObjectSourceKin
   return null;
 }
 
+export interface TreeNodeObjectSourceTarget {
+  name: string;
+  schema?: string;
+  objectType: ObjectSourceKind;
+  signature?: string;
+}
+
+export function objectSourceTargetForTreeNode(node: TreeNode): TreeNodeObjectSourceTarget | null {
+  if ((node.type === "procedure" || node.type === "function") && node.parentType === "package" && node.parentName) {
+    return {
+      name: node.parentName,
+      schema: node.parentSchema || node.schema,
+      objectType: "PACKAGE",
+      signature: node.signature,
+    };
+  }
+  const objectType = objectSourceKindForTreeNode(node.type);
+  if (!objectType) return null;
+  return {
+    name: node.objectName || node.label,
+    schema: node.schema,
+    objectType,
+    signature: node.signature,
+  };
+}
+
 export function isDocumentBrowserTreeNode(type: TreeNodeType): boolean {
   return documentBrowserNodeTypes.has(type);
 }
@@ -66,6 +92,7 @@ export function treeNodeRowAction(type: TreeNodeType, canExpand: boolean, activa
   if (!shouldActivateTreeNodeOnSingleClick(type, activation)) return "none";
   if (type === "extension") return "open-extension-details";
   if (dataNodeTypes.has(type)) return "open-data";
+  if (type === "package" && canExpand) return "toggle";
   if (sourceNodeTypes.has(type)) return "open-source";
   if (toggleLeafNodeTypes.has(type)) return "toggle";
   if (canExpand) return "toggle";

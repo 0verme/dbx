@@ -111,6 +111,7 @@ import { appendAgentDriverUpdateHint, hasAgentDriverUpdate, hasInstalledAgentVer
 import { appendConnectionErrorHints } from "@/lib/connection/connectionErrorHints";
 import { appendVisibleDatabaseSelection } from "@/lib/connection/connectionVisibleDatabases";
 import { filterNacosNamespacesForSidebar, normalizeNacosNamespacesForDisplay } from "@/lib/nacos/nacosNamespaceVisibility";
+import { buildXuguPackageMemberNodes, markXuguPackageNodesExpandable } from "@/lib/sidebar/xuguPackageMembers";
 import { configuredDatabaseProductName, connectionConfigFingerprint, normalizeDatabaseConnectionInfo } from "@/lib/connection/connectionDatabaseInfo";
 import { createMetadataLoadTrace, logMetadataLoadTrace, MetadataLoadCoordinator, type MetadataLoadTraceLogger } from "@/lib/metadata/metadataLoadCoordinator";
 import type { MetadataScopeInput } from "@/lib/metadata/metadataLoadScope";
@@ -1604,7 +1605,8 @@ export const useConnectionStore = defineStore("connection", () => {
       objects: options.objects.filter((object) => options.objectTypes.includes(normalizedObjectTreeKind(object.object_type))),
     });
     const refreshedGroup = grouped.find((group) => group.type === options.node.type);
-    return refreshedGroup?.children ?? [];
+    const children = refreshedGroup?.children ?? [];
+    return options.node.connectionId && getConfig(options.node.connectionId)?.db_type === "xugu" ? markXuguPackageNodesExpandable(children) : children;
   }
 
   function tableInfosToCompletionTables(tables: readonly TableInfo[], schema?: string): SqlCompletionTable[] {
@@ -1861,13 +1863,16 @@ export const useConnectionStore = defineStore("connection", () => {
       );
       const supplementalObjects = filterSimpleSidebarSupplementalObjects(objects);
       if (supplementalObjects.length === 0) return;
-      const supplementalChildren = buildSimpleObjectTreeNodes({
+      let supplementalChildren = buildSimpleObjectTreeNodes({
         nodeId: options.nodeId,
         connectionId: options.connectionId,
         database: options.database,
         schema: options.effectiveSchema,
         objects: supplementalObjects,
       });
+      if (getConfig(options.connectionId)?.db_type === "xugu") {
+        supplementalChildren = markXuguPackageNodesExpandable(supplementalChildren);
+      }
       if (supplementalChildren.length === 0) return;
       if (isTreeLoadSearchChanged(searchFilter, options.loadOptions)) return;
       const targetNode = treeNodeLoadTarget(options.load);
@@ -5613,6 +5618,57 @@ export const useConnectionStore = defineStore("connection", () => {
     });
   }
 
+  async function loadXuguPackageMembers(node: TreeNode, options?: LoadTreeOptions): Promise<void> {
+    if (node.type !== "package" || !node.connectionId || !node.database || getConfig(node.connectionId)?.db_type !== "xugu") return;
+    const connectionId = node.connectionId;
+    const database = node.database;
+    const schema = node.schema;
+    const packageName = node.objectName || node.label;
+    let load = beginTreeNodeLoad(node);
+
+    try {
+      await runTreeMetadataLoad(
+        {
+          kind: "xugu-package-members",
+          connectionId,
+          database,
+          schema,
+          nodeKind: node.type,
+          extra: { packageName },
+        },
+        async () => {
+          await ensureConnected(connectionId);
+          load = reclaimTreeNodeLoad(load, node);
+          const response = await completionAssistantSearch({
+            connection_id: connectionId,
+            database,
+            schema: schema ?? null,
+            object_kinds: ["routine"],
+            mask: "",
+            case_sensitive: true,
+            global_search: false,
+            max_results: 1000,
+            search_in_comments: false,
+            search_in_definitions: false,
+            parent_schema: schema ?? null,
+            parent_name: packageName,
+            match_mode: "prefix",
+          });
+          const targetNode = treeNodeLoadTarget(load);
+          if (!targetNode) return;
+          setChildren(targetNode, buildXuguPackageMemberNodes(targetNode, response.candidates));
+          targetNode.isExpanded = true;
+        },
+        options,
+      );
+    } catch (error) {
+      recordMetadataLoadError(connectionId, error, load);
+      throw error;
+    } finally {
+      finishTreeNodeLoad(load);
+    }
+  }
+
   const ORACLE_SYSTEM_COMPLETION_SCHEMAS = new Set(["SYS", "SYSTEM", "SYSMAN", "DBSNMP", "OUTLN", "XDB", "MDSYS", "CTXSYS", "WMSYS"]);
   const FILTERED_ROUTINE_COMPLETION_DATABASES = new Set<DatabaseType>(["mysql", "postgres", "sqlserver", "oracle"]);
 
@@ -7224,6 +7280,7 @@ export const useConnectionStore = defineStore("connection", () => {
     loadTables,
     loadTableForLocate,
     loadObjectGroupChildren,
+    loadXuguPackageMembers,
     loadMoreObjectGroupChildren,
     loadAllObjectGroupChildren,
     loadTableGroups,

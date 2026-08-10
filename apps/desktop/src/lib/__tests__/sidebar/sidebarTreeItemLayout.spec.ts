@@ -27,6 +27,13 @@ describe("sidebar tree item layout", () => {
     expect(canTreeNodeShowExpander({ type: "consul-overview", childCount: 0 })).toBe(false);
   });
 
+  it("shows an expander only for package nodes explicitly marked as containers", () => {
+    expect(canTreeNodeShowExpander({ type: "package", childCount: 0 })).toBe(false);
+    expect(canTreeNodeShowExpander({ type: "package", childCount: 0, explicitContainer: true })).toBe(true);
+    expect(canTreeNodeShowExpander({ type: "package-body", childCount: 0, explicitContainer: true })).toBe(false);
+    expect(canTreeNodeShowExpander({ type: "procedure", childCount: 0, explicitContainer: true })).toBe(false);
+  });
+
   it("aligns comments to the longest sibling name without crossing parent groups", () => {
     const widths = alignedSidebarCommentLabelWidths([
       { id: "tables", depth: 1, alignable: false, hasComment: false, labelWidth: 0 },

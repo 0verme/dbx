@@ -558,6 +558,7 @@ const canExpand = computed(() =>
   canTreeNodeShowExpander({
     type: activeNode.value.type,
     childCount: activeNode.value.children?.length ?? 0,
+    explicitContainer: activeNode.value.children !== undefined,
   }),
 );
 

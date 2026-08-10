@@ -94,7 +94,7 @@ import {
   usesTreeSchemaMode,
   isSingleDatabase,
 } from "@/lib/database/databaseCapabilities";
-import { copyNameForTreeNode, isDirectNavigationTreeNode, isDocumentBrowserTreeNode, objectSourceKindForTreeNode, shouldRunTreeNodeRowAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/sidebar/treeNodeClick";
+import { copyNameForTreeNode, isDirectNavigationTreeNode, isDocumentBrowserTreeNode, objectSourceTargetForTreeNode, shouldRunTreeNodeRowAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/sidebar/treeNodeClick";
 import { mongoCollectionTableTypeFromNode, mongoDropIndexFailureCount } from "@/lib/sidebar/mongoCollectionMutation";
 import { dataTabOpenModeFromTreeClick, type DataTabOpenMode } from "@/lib/sidebar/dataTabOpenPolicy";
 import { isCopySidebarSelectionShortcut, isEditSidebarConnectionShortcut, isPasteSidebarSelectionShortcut } from "@/lib/editor/keyboardShortcuts";
@@ -618,6 +618,12 @@ async function toggle() {
 
   try {
     if (await loadSidebarObjectGroup(node, connectionStore)) {
+      emitNodeToggled(node, wasExpanded);
+      return;
+    }
+
+    if (node.type === "package" && node.connectionId && connectionStore.getConfig(node.connectionId)?.db_type === "xugu") {
+      await connectionStore.loadXuguPackageMembers(node);
       emitNodeToggled(node, wasExpanded);
       return;
     }
@@ -1674,18 +1680,18 @@ function openObjectSourceDialog(initialEditing: boolean) {
   if (!node.connectionId || !node.database) return;
   const connectionId = node.connectionId;
   const database = node.database;
-  const objectType = objectSourceKindForTreeNode(node.type);
-  if (!objectType) return;
+  const sourceTarget = objectSourceTargetForTreeNode(node);
+  if (!sourceTarget) return;
   const openMode = settingsStore.editorSettings.routineSourceOpenMode;
   if (openMode === "query-tab") {
     void connectionStore
       .ensureConnected(connectionId)
       .then(async () => {
         connectionStore.activeConnectionId = connectionId;
-        const schema = node.schema || database;
+        const schema = sourceTarget.schema || database;
         const databaseType = effectiveDatabaseTypeForConnection(connectionStore.getConfig(connectionId));
         if (!databaseType) throw new Error("Connection type is unavailable.");
-        const objectName = node.objectName || node.label;
+        const objectName = sourceTarget.name;
         const {
           raw,
           editableSource,
@@ -1695,7 +1701,7 @@ function openObjectSourceDialog(initialEditing: boolean) {
           database,
           schema,
           name: objectName,
-          objectType: objectType as any,
+          objectType: sourceTarget.objectType as any,
           databaseType,
           signature: node.signature,
         });
@@ -4649,14 +4655,15 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
 
   // 8. Procedure / Function / Package
   if (node.type === "procedure" || node.type === "function") {
-    if (node.type === "procedure") {
+    const isPackageMember = node.parentType === "package" && !!node.parentName;
+    if (node.type === "procedure" && !isPackageMember) {
       items.push({ label: t("contextMenu.executeProcedure"), action: openProcedureExecution, icon: Play });
     }
-    if (currentDatabaseType() === "xugu" && buildXuguCompileSql({ objectType: node.type, schema: node.schema, name: node.objectName || node.label })) {
+    if (!isPackageMember && currentDatabaseType() === "xugu" && buildXuguCompileSql({ objectType: node.type, schema: node.schema, name: node.objectName || node.label })) {
       items.push({ label: t("contextMenu.compileObject"), action: compileXuguObject, icon: Wrench });
     }
     items.push({ label: t("contextMenu.viewSource"), action: () => openObjectSourceDialog(false), icon: Code2 });
-    if (canRenameObject.value) {
+    if (!isPackageMember && canRenameObject.value) {
       items.push({
         label: t("contextMenu.renameObject"),
         action: openRenameObjectDialog,
@@ -4666,14 +4673,16 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     }
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.changeOpenMode"), action: () => emit("open-settings", "navigation"), icon: Settings2 });
-    items.push({ label: "", separator: true });
-    items.push({
-      label: deleteMenuLabel(node.type === "procedure" ? t("contextMenu.dropProcedure") : t("contextMenu.dropFunction")),
-      action: deleteMenuAction(requestDropObject),
-      icon: Trash2,
-      shortcut: shortcutDelete,
-      variant: "destructive" as const,
-    });
+    if (!isPackageMember) {
+      items.push({ label: "", separator: true });
+      items.push({
+        label: deleteMenuLabel(node.type === "procedure" ? t("contextMenu.dropProcedure") : t("contextMenu.dropFunction")),
+        action: deleteMenuAction(requestDropObject),
+        icon: Trash2,
+        shortcut: shortcutDelete,
+        variant: "destructive" as const,
+      });
+    }
     return true;
   }
 
