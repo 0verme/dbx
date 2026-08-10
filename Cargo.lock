@@ -1745,6 +1745,7 @@ dependencies = [
  "minijinja",
  "mongodb",
  "mysql_async",
+ "mysql_common",
  "notify",
  "pageant",
  "percent-encoding",
