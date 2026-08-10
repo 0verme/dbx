@@ -1170,6 +1170,9 @@ export default withEnglishFallback({
       expandSelectStarUnavailable: "無法讀取此資料表的欄位資訊",
       findReplace: "查找/取代",
       deleteEmptyLines: "刪除空行",
+      cutSelection: "剪下選取內容",
+      pasteFromClipboard: "貼上",
+      pasteClipboardReadFailed: "讀取剪貼簿失敗：{message}",
     },
     search: {
       find: "尋找",
@@ -1788,6 +1791,7 @@ export default withEnglishFallback({
     xlsxHeaderPrompt: "請選擇匯出 Excel 時使用的表頭格式：",
     xlsxHeaderOriginal: "表頭使用欄位名稱",
     xlsxHeaderComment: "表頭使用註解",
+    cut: "已剪下",
   },
   exportProgress: {
     streamingUnsupported: "目前查詢暫不支援串流匯出，請簡化查詢或使用支援的驅動程式。",

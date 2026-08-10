@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, shallowRef, computed, nextTick } from "vue";
-import { CaseLower, CaseUpper, Code2, Download, FileCode, Pencil, PencilRuler, Play, Copy, List, Search, Sparkles, Table2, TextSelect, Trash2 } from "@lucide/vue";
+import { CaseLower, CaseUpper, ClipboardPaste, Code2, Download, FileCode, Pencil, PencilRuler, Play, Copy, List, Scissors, Search, Sparkles, Table2, TextSelect, Trash2 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import type { CompletionContext } from "@codemirror/autocomplete";
 import { Transaction, StateEffect } from "@codemirror/state";
@@ -1324,6 +1324,50 @@ async function copySelectedSqlFromContextMenu() {
   }
 }
 
+async function cutSelectedSqlFromContextMenu() {
+  if (!canCopySelectedSql.value) return;
+  const currentView = view.value;
+  if (!currentView) return;
+  try {
+    await copyToClipboard(selectedSql.value);
+    // 剪切：复制后删除选中内容
+    const selection = currentView.state.selection.main;
+    if (!selection.empty) {
+      currentView.dispatch({
+        changes: { from: selection.from, to: selection.to },
+        selection: { anchor: selection.from, head: selection.from },
+        scrollIntoView: true,
+        userEvent: "input.cut",
+      });
+    }
+    toast(t("grid.cut"));
+    focusEditor();
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function pasteClipboardSqlFromContextMenu() {
+  if (props.readOnly) return;
+  const currentView = view.value;
+  if (!currentView) return;
+  try {
+    const text = await readTextFromClipboard();
+    if (!text) return;
+    const selection = currentView.state.selection.main;
+    // 粘贴：替换选中内容或在光标处插入
+    currentView.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: text },
+      selection: { anchor: selection.from + text.length, head: selection.from + text.length },
+      scrollIntoView: true,
+      userEvent: "input.paste",
+    });
+    focusEditor();
+  } catch (e: any) {
+    toast(t("editor.contextMenu.pasteClipboardReadFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
 function selectAllSqlFromContextMenu() {
   const currentView = view.value;
   if (!currentView) return;
@@ -1616,6 +1660,20 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
       disabled: !canCopySelectedSql.value,
       icon: Copy,
       shortcut: "Mod+C",
+    },
+    {
+      label: t("editor.contextMenu.cutSelection"),
+      action: cutSelectedSqlFromContextMenu,
+      disabled: !canCopySelectedSql.value || props.readOnly,
+      icon: Scissors,
+      shortcut: "Mod+X",
+    },
+    {
+      label: t("editor.contextMenu.pasteFromClipboard"),
+      action: pasteClipboardSqlFromContextMenu,
+      disabled: props.readOnly,
+      icon: ClipboardPaste,
+      shortcut: "Mod+V",
     },
     {
       label: t("editor.contextMenu.sendToAi"),

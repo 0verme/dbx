@@ -1172,6 +1172,9 @@ export default withEnglishFallback({
       expandSelectStarUnavailable: "No se pudieron cargar las columnas de esta tabla",
       findReplace: "Buscar/Reemplazar",
       deleteEmptyLines: "Eliminar líneas vacías",
+      cutSelection: "Cortar selección",
+      pasteFromClipboard: "Pegar",
+      pasteClipboardReadFailed: "Error al leer el portapapeles: {message}",
     },
     search: {
       find: "Buscar",
@@ -1789,6 +1792,7 @@ export default withEnglishFallback({
     binaryImportApplied: "Se importaron {count} bytes, que se escribirán en la base de datos al guardar los cambios.",
     binaryImportFailed: "Error al importar el archivo: {message}",
     binaryImportTooLarge: "El archivo es demasiado grande ({size}, límite {limit}). No se admite importar archivos grandes en una sola celda.",
+    cut: "Cortado",
   },
   exportProgress: {
     streamingUnsupported: "La exportación en streaming no es compatible con esta consulta. Simplifíquela o use un controlador compatible.",

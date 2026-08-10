@@ -1190,6 +1190,9 @@ export default withEnglishFallback({
       expandSelectStarUnavailable: "このテーブルの列を読み込めません",
       findReplace: "検索/置換",
       deleteEmptyLines: "空行を削除",
+      cutSelection: "選択内容を切り取る",
+      pasteFromClipboard: "貼り付け",
+      pasteClipboardReadFailed: "クリップボードの読み取りに失敗しました：{message}",
     },
     search: {
       find: "検索",
@@ -1814,6 +1817,7 @@ export default withEnglishFallback({
     binaryImportApplied: "{count} バイトをインポートしました。変更を保存するとデータベースに書き込まれます。",
     binaryImportFailed: "ファイルのインポートに失敗しました：{message}",
     binaryImportTooLarge: "ファイルが大きすぎます（{size}、上限 {limit}）。大きなファイルの単一セルへのインポートはサポートされていません。",
+    cut: "切り取りました",
   },
   exportProgress: {
     streamingUnsupported: "このクエリはストリーミングエクスポートに対応していません。クエリを簡略化するか、対応しているドライバーを使用してください。",
