@@ -398,6 +398,7 @@ const {
   canDropMongoDatabase,
   canDropMongoCollection,
   canRenameMongoCollection,
+  canCloneMongoCollection,
   prepareRenameMongoCollectionDialog,
   confirmRenameMongoCollection,
   showRenameMongoCollectionDialog,
@@ -405,6 +406,12 @@ const {
   renameMongoCollectionError,
   renameMongoCollectionPreview,
   renameMongoCollectionLoading,
+  prepareCloneMongoCollectionDialog,
+  confirmCloneMongoCollection,
+  showCloneMongoCollectionDialog,
+  cloneMongoCollectionName,
+  cloneMongoCollectionError,
+  cloneMongoCollectionLoading,
   mongoIndexNameForNode,
   canDropMongoIndexNode,
   canDropMongoIndex,
@@ -1005,6 +1012,12 @@ function openRenameMongoCollectionDialog() {
   claimTreeItemDialogOwnership();
   routeTreeItemDialogController();
   prepareRenameMongoCollectionDialog();
+}
+
+function openCloneMongoCollectionDialog() {
+  claimTreeItemDialogOwnership();
+  routeTreeItemDialogController();
+  prepareCloneMongoCollectionDialog();
 }
 
 function openCreateMongoIndexDialog() {
@@ -3810,6 +3823,11 @@ function databaseSpecificDialogCapabilities() {
     renameMongoCollectionPreview,
     renameMongoCollectionLoading,
     confirmRenameMongoCollection,
+    showCloneMongoCollectionDialog,
+    cloneMongoCollectionName,
+    cloneMongoCollectionError,
+    cloneMongoCollectionLoading,
+    confirmCloneMongoCollection,
     showCreateMongoIndexDialog,
     mongoCreateIndexForm,
     mongoCreateIndexFieldOptions,
@@ -4382,6 +4400,9 @@ function buildSpecialSidebarMenu(context: SidebarMenuFactoryContext): boolean {
         icon: Pencil,
         shortcut: shortcutRename,
       });
+    }
+    if (canCloneMongoCollection.value) {
+      items.push({ label: t("contextMenu.cloneCollection"), action: openCloneMongoCollectionDialog, icon: CopyPlus });
     }
     if (canDropMongoCollection.value) {
       items.push({ label: "", separator: true });

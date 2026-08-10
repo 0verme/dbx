@@ -99,6 +99,7 @@ import type {
   DocumentQueryResult,
   MongoDocumentResult,
   MongoCollectionStatsResult,
+  MongoCloneCollectionResult,
   MongoDropIndexesResult,
   MongoGridFsBucketInfo,
   HistoryEntry,
@@ -3002,6 +3003,15 @@ export async function mongoRenameCollection(connectionId: string, database: stri
     database,
     collection,
     newName,
+  });
+}
+
+export async function mongoCloneCollection(connectionId: string, database: string, sourceCollection: string, targetCollection: string): Promise<MongoCloneCollectionResult> {
+  return post("/api/mongo/clone-collection", {
+    connectionId,
+    database,
+    sourceCollection,
+    targetCollection,
   });
 }
 

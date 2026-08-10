@@ -2888,6 +2888,11 @@ export interface MongoDropIndexesResult {
   failures?: MongoDropIndexFailure[];
 }
 
+export interface MongoCloneCollectionResult {
+  documents_copied: number;
+  indexes_copied: number;
+}
+
 export interface MongoGridFsFileInfo {
   id: string;
   filename?: string;
@@ -2952,6 +2957,15 @@ export async function mongoRenameCollection(connectionId: string, database: stri
     database,
     collection,
     newName,
+  });
+}
+
+export async function mongoCloneCollection(connectionId: string, database: string, sourceCollection: string, targetCollection: string): Promise<MongoCloneCollectionResult> {
+  return invoke("mongo_clone_collection", {
+    connectionId,
+    database,
+    sourceCollection,
+    targetCollection,
   });
 }
 

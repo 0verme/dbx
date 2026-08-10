@@ -605,6 +605,7 @@ async fn main() {
         .route("/mongo/drop-database", post(routes::mongo::drop_database))
         .route("/mongo/drop-collection", post(routes::mongo::drop_collection))
         .route("/mongo/rename-collection", post(routes::mongo::rename_collection))
+        .route("/mongo/clone-collection", post(routes::mongo::clone_collection))
         .route("/document-store/list-databases", post(routes::document_store::list_databases))
         .route("/document-store/list-collections", post(routes::document_store::list_collections))
         .route("/document-store/find-documents", post(routes::document_store::find_documents))

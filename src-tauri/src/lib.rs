@@ -1869,6 +1869,7 @@ pub fn run() {
             commands::mongo_cmd::mongo_drop_database,
             commands::mongo_cmd::mongo_drop_collection,
             commands::mongo_cmd::mongo_rename_collection,
+            commands::mongo_cmd::mongo_clone_collection,
             commands::docs::docs_collect_snapshot,
             commands::docs::docs_load_annotations,
             commands::docs::docs_apply_annotations,
