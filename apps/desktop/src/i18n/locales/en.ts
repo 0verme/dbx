@@ -1227,6 +1227,7 @@ export default {
       noResults: "No results",
       inSelection: "In selection",
     },
+    noExecutableStatementAtCursor: "There is no executable statement at the cursor.",
     executionPicker: {
       title: "Execution Target",
       currentStatement: "Current SQL",
@@ -5537,6 +5538,8 @@ export default {
     executeMode: "Execute Mode (Cmd+Enter)",
     executeModeAll: "Execute all SQL",
     executeModeCurrent: "Execute statement at cursor",
+    executeAllOnBlankLine: "Execute all SQL from blank lines",
+    executeAllOnBlankLineDescription: "In current-statement mode, execute all SQL when there is no statement at the cursor. Disabled by default.",
     showExecutionTargetPicker: "Show execution target picker",
     showExecutionTargetPickerDescription: "When enabled, running without a selection lets you choose between the current statement and all SQL.",
     showStatementRunButtons: "Show left-side run buttons",
