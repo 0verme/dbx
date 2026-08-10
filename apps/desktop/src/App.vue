@@ -1709,7 +1709,7 @@ async function onClickTable(table: SqlObjectNavigationTarget) {
     return;
   }
   try {
-    await openTableTarget(target, { tableInfoTab: "ddl" });
+    await openObjectBrowserTableTarget(target);
   } catch (e: any) {
     toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
@@ -1719,7 +1719,7 @@ async function onViewTableData(table: SqlObjectNavigationTarget) {
   const target = tableTargetFromActiveTab(table);
   if (!target) return;
   try {
-    await openTableTarget(target);
+    await openObjectBrowserTableTarget(target);
   } catch (e: any) {
     toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
   }
