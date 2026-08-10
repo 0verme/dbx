@@ -543,7 +543,8 @@ mod tests {
             AiProvider::ClaudeCodeCli,
             AiProvider::PiAgentCli,
             AiProvider::OpenCodeCli,
-            AiProvider::CursorCli | AiProvider::GrokCli,
+            AiProvider::CursorCli,
+            AiProvider::GrokCli,
         ] {
             let config = make_config(provider);
             assert!(reject_web_unsupported_ai_provider(&config).is_err());
