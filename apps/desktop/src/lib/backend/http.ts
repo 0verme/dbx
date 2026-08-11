@@ -1251,8 +1251,8 @@ export async function analyzeEditableQueryEditability(sql: string): Promise<Quer
   return post("/api/query/analyze-editability", { sql });
 }
 
-export async function prepareDataGridSave(options: DataGridSaveStatementOptions): Promise<DataGridSavePreparation> {
-  return post("/api/query/prepare-data-grid-save", { options });
+export async function prepareDataGridSave(options: DataGridSaveStatementOptions, driverProfile?: string): Promise<DataGridSavePreparation> {
+  return post("/api/query/prepare-data-grid-save", { options, driverProfile });
 }
 
 export async function extractDataGridSelection(request: DataGridExtractRequest): Promise<DataGridExtractResult> {
