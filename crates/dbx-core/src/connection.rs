@@ -24,7 +24,7 @@ use crate::db::proxy_tunnel::ProxyTunnelManager;
 use crate::db::ssh_tunnel::TunnelManager;
 use crate::models::connection::{
     database_info_from_protocol_value, parse_jdbc_host_port, parse_mongo_first_host, rewrite_jdbc_url_host,
-    ConnectionConfig, ConnectionTestResult, DatabaseConnectionInfo, DatabaseType, ProxyType, TransportLayerConfig,
+    ConnectionConfig, ConnectionTestResult, DatabaseConnectionInfo, DatabaseType, TransportLayerConfig,
 };
 use crate::path_utils::expand_tilde;
 use crate::plugins::{PluginDriverSession, PluginRegistry, PluginRuntimeEnv};
@@ -2684,6 +2684,9 @@ impl AppState {
         connection_id: &str,
         transport_layers: &[TransportLayerConfig],
     ) -> Result<crate::mq::config::MqSocksProxy, String> {
+        // ProxyType 仅此 mq-admin 分支用到，局部导入避免在关闭 mq-admin 时
+        // 顶层 import 触发 unused 警告。
+        use crate::models::connection::ProxyType;
         let final_layer = transport_layers.last().ok_or("No transport layers configured")?;
         match final_layer {
             TransportLayerConfig::Ssh(_) => {

@@ -136,6 +136,7 @@ async fn connect_via_proxy(proxy: &ProxyEndpoint, remote: &RemoteEndpoint) -> Re
     }
 }
 
+#[cfg(feature = "mq-admin")]
 pub(crate) async fn connect_via_socks5_proxy(
     proxy_host: &str,
     proxy_port: u16,

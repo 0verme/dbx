@@ -85,6 +85,7 @@ pub(crate) async fn start_transport_layers_with_final_ssh_local_port(
     .await
 }
 
+#[cfg(feature = "mq-admin")]
 pub(crate) async fn start_transport_layers_with_final_ssh_socks5(
     connection_id: &str,
     layers: &[TransportLayerConfig],
