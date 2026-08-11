@@ -8478,30 +8478,201 @@ mod ddl_tests {
 
         assert_eq!(ensure_display_ddl_terminated(ddl.to_string()), ddl);
     }
+
+    struct FakeMysqlDdlExecutor {
+        outcomes: std::collections::VecDeque<Result<String, MysqlDdlQueryError>>,
+        executed: Vec<String>,
+    }
+
+    impl MysqlDdlQueryExecutor for FakeMysqlDdlExecutor {
+        async fn execute(&mut self, sql: &str) -> Result<String, MysqlDdlQueryError> {
+            self.executed.push(sql.to_string());
+            self.outcomes.pop_front().expect("test outcome for DDL query")
+        }
+    }
+
+    fn mysql_server_error(code: u16, message: &str) -> MysqlDdlQueryError {
+        MysqlDdlQueryError::Query(mysql_async::Error::Server(mysql_async::ServerError {
+            code,
+            message: message.to_string(),
+            state: "HY000".to_string(),
+        }))
+    }
+
+    #[tokio::test]
+    async fn mysql_ddl_uses_one_qualified_query_on_success() {
+        let mut executor = FakeMysqlDdlExecutor {
+            outcomes: [Ok("CREATE TABLE `users` (`id` int)".to_string())].into(),
+            executed: Vec::new(),
+        };
+
+        let ddl = mysql_ddl_with_executor(&mut executor, "app", "users").await.unwrap();
+
+        assert_eq!(ddl, "CREATE TABLE `users` (`id` int);");
+        assert_eq!(executor.executed, ["SHOW CREATE TABLE `app`.`users`"]);
+    }
+
+    #[tokio::test]
+    async fn mysql_ddl_retries_unqualified_after_no_such_table() {
+        let mut executor = FakeMysqlDdlExecutor {
+            outcomes: [
+                Err(mysql_server_error(1146, "Table 'retail`fas.account`details' doesn't exist")),
+                Ok("CREATE TABLE `account``details` (`id` int)".to_string()),
+            ]
+            .into(),
+            executed: Vec::new(),
+        };
+
+        let ddl = mysql_ddl_with_executor(&mut executor, "retail`fas", "account`details").await.unwrap();
+
+        assert_eq!(ddl, "CREATE TABLE `account``details` (`id` int);");
+        assert_eq!(
+            executor.executed,
+            ["SHOW CREATE TABLE `retail``fas`.`account``details`", "SHOW CREATE TABLE `account``details`",]
+        );
+    }
+
+    #[tokio::test]
+    async fn mysql_ddl_preserves_qualified_error_when_fallback_fails() {
+        let first_error = mysql_server_error(1146, "qualified table doesn't exist");
+        let expected = first_error.to_string();
+        let mut executor = FakeMysqlDdlExecutor {
+            outcomes: [Err(first_error), Err(mysql_server_error(1146, "unqualified table doesn't exist"))].into(),
+            executed: Vec::new(),
+        };
+
+        let error = mysql_ddl_with_executor(&mut executor, "app", "missing").await.unwrap_err();
+
+        assert_eq!(error, expected);
+        assert_eq!(executor.executed, ["SHOW CREATE TABLE `app`.`missing`", "SHOW CREATE TABLE `missing`"]);
+    }
+
+    #[tokio::test]
+    async fn mysql_ddl_does_not_retry_other_server_errors() {
+        let first_error = mysql_server_error(1044, "access denied");
+        let expected = first_error.to_string();
+        let mut executor = FakeMysqlDdlExecutor {
+            outcomes: [Err(first_error), Ok("unexpected fallback".to_string())].into(),
+            executed: Vec::new(),
+        };
+
+        let error = mysql_ddl_with_executor(&mut executor, "app", "users").await.unwrap_err();
+
+        assert_eq!(error, expected);
+        assert_eq!(executor.executed, ["SHOW CREATE TABLE `app`.`users`"]);
+    }
+
+    #[tokio::test]
+    async fn mysql_ddl_does_not_retry_without_a_database() {
+        let first_error = mysql_server_error(1146, "table doesn't exist");
+        let expected = first_error.to_string();
+        let mut executor = FakeMysqlDdlExecutor {
+            outcomes: [Err(first_error), Ok("unexpected fallback".to_string())].into(),
+            executed: Vec::new(),
+        };
+
+        let error = mysql_ddl_with_executor(&mut executor, "", "missing").await.unwrap_err();
+
+        assert_eq!(error, expected);
+        assert_eq!(executor.executed, ["SHOW CREATE TABLE `missing`"]);
+    }
+
+    #[tokio::test]
+    async fn mysql_ddl_does_not_retry_result_parsing_errors() {
+        let mut executor = FakeMysqlDdlExecutor {
+            outcomes: [
+                Err(MysqlDdlQueryError::Result("DDL not found".to_string())),
+                Ok("unexpected fallback".to_string()),
+            ]
+            .into(),
+            executed: Vec::new(),
+        };
+
+        let error = mysql_ddl_with_executor(&mut executor, "app", "users").await.unwrap_err();
+
+        assert_eq!(error, "DDL not found");
+        assert_eq!(executor.executed, ["SHOW CREATE TABLE `app`.`users`"]);
+    }
+}
+
+#[derive(Debug)]
+enum MysqlDdlQueryError {
+    Query(mysql_async::Error),
+    Result(String),
+}
+
+impl MysqlDdlQueryError {
+    fn is_no_such_table(&self) -> bool {
+        matches!(self, Self::Query(mysql_async::Error::Server(error)) if error.code == 1146)
+    }
+}
+
+impl std::fmt::Display for MysqlDdlQueryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Query(error) => error.fmt(formatter),
+            Self::Result(error) => error.fmt(formatter),
+        }
+    }
+}
+
+trait MysqlDdlQueryExecutor {
+    async fn execute(&mut self, sql: &str) -> Result<String, MysqlDdlQueryError>;
+}
+
+struct MysqlDdlConnection<'a> {
+    conn: &'a mut mysql_async::Conn,
+}
+
+impl MysqlDdlQueryExecutor for MysqlDdlConnection<'_> {
+    async fn execute(&mut self, sql: &str) -> Result<String, MysqlDdlQueryError> {
+        use mysql_async::prelude::*;
+
+        let result = self.conn.query_iter(sql).await.map_err(MysqlDdlQueryError::Query)?;
+        let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(MysqlDdlQueryError::Query)?;
+        let row = rows.first().ok_or_else(|| MysqlDdlQueryError::Result("DDL not found".to_string()))?;
+        row.get_opt::<String, usize>(1)
+            .and_then(|result| result.ok())
+            .or_else(|| {
+                row.get_opt::<Vec<u8>, usize>(1)
+                    .and_then(|result| result.ok())
+                    .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+            })
+            .ok_or_else(|| MysqlDdlQueryError::Result("Failed to read DDL".to_string()))
+    }
+}
+
+async fn mysql_ddl_with_executor(
+    executor: &mut impl MysqlDdlQueryExecutor,
+    database: &str,
+    table: &str,
+) -> Result<String, String> {
+    let sql = format!("SHOW CREATE TABLE {}", mysql_qualified_name(database, table));
+    let qualified_error = match executor.execute(&sql).await {
+        Ok(ddl) => return Ok(ensure_display_ddl_terminated(ddl)),
+        Err(error) => error,
+    };
+    if database.trim().is_empty() || !qualified_error.is_no_such_table() {
+        return Err(qualified_error.to_string());
+    }
+
+    // Mycat 1.x routes by the logical qualifier but forwards it unchanged to a
+    // physical schema; the metadata pool has already selected the logical database.
+    let fallback_sql = format!("SHOW CREATE TABLE {}", mysql_ident(table));
+    match executor.execute(&fallback_sql).await {
+        Ok(ddl) => Ok(ensure_display_ddl_terminated(ddl)),
+        Err(_) => Err(qualified_error.to_string()),
+    }
 }
 
 pub async fn mysql_ddl(pool: &db::mysql::MySqlPool, database: &str, table: &str) -> Result<String, String> {
-    use mysql_async::prelude::*;
-    let sql = format!("SHOW CREATE TABLE {}", mysql_qualified_name(database, table));
     // Use the health-checked getter so a stale pooled connection (server closed
     // it after an idle timeout, NAT/firewall dropped the TCP state, etc.) is
     // detected and replaced before issuing the query. Without this, the first
     // DDL request after a period of inactivity could surface a low-level
     // connection error that a manual refresh would have masked.
     let mut conn = db::mysql::get_conn_with_health_check(pool).await?;
-    let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
-    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
-    let row = rows.first().ok_or("DDL not found")?;
-    let ddl = row
-        .get_opt::<String, usize>(1)
-        .and_then(|result| result.ok())
-        .or_else(|| {
-            row.get_opt::<Vec<u8>, usize>(1)
-                .and_then(|result| result.ok())
-                .map(|b| String::from_utf8_lossy(&b).to_string())
-        })
-        .ok_or_else(|| "Failed to read DDL".to_string())?;
-    Ok(ensure_display_ddl_terminated(ddl))
+    mysql_ddl_with_executor(&mut MysqlDdlConnection { conn: &mut conn }, database, table).await
 }
 
 async fn external_driver_mysql_ddl(
