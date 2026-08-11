@@ -2589,6 +2589,40 @@ async fn list_table_names_show(pool: &MySqlPool, database: &str) -> Result<Vec<T
     list_table_names_show_filtered(pool, database, None, &[]).await
 }
 
+fn shardingsphere_show_full_tables_sql(database: &str) -> String {
+    if database.trim().is_empty() {
+        "SHOW FULL TABLES".to_string()
+    } else {
+        format!("SHOW FULL TABLES FROM {}", quote_identifier(database))
+    }
+}
+
+fn table_infos_from_show_rows(rows: &[mysql_async::Row]) -> Vec<TableInfo> {
+    let mut tables = rows
+        .iter()
+        .filter_map(|row| {
+            let name = get_str(row, 0).trim().to_string();
+            if name.is_empty() {
+                return None;
+            }
+            let table_type = normalize_mysql_table_type(&get_str(row, 1));
+            Some(TableInfo { name, table_type, comment: None, parent_schema: None, parent_name: None })
+        })
+        .collect::<Vec<_>>();
+    tables.sort_by(|a, b| a.name.cmp(&b.name));
+    tables
+}
+
+pub async fn list_shardingsphere_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableInfo>, String> {
+    // ShardingSphere's logical names are authoritative here. Do not add SHOW TABLE STATUS:
+    // this hot path must replace the information_schema lookup with one metadata request.
+    let sql = shardingsphere_show_full_tables_sql(database);
+    let mut conn = get_conn_with_timeout(pool, super::connection_timeout()).await?;
+    let result = conn.query_iter(&sql).await.map_err(|error| error.to_string())?;
+    let rows = result.collect_and_drop::<mysql_async::Row>().await.map_err(|error| error.to_string())?;
+    Ok(table_infos_from_show_rows(&rows))
+}
+
 async fn list_table_names_show_filtered(
     pool: &MySqlPool,
     database: &str,
@@ -2618,19 +2652,7 @@ async fn list_table_names_show_filtered(
         }
     }
     let rows = rows.ok_or_else(|| last_error.unwrap_or_else(|| "SHOW TABLES returned no result".to_string()))?;
-    let mut tables: Vec<TableInfo> = rows
-        .iter()
-        .filter_map(|row| {
-            let name = get_str(row, 0).trim().to_string();
-            if name.is_empty() {
-                return None;
-            }
-            let table_type = normalize_mysql_table_type(&get_str(row, 1));
-            Some(TableInfo { name, table_type, comment: None, parent_schema: None, parent_name: None })
-        })
-        .collect();
-    tables.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(tables)
+    Ok(table_infos_from_show_rows(&rows))
 }
 
 struct ShowTablesQueryAttempt {
@@ -5859,6 +5881,29 @@ mod tests {
         assert_eq!(normalize_mysql_table_type("BASE TABLE"), "BASE TABLE");
         assert_eq!(normalize_mysql_table_type("MATERIALIZED VIEW"), "MATERIALIZED VIEW");
         assert_eq!(normalize_mysql_table_type(""), "TABLE");
+    }
+
+    #[test]
+    fn shardingsphere_show_full_tables_is_one_exact_statement() {
+        assert_eq!(shardingsphere_show_full_tables_sql("app"), "SHOW FULL TABLES FROM `app`");
+        assert_eq!(shardingsphere_show_full_tables_sql(""), "SHOW FULL TABLES");
+    }
+
+    #[test]
+    fn shardingsphere_show_rows_keep_logical_names_and_types_without_comments() {
+        let rows = vec![
+            mysql_test_row(vec![Value::Bytes(b"normal_table".to_vec()), Value::Bytes(b"BASE TABLE".to_vec())]),
+            mysql_test_row(vec![Value::Bytes(b"t_order".to_vec()), Value::Bytes(b"BASE TABLE".to_vec())]),
+            mysql_test_row(vec![Value::Bytes(b"active_users".to_vec()), Value::Bytes(b"VIEW".to_vec())]),
+        ];
+
+        let tables = table_infos_from_show_rows(&rows);
+
+        assert_eq!(
+            tables.iter().map(|table| (table.name.as_str(), table.table_type.as_str())).collect::<Vec<_>>(),
+            vec![("active_users", "VIEW"), ("normal_table", "BASE TABLE"), ("t_order", "BASE TABLE")]
+        );
+        assert!(tables.iter().all(|table| table.comment.is_none()));
     }
 
     #[test]

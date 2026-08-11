@@ -2163,6 +2163,10 @@ async fn list_tables_once(
             if *mode == MysqlMode::OceanBaseOracle {
                 let tables = db::ob_oracle::list_tables(p, schema).await?;
                 Ok(filter_table_infos(tables, filter, limit, offset, object_types, table_name_filter))
+            } else if mysql_table_list_source_for_config(db_config.as_ref()) == MysqlTableListSource::ShowFullTables {
+                db::mysql::list_shardingsphere_tables(p, mysql_table_metadata_catalog(database, schema))
+                    .await
+                    .map(|tables| filter_table_infos(tables, filter, limit, offset, object_types, table_name_filter))
             } else {
                 db::mysql::list_tables_filtered(
                     p,
@@ -2605,6 +2609,29 @@ fn mysql_table_metadata_catalog<'a>(database: &'a str, schema: &'a str) -> &'a s
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MysqlTableListSource {
+    InformationSchema,
+    ShowFullTables,
+}
+
+fn is_shardingsphere_proxy_version(version: &str) -> bool {
+    const MARKER: &[u8] = b"shardingsphere-proxy";
+    version.as_bytes().windows(MARKER.len()).any(|window| window.eq_ignore_ascii_case(MARKER))
+}
+
+fn mysql_table_list_source_for_config(config: Option<&ConnectionConfig>) -> MysqlTableListSource {
+    if config
+        .and_then(|config| config.database_info.as_ref())
+        .and_then(|info| info.product_version.as_deref())
+        .is_some_and(is_shardingsphere_proxy_version)
+    {
+        MysqlTableListSource::ShowFullTables
+    } else {
+        MysqlTableListSource::InformationSchema
+    }
+}
+
 fn quote_presto_like_identifier(identifier: &str) -> String {
     format!("\"{}\"", identifier.replace('"', "\"\""))
 }
@@ -2628,17 +2655,17 @@ mod tests {
         gbase8a_object_statistics_sql, is_agent_postgres_metadata_fallback_config, is_mysql_external_driver_config,
         is_retryable_metadata_error, metadata_error_action, metadata_name_or_comment_matches,
         mysql_external_driver_ddl_from_query_result, mysql_external_driver_ddl_sql,
-        mysql_object_source_ddl_column_index, mysql_object_source_sql, mysql_table_metadata_catalog,
-        normalize_information_schema_table_type, oracle_columns_from_query_result, oracle_columns_sql,
-        oracle_object_statistics_dba_segments_sql, oracle_object_statistics_from_query_result,
+        mysql_object_source_ddl_column_index, mysql_object_source_sql, mysql_table_list_source_for_config,
+        mysql_table_metadata_catalog, normalize_information_schema_table_type, oracle_columns_from_query_result,
+        oracle_columns_sql, oracle_object_statistics_dba_segments_sql, oracle_object_statistics_from_query_result,
         oracle_object_statistics_rows_only_sql, oracle_object_statistics_sql,
         oracle_object_statistics_user_segments_sql, oracle_table_comment_from_query_result, oracle_table_comment_sql,
         oracle_table_comments_sql, presto_like_columns_from_query_result, presto_like_information_schema_columns_sql,
         presto_like_information_schema_tables_sql, presto_like_tables_from_query_result, replace_metadata_runtime,
         should_query_oracle_columns_via_sql_first, table_comments_from_query_result, table_name_filter_matches,
         tdengine_table_comment_like_pattern, tdengine_table_comment_sql, tdengine_table_comments_sql,
-        uses_mongodb_agent_collection_listing, visible_schema_filter, MetadataErrorAction, TableNameFilter,
-        TDENGINE_COMMENT_SEARCH_TIMEOUT, TDENGINE_LIKE_PATTERN_MAX_BYTES,
+        uses_mongodb_agent_collection_listing, visible_schema_filter, MetadataErrorAction, MysqlTableListSource,
+        TableNameFilter, TDENGINE_COMMENT_SEARCH_TIMEOUT, TDENGINE_LIKE_PATTERN_MAX_BYTES,
     };
     use super::{list_databases_core, list_tables_core};
     use super::{
@@ -2646,7 +2673,7 @@ mod tests {
         object_types_only_custom_types, supports_custom_type_details, supports_pg_custom_type_objects,
     };
     use crate::connection::{AppState, PoolKind};
-    use crate::models::connection::{ConnectionConfig, DatabaseType};
+    use crate::models::connection::{ConnectionConfig, DatabaseConnectionInfo, DatabaseType};
     use crate::storage::Storage;
     use std::collections::HashMap;
     use std::time::Duration;
@@ -3445,6 +3472,55 @@ for line in sys.stdin:
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].name, "audit_record");
+    }
+
+    #[test]
+    fn shardingsphere_proxy_marker_is_ascii_case_insensitive_and_exact() {
+        assert!(super::is_shardingsphere_proxy_version("5.7.22-ShardingSphere-Proxy 5.5.2"));
+        assert!(super::is_shardingsphere_proxy_version("8.0.36-SHARDINGSPHERE-PROXY 5.5.2"));
+        assert!(!super::is_shardingsphere_proxy_version("8.0.36-ShardingSphere Proxy 5.5.2"));
+        assert!(!super::is_shardingsphere_proxy_version("8.0.36-MySQL Community Server"));
+    }
+
+    #[test]
+    fn mysql_table_list_source_uses_only_saved_shardingsphere_version() {
+        let mut config = test_connection_config(DatabaseType::Mysql);
+        assert_eq!(mysql_table_list_source_for_config(Some(&config)), MysqlTableListSource::InformationSchema);
+
+        config.database_info = Some(DatabaseConnectionInfo {
+            product_version: Some("5.7.22-ShardingSphere-Proxy 5.5.2".to_string()),
+            ..DatabaseConnectionInfo::default()
+        });
+        assert_eq!(mysql_table_list_source_for_config(Some(&config)), MysqlTableListSource::ShowFullTables);
+
+        config.database_info.as_mut().unwrap().product_version = Some("8.0.36-MySQL Community Server".to_string());
+        assert_eq!(mysql_table_list_source_for_config(Some(&config)), MysqlTableListSource::InformationSchema);
+        assert_eq!(mysql_table_list_source_for_config(None), MysqlTableListSource::InformationSchema);
+    }
+
+    #[test]
+    fn shardingsphere_logical_tables_keep_local_constraints() {
+        let tables = vec![
+            test_table_info("normal_table"),
+            test_table_info("t_order"),
+            test_table_info("t_order_archive"),
+            super::db::TableInfo {
+                name: "t_order_view".to_string(),
+                table_type: "VIEW".to_string(),
+                comment: None,
+                parent_schema: None,
+                parent_name: None,
+            },
+            test_table_info("t_user"),
+        ];
+        let table_types = vec!["TABLE".to_string()];
+        let name_filter =
+            TableNameFilter { include_patterns: vec!["t_%".to_string()], exclude_patterns: vec!["%user%".to_string()] };
+
+        let filtered =
+            filter_table_infos(tables, Some("order"), Some(1), Some(1), Some(&table_types), Some(&name_filter));
+
+        assert_eq!(filtered.into_iter().map(|table| table.name).collect::<Vec<_>>(), vec!["t_order_archive"]);
     }
 
     #[test]
