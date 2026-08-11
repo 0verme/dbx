@@ -1333,9 +1333,29 @@ func (s *server) queryInformationSchemaColumns(schema, table string, primary map
 		if parsed := boundedVarcharLength(dataType); parsed != nil && !length.Valid {
 			length = sql.NullInt64{Int64: int64(*parsed), Valid: true}
 		}
-		result = append(result, columnInfo{Name: name, DataType: dataType, FullDataType: fullDataType.String, IsNullable: strings.EqualFold(nullable, "YES"), ColumnDefault: nullStringPtr(defaultValue), IsPrimaryKey: primary[strings.ToLower(name)], Comment: nullStringPtr(comment), NumericPrecision: nullIntPtr(precision), NumericScale: nullIntPtr(scale), CharacterMaximumLength: nullIntPtr(length)})
+		result = append(result, columnInfo{Name: name, DataType: resolvedInformationSchemaDataType(dataType, fullDataType.String), FullDataType: fullDataType.String, IsNullable: strings.EqualFold(nullable, "YES"), ColumnDefault: nullStringPtr(defaultValue), IsPrimaryKey: primary[strings.ToLower(name)], Comment: nullStringPtr(comment), NumericPrecision: nullIntPtr(precision), NumericScale: nullIntPtr(scale), CharacterMaximumLength: nullIntPtr(length)})
 	}
 	return result, rows.Err()
+}
+
+func resolvedInformationSchemaDataType(dataType, fullDataType string) string {
+	if !isUserDefinedDataTypeMarker(dataType) {
+		return dataType
+	}
+	resolved := strings.TrimSpace(fullDataType)
+	if resolved == "" || isUserDefinedDataTypeMarker(resolved) {
+		return dataType
+	}
+	return resolved
+}
+
+func isUserDefinedDataTypeMarker(dataType string) bool {
+	switch strings.ToUpper(strings.TrimSpace(dataType)) {
+	case "USER-DEFINED", "USER_DEFINED":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *server) listIndexes(schema, table string) ([]indexInfo, error) {

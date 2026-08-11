@@ -2206,8 +2206,15 @@ func TestInformationSchemaColumnsResolveUserDefinedTypeWithoutColumnType(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(columns) != 1 || columns[0].FullDataType != "datetime" {
+	if len(columns) != 1 || columns[0].DataType != "datetime" || columns[0].FullDataType != "datetime" {
 		t.Fatalf("unexpected user-defined metadata columns: %#v", columns)
+	}
+	payload, err := json.Marshal(columns[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), `"data_type":"datetime"`) || strings.Contains(string(payload), "USER-DEFINED") {
+		t.Fatalf("unresolved user-defined type leaked into get_columns payload: %s", payload)
 	}
 	if ddl := renderTableDDL("public", "orders", columns, nil); !strings.Contains(ddl, `"created_at" datetime`) || strings.Contains(ddl, "USER-DEFINED") {
 		t.Fatalf("unexpected user-defined type DDL:\n%s", ddl)
@@ -2221,6 +2228,29 @@ func TestInformationSchemaColumnsResolveUserDefinedTypeWithoutColumnType(t *test
 	state.mu.Unlock()
 	if len(queries) != 3 || strings.Contains(queries[2], "c.column_type") {
 		t.Fatalf("missing column_type capability must be cached: %v", queries)
+	}
+}
+
+func TestResolvedInformationSchemaDataType(t *testing.T) {
+	tests := []struct {
+		name         string
+		dataType     string
+		fullDataType string
+		want         string
+	}{
+		{name: "hyphen marker", dataType: "USER-DEFINED", fullDataType: "datetime", want: "datetime"},
+		{name: "underscore marker with qualified type", dataType: "USER_DEFINED", fullDataType: `sys."datetime"`, want: `sys."datetime"`},
+		{name: "parameterized resolved type", dataType: " user-defined ", fullDataType: " datetime(6) ", want: "datetime(6)"},
+		{name: "ordinary type keeps protocol type", dataType: "varchar", fullDataType: "varchar(64)", want: "varchar"},
+		{name: "missing resolved type keeps marker", dataType: "USER-DEFINED", fullDataType: "", want: "USER-DEFINED"},
+		{name: "unresolved marker keeps original", dataType: "USER_DEFINED", fullDataType: "USER-DEFINED", want: "USER_DEFINED"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := resolvedInformationSchemaDataType(test.dataType, test.fullDataType); got != test.want {
+				t.Fatalf("unexpected resolved data type: got %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
