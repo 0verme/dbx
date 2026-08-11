@@ -2448,6 +2448,91 @@ func TestExecuteStatementAppliesSchemaOnSamePoolConnection(t *testing.T) {
 	}
 }
 
+func TestExecuteRecursiveCteUpdateUsesExecProtocol(t *testing.T) {
+	db, state := openFakeDB(t, 0)
+	server := newServer()
+	server.db = db
+	sqlText := `WITH RECURSIVE category_path AS (
+		-- 基础：根节点（parent_id = 0），path = 自身 id
+		SELECT
+			id,
+			CAST(id AS VARCHAR(255)) AS path
+		FROM system_industry_category
+		WHERE deleted = 0
+			AND parent_id = 0
+		UNION ALL
+		-- 递归：子节点 path = 父节点 path + ',' + 当前 id
+		SELECT
+			sic.id,
+			CAST(CONCAT(cp.path, ',', sic.id) AS VARCHAR(255)) AS path
+		FROM system_industry_category sic
+		INNER JOIN category_path cp ON sic.parent_id = cp.id
+		WHERE sic.deleted = 0
+	)
+	UPDATE manage_merchant m
+	SET industry_id = cp.path
+	FROM category_path cp
+	WHERE m.industry_leaf_id = cp.id
+		AND m.deleted = 0
+		AND m.industry_id IS NULL
+		AND m.industry_leaf_id IS NOT NULL`
+
+	result, err := server.executeQuery(queryOptions{SQL: sqlText})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AffectedRows != 1 {
+		t.Fatalf("unexpected affected rows: %d", result.AffectedRows)
+	}
+	if result.Columns == nil || result.ColumnTypes == nil || result.Rows == nil {
+		t.Fatalf("query result arrays must not be nil: %#v", result)
+	}
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if len(state.execStatements) == 0 || state.execStatements[len(state.execStatements)-1] != sqlText {
+		t.Fatalf("recursive CTE update must use ExecContext: %v", state.execStatements)
+	}
+	if state.queryCtx != nil {
+		t.Fatal("recursive CTE update must not use QueryContext")
+	}
+}
+
+func TestIsQuerySQLUsesCteTerminalStatement(t *testing.T) {
+	tests := []struct {
+		name  string
+		sql   string
+		query bool
+	}{
+		{name: "recursive select", sql: `WITH RECURSIVE tree AS (SELECT 1) SELECT * FROM tree`, query: true},
+		{name: "recursive update", sql: `WITH RECURSIVE tree AS (SELECT 1) UPDATE target SET value = tree.value FROM tree`, query: false},
+		{name: "multiple ctes insert", sql: `WITH source AS (SELECT 1), ready AS (SELECT * FROM source) INSERT INTO target SELECT * FROM ready`, query: false},
+		{name: "data modifying cte returns rows", sql: `WITH changed AS (UPDATE target SET value = 1 RETURNING id) SELECT * FROM changed`, query: true},
+		{name: "cte update returning rows", sql: `WITH source AS (SELECT 1 AS id) UPDATE target SET value = source.id FROM source RETURNING target.id`, query: true},
+		{name: "cte values", sql: `WITH source AS (SELECT 1) VALUES (1)`, query: true},
+		{name: "recursive search clause keeps query path", sql: `WITH RECURSIVE tree AS (SELECT 1) SEARCH DEPTH FIRST BY id SET ordercol SELECT * FROM tree`, query: true},
+		{name: "plain update returning rows", sql: `UPDATE target SET value = 1 RETURNING id`, query: true},
+		{name: "nested returning identifier is ignored", sql: `UPDATE target SET value = (SELECT returning FROM source)`, query: false},
+		{name: "returning prefix identifier is ignored", sql: `UPDATE target SET returning2 = 1`, query: false},
+		{name: "comments and nested syntax", sql: "/* lead */ WITH source(id) AS NOT MATERIALIZED (SELECT (1 + 2), '-- )'::text)\nDELETE FROM target USING source", query: false},
+		{name: "malformed cte keeps legacy query path", sql: `WITH source AS SELECT 1`, query: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isQuerySQL(test.sql); got != test.query {
+				t.Fatalf("unexpected query classification: got %v, want %v", got, test.query)
+			}
+		})
+	}
+}
+
+func TestNonNilStringsNormalizesProtocolArrays(t *testing.T) {
+	if values := nonNilStrings(nil); values == nil || len(values) != 0 {
+		t.Fatalf("nil protocol array was not normalized: %#v", values)
+	}
+}
+
 func TestPagedQueryKeepsContextUntilSessionCloses(t *testing.T) {
 	db, state := openFakeDB(t, 3)
 	server := newServer()
