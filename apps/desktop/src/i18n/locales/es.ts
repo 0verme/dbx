@@ -2794,6 +2794,8 @@ export default withEnglishFallback({
     linkedServers: "Servidores vinculados",
     defaultDatabase: "Base predeterminada",
     columns: "Columnas",
+    attributes: "Atributos",
+    methods: "Métodos",
     indexes: "Índices",
     foreignKeys: "Claves foráneas",
     triggers: "Disparadores",

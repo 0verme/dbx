@@ -2818,6 +2818,8 @@ export default withEnglishFallback({
     damengJobAdmin: "エージェントジョブ",
     defaultDatabase: "デフォルトDB",
     columns: "列",
+    attributes: "属性",
+    methods: "メソッド",
     indexes: "インデックス",
     foreignKeys: "外部キー",
     triggers: "トリガー",
