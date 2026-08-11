@@ -1044,16 +1044,24 @@ func (s *server) listObjects(schema string, constraints metadataListConstraints)
 			result = append(result, objectInfo{Name: table.Name, ObjectType: table.TableType, Schema: effective, Comment: table.Comment})
 		}
 	}
-	if !s.mode.mysqlCompat && constraintsAllowRoutines(constraints) {
-		catalog := "sys_catalog"
-		function := "sys"
-		if s.mode.postgresCatalog {
-			catalog, function = "pg_catalog", "pg"
-		}
-		query := fmt.Sprintf(`SELECT p.proname, CASE WHEN p.prorettype = 2278 THEN 'PROCEDURE' ELSE 'FUNCTION' END, d.description
+	if constraintsAllowRoutines(constraints) {
+		var query string
+		if s.mode.mysqlCompat {
+			query = fmt.Sprintf(`SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_COMMENT
+FROM information_schema.routines
+WHERE ROUTINE_SCHEMA = %s
+ORDER BY ROUTINE_NAME`, quoteLiteral(effective))
+		} else {
+			catalog := "sys_catalog"
+			function := "sys"
+			if s.mode.postgresCatalog {
+				catalog, function = "pg_catalog", "pg"
+			}
+			query = fmt.Sprintf(`SELECT p.proname, CASE WHEN p.prorettype = 2278 THEN 'PROCEDURE' ELSE 'FUNCTION' END, d.description
 FROM %s.%s_proc p JOIN %s.%s_namespace n ON n.oid = p.pronamespace
 LEFT JOIN %s.%s_description d ON d.objoid = p.oid AND d.objsubid = 0
 WHERE n.nspname = %s ORDER BY p.proname`, catalog, function, catalog, function, catalog, function, quoteLiteral(effective))
+		}
 		rows, queryErr := s.metadataQuery(query)
 		if queryErr == nil {
 			for rows.Next() {
@@ -1859,6 +1867,9 @@ func constraintsAllowsTableLike(constraints metadataListConstraints) bool {
 		return true
 	}
 	for _, kind := range constraints.ObjectTypes {
+		if routineObjectType(kind) != "" {
+			continue
+		}
 		switch normalizeTableType(kind) {
 		case "TABLE", "VIEW", "MATERIALIZED_VIEW", "FOREIGN_TABLE":
 			return true
@@ -1891,12 +1902,23 @@ func constraintsAllowRoutines(constraints metadataListConstraints) bool {
 		return true
 	}
 	for _, kind := range constraints.ObjectTypes {
-		upper := strings.ToUpper(strings.TrimSpace(kind))
-		if strings.Contains(upper, "PROCEDURE") || strings.Contains(upper, "FUNCTION") {
+		if routineObjectType(kind) != "" {
 			return true
 		}
 	}
 	return false
+}
+
+func routineObjectType(value string) string {
+	upper := strings.ToUpper(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(upper, "PROCEDURE"):
+		return "PROCEDURE"
+	case strings.Contains(upper, "FUNCTION"):
+		return "FUNCTION"
+	default:
+		return ""
+	}
 }
 
 func constraintsMatch(constraints metadataListConstraints, name, kind string) bool {
@@ -1906,7 +1928,18 @@ func constraintsMatch(constraints metadataListConstraints, name, kind string) bo
 	if len(constraints.ObjectTypes) == 0 {
 		return true
 	}
+	if routineKind := routineObjectType(kind); routineKind != "" {
+		for _, allowed := range constraints.ObjectTypes {
+			if routineObjectType(allowed) == routineKind {
+				return true
+			}
+		}
+		return false
+	}
 	for _, allowed := range constraints.ObjectTypes {
+		if routineObjectType(allowed) != "" {
+			continue
+		}
 		if strings.EqualFold(normalizeTableType(allowed), normalizeTableType(kind)) || strings.EqualFold(allowed, kind) {
 			return true
 		}
