@@ -385,6 +385,7 @@ const {
   newSubgroup,
   confirmDeleteGroup,
   moveToGroup,
+  createGroupAndMoveConnection,
 } = useSidebarConnectionMutationRuntime({
   activeNode,
   releaseActiveNodeReference,
@@ -3799,12 +3800,7 @@ function moveToNewGroup() {
 }
 
 function confirmMoveToNewGroup() {
-  const name = moveToNewGroupName.value.trim();
-  const node = sidebarFormTarget.value ?? activeNode.value;
-  if (name && node.connectionId) {
-    const groupId = connectionStore.createConnectionGroup(name);
-    connectionStore.moveConnectionToGroup(node.connectionId, groupId);
-  }
+  createGroupAndMoveConnection(moveToNewGroupName.value);
   showMoveToNewGroupDialog.value = false;
 }
 
