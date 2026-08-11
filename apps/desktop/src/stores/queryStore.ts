@@ -47,7 +47,8 @@ import { frontendQueryTimeoutDelayMs, frontendQueryTimeoutSecsForSql, queryTimeo
 import { queryResultNameFromPreamble, queryResultSourceLabel } from "@/lib/sql/queryResultSource";
 import { beginDataGridNativeSelectionBlock, finishDataGridNativeSelectionBlock } from "@/lib/dataGrid/dataGridNativeSelection";
 import { simpleDataGridOrderByReferencesMissingColumn, sortDataGridRowIndexes, type DataGridSortDirection } from "@/lib/dataGrid/dataGridSort";
-import { MAX_RESULT_PAGE_SIZE, normalizeResultPageSize } from "@/lib/dataGrid/paginationPageSize";
+import { normalizeResultPageSize } from "@/lib/dataGrid/paginationPageSize";
+import { agentProtocolQueryResultMaxRows, capQueryResultTotal, effectiveQueryResultMaxRows, limitQueryPagination, queryResultLimitReached } from "@/lib/dataGrid/queryResultRowLimit";
 import { elasticsearchRestRequestRanges, executableStatementRanges, splitSqlStatementRanges } from "@/lib/sql/sqlStatementRanges";
 import { externalSqlFileDisplayTitles, normalizeExternalSqlPath } from "@/lib/sql/sqlFileOpen";
 import { clearDataGridPendingSnapshotsForTab } from "@/composables/useDataGridEditor";
@@ -3610,6 +3611,7 @@ export const useQueryStore = defineStore("query", () => {
     traceId: string;
     elapsed: () => string;
     timeoutSecs: number;
+    maxRows?: number;
   }) {
     const resultRowCount = options.result.rows.length;
     if (resultRowCount <= 0) {
@@ -3652,10 +3654,11 @@ export const useQueryStore = defineStore("query", () => {
           setQueryTotalRowCountIfCurrent(options.tabId, options.executionId, options.result, undefined);
           return;
         }
-        setQueryTotalRowCountIfCurrent(options.tabId, options.executionId, options.result, total);
+        const cappedTotal = capQueryResultTotal(total, options.maxRows);
+        setQueryTotalRowCountIfCurrent(options.tabId, options.executionId, options.result, cappedTotal);
         queryExecutionLog("info", "count:done", {
           traceId: options.traceId,
-          total,
+          total: cappedTotal,
           elapsed: options.elapsed(),
         });
       } catch (error) {
@@ -4284,6 +4287,8 @@ export const useQueryStore = defineStore("query", () => {
         return producedResult;
       }
 
+      const queryResultMaxRows = effectiveQueryResultMaxRows(settingsStore.editorSettings.queryResultMaxRowsEnabled, settingsStore.editorSettings.queryResultMaxRows);
+
       if (tab.mode === "query") {
         const prepared = await prepareEditableQueryExecution(tab, sqlToExecute, conn, effectiveDbType, executionDatabase, traceId, elapsed);
         sqlToExecute = prepared.sql;
@@ -4305,7 +4310,7 @@ export const useQueryStore = defineStore("query", () => {
           sqlToExecute = sorted.sql;
           resultSortedSql = sorted.sql;
         }
-        const pagination = options?.pagination ?? { limit: settingsStore.editorSettings.pageSize, offset: 0 };
+        const pagination = limitQueryPagination(options?.pagination ?? { limit: settingsStore.editorSettings.pageSize, offset: 0 }, queryResultMaxRows);
         const plan = await api.prepareQueryPaginationExecutionPlan({
           sql: sqlToExecute,
           queryBaseSql,
@@ -4336,8 +4341,15 @@ export const useQueryStore = defineStore("query", () => {
           return false;
         }
       } else if (tab.mode === "data") {
-        pageLimit = options?.pagination?.limit ?? tableOpenPageLimit(settingsStore.editorSettings.tableOpenPageSize);
-        pageOffset = options?.pagination?.offset ?? 0;
+        const pagination = limitQueryPagination(
+          {
+            limit: options?.pagination?.limit ?? tableOpenPageLimit(settingsStore.editorSettings.tableOpenPageSize),
+            offset: options?.pagination?.offset ?? 0,
+          },
+          queryResultMaxRows,
+        );
+        pageLimit = pagination.limit;
+        pageOffset = pagination.offset;
       }
 
       const executionSchema = targetContext?.scope === "connection" ? undefined : connectionQueryExecutionSchema(conn, databaseTargetContext?.database ?? executionTarget?.database ?? tab.database, databaseTargetContext?.schema ?? executionTarget?.schema ?? tab.schema, tab.mode === "data");
@@ -4354,7 +4366,7 @@ export const useQueryStore = defineStore("query", () => {
         }
         queryExecutionLog("info", "execute-in-txn:invoke", { traceId, txnSessionId: tab.txnSessionId, elapsed: elapsed() });
         executionDispatched = true;
-        executionPromise = api.executeInManualTransaction(tab.txnSessionId, sqlToExecute, executionDatabase, executionSchema, pageLimit);
+        executionPromise = api.executeInManualTransaction(tab.txnSessionId, sqlToExecute, executionDatabase, executionSchema, pageLimit ?? agentProtocolQueryResultMaxRows(queryResultMaxRows));
       } else {
         queryExecutionLog("info", "execute-multi:start", { traceId, elapsed: elapsed() });
         // Query and data tabs use a tab-scoped pool so repeated executions keep
@@ -4364,14 +4376,13 @@ export const useQueryStore = defineStore("query", () => {
             ? useAgentResultSession
               ? {
                   // Agent cursors apply maxRows cumulatively across fetched pages.
-                  // Keep multi-page navigation available without allowing unbounded reads.
-                  maxRows: MAX_RESULT_PAGE_SIZE,
+                  maxRows: agentProtocolQueryResultMaxRows(queryResultMaxRows),
                   fetchSize: pageLimit,
                   pageSize: pageLimit,
                   resultSessionId: options?.pagination?.sessionId,
                 }
               : { maxRows: pageLimit, fetchSize: pageLimit }
-            : {}),
+            : { maxRows: agentProtocolQueryResultMaxRows(queryResultMaxRows) }),
           ...(executionClientSessionId ? { clientSessionId: executionClientSessionId } : {}),
           timeoutSecs: queryTimeoutSecs,
           catalog: executionCatalog,
@@ -4497,6 +4508,12 @@ export const useQueryStore = defineStore("query", () => {
           current.resultTotalRowCount = undefined;
         }
         const resultRowCount = current.result?.rows.length ?? 0;
+        const resultLimitReached = !!current.result && queryResultLimitReached(pageOffset, resultRowCount, queryResultMaxRows);
+        if (resultLimitReached && current.result) {
+          current.result.has_more = false;
+          current.result.truncated = true;
+          current.resultTotalRowCount = queryResultMaxRows;
+        }
         const totalKnownFromIncompletePage = !!current.result && typeof exactTotalFromIncompletePage(current.result, pageLimit, pageOffset, useAgentResultSession) === "number";
         const dataCountTarget =
           current.mode === "data"
@@ -4514,7 +4531,8 @@ export const useQueryStore = defineStore("query", () => {
                 };
               })()
             : undefined;
-        const canAutoCalculateTotalRows = !options?.appendResult && !!current.result && resultRowCount > 0 && !totalKnownFromIncompletePage && settingsStore.editorSettings.autoCalculateTotalRows && ((current.mode === "query" && !!countSql) || (current.mode === "data" && !!dataCountTarget));
+        const canAutoCalculateTotalRows =
+          !options?.appendResult && !!current.result && resultRowCount > 0 && !resultLimitReached && !totalKnownFromIncompletePage && settingsStore.editorSettings.autoCalculateTotalRows && ((current.mode === "query" && !!countSql) || (current.mode === "data" && !!dataCountTarget));
         current.resultTotalRowCountLoading = canAutoCalculateTotalRows;
         // Server-side pagination without a countSql: the backend (currently
         // the Elasticsearch driver) already reports the true match total via
@@ -4528,7 +4546,7 @@ export const useQueryStore = defineStore("query", () => {
         }
         touchResult(current);
         syncDisplayedResultRun(current, queryBaseSql, captureResultRun);
-        if (!options?.appendResult && !totalRowCountResolved && (current.mode === "query" || current.mode === "data") && current.result) {
+        if (!options?.appendResult && !resultLimitReached && !totalRowCountResolved && (current.mode === "query" || current.mode === "data") && current.result) {
           countQueryTotalRowsInBackground({
             tabId: id,
             connectionId: executionConnectionId,
@@ -4550,6 +4568,7 @@ export const useQueryStore = defineStore("query", () => {
             traceId,
             elapsed,
             timeoutSecs: queryTimeoutSecs,
+            maxRows: queryResultMaxRows,
           });
         }
         queryExecutionLog("info", "result:assigned", {
