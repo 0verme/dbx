@@ -17,12 +17,15 @@ const documentJsonEditor = vi.hoisted(() => ({
 
 const dataGrid = vi.hoisted(() => ({
   fullExportResult: undefined as
-    | ((onProgress?: (info: { rowsExported: number; totalRows: number | null }) => void) => Promise<{
-        columns: string[];
-        column_types?: string[];
-        rows: Array<Array<string | number | boolean | null>>;
-        mongo_copy_documents?: unknown[];
-      } | undefined>)
+    | ((onProgress?: (info: { rowsExported: number; totalRows: number | null }) => void) => Promise<
+        | {
+            columns: string[];
+            column_types?: string[];
+            rows: Array<Array<string | number | boolean | null>>;
+            mongo_copy_documents?: unknown[];
+          }
+        | undefined
+      >)
     | undefined,
 }));
 
@@ -505,9 +508,7 @@ describe("DocumentBrowser MongoDB filter value types", () => {
   it("stops MongoDB full export on a short page when the total is estimated", async () => {
     app?.unmount();
     backend.documentFindDocuments.mockReset();
-    backend.documentFindDocuments
-      .mockResolvedValueOnce({ documents: [{ _id: "visible" }], total: 500, total_is_exact: false })
-      .mockResolvedValueOnce({ documents: [{ _id: "only" }], total: 500, total_is_exact: false });
+    backend.documentFindDocuments.mockResolvedValueOnce({ documents: [{ _id: "visible" }], total: 500, total_is_exact: false }).mockResolvedValueOnce({ documents: [{ _id: "only" }], total: 500, total_is_exact: false });
     app = createApp(DocumentBrowser, {
       connectionId: "mongo-1",
       database: "test",
