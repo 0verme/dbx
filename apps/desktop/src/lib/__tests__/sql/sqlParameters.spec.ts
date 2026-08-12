@@ -9,9 +9,41 @@ describe("extractSqlParameters", () => {
     expect(readSqlBracedParameterAt("#{month}", 0, { enabledSyntaxes: ["shell"] })).toBeNull();
   });
 
+  it("recognizes dotted braced parameter names as complete keys", () => {
+    expect(readSqlBracedParameterAt("${params.profile.name}", 0)).toMatchObject({
+      key: "params.profile.name",
+      name: "params.profile.name",
+      syntax: "shell",
+    });
+    expect(readSqlBracedParameterAt("#{ 参数.用户_2.名称 }", 0)).toMatchObject({
+      key: "参数.用户_2.名称",
+      name: "参数.用户_2.名称",
+      syntax: "mybatis",
+    });
+  });
+
+  it("rejects malformed dotted braced parameter names", () => {
+    for (const token of ["${.name}", "${params.}", "${params..name}", "${params.1name}", "${params[0]}"]) {
+      expect(readSqlBracedParameterAt(token, 0)).toBeNull();
+      expect(extractSqlParameters(`select ${token}`)).toEqual([]);
+    }
+  });
+
+  it("keeps colon and at-sign parameters single-segment", () => {
+    expect(extractSqlParameterDescriptors("select :params.name, @context.user")).toEqual([
+      { key: "params", name: "params", syntax: "named", token: ":params" },
+      { key: "context", name: "context", syntax: "sqlserver", token: "@context" },
+    ]);
+  });
+
   it("extracts unique template parameters in order", () => {
     const sql = "select * from t where pt_dt between ${start_date} and ${end_date} or pt_dt = ${start_date}";
     expect(extractSqlParameters(sql)).toEqual(["start_date", "end_date"]);
+  });
+
+  it("extracts dotted braced parameters in unquoted and quoted contexts", () => {
+    const sql = "select ${params.id}, #{params.profile.name}, '${params.label}', 'prefix#{params.code}'";
+    expect(extractSqlParameters(sql)).toEqual(["params.id", "params.profile.name", "params.label", "params.code"]);
   });
 
   it("extracts quoted braced placeholders while ignoring backticks and comments", () => {
@@ -521,6 +553,17 @@ describe("Oracle and Dameng trigger pseudo-records", () => {
 });
 
 describe("substituteSqlParameters", () => {
+  it("substitutes dotted names by their complete key", () => {
+    const sql = "select ${params.id}, #{params.profile.name}, 'prefix${params.label}'";
+    expect(
+      substituteSqlParameters(sql, {
+        "params.id": { kind: "number", value: "7" },
+        "params.profile.name": { kind: "string", value: "Alice" },
+        "params.label": { kind: "string", value: "O'Reilly" },
+      }),
+    ).toBe("select 7, 'Alice', 'prefixO''Reilly'");
+  });
+
   it("decodes XML comparison entities when substituting MyBatis parameters", () => {
     const sql = "select * from orders where created_at &gt;= #{start} and created_at &lt; #{end} and owner_id = #{owner_id} or reviewer_id = #{owner_id}";
 

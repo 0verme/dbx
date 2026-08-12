@@ -43,7 +43,7 @@ export interface SqlParameterOptions {
   enabledSyntaxes?: readonly SqlParameterSyntax[];
 }
 
-const PARAMETER_NAME_RE = /^[\p{L}_][\p{L}\p{N}_]*$/u;
+const PARAMETER_NAME_RE = /^[\p{L}_][\p{L}\p{N}_]*(?:\.[\p{L}_][\p{L}\p{N}_]*)*$/u;
 const PARAMETER_NAME_START_RE = /[\p{L}_]/u;
 const PARAMETER_NAME_CHAR_RE = /[\p{L}\p{N}_]/u;
 const SQL_SERVER_TEMP_TABLE_CONTEXT_KEYWORDS = new Set(["table", "from", "join", "into", "update", "truncate"]);
