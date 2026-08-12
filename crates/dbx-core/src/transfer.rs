@@ -4098,7 +4098,7 @@ fn transfer_ddl_statements(sql: &str, db_type: &DatabaseType) -> Vec<String> {
                 .collect()
         }
     } else if matches!(db_type, DatabaseType::Dameng) {
-        let statements = split_sql_statements_for_database(sql, db_type.clone());
+        let statements = split_sql_statements_for_database(sql, *db_type);
         if statements.is_empty() {
             vec![sql.trim().to_string()]
         } else {
@@ -10338,6 +10338,7 @@ SELECT 1 FROM dual"#
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
+            save_password: true,
             read_only: false,
             is_production: false,
             production_databases: vec![],
