@@ -23,6 +23,7 @@ import type { NacosAdminConfig, NacosAuthConfig, NacosImplementation, NacosMetri
 import { CONNECTION_ATTEMPT_CANCELLED_MESSAGE, useConnectionStore } from "@/stores/connectionStore";
 import { useTunnelProfileStore } from "@/stores/tunnelProfileStore";
 import { detachTunnelProfileLayer, tunnelProfileReferenceLayer, tunnelProfileSummary } from "@/lib/connection/tunnelProfiles";
+import { applySshAuthMethod, inferSshAuthMethod } from "@/lib/connection/sshAuthMethod";
 import { applySshConfigHostAliasPrefill as prefillSshConfigHostAlias } from "@/lib/connection/sshConfigHosts";
 import { canPersistConnectionTestResult, connectionEditDraftSyncAction } from "./connectionEditDraftSync";
 import { createConnectionNoteVisibilityDraft, persistConnectionNoteVisibilityDraft as persistConnectionNoteVisibilityDraftState, resetConnectionNoteVisibilityDraft, setConnectionNoteVisibilityDraft, syncConnectionNoteVisibilityDraft } from "./connectionNoteVisibilityDraft";
@@ -370,20 +371,6 @@ function defaultSshTunnel(): SshTunnelConfig {
     auth_method: "password",
     allow_exec_channel_proxy: false,
   };
-}
-
-/**
- * Infers a login method for connections saved before `auth_method` existed
- * (or imported from a source that never set it), so the dropdown shows a
- * sensible current state instead of defaulting blindly to "password".
- * Mirrors the priority `connect_and_authenticate` actually uses at connect
- * time (key > password > agent > none) — see `db/ssh_tunnel.rs`.
- */
-function inferSshAuthMethod(hop: Partial<SshTunnelConfig>): "password" | "key" | "agent" | "none" {
-  if (hop.key_path?.trim()) return "key";
-  if (hop.password) return "password";
-  if (hop.use_ssh_agent) return "agent";
-  return "none";
 }
 
 function normalizeSshTunnel(hop: Partial<SshTunnelConfig>): SshTunnelConfig {
@@ -4964,31 +4951,10 @@ function updateSelectedProxyType(value: unknown) {
   resetTestState();
 }
 
-/**
- * "agent" is legacy-only: it's never chosen from this dropdown, only ever
- * inherited from a connection saved before this selector existed. Once the
- * user picks something else, the option (and its underlying checkbox) is
- * gone from the form for good.
- */
-function isLegacySshAgentMethod(hop: Partial<SshTunnelConfig> | null | undefined) {
-  return hop?.auth_method === "agent";
-}
-
 function updateSelectedSshAuthMethod(value: unknown) {
   const layer = selectedSshLayer.value;
   if (!layer) return;
-  layer.auth_method = value === "key" ? "key" : value === "key+password" ? "key+password" : value === "none" ? "none" : "password";
-  // Scrub credential fields that do not apply to the selected method so
-  // they are not accidentally submitted or used by the backend fallback.
-  // "key+password" keeps both key and password fields.
-  if (layer.auth_method !== "password" && layer.auth_method !== "key+password") layer.password = "";
-  if (layer.auth_method !== "key" && layer.auth_method !== "key+password") {
-    layer.key_path = "";
-    layer.key_passphrase = "";
-  }
-  if (layer.auth_method !== "key" && layer.auth_method !== "key+password") {
-    layer.use_ssh_agent = false;
-  }
+  applySshAuthMethod(layer, value);
   resetTestState();
 }
 
@@ -8085,8 +8051,8 @@ function openExternalUrl(url: string) {
                           <SelectItem value="password">{{ t("connection.sshAuthMethodPassword") }}</SelectItem>
                           <SelectItem value="key">{{ t("connection.sshAuthMethodKey") }}</SelectItem>
                           <SelectItem value="key+password">{{ t("connection.sshAuthMethodKeyPassword") }}</SelectItem>
+                          <SelectItem value="agent">{{ t("connection.sshUseAgent") }}</SelectItem>
                           <SelectItem value="none">{{ t("connection.sshAuthMethodNone") }}</SelectItem>
-                          <SelectItem v-if="isLegacySshAgentMethod(selectedSshLayer)" value="agent" disabled>{{ t("connection.sshAuthMethodAgentLegacy") }}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -8116,19 +8082,10 @@ function openExternalUrl(url: string) {
                       <span />
                       <p class="col-span-3 text-xs text-muted-foreground">{{ t("connection.sshAuthMethodNoneHint") }}</p>
                     </div>
-                    <template v-if="isLegacySshAgentMethod(selectedSshLayer)">
-                      <div class="grid grid-cols-4 items-center gap-4">
-                        <span />
-                        <label class="col-span-3 flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" v-model="selectedSshLayer.use_ssh_agent" class="mr-0" :disabled="selectedSshLayer.enabled === false" />
-                          <span class="text-xs text-muted-foreground">{{ t("connection.sshUseAgent") }}</span>
-                        </label>
-                      </div>
-                      <div v-if="selectedSshLayer.use_ssh_agent" class="grid grid-cols-4 items-center gap-4">
-                        <Label :class="connectionLabelSmallClass">{{ t("connection.sshAgentSockPath") }}</Label>
-                        <Input v-model="selectedSshLayer.ssh_agent_sock_path" class="col-span-3" :placeholder="t('connection.sshAgentSockPathPlaceholder')" :disabled="selectedSshLayer.enabled === false" />
-                      </div>
-                    </template>
+                    <div v-if="selectedSshLayer.auth_method === 'agent'" class="grid grid-cols-4 items-center gap-4">
+                      <Label :class="connectionLabelSmallClass">{{ t("connection.sshAgentSockPath") }}</Label>
+                      <Input v-model="selectedSshLayer.ssh_agent_sock_path" class="col-span-3" :placeholder="t('connection.sshAgentSockPathPlaceholder')" :disabled="selectedSshLayer.enabled === false" />
+                    </div>
                     <div class="grid grid-cols-4 items-center gap-4">
                       <span />
                       <label class="col-span-3 flex items-center gap-2 cursor-pointer">
