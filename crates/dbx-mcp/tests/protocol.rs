@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use dbx_core::{
@@ -50,6 +50,7 @@ impl DbxBackend for EmptyBackend {
 struct PolicyBackend {
     policy: McpGlobalPolicy,
     connections: Vec<ConnectionConfig>,
+    group_paths: Result<HashMap<String, Vec<String>>, String>,
 }
 
 #[async_trait]
@@ -60,6 +61,10 @@ impl DbxBackend for PolicyBackend {
 
     async fn load_connections(&self) -> Result<Vec<ConnectionConfig>, String> {
         Ok(self.connections.clone())
+    }
+
+    async fn load_connection_group_paths(&self) -> Result<HashMap<String, Vec<String>>, String> {
+        self.group_paths.clone()
     }
 
     async fn execute_agent_tool(
@@ -133,9 +138,18 @@ async fn enforces_global_connection_scope_and_read_only_policy() {
         policy: McpGlobalPolicy {
             read_only: true,
             allow_dangerous_sql: false,
-            allowed_connection_ids: Some(vec!["allowed".to_string()]),
+            allowed_connection_ids: Some(vec!["allowed".to_string(), "allowed-staging".to_string()]),
         },
-        connections: vec![test_connection("allowed", "allowed-db"), test_connection("blocked", "blocked-db")],
+        connections: vec![
+            test_connection("allowed", "shared-db"),
+            test_connection("allowed-staging", "shared-db"),
+            test_connection("blocked", "blocked-db"),
+        ],
+        group_paths: Ok(HashMap::from([
+            ("allowed".to_string(), vec!["Project".to_string(), "Production".to_string()]),
+            ("allowed-staging".to_string(), vec!["Project".to_string(), "Staging".to_string()]),
+            ("blocked".to_string(), vec!["Secret".to_string()]),
+        ])),
     };
     let (server_transport, client_transport) = tokio::io::duplex(16 * 1024);
     let server = DbxMcpServer::with_runtime_options(Arc::new(backend), McpScope::default(), false);
@@ -145,8 +159,11 @@ async fn enforces_global_connection_scope_and_read_only_policy() {
     let listed =
         client.peer().call_tool(CallToolRequestParams::new("dbx_list_connections")).await.expect("list connections");
     let listed_text = listed.content[0].as_text().expect("list result").text.clone();
-    assert!(listed_text.contains("allowed-db"));
+    assert_eq!(listed_text.matches("shared-db").count(), 2);
     assert!(!listed_text.contains("blocked-db"));
+    assert!(listed_text.contains("Project / Production"));
+    assert!(listed_text.contains("Project / Staging"));
+    assert!(!listed_text.contains("Secret"));
 
     let blocked = client
         .peer()
@@ -172,6 +189,59 @@ async fn enforces_global_connection_scope_and_read_only_policy() {
         .expect("call read-only policy");
     assert_eq!(read_only.is_error, Some(true));
     assert!(read_only.content[0].as_text().expect("read-only result").text.contains("MCP_READ_ONLY"));
+
+    client.cancel().await.expect("close MCP client");
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn connection_group_path_failure_preserves_connection_listing() {
+    let backend = PolicyBackend {
+        policy: McpGlobalPolicy::default(),
+        connections: vec![test_connection("local", "local-db")],
+        group_paths: Err("layout unavailable".to_string()),
+    };
+    let (server_transport, client_transport) = tokio::io::duplex(16 * 1024);
+    let server = DbxMcpServer::with_runtime_options(Arc::new(backend), McpScope::default(), false);
+    let server_task = tokio::spawn(async move { server.serve(server_transport).await });
+    let client = ().serve(client_transport).await.expect("initialize MCP client");
+
+    let listed =
+        client.peer().call_tool(CallToolRequestParams::new("dbx_list_connections")).await.expect("list connections");
+    let listed_text = listed.content[0].as_text().expect("list result").text.clone();
+    assert_ne!(listed.is_error, Some(true));
+    assert!(listed_text.contains("| ID | Name | Group Path |"));
+    assert!(listed_text.contains("local-db"));
+
+    client.cancel().await.expect("close MCP client");
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn runtime_connection_scope_preserves_group_paths() {
+    let backend = PolicyBackend {
+        policy: McpGlobalPolicy::default(),
+        connections: vec![test_connection("scoped", "shared-db"), test_connection("outside", "shared-db")],
+        group_paths: Ok(HashMap::from([
+            ("scoped".to_string(), vec!["Project".to_string(), "Production".to_string()]),
+            ("outside".to_string(), vec!["Project".to_string(), "Staging".to_string()]),
+        ])),
+    };
+    let (server_transport, client_transport) = tokio::io::duplex(16 * 1024);
+    let server = DbxMcpServer::with_runtime_options(
+        Arc::new(backend),
+        McpScope { connection_ids: vec!["scoped".to_string()], ..Default::default() },
+        false,
+    );
+    let server_task = tokio::spawn(async move { server.serve(server_transport).await });
+    let client = ().serve(client_transport).await.expect("initialize MCP client");
+
+    let listed =
+        client.peer().call_tool(CallToolRequestParams::new("dbx_list_connections")).await.expect("list connections");
+    let listed_text = listed.content[0].as_text().expect("list result").text.clone();
+    assert!(listed_text.contains("| scoped | shared-db | Project / Production |"));
+    assert!(!listed_text.contains("outside"));
+    assert!(!listed_text.contains("Project / Staging"));
 
     client.cancel().await.expect("close MCP client");
     server_task.abort();

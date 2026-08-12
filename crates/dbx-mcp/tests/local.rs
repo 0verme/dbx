@@ -1,7 +1,7 @@
 use std::{ffi::OsString, sync::Arc};
 
 use dbx_core::{models::connection::ConnectionConfig, storage::Storage};
-use dbx_mcp::{DbxBackend, DbxMcpServer, LocalBackend, McpScope};
+use dbx_mcp::{DbxMcpServer, LocalBackend, McpScope};
 use rmcp::{model::CallToolRequestParams, ServiceExt};
 use serde_json::{json, Map, Value};
 use tempfile::tempdir;
@@ -47,6 +47,24 @@ async fn local_backend_reads_dbx_storage_without_desktop_process() {
     }))
     .expect("minimal connection config");
     storage.save_connections(&[connection]).await.expect("save connection");
+    storage
+        .save_sidebar_layout(&json!({
+            "groups": [
+                { "id": "project", "name": "Project", "collapsed": false },
+                { "id": "environment", "name": "Staging", "collapsed": false }
+            ],
+            "order": [{
+                "type": "group",
+                "id": "project",
+                "children": [{
+                    "type": "group",
+                    "id": "environment",
+                    "children": [{ "type": "connection", "id": "local-sqlite" }]
+                }]
+            }]
+        }))
+        .await
+        .expect("save sidebar layout");
 
     let backend = Arc::new(LocalBackend::open(&db_path).await.expect("open local backend"));
     let server = DbxMcpServer::with_runtime_options(backend, McpScope::default(), false);
@@ -61,6 +79,7 @@ async fn local_backend_reads_dbx_storage_without_desktop_process() {
     let text = result.content[0].as_text().expect("text response");
     assert!(text.text.contains("offline-sqlite"));
     assert!(text.text.contains("local-sqlite"));
+    assert!(text.text.contains("Project / Staging"));
     client.cancel().await.expect("close client");
     server_task.abort();
 }

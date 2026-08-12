@@ -27,6 +27,7 @@ pub struct ConnectionSummary {
     pub host: String,
     pub port: u16,
     pub database: String,
+    pub group_path: Vec<String>,
 }
 
 impl From<&ConnectionConfig> for ConnectionSummary {
@@ -42,6 +43,74 @@ impl From<&ConnectionConfig> for ConnectionSummary {
             host: config.host.clone(),
             port: config.port,
             database: config.database.clone().unwrap_or_default(),
+            group_path: Vec::new(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct SidebarLayout {
+    #[serde(default)]
+    groups: Vec<SidebarGroup>,
+    #[serde(default)]
+    order: Vec<SidebarOrderEntry>,
+}
+
+#[derive(Deserialize)]
+struct SidebarGroup {
+    id: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum SidebarOrderEntry {
+    #[serde(rename = "group")]
+    Group {
+        id: String,
+        children: Option<Vec<SidebarOrderEntry>>,
+        #[serde(rename = "connectionIds")]
+        connection_ids: Option<Vec<String>>,
+    },
+    #[serde(rename = "connection")]
+    Connection { id: String },
+}
+
+fn connection_group_paths(layout: Value) -> HashMap<String, Vec<String>> {
+    let Ok(layout) = serde_json::from_value::<SidebarLayout>(layout) else {
+        return HashMap::new();
+    };
+    let groups = layout.groups.into_iter().map(|group| (group.id, group.name)).collect::<HashMap<_, _>>();
+    let mut paths = HashMap::new();
+    collect_connection_group_paths(&layout.order, &groups, &mut Vec::new(), &mut paths);
+    paths
+}
+
+fn collect_connection_group_paths(
+    entries: &[SidebarOrderEntry],
+    groups: &HashMap<String, String>,
+    path: &mut Vec<String>,
+    paths: &mut HashMap<String, Vec<String>>,
+) {
+    for entry in entries {
+        match entry {
+            SidebarOrderEntry::Connection { id } => {
+                paths.insert(id.clone(), path.clone());
+            }
+            SidebarOrderEntry::Group { id, children, connection_ids } => {
+                let Some(name) = groups.get(id) else {
+                    continue;
+                };
+                path.push(name.clone());
+                if let Some(children) = children {
+                    collect_connection_group_paths(children, groups, path, paths);
+                } else if let Some(connection_ids) = connection_ids {
+                    for connection_id in connection_ids {
+                        paths.insert(connection_id.clone(), path.clone());
+                    }
+                }
+                path.pop();
+            }
         }
     }
 }
@@ -92,6 +161,9 @@ pub trait DbxBackend: Send + Sync {
     async fn load_mcp_global_policy(&self) -> Result<McpGlobalPolicy, String>;
 
     async fn load_connections(&self) -> Result<Vec<ConnectionConfig>, String>;
+    async fn load_connection_group_paths(&self) -> Result<HashMap<String, Vec<String>>, String> {
+        Ok(HashMap::new())
+    }
     async fn execute_agent_tool(
         &self,
         connection: &ConnectionConfig,
@@ -407,6 +479,10 @@ impl DbxBackend for LocalBackend {
         Ok(configs)
     }
 
+    async fn load_connection_group_paths(&self) -> Result<HashMap<String, Vec<String>>, String> {
+        Ok(self.state.storage.load_sidebar_layout().await?.map(connection_group_paths).unwrap_or_default())
+    }
+
     async fn execute_agent_tool(
         &self,
         connection: &ConnectionConfig,
@@ -577,6 +653,16 @@ impl DbxBackend for WebBackend {
             .json()
             .await
             .map_err(|error| format!("Invalid connection list response: {error}"))
+    }
+
+    async fn load_connection_group_paths(&self) -> Result<HashMap<String, Vec<String>>, String> {
+        let layout = self
+            .request(reqwest::Method::GET, "/api/layout/sidebar", None)
+            .await?
+            .json::<Option<Value>>()
+            .await
+            .map_err(|error| format!("Invalid sidebar layout response: {error}"))?;
+        Ok(layout.map(connection_group_paths).unwrap_or_default())
     }
 
     async fn execute_agent_tool(
@@ -1532,6 +1618,86 @@ mod tests {
         assert_eq!(parse_database_type("Postgres").unwrap(), DatabaseType::Postgres);
         assert_eq!(parse_database_type("mongodb").unwrap(), DatabaseType::MongoDb);
         assert!(parse_database_type("unknown").is_err());
+    }
+
+    #[test]
+    fn parses_nested_current_and_legacy_connection_group_paths() {
+        let paths = connection_group_paths(json!({
+            "groups": [
+                { "id": "project", "name": "Project" },
+                { "id": "staging", "name": "Staging" },
+                { "id": "legacy", "name": "Legacy" }
+            ],
+            "order": [
+                {
+                    "type": "group",
+                    "id": "project",
+                    "children": [
+                        {
+                            "type": "group",
+                            "id": "staging",
+                            "children": [{ "type": "connection", "id": "nested" }]
+                        },
+                        { "type": "connection", "id": "grouped" }
+                    ]
+                },
+                { "type": "group", "id": "legacy", "connectionIds": ["legacy-connection"] },
+                {
+                    "type": "group",
+                    "id": "missing-group",
+                    "children": [{ "type": "connection", "id": "dangling" }]
+                },
+                { "type": "connection", "id": "root" }
+            ]
+        }));
+
+        assert_eq!(paths.get("nested"), Some(&vec!["Project".to_string(), "Staging".to_string()]));
+        assert_eq!(paths.get("grouped"), Some(&vec!["Project".to_string()]));
+        assert_eq!(paths.get("legacy-connection"), Some(&vec!["Legacy".to_string()]));
+        assert_eq!(paths.get("root"), Some(&Vec::new()));
+        assert!(!paths.contains_key("dangling"));
+    }
+
+    #[test]
+    fn malformed_sidebar_layout_has_no_group_paths() {
+        assert!(connection_group_paths(json!({ "groups": "invalid", "order": [] })).is_empty());
+    }
+
+    #[tokio::test]
+    async fn web_backend_loads_connection_group_paths_from_sidebar_layout() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_sender, request_receiver) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            loop {
+                let count = stream.read(&mut buffer).unwrap();
+                request.extend_from_slice(&buffer[..count]);
+                if count == 0 || request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            request_sender.send(String::from_utf8(request).unwrap().lines().next().unwrap().to_string()).unwrap();
+            let body = r#"{"groups":[{"id":"project","name":"Project"}],"order":[{"type":"group","id":"project","children":[{"type":"connection","id":"web-db"}]}]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+
+        let backend = WebBackend::new(format!("http://{address}"), String::new()).unwrap();
+        backend.auth.lock().await.checked = true;
+        let paths = backend.load_connection_group_paths().await.unwrap();
+
+        server.join().unwrap();
+        assert_eq!(request_receiver.recv().unwrap(), "GET /api/layout/sidebar HTTP/1.1");
+        assert_eq!(paths.get("web-db"), Some(&vec!["Project".to_string()]));
     }
 
     #[test]
