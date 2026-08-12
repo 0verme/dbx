@@ -6,8 +6,10 @@ describe("databaseObjectCapabilities", () => {
     expect(sidebarObjectKindsForDatabase("dameng")).toEqual(expect.arrayContaining(["MATERIALIZED_VIEW", "SEQUENCE", "PACKAGE", "PACKAGE_BODY"]));
   });
 
-  it("exposes synonyms for Xugu only", () => {
+  it("exposes synonyms only for database paths with synonym metadata", () => {
+    expect(sidebarObjectKindsForDatabase("oracle")).toContain("SYNONYM");
     expect(sidebarObjectKindsForDatabase("xugu")).toContain("SYNONYM");
+    expect(sidebarObjectKindsForDatabase("oceanbase-oracle")).not.toContain("SYNONYM");
     expect(sidebarObjectKindsForDatabase("postgres")).not.toContain("SYNONYM");
   });
 
