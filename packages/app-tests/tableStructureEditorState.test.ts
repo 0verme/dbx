@@ -643,6 +643,15 @@ test("preserves a restored structure draft tab without an explicit initial tab",
   assert.match(restoredDraftBlock[0], /restoreDraft\(props\.draft\);[\s\S]*applyInitialStructureTab\(false\);/);
 });
 
+test("renders editable structure tables with flat cell controls", () => {
+  const source = readFileSync("apps/desktop/src/components/structure/TableStructureEditor.vue", "utf8");
+
+  assert.equal(source.match(/class="structure-edit-grid /g)?.length, 2);
+  assert.match(source, /const structureControlClass = "structure-grid-control /);
+  assert.match(source, /\.structure-edit-grid :deep\(\.structure-grid-control\) \{[\s\S]*?border-radius: 0;/);
+  assert.match(source, /\.structure-edit-grid > tbody > tr > td:focus-within \{/);
+});
+
 test("supports DDL tab in edit mode", () => {
   assert.equal(isStructureMetadataTabSupported("ddl", fullCapabilities, false), true);
 });
