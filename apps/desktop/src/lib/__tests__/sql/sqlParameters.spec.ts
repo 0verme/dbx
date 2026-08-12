@@ -521,6 +521,58 @@ describe("Oracle and Dameng trigger pseudo-records", () => {
 });
 
 describe("substituteSqlParameters", () => {
+  it("decodes XML comparison entities when substituting MyBatis parameters", () => {
+    const sql = "select * from orders where created_at &gt;= #{start} and created_at &lt; #{end} and owner_id = #{owner_id} or reviewer_id = #{owner_id}";
+
+    expect(
+      substituteSqlParameters(
+        sql,
+        {
+          start: { kind: "string", value: "2026-01-01" },
+          end: { kind: "string", value: "2026-02-01" },
+          owner_id: { kind: "number", value: "7" },
+        },
+        { enabledSyntaxes: ["mybatis"] },
+      ),
+    ).toBe("select * from orders where created_at >= '2026-01-01' and created_at < '2026-02-01' and owner_id = 7 or reviewer_id = 7");
+  });
+
+  it("only decodes exact comparison entities in MyBatis SQL source fragments", () => {
+    const sql = "select '&amp;', '&quot;', '&apos;', '&amp;lt;', '&LT;', '&lt', '&lt;source&gt;', #{raw_value}, #{string_value} where score &gt; #{minimum} /* &lt;source-comment&gt; */";
+
+    expect(
+      substituteSqlParameters(
+        sql,
+        {
+          raw_value: { kind: "raw", value: "'&lt;raw&gt;'" },
+          string_value: { kind: "string", value: "&lt;string&gt;" },
+          minimum: { kind: "number", value: "10" },
+        },
+        { enabledSyntaxes: ["mybatis"] },
+      ),
+    ).toBe("select '&amp;', '&quot;', '&apos;', '&amp;lt;', '&LT;', '&lt', '<source>', '&lt;raw&gt;', '&lt;string&gt;' where score > 10 /* <source-comment> */");
+  });
+
+  it("does not decode XML entities without an enabled valid MyBatis replacement", () => {
+    const mybatisSql = "select * from orders where total &gt; #{minimum} and owner = ${owner}";
+    const shellSql = "select * from orders where total &lt; ${maximum}";
+    const invalidMybatisSql = "select * from orders where total &gt; #{1minimum} and owner = ${owner}";
+    const otherSyntaxSql = "select ?, :named, @sql_server_name where total &gt; 10";
+    const plainSql = "select '&lt;plain&gt;'";
+
+    expect(substituteSqlParameters(mybatisSql, { owner: { kind: "string", value: "alice" } }, { enabledSyntaxes: ["shell"] })).toBe("select * from orders where total &gt; #{minimum} and owner = 'alice'");
+    expect(substituteSqlParameters(shellSql, { maximum: { kind: "number", value: "10" } }, { enabledSyntaxes: ["shell"] })).toBe("select * from orders where total &lt; 10");
+    expect(substituteSqlParameters(invalidMybatisSql, { owner: { kind: "string", value: "alice" } })).toBe("select * from orders where total &gt; #{1minimum} and owner = 'alice'");
+    expect(
+      substituteSqlParameters(otherSyntaxSql, {
+        "?1": { kind: "number", value: "1" },
+        named: { kind: "number", value: "2" },
+        sql_server_name: { kind: "number", value: "3" },
+      }),
+    ).toBe("select 1, 2, 3 where total &gt; 10");
+    expect(substituteSqlParameters(plainSql, {})).toBe(plainSql);
+  });
+
   it("replaces placeholders with SQL literals", () => {
     const sql = "select * from t where dt >= ${start_date} and amount > ${amount} and enabled = ${enabled}";
     expect(

@@ -166,19 +166,24 @@ export function extractSqlParameterDescriptors(sql: string, options?: SqlParamet
 export function substituteSqlParameters(sql: string, values: Record<string, SqlParameterInput>, options?: SqlParameterOptions): string {
   const occurrences = findSqlParameterOccurrences(sql, options);
   if (!occurrences.length) return sql;
+  const decodeSourceFragment = occurrences.some((occurrence) => occurrence.syntax === "mybatis") ? decodeMyBatisXmlComparisonEntities : (fragment: string) => fragment;
 
   let result = "";
   let cursor = 0;
   for (const occurrence of occurrences) {
-    result += sql.slice(cursor, occurrence.start);
+    result += decodeSourceFragment(sql.slice(cursor, occurrence.start));
     const input = values[occurrence.key] ?? { kind: "string", value: "" };
     // Embedded placeholders stay inside the surrounding SQL string, so their value
     // must be escaped as text instead of being wrapped in a second SQL literal.
     result += occurrence.replacement === "string-fragment" ? sqlParameterStringFragment(input) : sqlParameterLiteral(input);
     cursor = occurrence.end;
   }
-  result += sql.slice(cursor);
+  result += decodeSourceFragment(sql.slice(cursor));
   return result;
+}
+
+function decodeMyBatisXmlComparisonEntities(fragment: string): string {
+  return fragment.replace(/&(?:lt|gt);/g, (entity) => (entity === "&lt;" ? "<" : ">"));
 }
 
 export function sqlParameterLiteral(input: SqlParameterInput): string {
