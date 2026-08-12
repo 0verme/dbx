@@ -24,7 +24,7 @@ use crate::db;
 use crate::db::agent_driver::{AgentCallError, AgentErrorStage, AgentOperationOutcome};
 use crate::models::connection::{ConnectionConfig, DatabaseType};
 use crate::query_execution_sql::is_write_sql;
-use crate::sql::{split_sql_batches, split_sql_statements};
+use crate::sql::{split_sql_batches, split_sql_statements, starts_with_executable_sql_keyword_for_database};
 use crate::sql_dialect::{resolve_for_db, CAP_TRANSACTIONAL_DDL};
 use crate::sql_risk::{classify_sql_risk_for_database, SqlRisk};
 
@@ -2280,7 +2280,14 @@ pub async fn execute_multi_core_with_options_for_client_and_progress_typed(
         }
     };
 
-    if statements.len() <= 1 && !(mysql_pool.is_some() && options.max_result_bytes.is_some_and(|value| value > 0)) {
+    if statements.len() == 1
+        && !mysql_single_statement_uses_batch_route(
+            db_type,
+            mysql_pool.is_some(),
+            &statements[0],
+            options.max_result_bytes,
+        )
+    {
         let single_sql = statements.into_iter().next().unwrap_or_default();
         return single_statement_multi_result(
             execute_sql_statement_with_options_typed(
@@ -2381,6 +2388,18 @@ fn single_statement_multi_result(
     result: Result<db::QueryResult, QueryExecutionError>,
 ) -> Result<Vec<ExecuteMultiResult>, QueryExecutionError> {
     result.map(|result| vec![result.into()])
+}
+
+fn mysql_single_statement_uses_batch_route(
+    db_type: Option<DatabaseType>,
+    has_mysql_pool: bool,
+    sql: &str,
+    max_result_bytes: Option<usize>,
+) -> bool {
+    has_mysql_pool
+        && (max_result_bytes.is_some_and(|value| value > 0)
+            || (db_type == Some(DatabaseType::Mysql)
+                && starts_with_executable_sql_keyword_for_database(sql, &["CALL"], DatabaseType::Mysql)))
 }
 
 trait MysqlBatchStatementExecutor {
@@ -2492,6 +2511,14 @@ fn mysql_non_result_batch_end(
         end += 1;
     }
     end.max(start + 1)
+}
+
+fn mysql_non_result_pipeline_enabled(
+    statement_count: usize,
+    continue_on_error: bool,
+    mode: crate::connection::MysqlMode,
+) -> bool {
+    statement_count > 1 && !continue_on_error && mode == crate::connection::MysqlMode::Normal
 }
 
 async fn execute_mysql_batch_statements<E>(
@@ -2622,7 +2649,8 @@ async fn execute_multi_mysql(
     let bare = mode == crate::connection::MysqlMode::Bare;
     let max_rows = options.max_rows;
     let max_result_bytes = options.max_result_bytes.filter(|value| *value > 0);
-    let pipeline_non_result_statements = !options.continue_on_error && mode == crate::connection::MysqlMode::Normal;
+    let pipeline_non_result_statements =
+        mysql_non_result_pipeline_enabled(statements.len(), options.continue_on_error, mode);
     let mut conn = match db::mysql::get_conn_with_health_check_with_cancel(
         pool,
         operation_budget.checkout_timeout,
@@ -5398,6 +5426,53 @@ for line in sys.stdin:
             ),
             2
         );
+    }
+
+    #[test]
+    fn mysql_single_call_uses_multi_result_route() {
+        assert!(mysql_single_statement_uses_batch_route(
+            Some(DatabaseType::Mysql),
+            true,
+            "# generated call\nCALL testA()",
+            None,
+        ));
+    }
+
+    #[test]
+    fn ordinary_mysql_single_statements_keep_singular_route() {
+        for sql in ["SELECT 1", "SHOW TABLES", "UPDATE users SET active = 1"] {
+            assert!(!mysql_single_statement_uses_batch_route(Some(DatabaseType::Mysql), true, sql, None));
+        }
+    }
+
+    #[test]
+    fn mysql_call_route_requires_native_mysql_type_and_pool() {
+        assert!(!mysql_single_statement_uses_batch_route(Some(DatabaseType::Doris), true, "CALL testA()", None,));
+        assert!(!mysql_single_statement_uses_batch_route(Some(DatabaseType::Mysql), false, "CALL testA()", None,));
+    }
+
+    #[test]
+    fn mysql_result_byte_limit_keeps_existing_batch_route() {
+        assert!(mysql_single_statement_uses_batch_route(
+            Some(DatabaseType::Mysql),
+            true,
+            "SELECT * FROM users",
+            Some(1024),
+        ));
+        assert!(!mysql_single_statement_uses_batch_route(
+            Some(DatabaseType::Mysql),
+            true,
+            "SELECT * FROM users",
+            Some(0),
+        ));
+    }
+
+    #[test]
+    fn single_mysql_batch_route_never_probes_non_result_pipeline_limits() {
+        assert!(!mysql_non_result_pipeline_enabled(1, false, crate::connection::MysqlMode::Normal));
+        assert!(mysql_non_result_pipeline_enabled(2, false, crate::connection::MysqlMode::Normal));
+        assert!(!mysql_non_result_pipeline_enabled(2, true, crate::connection::MysqlMode::Normal));
+        assert!(!mysql_non_result_pipeline_enabled(2, false, crate::connection::MysqlMode::Bare));
     }
 
     #[tokio::test]
