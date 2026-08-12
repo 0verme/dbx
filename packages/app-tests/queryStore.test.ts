@@ -5,6 +5,7 @@ import { isReactive, nextTick, toRaw } from "vue";
 import { decodeQueryResultArchive } from "../../apps/desktop/src/lib/query/queryResultArchive.ts";
 import { analyzeEditableQueryEditability } from "../../apps/desktop/src/lib/sql/sqlAnalysis.ts";
 import { resultSqlForGrid } from "../../apps/desktop/src/lib/tabs/tabPresentation.ts";
+import { dataGridColumnCommentFor } from "../../apps/desktop/src/lib/dataGrid/dataGridColumnLookup.ts";
 import { parseMongoCommand } from "../../apps/desktop/src/lib/mongo/mongoShellCommand.ts";
 import { useExportTracker } from "../../apps/desktop/src/composables/useExportTracker.ts";
 import { resolveHistorySqlRestoreTarget } from "../../apps/desktop/src/lib/history/historyRestoreTarget.ts";
@@ -95,6 +96,14 @@ function sparkConn(id: string): ConnectionConfig {
   return {
     ...conn(id),
     db_type: "spark",
+    port: 10000,
+  };
+}
+
+function hiveConn(id: string): ConnectionConfig {
+  return {
+    ...conn(id),
+    db_type: "hive",
     port: 10000,
   };
 }
@@ -2379,6 +2388,99 @@ test("keeps joined query read-only when multiple source tables are writable cand
     assert.equal(tab?.queryAnalysis, undefined);
     assert.equal(tab?.tableMeta, undefined);
     assert.equal(tab?.querySourceColumns, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
+});
+
+test("keeps Hive keyless metadata and matches Chinese comments only to server leaf labels", async () => {
+  const restoreStorage = installMemoryStorage();
+  setActivePinia(createPinia());
+  const connectionStore = useConnectionStore();
+  const store = useQueryStore();
+  const originalFetch = globalThis.fetch;
+  const sql = "select e.* from events e";
+
+  connectionStore.addEphemeralConnection(hiveConn("hive-leaf-comments"));
+
+  globalThis.fetch = withConnectionHealthMock(async (input, init) => {
+    const url = String(input);
+    if (url === "/api/query/execute-multi") {
+      return new Response(
+        JSON.stringify([
+          {
+            columns: ["id", "name"],
+            rows: [[1, "张三"]],
+            affected_rows: 0,
+            execution_time_ms: 1,
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url === "/api/query/analyze-editability") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      assert.equal(body.sql, sql);
+      return new Response(
+        JSON.stringify({
+          editable: true,
+          analysis: {
+            schema: undefined,
+            schemaQuoted: false,
+            tableName: "events",
+            tableNameQuoted: false,
+            tableAlias: "e",
+            selectStar: false,
+            columns: [{ star: true, sourceQualifier: "e", resultName: "*", expression: "e.*" }],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.startsWith("/api/schema/columns?")) {
+      return new Response(
+        JSON.stringify([
+          { name: "id", data_type: "bigint", is_nullable: true, column_default: null, is_primary_key: false, extra: null, comment: "事件编号" },
+          { name: "name", data_type: "string", is_nullable: true, column_default: null, is_primary_key: false, extra: null, comment: "显示名称" },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url === "/api/query/prepare-pagination-plan") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(JSON.stringify({ sqlToExecute: body.options.sql, useAgentResultSession: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("unexpected request", { status: 500 });
+  });
+
+  try {
+    const tabId = store.createTab("hive-leaf-comments", "analytics", "Query 1", "query");
+    await store.executeTabSql(tabId, sql);
+
+    const tab = store.tabs.find((item) => item.id === tabId);
+    await waitFor(() => tab?.tableMeta?.tableName === "events");
+    assert.deepEqual(tab?.result?.columns, ["id", "name"]);
+    assert.deepEqual(tab?.querySourceColumns, ["id", "name"]);
+    assert.deepEqual(tab?.tableMeta?.primaryKeys, []);
+    assert.equal(tab?.queryEditabilityReason, undefined);
+
+    const commentByColumn = new Map<string, string>();
+    for (const column of tab?.tableMeta?.columns ?? []) {
+      if (column.comment) {
+        commentByColumn.set(column.name, column.comment);
+        commentByColumn.set(column.name.toLowerCase(), column.comment);
+      }
+    }
+    assert.deepEqual(
+      ["id", "id_1"].map((column) => dataGridColumnCommentFor(commentByColumn, column)),
+      ["事件编号", undefined],
+    );
+    assert.equal(dataGridColumnCommentFor(commentByColumn, "events.id"), undefined);
+    assert.equal(dataGridColumnCommentFor(commentByColumn, "total + 1"), undefined);
   } finally {
     globalThis.fetch = originalFetch;
     restoreStorage();
