@@ -2100,7 +2100,7 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
 
     <template v-else-if="activeTab.mode === 'mysql-dashboard'">
       <div class="min-h-0 flex-1">
-        <MySqlDashboard :key="activeTab.id" :connection-id="activeTab.connectionId" />
+        <MySqlDashboard :key="activeTab.id" :connection-id="activeTab.connectionId" :client-session-id="activeTab.id" />
       </div>
     </template>
 
