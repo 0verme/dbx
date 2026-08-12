@@ -14,6 +14,7 @@ import {
   generateUniqueIndexName,
   getColumnEditorControls,
   getDataTypeOptions,
+  defaultNewColumnDataType,
   isDataTypeLengthDisabled,
   isProtectedManticoreIdColumn,
   isDamengIdentityCompatibleDataType,
@@ -479,11 +480,88 @@ test("normalizes temporal precision when combining data types", () => {
 });
 
 test("returns data type options for compatible table structure editors", () => {
-  assert.deepEqual(getDataTypeOptions("dameng"), getDataTypeOptions("oracle"));
   assert.deepEqual(getDataTypeOptions("gaussdb"), getDataTypeOptions("postgres"));
   assert.deepEqual(getDataTypeOptions("doris"), getDataTypeOptions("mysql"));
-  assert.equal(getDataTypeOptions("dameng").includes("varchar2"), true);
   assert.equal(getDataTypeOptions("sqlserver").includes("nvarchar"), true);
+});
+
+test("returns the complete Dameng fallback data type options", () => {
+  const options = getDataTypeOptions("dameng");
+  const expected = [
+    "number",
+    "numeric",
+    "decimal",
+    "dec",
+    "integer",
+    "int",
+    "bigint",
+    "smallint",
+    "tinyint",
+    "byte",
+    "float",
+    "double",
+    "real",
+    "double precision",
+    "bit",
+    "binary",
+    "varbinary",
+    "raw",
+    "char",
+    "character",
+    "varchar",
+    "varchar2",
+    "rowid",
+    "bool",
+    "boolean",
+    "date",
+    "time",
+    "timestamp",
+    "datetime",
+    "time with time zone",
+    "timestamp with time zone",
+    "timestamp with local time zone",
+    "interval year",
+    "interval month",
+    "interval year to month",
+    "interval day",
+    "interval hour",
+    "interval minute",
+    "interval second",
+    "interval day to hour",
+    "interval day to minute",
+    "interval day to second",
+    "interval hour to minute",
+    "interval hour to second",
+    "interval minute to second",
+    "text",
+    "long",
+    "longvarchar",
+    "image",
+    "longvarbinary",
+    "blob",
+    "clob",
+    "bfile",
+    "json",
+    "jsonb",
+  ];
+
+  for (const type of expected) assert.equal(options.includes(type), true, `missing Dameng type: ${type}`);
+  for (const oracleOnly of ["binary_float", "binary_double", "nvarchar2", "nclob", "urowid", "xmltype", "sdo_geometry", "vector"]) {
+    assert.equal(options.includes(oracleOnly), false, `unexpected Oracle-only type: ${oracleOnly}`);
+  }
+});
+
+test("keeps Oracle data type options independent from Dameng", () => {
+  const oracle = getDataTypeOptions("oracle");
+
+  assert.equal(oracle.includes("binary_float"), true);
+  assert.equal(oracle.includes("varchar"), false);
+  assert.equal(oracle.includes("longvarchar"), false);
+  assert.equal(oracle.includes("jsonb"), false);
+});
+
+test("keeps the existing Dameng new-column default", () => {
+  assert.equal(defaultNewColumnDataType("dameng"), "varchar2(255)");
 });
 
 test("returns PostgreSQL array type options without serial pseudo-types", () => {

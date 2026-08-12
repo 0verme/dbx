@@ -199,6 +199,63 @@ export const DATA_TYPE_OPTIONS: Record<string, string[]> = {
     "xmltype",
     "sdo_geometry",
   ],
+  dameng: [
+    "number",
+    "numeric",
+    "decimal",
+    "dec",
+    "integer",
+    "int",
+    "bigint",
+    "smallint",
+    "tinyint",
+    "byte",
+    "float",
+    "double",
+    "real",
+    "double precision",
+    "bit",
+    "binary",
+    "varbinary",
+    "raw",
+    "char",
+    "character",
+    "varchar2",
+    "varchar",
+    "rowid",
+    "bool",
+    "boolean",
+    "date",
+    "time",
+    "timestamp",
+    "datetime",
+    "time with time zone",
+    "timestamp with time zone",
+    "timestamp with local time zone",
+    "interval year",
+    "interval month",
+    "interval year to month",
+    "interval day",
+    "interval hour",
+    "interval minute",
+    "interval second",
+    "interval day to hour",
+    "interval day to minute",
+    "interval day to second",
+    "interval hour to minute",
+    "interval hour to second",
+    "interval minute to second",
+    "text",
+    "long",
+    "longvarchar",
+    "image",
+    "longvarbinary",
+    "blob",
+    "clob",
+    "bfile",
+    "json",
+    "jsonb",
+  ],
   clickhouse: [
     "Int8",
     "Int16",
@@ -301,7 +358,6 @@ const DATA_TYPE_OPTION_ALIASES: Partial<Record<DatabaseType, string>> = {
   vastbase: "postgres",
   kingbase: "postgres",
   firebird: "postgres",
-  dameng: "oracle",
   "oceanbase-oracle": "oracle",
   iris: "oracle",
   yashandb: "oracle",
@@ -1138,7 +1194,11 @@ export function defaultNewColumnDataType(dbType: DatabaseType | undefined, dataT
   }
 
   if (options.length > 0) {
-    const preferred = options.find((type) => /^(varchar|character varying|nvarchar)$/i.test(type.trim())) ?? options.find((type) => /^(string|clob|lvarchar|text)$/i.test(type.trim())) ?? options.find((type) => /^varchar/i.test(type.trim()));
+    const preferred =
+      (dbType === "dameng" ? options.find((type) => /^varchar2$/i.test(type.trim())) : undefined) ??
+      options.find((type) => /^(varchar|character varying|nvarchar)$/i.test(type.trim())) ??
+      options.find((type) => /^(string|clob|lvarchar|text)$/i.test(type.trim())) ??
+      options.find((type) => /^varchar/i.test(type.trim()));
     if (preferred) {
       return combineDataTypeForDatabase(dbType, preferred, getDefaultLengthForType(dbType, preferred));
     }
