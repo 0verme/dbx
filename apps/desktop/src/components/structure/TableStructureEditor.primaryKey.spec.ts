@@ -68,10 +68,16 @@ vi.mock("@/components/ui/input", async () => {
     Input: defineComponent({
       name: "Input",
       inheritAttrs: false,
+      props: { modelValue: { type: [String, Number], default: "" } },
+      emits: ["update:modelValue"],
       setup:
-        (_props, { attrs }) =>
+        (props, { attrs, emit }) =>
         () =>
-          h("input", attrs),
+          h("input", {
+            ...attrs,
+            value: props.modelValue,
+            onInput: (event: Event) => emit("update:modelValue", (event.target as HTMLInputElement).value),
+          }),
     }),
   };
 });
@@ -316,6 +322,12 @@ function columnCheckbox(root: HTMLElement, header: string): HTMLInputElement {
   return checkbox;
 }
 
+function buttonWithText(root: HTMLElement, text: string): HTMLButtonElement {
+  const button = Array.from(root.querySelectorAll("button")).find((item) => item.textContent?.includes(text));
+  if (!button) throw new Error(`Missing ${text} button`);
+  return button;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.loadObjectDdl.mockResolvedValue({ ddl: "CREATE TABLE users (id bigint)", cacheStatus: "remote" });
@@ -324,6 +336,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const app of mountedApps.splice(0)) app.unmount();
   document.body.innerHTML = "";
 });
@@ -398,6 +411,10 @@ describe("TableStructureEditor primary key editing", () => {
     );
     nullable.checked = true;
     nullable.dispatchEvent(new Event("change", { bubbles: true }));
+    await nextTick();
+
+    expect(buttonWithText(root, "structureEditor.copySql").disabled).toBe(true);
+    expect(buttonWithText(root, "structureEditor.apply").disabled).toBe(true);
 
     await vi.waitFor(() => expect(mocks.buildTableStructureChangeSql).toHaveBeenCalledTimes(2));
     expect(root.textContent).toContain(firstSql);
@@ -405,6 +422,38 @@ describe("TableStructureEditor primary key editing", () => {
 
     resolveLatestPreview({ statements: ["ALTER TABLE users ALTER COLUMN id DROP NOT NULL;"], warnings: [] });
     await vi.waitFor(() => expect(root.textContent).toContain("ALTER TABLE users ALTER COLUMN id DROP NOT NULL;"));
+    expect(buttonWithText(root, "structureEditor.copySql").disabled).toBe(false);
+    expect(buttonWithText(root, "structureEditor.apply").disabled).toBe(false);
+  });
+
+  it("debounces SQL preview generation while editing a column name", async () => {
+    vi.useFakeTimers();
+    const root = await mountEditor("dameng");
+    const nameInput = root.querySelector<HTMLInputElement>("[data-column-name-input]");
+    if (!nameInput) throw new Error("Missing column name input");
+
+    nameInput.value = "user";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(200);
+
+    nameInput.value = "user_id";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(299);
+
+    expect(mocks.buildTableStructureChangeSql).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.resolve();
+    await nextTick();
+
+    expect(mocks.buildTableStructureChangeSql).toHaveBeenCalledTimes(1);
+    expect(mocks.buildTableStructureChangeSql).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        columns: [expect.objectContaining({ name: "user_id" })],
+      }),
+    );
   });
 });
 

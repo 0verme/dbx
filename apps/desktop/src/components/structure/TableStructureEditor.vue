@@ -100,6 +100,7 @@ const ddlScrollerRef = ref<StructureScrollerRef>();
 const dynamicDataTypeOptionsCache = new Map<string, string[]>();
 
 const sqlHighlighter = ref<SqlHighlighter>();
+const SQL_PREVIEW_DEBOUNCE_MS = 300;
 onMounted(async () => {
   sqlHighlighter.value = await createShikiSqlHighlighter({
     appearance: () => (isDark.value ? "dark" : "light"),
@@ -137,6 +138,7 @@ const loading = ref(false);
 const saving = ref(false);
 const postSaveRefreshing = ref(false);
 const sqlPreviewLoading = ref(false);
+const sqlPreviewPending = ref(false);
 const indexesLoading = ref(false);
 const foreignKeysLoading = ref(false);
 const triggersLoading = ref(false);
@@ -1030,6 +1032,7 @@ function clearSqlPreviewState() {
   sqlPreviewRequestId++;
   deferredSqlPreviewRefresh = false;
   sqlPreviewLoading.value = false;
+  sqlPreviewPending.value = false;
   pendingStatements.value = [];
   warnings.value = [];
   sqliteSchemaRevision.value = undefined;
@@ -1134,9 +1137,10 @@ function scheduleSqlPreviewRefresh() {
     warnings.value = [];
     sqliteSchemaRevision.value = undefined;
     sqlPreviewLoading.value = false;
+    sqlPreviewPending.value = false;
     return;
   }
-  sqlPreviewLoading.value = true;
+  sqlPreviewPending.value = true;
   if (hydratingRestoredDraft || needsColumnDraftMetadataHydration()) return;
   if (!isCreateMode.value && secondaryMetadataLoading.value) {
     deferredSqlPreviewRefresh = true;
@@ -1145,7 +1149,7 @@ function scheduleSqlPreviewRefresh() {
   sqlPreviewDebounceTimer = setTimeout(() => {
     sqlPreviewDebounceTimer = undefined;
     void refreshSqlPreview();
-  }, 80);
+  }, SQL_PREVIEW_DEBOUNCE_MS);
 }
 
 function structureChangeOptions(): BuildTableStructureChangeSqlOptions {
@@ -1169,6 +1173,7 @@ async function refreshSqlPreview() {
     warnings.value = [];
     sqliteSchemaRevision.value = undefined;
     sqlPreviewLoading.value = false;
+    sqlPreviewPending.value = false;
     return;
   }
   sqlPreviewLoading.value = true;
@@ -1185,7 +1190,10 @@ async function refreshSqlPreview() {
     warnings.value = [e?.message || String(e)];
     sqliteSchemaRevision.value = undefined;
   } finally {
-    if (requestId === sqlPreviewRequestId) sqlPreviewLoading.value = false;
+    if (requestId === sqlPreviewRequestId) {
+      sqlPreviewLoading.value = false;
+      sqlPreviewPending.value = false;
+    }
   }
 }
 
@@ -1196,6 +1204,7 @@ const canApply = computed(
     !postSaveRefreshing.value &&
     !secondaryMetadataLoading.value &&
     !sqlPreviewLoading.value &&
+    !sqlPreviewPending.value &&
     pendingStatements.value.length > 0 &&
     warnings.value.length === 0 &&
     (!hasSqliteTypeChange.value || !!sqliteSchemaRevision.value) &&
@@ -1213,6 +1222,7 @@ function resetState() {
   saving.value = false;
   postSaveRefreshing.value = false;
   sqlPreviewLoading.value = false;
+  sqlPreviewPending.value = false;
   indexesLoading.value = false;
   foreignKeysLoading.value = false;
   triggersLoading.value = false;
@@ -2273,7 +2283,7 @@ async function recordStructureHistory(sql: string, start: number, success: boole
 }
 
 async function copyPreviewSql() {
-  if (!previewSqlText.value.trim()) return;
+  if (sqlPreviewPending.value || sqlPreviewLoading.value || !previewSqlText.value.trim()) return;
   try {
     await copyToClipboard(previewSqlText.value);
     toast(t("grid.copied"));
@@ -2335,6 +2345,8 @@ async function applyChanges() {
       loadedMetadataFacets.clear();
     }
     toast(t("structureEditor.saved"), 2500);
+    sqlPreviewPending.value = false;
+    sqlPreviewLoading.value = false;
     pendingStatements.value = [];
     warnings.value = [];
     sqliteSchemaRevision.value = undefined;
@@ -3360,7 +3372,7 @@ watch([activeTab, ddlLoading], ([tab, loading]) => {
         <div class="flex shrink-0 items-center justify-between border-b px-[var(--structure-cell-px)] py-[var(--structure-header-py)] text-[length:var(--structure-font-size)] font-medium">
           <div class="flex items-center gap-1.5">
             <span>{{ t("structureEditor.sqlPreview") }}</span>
-            <Badge v-if="!saving && pendingStatements.length && warnings.length === 0" variant="outline" class="h-4 px-1 text-[10px]">
+            <Badge v-if="!saving && pendingStatements.length && warnings.length === 0" variant="outline" :class="['h-4 px-1 text-[10px]', sqlPreviewPending || sqlPreviewLoading ? 'invisible' : '']" :aria-hidden="sqlPreviewPending || sqlPreviewLoading">
               <Check class="h-3 w-3" />
               {{ t("structureEditor.ready") }}
             </Badge>
@@ -3376,17 +3388,17 @@ watch([activeTab, ddlLoading], ([tab, loading]) => {
               <ChevronUp v-if="sqlPreviewCollapsed" :class="structureIconClass" />
               <ChevronDown v-else :class="structureIconClass" />
             </Button>
-            <Button variant="ghost" :class="structureToolbarButtonClass" :disabled="!previewSqlText.trim()" @click="copyPreviewSql">
+            <Button variant="ghost" :class="structureToolbarButtonClass" :disabled="sqlPreviewPending || sqlPreviewLoading || !previewSqlText.trim()" @click="copyPreviewSql">
               <Copy :class="[structureIconClass, 'mr-1']" />
               {{ t("structureEditor.copySql") }}
             </Button>
-            <Badge variant="secondary">
-              <Loader2 v-if="sqlPreviewLoading" class="h-3 w-3 animate-spin" />
+            <Badge variant="secondary" class="min-w-6 justify-center tabular-nums">
+              <Loader2 v-if="(sqlPreviewPending || sqlPreviewLoading) && !pendingStatements.length" class="h-3 w-3 animate-spin" />
               <span v-else>{{ pendingStatements.length }}</span>
             </Badge>
           </div>
         </div>
-        <div v-if="!sqlPreviewCollapsed" class="min-h-0 flex-1 overflow-auto p-2.5">
+        <div v-if="!sqlPreviewCollapsed" class="min-h-0 flex-1 overflow-auto p-2.5" :aria-busy="sqlPreviewPending || sqlPreviewLoading">
           <div v-if="hasSqliteTypeChange" class="mb-2 flex gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-[var(--structure-cell-px)] py-[var(--structure-cell-py)] text-[length:var(--structure-font-size)] text-primary">
             <Info :class="[structureIconClass, 'mt-0.5 shrink-0']" />
             <span>{{ t("structureEditor.sqliteRebuildNotice") }}</span>
@@ -3398,6 +3410,9 @@ watch([activeTab, ddlLoading], ([tab, loading]) => {
             </div>
           </div>
           <pre v-if="pendingStatements.length" class="select-text whitespace-pre-wrap break-words rounded-md bg-muted/40 p-2.5 font-mono text-[calc(var(--structure-font-size)+1px)] leading-5" v-html="highlightedSql" />
+          <div v-else-if="sqlPreviewPending || sqlPreviewLoading" class="flex h-full items-center justify-center text-muted-foreground">
+            <Loader2 class="h-4 w-4 animate-spin" />
+          </div>
           <div v-else class="flex h-full items-center justify-center text-[length:var(--structure-font-size)] text-muted-foreground">
             {{ t("structureEditor.noChanges") }}
           </div>
