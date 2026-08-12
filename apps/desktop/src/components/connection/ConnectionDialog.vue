@@ -1045,6 +1045,13 @@ const driverProfiles: Record<
     label: "Easysearch",
     icon: "easysearch",
   },
+  meilisearch: {
+    type: "meilisearch",
+    port: 7700,
+    user: "",
+    label: "Meilisearch",
+    icon: "meilisearch",
+  },
   hbase: { type: "hbase", port: 8080, user: "", label: "Apache HBase", icon: "hbase" },
   qdrant: { type: "qdrant", port: 6333, user: "", label: "Qdrant", icon: "qdrant" },
   milvus: { type: "milvus", port: 19530, user: "root", label: "Milvus", icon: "milvus" },
@@ -2707,6 +2714,7 @@ const iconTypeMap: Record<string, string> = {
   oracle: "oracle",
   elasticsearch: "elasticsearch",
   easysearch: "easysearch",
+  meilisearch: "meilisearch",
   hbase: "hbase",
   qdrant: "qdrant",
   milvus: "milvus",
@@ -2793,6 +2801,7 @@ const dbOptions: DbOption[] = [
   { value: "sqlserver", label: "SQL Server" },
   { value: "elasticsearch", label: "Elasticsearch" },
   { value: "easysearch", label: "Easysearch" },
+  { value: "meilisearch", label: "Meilisearch" },
   { value: "hbase", label: "Apache HBase" },
   { value: "qdrant", label: "Qdrant" },
   { value: "milvus", label: "Milvus" },
@@ -2900,7 +2909,7 @@ const dbCategoryDefinitions: Array<{
   {
     key: "document",
     titleKey: "connection.databaseCategoryDocument",
-    optionValues: ["mongodb", "redis", "elasticsearch", "easysearch", "hbase", "manticoresearch", "cassandra"],
+    optionValues: ["mongodb", "redis", "elasticsearch", "easysearch", "meilisearch", "hbase", "manticoresearch", "cassandra"],
   },
   {
     key: "graph_ai",
@@ -3040,6 +3049,7 @@ const tlsCapableDatabaseTypes = new Set<DatabaseType>([
   "clickhouse",
   "elasticsearch",
   "easysearch",
+  "meilisearch",
   "hbase",
   "qdrant",
   "milvus",
@@ -3841,6 +3851,11 @@ function connectionConfigForSubmit(id: string, generatedName = ""): ConnectionCo
     config.username = config.username.trim();
   } else if (config.db_type === "elasticsearch") {
     config.external_config = buildElasticsearchExternalConfig(elasticsearchConnectionMode.value, elasticsearchKibanaBasePath.value, elasticsearchConnectivityCheckPath.value, elasticsearchIndexGroupingPattern.value);
+  } else if (config.db_type === "meilisearch") {
+    config.username = "";
+    config.password = config.password.trim();
+    config.database = undefined;
+    config.external_config = undefined;
   } else if (config.db_type === "sqlserver") {
     config.external_config = sqlServerPortExplicitFromConfig(config) ? { portExplicit: true } : undefined;
   } else if (supportsGaussdbIdentifierQuoteStyle(config)) {
@@ -5570,7 +5585,7 @@ function openExternalUrl(url: string) {
                     @dblclick="goToConnectionStep(opt.value)"
                   >
                     <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/60 transition group-hover:bg-background">
-                      <DatabaseIcon :db-type="iconTypeMap[opt.value]" class="h-6 w-6" />
+                      <DatabaseIcon :db-type="iconTypeMap[opt.value] || opt.value" class="h-6 w-6" />
                     </span>
                     <span class="flex min-h-8 max-w-full items-center justify-center">
                       <span class="line-clamp-2 text-sm leading-4 font-medium">{{ opt.label }}</span>
@@ -5589,7 +5604,7 @@ function openExternalUrl(url: string) {
                     @click="onDbTypeChange(opt.value)"
                     @dblclick="goToConnectionStep(opt.value)"
                   >
-                    <DatabaseIcon :db-type="iconTypeMap[opt.value]" class="h-5 w-5 shrink-0" />
+                    <DatabaseIcon :db-type="iconTypeMap[opt.value] || opt.value" class="h-5 w-5 shrink-0" />
                     <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ opt.label }}</span>
                     <span v-if="isDbSearchActive" class="text-xs text-muted-foreground">{{ category.title }}</span>
                   </button>
@@ -6956,13 +6971,13 @@ function openExternalUrl(url: string) {
                     <Input v-model="form.informix_server" class="col-span-3" placeholder="ol_informix1170" />
                   </div>
 
-                  <div class="grid grid-cols-4 items-center gap-4">
+                  <div v-if="form.db_type !== 'meilisearch'" class="grid grid-cols-4 items-center gap-4">
                     <Label :class="connectionLabelClass">{{ t("connection.user") }}</Label>
                     <Input v-model="form.username" class="col-span-3" />
                   </div>
 
                   <div class="grid grid-cols-4 items-center gap-4">
-                    <Label :class="connectionLabelClass">{{ t("connection.password") }}</Label>
+                    <Label :class="connectionLabelClass">{{ form.db_type === "meilisearch" ? t("connection.mqAuthApiKey") : t("connection.password") }}</Label>
                     <PasswordInput v-model="form.password" class="col-span-3" />
                   </div>
 
@@ -6975,7 +6990,7 @@ function openExternalUrl(url: string) {
                     </label>
                   </div>
 
-                  <div v-if="form.db_type !== 'hbase'" class="grid grid-cols-4 items-center gap-4">
+                  <div v-if="form.db_type !== 'hbase' && form.db_type !== 'meilisearch'" class="grid grid-cols-4 items-center gap-4">
                     <Label :class="connectionLabelClass">{{ databaseLabel }}</Label>
                     <Input v-model="form.database" class="col-span-3" :placeholder="databasePlaceholder" />
                   </div>

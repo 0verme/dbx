@@ -474,7 +474,7 @@ POST /orders/_search
 
 HEAD /orders`;
 
-    for (const databaseType of ["elasticsearch", "easysearch"] as const) {
+    for (const databaseType of ["elasticsearch", "easysearch", "meilisearch"] as const) {
       expect(rangeSqlTexts(splitSqlStatementRanges(sql, databaseType))).toEqual(["GET /_nodes/stats/jvm?pretty", 'POST /orders/_search\n{\n  "query": { "match_all": {} }\n}', "HEAD /orders"]);
       expect(hasMultipleExecutionTargets(sql, databaseType)).toBe(true);
     }
@@ -1447,6 +1447,7 @@ describe("supportsExecutionTargetPicker", () => {
     expect(supportsExecutionTargetPicker("mongodb")).toBe(false);
     expect(supportsExecutionTargetPicker("elasticsearch")).toBe(true);
     expect(supportsExecutionTargetPicker("easysearch")).toBe(true);
+    expect(supportsExecutionTargetPicker("meilisearch")).toBe(true);
     expect(supportsExecutionTargetPicker("qdrant")).toBe(false);
     expect(supportsExecutionTargetPicker("milvus")).toBe(false);
     expect(supportsExecutionTargetPicker("weaviate")).toBe(false);

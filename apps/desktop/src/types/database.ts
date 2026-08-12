@@ -16,6 +16,7 @@ export type DatabaseType =
   | "oracle"
   | "elasticsearch"
   | "easysearch"
+  | "meilisearch"
   | "hbase"
   | "qdrant"
   | "milvus"
@@ -76,6 +77,10 @@ export type DatabaseType =
 
 export function isElasticsearchCompatibleDatabaseType(dbType?: DatabaseType): boolean {
   return dbType === "elasticsearch" || dbType === "easysearch";
+}
+
+export function isMeilisearchDatabaseType(dbType?: DatabaseType): boolean {
+  return dbType === "meilisearch";
 }
 
 export interface SqlSnippet {

@@ -1842,7 +1842,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
 
 function extendQueryEditorSelectionForView(currentView: EditorViewType): boolean {
   const databaseType = props.databaseType;
-  const language = databaseType === "redis" || databaseType === "mongodb" || databaseType === "elasticsearch" || databaseType === "victoriametrics" ? "text" : "sql";
+  const language = databaseType === "redis" || databaseType === "mongodb" || databaseType === "elasticsearch" || databaseType === "easysearch" || databaseType === "meilisearch" || databaseType === "victoriametrics" ? "text" : "sql";
   return extendQueryEditorSelection(currentView, {
     databaseType,
     dialect: sqlBehaviorDialect(),
@@ -2042,7 +2042,7 @@ function getInsertValueHintTableColumns(table: string, schema?: string, database
 
 function requestInsertValueHintTableColumns(table: string, schema?: string, database?: string) {
   if (!props.connectionId || props.database == null) return;
-  if (props.databaseType === "redis" || props.databaseType === "mongodb" || props.databaseType === "elasticsearch" || props.databaseType === "easysearch" || props.databaseType === "victoriametrics") return;
+  if (props.databaseType === "redis" || props.databaseType === "mongodb" || props.databaseType === "elasticsearch" || props.databaseType === "easysearch" || props.databaseType === "meilisearch" || props.databaseType === "victoriametrics") return;
   const cacheKey = insertHintCacheKey({ name: table, schema, database });
   const hasCachedColumns = props.databaseType === "sqlserver" ? cachedInsertValueHintColumnsByTable.has(cacheKey) : cachedColumnsByTable.has(cacheKey);
   if (hasCachedColumns || pendingInsertValueHintColumnLoads.has(cacheKey)) return;
@@ -2763,7 +2763,7 @@ async function refreshSemanticDiagnostics(options: { preserveOutsideRanges?: boo
     setSemanticDiagnostics([]);
     return;
   }
-  if (props.databaseType === "mongodb" || props.databaseType === "elasticsearch" || props.databaseType === "easysearch" || props.databaseType === "victoriametrics") {
+  if (props.databaseType === "mongodb" || props.databaseType === "elasticsearch" || props.databaseType === "easysearch" || props.databaseType === "meilisearch" || props.databaseType === "victoriametrics") {
     setSemanticDiagnostics([]);
     return;
   }
@@ -3098,7 +3098,7 @@ function localCompletionSchemasForDatabaseDisambiguation(completionContext: Retu
 }
 
 function shouldInsertSqlCompletionSpace(): boolean {
-  return props.databaseType !== "mongodb" && props.databaseType !== "redis" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "victoriametrics";
+  return props.databaseType !== "mongodb" && props.databaseType !== "redis" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "meilisearch" && props.databaseType !== "victoriametrics";
 }
 
 function completionOptionForItem(item: QueryCompletionItem) {
@@ -3285,6 +3285,7 @@ async function provideSqlCompletions(context: CompletionContext) {
   if (props.databaseType === "mongodb") {
     return provideMongoCompletions(currentState, position, explicit);
   }
+  if (props.databaseType === "meilisearch") return null;
   if (props.databaseType === "elasticsearch" || props.databaseType === "easysearch") {
     if (!isSqlLikeCompletionStatement(fullDoc, position, sqlCompletionDialectOptions())) {
       return provideElasticsearchCompletions(currentState, position, explicit);
@@ -3590,7 +3591,7 @@ function shouldStartSqlCompletionAfterInput(insertedText: string, removedText: s
   if (props.databaseType === "mongodb") {
     return !!(insertedText || removedText) && shouldAutoOpenMongoCompletion(fullDoc, position);
   }
-  if (props.databaseType === "victoriametrics") return false;
+  if (props.databaseType === "victoriametrics" || props.databaseType === "meilisearch") return false;
   if (props.databaseType === "redis" || props.databaseType === "elasticsearch" || props.databaseType === "easysearch") {
     // Preserve old character-based checks for non-SQL providers.
     if (!insertedText && removedText) {
@@ -4787,7 +4788,8 @@ onMounted(async () => {
       sqlSignatureComp.of(buildSqlSignatureExtension()),
       diagnosticComp.of(buildSqlDiagnosticExtension()),
       createInsertValueHintsExtension({
-        isEnabled: () => settingsStore.editorSettings.showInsertValueHints && props.databaseType !== "redis" && props.databaseType !== "mongodb" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "victoriametrics",
+        isEnabled: () =>
+          settingsStore.editorSettings.showInsertValueHints && props.databaseType !== "redis" && props.databaseType !== "mongodb" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "meilisearch" && props.databaseType !== "victoriametrics",
         getTableColumns: getInsertValueHintTableColumns,
         requestTableColumns: requestInsertValueHintTableColumns,
       }),
