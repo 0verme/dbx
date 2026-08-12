@@ -4372,6 +4372,7 @@ export default withEnglishFallback({
     type: "Tipo",
     value: "Valor",
     valuePlaceholder: "Digite o valor",
+    collectionValuePlaceholder: "Insira um array JSON ou valores separados por vírgula",
     preview: "Prévia SQL",
     execute: "Executar",
     kind: {

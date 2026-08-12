@@ -4582,6 +4582,7 @@ export default {
     type: "Type",
     value: "Value",
     valuePlaceholder: "Enter value",
+    collectionValuePlaceholder: "Enter a JSON array or comma-separated values",
     preview: "SQL Preview",
     execute: "Execute",
     kind: {
