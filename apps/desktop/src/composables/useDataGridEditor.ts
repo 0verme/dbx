@@ -183,6 +183,10 @@ export function clearDataGridPendingSnapshotsForTab(tabId: string) {
   }
 }
 
+export function clearDataGridPendingSnapshot(cacheKey: string) {
+  pendingChangesCache.delete(cacheKey);
+}
+
 export function useDataGridEditor(options: UseDataGridEditorOptions) {
   const connectionStore = useConnectionStore();
   const historyStore = useHistoryStore();

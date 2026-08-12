@@ -84,7 +84,7 @@ import { TABLE_FONT_SIZE_MAX, TABLE_FONT_SIZE_MIN, useSettingsStore, type DataGr
 import { useToast } from "@/composables/useToast";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { canCancelQueryExecution, queryExecutionLabelKey } from "@/lib/sql/queryExecutionState";
-import { databaseDisplayNameForTab, executionSummaryItems, queryResultExecutionSql, resultGridCacheKey, resultRunItems, resultSourceRange, resultSqlForGrid, statementExecutionMarkers, tabularResultItems, type ExecutionSummaryItem } from "@/lib/tabs/tabPresentation";
+import { databaseDisplayNameForTab, executionSummaryItems, queryResultExecutionSql, resultGridCacheKey, resultGridInstanceKey, resultRunItems, resultSourceRange, resultSqlForGrid, statementExecutionMarkers, tabularResultItems, type ExecutionSummaryItem } from "@/lib/tabs/tabPresentation";
 import { defaultQueryResultArchiveFileName } from "@/lib/query/queryResultArchive";
 import { saveQueryResultArchiveFile } from "@/lib/query/queryResultArchiveFile";
 import { isTableDataEditable } from "@/lib/table/tableEditing";
@@ -392,6 +392,7 @@ const allResultExportSheets = computed(() =>
 );
 const resultRuns = computed(() => resultRunItems(props.activeTab));
 const activeResultGridCacheKey = computed(() => resultGridCacheKey(props.activeTab));
+const activeResultGridInstanceKey = computed(() => resultGridInstanceKey(props.activeTab));
 const activeResultSql = computed(() => resultSqlForGrid(props.activeTab));
 const activeResultExportSql = computed(() => queryResultExecutionSql(props.activeTab));
 const activeStatementExecutionMarkers = computed(() =>
@@ -1510,8 +1511,9 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
               <DataGrid
                 v-else-if="activeTab.result && hasTabularResult"
                 ref="dataGridRef"
-                :key="activeResultGridCacheKey"
+                :key="activeResultGridInstanceKey"
                 :cache-key="activeResultGridCacheKey"
+                :pending-state-key="activeResultGridInstanceKey"
                 class="flex-1 min-h-0"
                 :result="activeTab.result"
                 :sort-column="activeTab.resultSortColumn"

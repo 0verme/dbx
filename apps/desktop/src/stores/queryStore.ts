@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { uuid } from "@/lib/common/utils";
-import { computed, markRaw, onScopeDispose, reactive, ref, watch } from "vue";
+import { computed, markRaw, nextTick, onScopeDispose, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { BatchSqlExecution, ConnectionConfig, DatabaseType, IndexInfo, ObjectBrowserViewport, QueryResult, QueryTab, TableInfoTab, TableStructureEditorTarget } from "@/types/database";
 import { orderPinnedFirst } from "@/lib/app/pinnedItems";
@@ -52,10 +52,10 @@ import { normalizeResultPageSize } from "@/lib/dataGrid/paginationPageSize";
 import { agentProtocolQueryResultMaxRows, capQueryResultTotal, effectiveQueryResultMaxRows, limitQueryPagination, queryResultLimitReached } from "@/lib/dataGrid/queryResultRowLimit";
 import { elasticsearchRestRequestRanges, executableStatementRanges, splitSqlStatementRanges } from "@/lib/sql/sqlStatementRanges";
 import { externalSqlFileDisplayTitles, normalizeExternalSqlPath } from "@/lib/sql/sqlFileOpen";
-import { clearDataGridPendingSnapshotsForTab } from "@/composables/useDataGridEditor";
+import { clearDataGridPendingSnapshot, clearDataGridPendingSnapshotsForTab } from "@/composables/useDataGridEditor";
 import { buildTabResultSnapshot, deleteTabResultSnapshot, pruneTabResultSnapshots, readTabResultSnapshot, tabResultCacheKey, writeTabResultSnapshot } from "@/lib/tabs/tabResultCache";
 import { estimateQueryResultsBytes, selectInactiveResultEvictions } from "@/lib/tabs/queryResultSize";
-import { queryResultBaseSql, queryResultExecutionSql } from "@/lib/tabs/tabPresentation";
+import { queryResultBaseSql, queryResultExecutionSql, resultGridInstanceKey } from "@/lib/tabs/tabPresentation";
 import { isQueryExecutionErrorResult } from "@/lib/query/queryResultError";
 import { decodeQueryResultArchive, encodeQueryResultArchive, type DecodedQueryResultArchive } from "@/lib/query/queryResultArchive";
 import * as api from "@/lib/backend/api";
@@ -1005,6 +1005,7 @@ export const useQueryStore = defineStore("query", () => {
     tab.result = run.result ?? run.results?.[activeIndex];
     tab.results = run.results;
     tab.activeResultIndex = run.activeResultIndex;
+    tab.resultGridRevision = run.resultGridRevision;
     tab.batchSqlExecution = cloneBatchSqlExecution(run.batchSqlExecution);
     tab.resultBaseSql = run.resultBaseSql;
     tab.resultEditorFingerprint = run.resultEditorFingerprint;
@@ -1242,6 +1243,7 @@ export const useQueryStore = defineStore("query", () => {
       result: tab.result,
       results: tab.results,
       activeResultIndex: tab.activeResultIndex,
+      resultGridRevision: tab.resultGridRevision,
       batchSqlExecution: cloneBatchSqlExecution(tab.batchSqlExecution),
       resultBaseSql: tab.resultBaseSql,
       resultEditorFingerprint: tab.resultEditorFingerprint,
@@ -1339,6 +1341,7 @@ export const useQueryStore = defineStore("query", () => {
       result: tab.result,
       results: tab.results,
       activeResultIndex: tab.activeResultIndex,
+      resultGridRevision: tab.resultGridRevision,
       batchSqlExecution: cloneBatchSqlExecution(tab.batchSqlExecution),
       resultBaseSql: tab.resultBaseSql,
       resultEditorFingerprint: tab.resultEditorFingerprint,
@@ -3266,8 +3269,10 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   async function executeCurrentSql(sql: string, options?: { skipRedisSafetyCheck?: boolean; sourceOffset?: number; openInNewResultTab?: boolean }) {
-    if (!activeTabId.value) return;
-    const tab = tabs.value.find((item) => item.id === activeTabId.value);
+    const executionTabId = activeTabId.value;
+    if (!executionTabId) return;
+    const tab = tabs.value.find((item) => item.id === executionTabId);
+    const previousGridKey = tab ? resultGridInstanceKey(tab) : undefined;
     if (tab?.mode === "query") {
       tab.resultSortColumn = undefined;
       tab.resultSortColumnIndex = undefined;
@@ -3275,7 +3280,17 @@ export const useQueryStore = defineStore("query", () => {
       tab.resultSortMode = undefined;
       tab.resultSortedSql = undefined;
     }
-    return await executeTabSql(activeTabId.value, sql, { resultBaseSql: sql, resultSortedSql: undefined, ...options });
+    const producedResult = await executeTabSql(executionTabId, sql, { resultBaseSql: sql, resultSortedSql: undefined, ...options });
+    if (producedResult !== false) {
+      const current = tabs.value.find((item) => item.id === executionTabId);
+      if (current?.result) {
+        current.resultGridRevision = uuid();
+        if (current.activeResultRunId) syncActiveResultRunFromDisplayed(current);
+        await nextTick();
+        if (previousGridKey && options?.openInNewResultTab !== true) clearDataGridPendingSnapshot(previousGridKey);
+      }
+    }
+    return producedResult;
   }
 
   type QueryMetadataPatch = Pick<QueryTab, "queryAnalysis" | "querySourceColumns" | "queryEditabilityReason" | "tableMeta">;

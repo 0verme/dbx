@@ -767,6 +767,8 @@ export interface QueryResultRun {
   sequence: number;
   sql: string;
   createdAt: number;
+  /** Distinguishes successive result payloads that reuse the same run slot. */
+  resultGridRevision?: string;
   result?: QueryResult;
   results?: QueryResult[];
   activeResultIndex?: number;
@@ -1108,6 +1110,8 @@ export interface QueryTab {
   result?: QueryResult;
   results?: QueryResult[];
   activeResultIndex?: number;
+  /** Distinguishes successive result payloads that reuse the current result slot. */
+  resultGridRevision?: string;
   resultRuns?: QueryResultRun[];
   activeResultRunId?: string;
   resultAutoSave?: boolean;
