@@ -44,8 +44,8 @@ const downloadArtifacts: DownloadArtifact[] = [
   {
     id: "windows-offline",
     iconId: "windows",
-    labels: { en: "Windows 10/11 offline installer", cn: "Windows 10/11 离线安装包" },
-    descriptions: { en: "Includes WebView2 · For offline networks", cn: "内置 WebView2 · 适用于无网络环境" },
+    labels: { en: "Windows complete offline installer", cn: "Windows 完整离线安装包" },
+    descriptions: { en: "Includes WebView2 · For offline deployment or missing runtime", cn: "内置 WebView2 · 适用于内网部署或运行库缺失" },
     badges: { en: "Offline", cn: "离线" },
     suffix: "x64-webview2-offline-setup.exe",
   },

@@ -18,8 +18,8 @@ test("Windows downloads include standard, offline, and Windows 7 installers", ()
       },
       {
         id: "windows-offline",
-        label: "Windows 10/11 离线安装包",
-        description: "内置 WebView2 · 适用于无网络环境",
+        label: "Windows 完整离线安装包",
+        description: "内置 WebView2 · 适用于内网部署或运行库缺失",
         badge: "离线",
         href: "https://dl.dbxio.com/releases/latest/DBX_0.5.82_x64-webview2-offline-setup.exe?v=0.5.82",
       },
