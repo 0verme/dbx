@@ -38,6 +38,16 @@ describe("databaseObjectCapabilities", () => {
     expect(sidebarObjectKindsForDatabase("doris")).toEqual(expect.arrayContaining(["TABLE", "VIEW"]));
   });
 
+  it("exposes triggers only for native MySQL among MySQL-compatible paths", () => {
+    expect(sidebarObjectKindsForDatabase("mysql")).toEqual(["TABLE", "VIEW", "PROCEDURE", "FUNCTION", "TRIGGER"]);
+    expect(databaseObjectCapabilities("mysql").sourceReadable).toEqual(["VIEW", "PROCEDURE", "FUNCTION", "TRIGGER"]);
+
+    expect(sidebarObjectKindsForDatabase("doris")).toEqual(["TABLE", "VIEW"]);
+    expect(sidebarObjectKindsForDatabase("starrocks")).toEqual(["TABLE", "VIEW", "MATERIALIZED_VIEW"]);
+    expect(sidebarObjectKindsForDatabase("manticoresearch")).toEqual(["TABLE", "FUNCTION"]);
+    expect(sidebarObjectKindsForDatabase("jdbc")).toEqual(["TABLE", "VIEW", "PROCEDURE", "FUNCTION"]);
+  });
+
   it("normalizes space separated materialized view types", () => {
     expect(normalizeSidebarObjectKind("MATERIALIZED VIEW")).toBe("MATERIALIZED_VIEW");
   });

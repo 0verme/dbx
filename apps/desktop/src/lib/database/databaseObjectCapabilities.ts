@@ -12,6 +12,7 @@ const TABLE_VIEW_OBJECTS: SidebarObjectKind[] = ["TABLE", "VIEW"];
 const TABLE_VIEW_MV_OBJECTS: SidebarObjectKind[] = ["TABLE", "VIEW", "MATERIALIZED_VIEW"];
 
 const ROUTINE_OBJECTS: SidebarObjectKind[] = ["TABLE", "VIEW", "PROCEDURE", "FUNCTION"];
+const MYSQL_OBJECTS: SidebarObjectKind[] = ["TABLE", "VIEW", "PROCEDURE", "FUNCTION", "TRIGGER"];
 
 // PostgreSQL-family databases with a verified pg_type listing path. TYPE only
 // covers user-created types (enum/domain/composite/range/multirange/base);
@@ -52,6 +53,7 @@ const DATABASE_TYPE_OBJECTS = new Map<DatabaseType, SidebarObjectKind[]>([
   ["dameng", DAMENG_OBJECTS],
   ["oceanbase-oracle", OCEANBASE_ORACLE_OBJECTS],
   ["xugu", XUGU_OBJECTS],
+  ["mysql", MYSQL_OBJECTS],
   // table and view
   ["sqlite", TABLE_VIEW_OBJECTS],
   ["rqlite", TABLE_VIEW_OBJECTS],
