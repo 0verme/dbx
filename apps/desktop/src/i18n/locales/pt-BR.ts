@@ -4600,6 +4600,7 @@ export default withEnglishFallback({
     includeDefault: "Include DEFAULT",
     includeNull: "Include NULL",
     unique: "Set unique",
+    uniqueExhausted: "Não foi possível gerar um valor distinto para {table}.{column} em {attempts} tentativas. Aumente o intervalo de valores ou gere menos linhas.",
     disableLinks: "Disable data links between columns",
     imageMode: "Mode",
     generate: "Generate",

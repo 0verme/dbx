@@ -3945,6 +3945,7 @@ export default withEnglishFallback({
     includeDefault: "包含預設值",
     includeNull: "包含 NULL",
     unique: "設定唯一",
+    uniqueExhausted: "無法在 {attempts} 次嘗試內為資料表 {table} 的欄位 {column} 產生不重複值，請增加可選值範圍或減少產生列數。",
     disableLinks: "禁用欄位之間的資料連結",
     imageMode: "模式",
     generate: "生成",

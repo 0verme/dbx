@@ -4742,6 +4742,7 @@ export default withEnglishFallback({
     includeDefault: "包含默认值",
     includeNull: "包含 NULL",
     unique: "设置唯一",
+    uniqueExhausted: "无法在 {attempts} 次尝试内为表 {table} 的字段 {column} 生成不重复值，请增大可选值范围或减少生成行数。",
     disableLinks: "禁用字段之间的数据链接",
     imageMode: "模式",
     generate: "生成",

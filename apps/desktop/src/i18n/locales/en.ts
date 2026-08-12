@@ -4819,6 +4819,7 @@ export default {
     includeDefault: "Include DEFAULT",
     includeNull: "Include NULL",
     unique: "Set unique",
+    uniqueExhausted: "Could not generate a distinct value for {table}.{column} within {attempts} attempts. Increase the available value range or generate fewer rows.",
     disableLinks: "Disable data links between columns",
     imageMode: "Mode",
     generate: "Generate",

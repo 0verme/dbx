@@ -4637,6 +4637,7 @@ export default withEnglishFallback({
     includeDefault: "DEFAULTを含める",
     includeNull: "NULLを含める",
     unique: "一意に設定",
+    uniqueExhausted: "{attempts} 回の試行で {table}.{column} の重複しない値を生成できませんでした。値の範囲を広げるか、生成行数を減らしてください。",
     disableLinks: "列間のデータリンクを無効化",
     imageMode: "モード",
     generate: "生成",

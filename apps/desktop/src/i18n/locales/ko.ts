@@ -4318,6 +4318,7 @@ export default withEnglishFallback({
     includeDefault: "DEFAULT 포함",
     includeNull: "NULL 포함",
     unique: "고유 설정",
+    uniqueExhausted: "{attempts}번 시도했지만 {table}.{column}의 중복되지 않는 값을 생성하지 못했습니다. 값 범위를 늘리거나 생성 행 수를 줄이세요.",
     disableLinks: "컬럼 간 데이터 연결 비활성화",
     imageMode: "모드",
     generate: "생성",

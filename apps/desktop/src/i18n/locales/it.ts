@@ -4598,6 +4598,7 @@ export default withEnglishFallback({
     includeDefault: "Include DEFAULT",
     includeNull: "Include NULL",
     unique: "Set unique",
+    uniqueExhausted: "Impossibile generare un valore distinto per {table}.{column} in {attempts} tentativi. Amplia l'intervallo dei valori o genera meno righe.",
     disableLinks: "Disable data links between columns",
     imageMode: "Mode",
     generate: "Generate",
