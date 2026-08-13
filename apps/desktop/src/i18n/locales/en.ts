@@ -4275,6 +4275,8 @@ export default {
     copyInsertStatementBinary: "Cannot generate insert statement for binary data",
     editMember: "Edit",
     jsonView: "JSON view",
+    jsonViewRaw: "Raw",
+    jsonViewDecoded: "Decoded",
     rawContent: "Raw content",
     wordWrap: "Word wrap",
     decompressedView: "Decompressed",
