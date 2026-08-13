@@ -121,20 +121,25 @@ jobs:
 
       - name: Verify package
         run: |
-          APP_PATH=$(find "target/$TARGET/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
           DMG_PATH=$(find "target/$TARGET/release/bundle/dmg" -maxdepth 1 -name '*.dmg' -print -quit)
-          test -n "$APP_PATH"
           test -n "$DMG_PATH"
+          SOURCE_BASE=$(git rev-parse "$GITHUB_SHA^")
+          shasum -a 256 "$DMG_PATH" | tee package-sha256.txt
+          printf 'source_base=%s\nbuild_commit=%s\ntarget=%s\n' \
+            "$SOURCE_BASE" "$GITHUB_SHA" "$TARGET" \
+            > build-info.txt
+          MOUNT_POINT="$RUNNER_TEMP/dbx-dmg"
+          mkdir -p "$MOUNT_POINT"
+          hdiutil attach "$DMG_PATH" -readonly -nobrowse -mountpoint "$MOUNT_POINT"
+          trap 'hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true' EXIT
+          APP_PATH=$(find "$MOUNT_POINT" -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
-          xcrun stapler validate "$DMG_PATH"
+          codesign --verify --verbose=2 "$DMG_PATH"
           spctl --assess --type execute --verbose=2 "$APP_PATH"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH"
           file "$APP_PATH/Contents/MacOS/dbx" | tee package-info.txt
-          shasum -a 256 "$DMG_PATH" | tee package-sha256.txt
-          printf 'source_base=%s\nbuild_commit=%s\ntarget=%s\n' \
-            '18d581137cc67997b68be2cd7e2b74b6ec1f257d' "$GITHUB_SHA" "$TARGET" \
-            > build-info.txt
 
       - name: Show sccache stats
         if: always()
@@ -142,9 +147,10 @@ jobs:
         run: ${SCCACHE_PATH} --show-stats
 
       - name: Upload macOS ARM64 package
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: DBX-macOS-arm64-main-18d581137
+          name: DBX-macOS-arm64-${{ github.sha }}
           path: |
             target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
             package-info.txt
