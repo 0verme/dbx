@@ -5407,6 +5407,8 @@ export default withEnglishFallback({
     showColumnCommentsInHeaderDescription: "グリッド列名の直下にテーブル列コメントを表示します。",
     showColumnTypesInHeader: "列名の下にデータ型を表示",
     showColumnTypesInHeaderDescription: "グリッド列名の直下に各列のデータ型を表示します。",
+    dataGridShowTransposeFieldMetadata: "転置ビューにフィールドメタデータを表示",
+    dataGridShowTransposeFieldMetadataDescription: "有効なデータ型とコメントを転置ビューの別行に表示します。有効にすると行の高さが増えます。",
     colorizeDataGridCellTypes: "データ型に応じて値を色分け",
     colorizeDataGridCellTypesDescription: "テーマに合わせた控えめな文字色で、列のデータ型ごとに値を区別します。",
     showIndexIndicatorsInHeader: "列名の横にインデックス指標を表示",

@@ -5604,6 +5604,8 @@ export default withEnglishFallback({
     showColumnCommentsInHeaderDescription: "把表字段注释直接显示在结果表头字段名下方。",
     showColumnTypesInHeader: "在字段名下方显示数据类型",
     showColumnTypesInHeaderDescription: "把每个字段的数据类型直接显示在结果表头字段名下方。",
+    dataGridShowTransposeFieldMetadata: "在转置视图中显示字段元数据",
+    dataGridShowTransposeFieldMetadataDescription: "在转置视图中分行显示已启用的数据类型和注释。开启后会增加行高。",
     colorizeDataGridCellTypes: "按数据类型为表格值着色",
     colorizeDataGridCellTypesDescription: "使用适配主题的克制文字颜色，按字段数据类型区分表格中的值。",
     showIndexIndicatorsInHeader: "在字段名旁显示索引标识",

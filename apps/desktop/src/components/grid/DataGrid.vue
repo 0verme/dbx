@@ -538,6 +538,7 @@ const dataGridTopbarWidth = ref(0);
 const dataGridViewportWidth = ref(0);
 const showColumnCommentsInHeader = computed(() => settingsStore.editorSettings.showColumnCommentsInHeader);
 const showColumnTypesInHeader = computed(() => settingsStore.editorSettings.showColumnTypesInHeader);
+const showTransposeFieldMetadata = computed(() => settingsStore.editorSettings.dataGridShowTransposeFieldMetadata);
 const showIndexIndicatorsInHeader = computed(() => settingsStore.editorSettings.showIndexIndicatorsInHeader !== false);
 const indexes = ref<IndexInfo[]>([]);
 const indexesLoaded = ref(false);
@@ -7958,8 +7959,8 @@ const transposeRows = computed(() => {
     displayValue: (value, _column, index) => formatCellCached(value, visibleColumnIndexes.value[index]),
   });
 });
-const transposeReserveTypeLine = computed(() => showColumnTypesInHeader.value && transposeRows.value.some((row) => row.type));
-const transposeReserveCommentLine = computed(() => showColumnCommentsInHeader.value && transposeRows.value.some((row) => row.comment));
+const transposeReserveTypeLine = computed(() => showTransposeFieldMetadata.value && showColumnTypesInHeader.value && transposeRows.value.some((row) => row.type));
+const transposeReserveCommentLine = computed(() => showTransposeFieldMetadata.value && showColumnCommentsInHeader.value && transposeRows.value.some((row) => row.comment));
 const transposeRowHeight = computed(() => 30 + (transposeReserveTypeLine.value ? 14 : 0) + (transposeReserveCommentLine.value ? 14 : 0));
 const isTransposeMode = computed(() => showTranspose.value && transposeRows.value.length > 0);
 const transposeTotalWidth = computed(() => {
@@ -7975,8 +7976,8 @@ function transposeScrollElement(): HTMLElement | undefined {
 
 function transposeFieldTitle(item: { column: string; type: string; comment?: string }): string {
   const details = [item.column];
-  if (showColumnTypesInHeader.value && item.type) details.push(`${t("grid.columnType")}: ${item.type}`);
-  if (showColumnCommentsInHeader.value && item.comment) details.push(`${t("grid.columnComment")}: ${item.comment}`);
+  if (showTransposeFieldMetadata.value && showColumnTypesInHeader.value && item.type) details.push(`${t("grid.columnType")}: ${item.type}`);
+  if (showTransposeFieldMetadata.value && showColumnCommentsInHeader.value && item.comment) details.push(`${t("grid.columnComment")}: ${item.comment}`);
   return details.join("\n");
 }
 
@@ -10175,12 +10176,12 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           <Hash v-else-if="transposeColumnIndexKind(item.column)" data-grid-transpose-index-indicator class="h-3 w-3 shrink-0" :class="columnIndexColorClass(transposeColumnIndexKind(item.column)!)" :title="transposeColumnIndexText(transposeColumnIndexKind(item.column)!)" />
                           <span class="min-w-0 flex-1 truncate font-medium leading-4">{{ item.column }}</span>
                         </span>
-                        <template v-if="showColumnTypesInHeader && item.type">
+                        <template v-if="showTransposeFieldMetadata && showColumnTypesInHeader && item.type">
                           <span data-grid-transpose-type-line class="h-3 min-w-0 truncate text-[10px] font-normal leading-3 select-none" :class="typeColorClass(item.type)" :title="item.type">
                             {{ item.type }}
                           </span>
                         </template>
-                        <template v-if="showColumnCommentsInHeader && item.comment">
+                        <template v-if="showTransposeFieldMetadata && showColumnCommentsInHeader && item.comment">
                           <span data-grid-transpose-comment-line class="h-3 min-w-0 truncate text-[10px] font-normal leading-3 text-muted-foreground select-none" :title="item.comment">
                             {{ item.comment }}
                           </span>
@@ -10193,11 +10194,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                         >
                           <span class="text-muted-foreground">{{ t("grid.columnName") }}</span>
                           <span class="min-w-0 break-all font-mono select-text">{{ item.column }}</span>
-                          <template v-if="showColumnTypesInHeader && item.type">
+                          <template v-if="showTransposeFieldMetadata && showColumnTypesInHeader && item.type">
                             <span class="text-muted-foreground">{{ t("grid.columnType") }}</span>
                             <span class="min-w-0 break-all font-mono select-text" :class="typeColorClass(item.type)">{{ item.type }}</span>
                           </template>
-                          <template v-if="showColumnCommentsInHeader && item.comment">
+                          <template v-if="showTransposeFieldMetadata && showColumnCommentsInHeader && item.comment">
                             <span class="text-muted-foreground">{{ t("grid.columnComment") }}</span>
                             <span class="min-w-0 whitespace-pre-wrap break-words select-text">{{ item.comment }}</span>
                           </template>

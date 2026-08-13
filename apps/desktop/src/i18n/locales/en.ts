@@ -5617,6 +5617,8 @@ export default {
     showColumnCommentsInHeaderDescription: "Display table column comments directly below grid column names.",
     showColumnTypesInHeader: "Show column types under names",
     showColumnTypesInHeaderDescription: "Display each column's data type directly below grid column names.",
+    dataGridShowTransposeFieldMetadata: "Show field metadata in transpose view",
+    dataGridShowTransposeFieldMetadataDescription: "Display enabled column types and comments on separate lines in transpose view. This increases row height.",
     colorizeDataGridCellTypes: "Color-code data grid values",
     colorizeDataGridCellTypesDescription: "Use subtle, theme-aware text colors to distinguish values by their column data type.",
     showIndexIndicatorsInHeader: "Show index indicators beside column names",

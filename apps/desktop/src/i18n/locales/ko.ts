@@ -5115,6 +5115,8 @@ export default withEnglishFallback({
     showColumnCommentsInHeaderDescription: "그리드 컬럼 이름 바로 아래에 테이블 컬럼 주석을 표시합니다.",
     showColumnTypesInHeader: "이름 아래에 컬럼 타입 표시",
     showColumnTypesInHeaderDescription: "그리드 컬럼 이름 바로 아래에 각 컬럼의 데이터 타입을 표시합니다.",
+    dataGridShowTransposeFieldMetadata: "전치 보기에 필드 메타데이터 표시",
+    dataGridShowTransposeFieldMetadataDescription: "활성화된 데이터 타입과 주석을 전치 보기의 별도 줄에 표시합니다. 활성화하면 행 높이가 증가합니다.",
     colorizeDataGridCellTypes: "데이터 타입별 값 색상 표시",
     colorizeDataGridCellTypesDescription: "테마에 맞는 은은한 텍스트 색상으로 컬럼 데이터 타입에 따라 값을 구분합니다.",
     showIndexIndicatorsInHeader: "컬럼 이름 옆에 인덱스 표시",

@@ -383,18 +383,22 @@ test("defaults sidebar horizontal scroll to off", () => {
 
 test("defaults data grid header display settings", () => {
   assert.equal(DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader, true);
+  assert.equal(DEFAULT_EDITOR_SETTINGS.dataGridShowTransposeFieldMetadata, false);
   assert.equal(DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions, true);
   assert.equal(normalizeEditorSettings({}).showColumnCommentsInHeader, true);
+  assert.equal(normalizeEditorSettings({}).dataGridShowTransposeFieldMetadata, false);
   assert.equal(normalizeEditorSettings({}).compactColumnHeaderActions, true);
 });
 
 test("keeps saved data grid header display settings", () => {
   const settings = normalizeEditorSettings({
     showColumnCommentsInHeader: true,
+    dataGridShowTransposeFieldMetadata: true,
     compactColumnHeaderActions: false,
   } as any);
 
   assert.equal(settings.showColumnCommentsInHeader, true);
+  assert.equal(settings.dataGridShowTransposeFieldMetadata, true);
   assert.equal(settings.compactColumnHeaderActions, false);
 });
 

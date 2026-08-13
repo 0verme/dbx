@@ -4711,6 +4711,8 @@ export default withEnglishFallback({
     showColumnCommentsInHeaderDescription: "直接在資料表格欄位名稱下方顯示資料表欄位註解。",
     showColumnTypesInHeader: "在欄位名稱下方顯示資料類型",
     showColumnTypesInHeaderDescription: "直接在資料表格欄位名稱下方顯示每個欄位的資料類型。",
+    dataGridShowTransposeFieldMetadata: "在轉置檢視中顯示欄位中繼資料",
+    dataGridShowTransposeFieldMetadataDescription: "在轉置檢視中分行顯示已啟用的資料類型和註解。開啟後會增加列高。",
     colorizeDataGridCellTypes: "依資料類型為表格值著色",
     colorizeDataGridCellTypesDescription: "使用配合主題的柔和文字顏色，依欄位資料類型區分表格中的值。",
     showIndexIndicatorsInHeader: "在欄位名稱旁顯示索引標識",
