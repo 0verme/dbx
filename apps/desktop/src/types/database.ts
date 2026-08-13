@@ -1302,6 +1302,7 @@ export interface SavedSqlFile {
   folderId?: string;
   name: string;
   database: string;
+  /** Undefined means the connection's built-in/default catalog. */
   catalog?: string;
   schema?: string;
   sql: string;
