@@ -3929,7 +3929,9 @@ export default withEnglishFallback({
   history: {
     title: "기록",
     search: "기록 검색...",
+    conversationSearch: "대화 검색...",
     empty: "아직 기록이 없습니다",
+    emptyConversationSearch: "검색과 일치하는 대화가 없습니다",
     emptyFilteredRecent: "최근 200개의 실행 기록에서 일치하는 항목이 없습니다",
     failed: "실패",
     success: "성공",

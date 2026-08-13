@@ -4270,7 +4270,9 @@ export default withEnglishFallback({
   history: {
     title: "Cronologia",
     search: "Cerca nella cronologia...",
+    conversationSearch: "Cerca conversazioni...",
     empty: "Ancora nessuna cronologia",
+    emptyConversationSearch: "Nessuna conversazione corrisponde alla ricerca",
     emptyFilteredRecent: "Nessun record corrispondente nelle ultime 200 voci della cronologia di esecuzione",
     failed: "Non riuscita",
     success: "Riuscita",

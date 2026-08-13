@@ -4425,7 +4425,9 @@ export default {
   history: {
     title: "History",
     search: "Search history...",
+    conversationSearch: "Search conversations...",
     empty: "No history yet",
+    emptyConversationSearch: "No conversations match your search",
     emptyFilteredRecent: "No matching records in the latest 200 execution history entries",
     failed: "Failed",
     success: "Succeeded",

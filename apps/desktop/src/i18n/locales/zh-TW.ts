@@ -3616,7 +3616,9 @@ export default withEnglishFallback({
   history: {
     title: "歷史",
     search: "搜尋歷史……",
+    conversationSearch: "搜尋歷史會話……",
     empty: "暫無歷史記錄",
+    emptyConversationSearch: "沒有相符的歷史會話",
     emptyFilteredRecent: "最近 200 條執行歷史中沒有相符記錄",
     failed: "失敗",
     success: "成功",

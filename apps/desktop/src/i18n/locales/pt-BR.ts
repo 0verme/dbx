@@ -4272,7 +4272,9 @@ export default withEnglishFallback({
   history: {
     title: "Histórico",
     search: "Pesquisar histórico...",
+    conversationSearch: "Pesquisar conversas...",
     empty: "Nenhum histórico ainda",
+    emptyConversationSearch: "Nenhuma conversa corresponde à pesquisa",
     emptyFilteredRecent: "Nenhum registro correspondente nas 200 entradas mais recentes do histórico de execução",
     failed: "Falhou",
     success: "Concluído",

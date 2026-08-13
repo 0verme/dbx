@@ -4300,7 +4300,9 @@ export default withEnglishFallback({
   history: {
     title: "履歴",
     search: "履歴を検索...",
+    conversationSearch: "会話を検索...",
     empty: "まだ履歴がありません",
+    emptyConversationSearch: "検索に一致する会話はありません",
     emptyFilteredRecent: "最近 200 件の実行履歴に一致する記録はありません",
     failed: "失敗",
     success: "成功",

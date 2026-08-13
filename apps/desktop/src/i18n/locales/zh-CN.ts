@@ -4413,7 +4413,9 @@ export default withEnglishFallback({
   history: {
     title: "历史",
     search: "搜索历史...",
+    conversationSearch: "搜索历史会话...",
     empty: "暂无历史记录",
+    emptyConversationSearch: "没有匹配的历史会话",
     emptyFilteredRecent: "最近 200 条执行历史中没有匹配记录",
     failed: "失败",
     success: "成功",
