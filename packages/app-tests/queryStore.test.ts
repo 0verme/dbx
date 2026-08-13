@@ -1892,6 +1892,29 @@ test("statement result switching is scoped to the active result run", async () =
   assert.equal(tab.activeResultIndex, 0);
 });
 
+test("switching statement results clears the previous result count state", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+  const tabId = store.createTab("conn-1", "db");
+  const tab = store.tabs.find((item) => item.id === tabId);
+  assert.ok(tab);
+
+  tab.results = [
+    { columns: ["value"], rows: [[1]], affected_rows: 0, execution_time_ms: 1 },
+    { columns: ["Message"], rows: [["warning"]], affected_rows: 0, execution_time_ms: 1, server_message: true },
+  ];
+  tab.activeResultIndex = 0;
+  tab.result = tab.results[0];
+  tab.resultTotalRowCount = 200;
+  tab.resultTotalRowCountLoading = true;
+
+  store.setActiveResultIndex(tabId, 1);
+
+  assert.equal(tab.result, tab.results[1]);
+  assert.equal(tab.resultTotalRowCount, undefined);
+  assert.equal(tab.resultTotalRowCountLoading, false);
+});
+
 test("normalizes unquoted Oracle query identifiers before loading editable metadata", async () => {
   const restoreStorage = installMemoryStorage();
   setActivePinia(createPinia());

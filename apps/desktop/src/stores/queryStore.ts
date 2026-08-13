@@ -5332,6 +5332,8 @@ export const useQueryStore = defineStore("query", () => {
     tab.resultSortDirection = undefined;
     tab.resultSortMode = undefined;
     tab.resultSortedSql = undefined;
+    tab.resultTotalRowCount = undefined;
+    tab.resultTotalRowCountLoading = false;
     // results 数组未变，估算值与当前激活的 result 无关，可直接复用
     touchResult(tab, Date.now(), { reuseEstimatedBytes: true });
     tab.queryAnalysis = undefined;

@@ -2760,8 +2760,9 @@ const canFetchNextInfiniteScrollSegment = computed(() =>
 );
 const canJumpLastPage = computed(() => canGoNextPage.value && (hasKnownPaginationTotalRowCount.value || allRowsLoaded.value || !!props.tableMeta || !!props.countSql || !!props.countTotalRows));
 const totalRowCountBusy = computed(() => props.totalRowCountLoading === true || manualTotalRowCountLoading.value);
-/** Full-grid busy state: refresh dispatch, query loading, or on-demand COUNT (e.g. jump to last page). */
-const gridSurfaceBusy = computed(() => isRefreshingData.value || props.loading === true || totalRowCountBusy.value);
+/** Automatic background counts keep rows interactive; explicit count navigation still blocks the surface. */
+const gridSurfaceBusy = computed(() => isRefreshingData.value || props.loading === true || manualTotalRowCountLoading.value);
+const gridPaginationBusy = computed(() => gridSurfaceBusy.value || totalRowCountBusy.value);
 const dataGridNativeSelectionBlockOwner = {};
 watch(
   gridSurfaceBusy,
@@ -2921,7 +2922,7 @@ function nextPage() {
 }
 
 function jumpPage(page: number) {
-  if (gridSurfaceBusy.value || infiniteScrollEnabled.value || !Number.isSafeInteger(page) || page < 1) return;
+  if (gridPaginationBusy.value || infiniteScrollEnabled.value || !Number.isSafeInteger(page) || page < 1) return;
   const targetPage = Math.min(page, maximumPage.value ?? page);
   if (targetPage === currentPage.value) return;
   if (allRowsLoaded.value) {
@@ -11672,7 +11673,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
         :pagination-enabled="paginationEnabled"
         :selection-summary="selectionSummary"
         :selection-summary-sum-text="selectionSummarySumText"
-        :loading="gridSurfaceBusy"
+        :loading="gridPaginationBusy"
         :infinite-scroll-enabled="infiniteScrollEnabled"
         :infinite-scroll-all-loaded="infiniteScrollAllLoaded"
         :page-size="pageSize"
