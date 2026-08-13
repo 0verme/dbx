@@ -2176,8 +2176,9 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function isTreeLoadSearchChanged(searchFilter: string, options?: LoadTreeOptions): boolean {
     if (options?.sidebarTableSearchParentId) return isSidebarTableSearchQueryChanged(options);
+    if (isSidebarSearchQueryChanged(options)) return true;
     if (options?.allowGlobalSearchMismatch) return false;
-    return (sidebarSearchQuery.value || "") !== searchFilter || isSidebarSearchQueryChanged(options);
+    return (sidebarSearchQuery.value || "") !== searchFilter;
   }
 
   function isTreeNodeChildrenLoaded(nodeId: string): boolean {
@@ -4476,7 +4477,7 @@ export const useConnectionStore = defineStore("connection", () => {
               nonTableObjectTypes,
               offset: 0,
               pageSize,
-              searchFilter: searchFilter || undefined,
+              searchFilter: options?.searchFilter === "" ? "" : searchFilter || undefined,
               force: options?.force,
             });
             children = page.hasMore && !searchFilter ? appendTableTreeLoadMoreNode(page.children, buildLoadMoreNode(node, page.nextOffset, pageSize), page.loadMoreParent) : page.children;
@@ -4614,7 +4615,7 @@ export const useConnectionStore = defineStore("connection", () => {
               objectTypes,
               offset: 0,
               pageSize: sidebarObjectGroupPageSize(),
-              searchFilter: searchFilter || undefined,
+              searchFilter: options?.searchFilter === "" ? "" : searchFilter || undefined,
               force: options?.force,
             });
             children = page.hasMore && !searchFilter ? appendTableTreeLoadMoreNode(page.children, buildLoadMoreNode(node, page.nextOffset, sidebarObjectGroupPageSize()), page.loadMoreParent) : page.children;
