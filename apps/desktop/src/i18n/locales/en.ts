@@ -5806,6 +5806,8 @@ export default {
     autoCloseBracketsDescription: "Automatically insert closing brackets and quotes when typing an opening one",
     insertSpaceAfterCompletion: "Insert a space after completion",
     insertSpaceAfterCompletionDescription: "Append a space after accepting a keyword, table, or column completion when the next character allows it",
+    sortCompletionColumnsAlphabetically: "Sort completion columns alphabetically",
+    sortCompletionColumnsAlphabeticallyDescription: "Turn off to keep table fields in their original database order",
     completionTriggerMode: "Auto-completion trigger mode",
     completionTriggerModeDescription: "Controls when the SQL completion popup opens automatically. Manual requires a shortcut key; Typed requires a typed identifier prefix; Smart preserves the current behavior.",
     completionTriggerModeManual: "Manual only",

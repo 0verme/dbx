@@ -20,6 +20,7 @@ export const EDITOR_SETTINGS_DRAFT_KEYS = [
   "showInsertValueHints",
   "autoAliasTables",
   "insertSpaceAfterCompletion",
+  "sortCompletionColumnsAlphabetically",
   "wordWrap",
   "vimModeEnabled",
   "autoCloseBrackets",

@@ -5792,6 +5792,8 @@ export default withEnglishFallback({
     autoCloseBracketsDescription: "输入左括号或左引号时自动补全对应的右括号或右引号",
     insertSpaceAfterCompletion: "补全后自动添加空格",
     insertSpaceAfterCompletionDescription: "选择关键字、表名或列名补全后，在后续字符允许时自动追加空格",
+    sortCompletionColumnsAlphabetically: "按字母顺序排列补全字段",
+    sortCompletionColumnsAlphabeticallyDescription: "关闭后，表字段将保持数据库中的原始顺序",
     completionTriggerMode: "自动补全触发方式",
     completionTriggerModeDescription: "控制 SQL 补全弹窗何时自动打开。仅手动提示需快捷键；输入标识符后提示需输入至少一个字符；智能位置提示保持当前行为。",
     completionTriggerModeManual: "仅手动提示",
