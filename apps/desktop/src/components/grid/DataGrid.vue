@@ -2123,6 +2123,16 @@ const gridViewportWidth = ref(0);
 let gridScrollLeftBeforeTranspose = 0;
 let gridScrollTopBeforeKeyboardTranspose: number | null = null;
 let restoreGridScrollTopAfterTranspose = false;
+
+function persistDraggedColumnOrder(indexes: number[]) {
+  const previousVisibleColumnIndexes = [...visibleColumnIndexes.value];
+  persistColumnOrder(indexes);
+  selection.remapColumnSelection(
+    previousVisibleColumnIndexes,
+    indexes.filter((index) => !hiddenColumnIndexes.value.has(index)),
+  );
+}
+
 const {
   renderedColumnOffsets,
   horizontalColumnWindow,
@@ -2147,14 +2157,19 @@ const {
   viewportWidth: gridViewportWidth,
   rowNumberWidth,
   headerRef,
+  getScrollElement: gridScrollerElement,
   orderedColumnIndexes: orderedDisplayableColumnIndexes,
   hiddenColumnIndexes,
   getIsResizing,
   onResizeStart,
   onCanvasMouseLeave,
   onCanvasDrawSchedule: scheduleCanvasDraw,
+  onHorizontalScroll: (scroller) => {
+    updateGridHorizontalViewport(scroller);
+    if (headerRef.value) headerRef.value.scrollLeft = scroller.scrollLeft;
+  },
   onRefreshMetrics: scheduleColumnLayoutRefresh,
-  onPersistColumnOrder: persistColumnOrder,
+  onPersistColumnOrder: persistDraggedColumnOrder,
   frozenColumnCount,
 });
 
