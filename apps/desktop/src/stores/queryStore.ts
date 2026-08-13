@@ -2766,6 +2766,7 @@ export const useQueryStore = defineStore("query", () => {
     const orderBy = tab.orderByInput?.trim() || sortOrder;
     const limit = tab.resultPageLimit ?? tableOpenPageLimit(settingsStore.editorSettings.tableOpenPageSize);
     const offset = tab.resultPageOffset ?? 0;
+    const useDriverRowOffset = conn?.db_type === "jdbc" && effectiveDbType === "iris";
     const refreshPreparationId = uuid();
 
     // Reserve the tab synchronously before SQL construction yields so repeated
@@ -2789,6 +2790,7 @@ export const useQueryStore = defineStore("query", () => {
         orderBy,
         limit,
         offset,
+        ...(useDriverRowOffset ? { useDriverRowOffset: true } : {}),
       });
       if (!sql.trim()) throw new Error("Failed to build table refresh SQL");
       const current = tabs.value.find((candidate) => candidate.id === id);
@@ -4577,6 +4579,7 @@ export const useQueryStore = defineStore("query", () => {
         // connection-local state and avoid MySQL pool resets on every refresh.
         const dataTabMeta = tab.mode === "data" ? tableMetaForDataTab(tab) : undefined;
         const useTableDataPreview = canUseTableDataLargeValuePreview(effectiveDbType, dataTabMeta?.columns ?? [], dataTabMeta?.primaryKeys ?? []);
+        const useJdbcDriverRowOffset = tab.mode === "data" && conn?.db_type === "jdbc" && effectiveDbType === "iris";
         const executionOptions = {
           ...(typeof pageLimit === "number"
             ? useAgentResultSession
@@ -4589,6 +4592,7 @@ export const useQueryStore = defineStore("query", () => {
                 }
               : { maxRows: pageLimit, fetchSize: pageLimit }
             : { maxRows: agentProtocolQueryResultMaxRows(queryResultMaxRows) }),
+          ...(useJdbcDriverRowOffset && typeof pageOffset === "number" && pageOffset > 0 ? { rowOffset: pageOffset } : {}),
           ...(executionClientSessionId ? { clientSessionId: executionClientSessionId } : {}),
           ...(tab.mode === "data" && (effectiveDbType === "mysql" || effectiveDbType === "postgres")
             ? {

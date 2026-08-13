@@ -310,6 +310,7 @@ public final class DbxJdbcPlugin {
                 optionalText(params, "schema"),
                 positiveInt(params, "maxRows", MAX_ROWS),
                 nonNegativeInt(params, "fetchSize", 0),
+                nonNegativeInt(params, "rowOffset", 0),
                 nonNegativeInt(params, "timeoutSecs", -1)
             );
             case "executeQueryPage", "execute_query_page" -> executeQueryPage(
@@ -665,6 +666,7 @@ public final class DbxJdbcPlugin {
         String schema,
         int maxRows,
         int fetchSize,
+        int rowOffset,
         int timeoutSecs
     ) throws Exception {
         long start = System.nanoTime();
@@ -688,6 +690,10 @@ public final class DbxJdbcPlugin {
                     for (int i = 1; i <= columnCount; i++) {
                         String label = meta.getColumnLabel(i);
                         columns.add(label == null || label.isBlank() ? meta.getColumnName(i) : label);
+                    }
+                    for (int skipped = 0; skipped < rowOffset && rs.next(); skipped++) {
+                        // Caché/IRIS does not support SQL offset pagination; advance
+                        // the forward-only JDBC cursor before collecting this page.
                     }
                     while (rs.next()) {
                         if (rows.size() >= maxRows) {

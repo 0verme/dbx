@@ -72,6 +72,35 @@ final class DbxJdbcPluginTest {
     }
 
     @Test
+    void executeQuerySkipsRowsBeforeCollectingThePage() throws Exception {
+        request("executeQuery", """
+            {
+              "connection": %s,
+              "sql": "CREATE TABLE IF NOT EXISTS page_rows(id INT PRIMARY KEY)"
+            }
+            """.formatted(CONNECTION));
+        request("executeQuery", """
+            {
+              "connection": %s,
+              "sql": "MERGE INTO page_rows KEY(id) VALUES (1), (2), (3)"
+            }
+            """.formatted(CONNECTION));
+
+        JsonNode response = request("executeQuery", """
+            {
+              "connection": %s,
+              "sql": "SELECT id FROM page_rows ORDER BY id",
+              "rowOffset": 1,
+              "maxRows": 1
+            }
+            """.formatted(CONNECTION));
+
+        assertFalse(response.has("error"), response.toString());
+        assertEquals(2, response.path("result").path("rows").path(0).path(0).asInt());
+        assertEquals(1, response.path("result").path("rows").size());
+    }
+
+    @Test
     void reportsDriverLinkageErrorsWithoutTerminatingThePlugin() throws Exception {
         JsonNode response = request("testConnection", """
             {
