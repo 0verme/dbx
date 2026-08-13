@@ -23,6 +23,8 @@ jobs:
       TARGET: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -123,7 +125,7 @@ jobs:
         run: |
           DMG_PATH=$(find "target/$TARGET/release/bundle/dmg" -maxdepth 1 -name '*.dmg' -print -quit)
           test -n "$DMG_PATH"
-          SOURCE_BASE=$(git rev-parse "$GITHUB_SHA^")
+          SOURCE_BASE=$(git merge-base "$GITHUB_SHA" origin/main)
           shasum -a 256 "$DMG_PATH" | tee package-sha256.txt
           printf 'source_base=%s\nbuild_commit=%s\ntarget=%s\n' \
             "$SOURCE_BASE" "$GITHUB_SHA" "$TARGET" \
