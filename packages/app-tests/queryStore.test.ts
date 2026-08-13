@@ -2196,6 +2196,7 @@ test("keeps PostgreSQL quoted primary keys distinct from case-only result column
     await waitFor(() => tab?.tableMeta?.tableName === "case_keys");
     assert.match(executedSql, /"ID" AS "__DBX_PK_0"/);
     assert.deepEqual(tab?.querySourceColumns, ["id", "name", "ID"]);
+    assert.equal(tab?.queryAnalysis?.allowInsert, false);
     assert.equal(tab?.queryEditabilityReason, undefined);
   } finally {
     globalThis.fetch = originalFetch;
@@ -2295,12 +2296,102 @@ test("binds DISTINCT qualified-star edits to the single safe joined source", asy
     assert.equal(tab?.queryEditabilityReason, undefined);
     assert.equal(tab?.queryAnalysis?.multiSource, true);
     assert.equal(tab?.queryAnalysis?.distinct, true);
+    assert.equal(tab?.queryAnalysis?.allowInsert, true);
     assert.equal(tab?.queryAnalysis?.allowInsertDelete, false);
     assert.equal(tab?.tableMeta?.tableName, "users");
     assert.deepEqual(tab?.querySourceColumns, ["id", "name"]);
   } finally {
     globalThis.fetch = originalFetch;
     restoreStorage();
+  }
+});
+
+test("enables DISTINCT inserts only for an insertable base-table target", async () => {
+  for (const scenario of [
+    { id: "table", databaseType: "postgres", tableType: "TABLE" },
+    { id: "view", databaseType: "postgres", tableType: "VIEW" },
+    { id: "unsupported", databaseType: "jdbc", tableType: "TABLE" },
+    { id: "computed", databaseType: "postgres", tableType: "TABLE" },
+  ] as const) {
+    const restoreStorage = installMemoryStorage();
+    setActivePinia(createPinia());
+    const connectionStore = useConnectionStore();
+    const store = useQueryStore();
+    const originalFetch = globalThis.fetch;
+    connectionStore.addEphemeralConnection({ ...conn(`distinct-${scenario.id}`), db_type: scenario.databaseType });
+    connectionStore.treeNodes.push({
+      id: `${scenario.id}-users`,
+      label: "users",
+      type: scenario.tableType === "VIEW" ? "view" : "table",
+      connectionId: `distinct-${scenario.id}`,
+      database: "appdb",
+      schema: "public",
+      tableName: "users",
+    });
+
+    globalThis.fetch = withConnectionHealthMock(async (input, init) => {
+      const url = String(input);
+      if (url === "/api/query/execute-multi") {
+        return new Response(JSON.stringify([{ columns: scenario.id === "computed" ? ["id", "label"] : ["id", "name"], rows: [[1, "Ada"]], affected_rows: 0, execution_time_ms: 1 }]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url === "/api/query/analyze-editability") {
+        return new Response(
+          JSON.stringify({
+            editable: true,
+            analysis: {
+              schema: undefined,
+              schemaQuoted: false,
+              tableName: "users",
+              tableNameQuoted: false,
+              selectStar: false,
+              distinct: true,
+              allowInsert: false,
+              allowInsertDelete: false,
+              columns:
+                scenario.id === "computed"
+                  ? [
+                      { sourceName: "id", sourceNameQuoted: false, resultName: "id", expression: "id" },
+                      { resultName: "label", expression: "upper(name) as label" },
+                    ]
+                  : [
+                      { sourceName: "id", sourceNameQuoted: false, resultName: "id", expression: "id" },
+                      { sourceName: "name", sourceNameQuoted: false, resultName: "name", expression: "name" },
+                    ],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.startsWith("/api/schema/columns?")) {
+        return new Response(
+          JSON.stringify([
+            { name: "id", data_type: "integer", is_nullable: false, column_default: null, is_primary_key: true, extra: null, comment: null },
+            { name: "name", data_type: "text", is_nullable: true, column_default: null, is_primary_key: false, extra: null, comment: null },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url === "/api/query/prepare-pagination-plan") {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        return new Response(JSON.stringify({ sqlToExecute: body.options.sql, useAgentResultSession: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("unexpected request", { status: 500 });
+    });
+
+    try {
+      const tabId = store.createTab(`distinct-${scenario.id}`, "appdb", "Query 1", "query", "public");
+      const tab = store.tabs.find((item) => item.id === tabId)!;
+      await store.executeTabSql(tabId, scenario.id === "computed" ? "select distinct id, upper(name) as label from users" : "select distinct id, name from users");
+      await waitFor(() => tab.tableMeta?.columns.length === 2);
+      assert.equal(tab.queryAnalysis?.allowInsert, scenario.id === "table", scenario.id);
+      assert.equal(tab.queryAnalysis?.allowInsertDelete, false, scenario.id);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreStorage();
+    }
   }
 });
 

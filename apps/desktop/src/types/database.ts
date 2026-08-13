@@ -1247,6 +1247,7 @@ export interface QueryTab {
     multiSource?: boolean;
     allowInsert?: boolean;
     allowInsertDelete?: boolean;
+    distinct?: boolean;
     sources?: {
       key: string;
       catalog?: string;
