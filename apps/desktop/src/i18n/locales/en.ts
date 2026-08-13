@@ -336,6 +336,8 @@ export default {
     refreshLocalTableSearchIndex: "Refresh local table index",
     globalLocalSearch: "Local search",
     globalLocalSearchTooltip: "Search only currently loaded sidebar objects without remote requests.",
+    regexSearch: "Regex search",
+    regexSearchTooltip: "Match sidebar names, comments, and aliases with JavaScript regular expressions.",
     clearFilter: "Clear filter",
     locateActiveTab: "Locate in sidebar",
   },

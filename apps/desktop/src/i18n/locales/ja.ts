@@ -337,6 +337,8 @@ export default withEnglishFallback({
     refreshLocalTableSearchIndex: "ローカルテーブルインデックスを更新",
     globalLocalSearch: "ローカル検索",
     globalLocalSearchTooltip: "リモート要求を行わず、現在読み込まれているサイドバーオブジェクトのみを検索します。",
+    regexSearch: "正規表現検索",
+    regexSearchTooltip: "JavaScript 正規表現でサイドバーの名前、コメント、エイリアスを照合します。",
     clearFilter: "フィルターをクリア",
     locateActiveTab: "サイドバーで表示",
   },

@@ -261,6 +261,8 @@ export default withEnglishFallback({
     refreshLocalTableSearchIndex: "刷新本地表索引",
     globalLocalSearch: "本地搜索",
     globalLocalSearchTooltip: "开启后仅搜索当前已加载的侧边栏对象，不发送远程请求。",
+    regexSearch: "正则搜索",
+    regexSearchTooltip: "使用 JavaScript 正则表达式匹配侧边栏名称、备注和别名。",
     clearFilter: "清除筛选",
     locateActiveTab: "在侧边栏中定位",
   },

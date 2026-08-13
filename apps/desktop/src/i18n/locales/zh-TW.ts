@@ -337,6 +337,8 @@ export default withEnglishFallback({
     refreshLocalTableSearchIndex: "重新整理本機資料表索引",
     globalLocalSearch: "本機搜尋",
     globalLocalSearchTooltip: "只搜尋目前已載入的側邊欄物件，不會發出遠端請求。",
+    regexSearch: "正規表示式搜尋",
+    regexSearchTooltip: "使用 JavaScript 正規表示式比對側邊欄名稱、備註與別名。",
     clearFilter: "清除篩選",
     locateActiveTab: "在側邊欄中定位",
   },

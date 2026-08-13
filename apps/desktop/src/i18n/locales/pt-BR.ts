@@ -337,6 +337,8 @@ export default withEnglishFallback({
     refreshLocalTableSearchIndex: "Atualizar índice local de tabelas",
     globalLocalSearch: "Busca local",
     globalLocalSearchTooltip: "Pesquisa apenas os objetos da barra lateral carregados no momento, sem solicitações remotas.",
+    regexSearch: "Busca por regex",
+    regexSearchTooltip: "Correspondência de nomes, comentários e aliases com expressões regulares JavaScript.",
     clearFilter: "Limpar filtro",
     locateActiveTab: "Localizar na barra lateral",
   },

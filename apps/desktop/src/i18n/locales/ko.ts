@@ -331,6 +331,8 @@ export default withEnglishFallback({
     searchScopeView: "뷰",
     searchTablesInCurrentScope: "이 데이터베이스에서 테이블 검색...",
     clearTableSearch: "테이블 검색 지우기",
+    regexSearch: "정규식 검색",
+    regexSearchTooltip: "JavaScript 정규식으로 사이드바 이름, 주석, 별칭을 검색합니다.",
     clearFilter: "필터 지우기",
     locateActiveTab: "사이드바에서 찾기",
   },
