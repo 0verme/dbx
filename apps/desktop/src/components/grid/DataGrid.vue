@@ -68,6 +68,7 @@ import DataGridColumnHeader from "@/components/grid/DataGridColumnHeader.vue";
 import DataGridQueryControls from "@/components/grid/DataGridQueryControls.vue";
 import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import EnumCellEditor from "@/components/grid/EnumCellEditor.vue";
+import DataGridReadonlyTextSelection from "@/components/grid/DataGridReadonlyTextSelection.vue";
 import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo, TableInfoTab } from "@/types/database";
 import { isQueryExecutionErrorResult } from "@/lib/query/queryResultError";
 import { tableObjectSourceKind } from "@/lib/table/tableObjectSourceKind";
@@ -560,6 +561,12 @@ const infiniteScrollEnabled = computed(() => props.paginationEnabled && settings
 const infiniteScrollMaxRows = computed(() => continuousQueryResultMaxRows(settingsStore.editorSettings.queryResultMaxRowsEnabled, settingsStore.editorSettings.queryResultMaxRows));
 const flatteningMultiLineEnabled = computed(() => settingsStore.editorSettings.flatteningMultiLineText);
 const expandedCellEditor = ref<{ rowId: number; col: number } | null>(null);
+const readonlyTextCell = ref<{
+  rowId: number;
+  col: number;
+  value: string;
+  expanded: boolean;
+} | null>(null);
 
 function resolvedColumnComment(column: string, actualColIdx: number): string | undefined {
   return dataGridColumnCommentFor(columnCommentMap.value, column, props.sourceColumns?.[actualColIdx]);
@@ -3357,6 +3364,7 @@ function cellUsesExpandedEditor(rowId: number | undefined, columnIndex: number):
 
 async function startCellEdit(rowId: number, columnIndex: number, expanded: boolean) {
   if (!(await hydrateLargeValueCell(rowId, columnIndex))) return;
+  closeReadonlyCellTextSelection();
   expandedCellEditor.value = expanded ? { rowId, col: columnIndex } : null;
   startEdit(rowId, columnIndex);
 }
@@ -3376,15 +3384,39 @@ async function startDomCellEdit(rowId: number, columnIndex: number, displayText:
   );
 }
 
-function showReadonlyCellDetailsOnDblClick(item: RowItem, rowIndex: number, visibleColIdx: number, actualColIdx: number): boolean {
-  if (canEditCellItem(item, actualColIdx)) return false;
-  showCellDetailsForVisibleCell(rowIndex, visibleColIdx, actualColIdx);
-  return true;
+function readonlyTextCellMatches(rowId: number | undefined, columnIndex: number): boolean {
+  return !!readonlyTextCell.value && readonlyTextCell.value.rowId === rowId && readonlyTextCell.value.col === columnIndex;
 }
 
-async function onDomCellDblClick(item: RowItem, rowIndex: number, visibleColIdx: number, actualColIdx: number, event: MouseEvent) {
+async function startReadonlyCellTextSelection(rowId: number, columnIndex: number, displayText: string, expanded: boolean) {
+  if (!(await hydrateLargeValueCell(rowId, columnIndex))) return;
+  const item = getRowItem(rowId);
+  if (!item) return;
+  const value = cellEditorTextForValue(item.data[columnIndex], columnIndex);
+  readonlyTextCell.value = {
+    rowId,
+    col: columnIndex,
+    value,
+    expanded: expanded || value.includes("\n") || value.includes("\r") || value.length > displayText.length,
+  };
+}
+
+function closeReadonlyCellTextSelection(restoreGridFocus = false) {
+  readonlyTextCell.value = null;
+  if (restoreGridFocus) nextTick(() => gridRef.value?.focus({ preventScroll: true }));
+}
+
+function escapeReadonlyCellTextSelection() {
+  closeReadonlyCellTextSelection(true);
+}
+
+async function onDomCellDblClick(item: RowItem, actualColIdx: number, event: MouseEvent) {
   if (booleanCellsUseCheckbox.value && isBooleanGridCell(item, actualColIdx) && canEditCellItem(item, actualColIdx)) return;
-  if (showReadonlyCellDetailsOnDblClick(item, rowIndex, visibleColIdx, actualColIdx)) return;
+  if (!canEditCellItem(item, actualColIdx)) {
+    const displayText = formatCellCached(item.data[actualColIdx], actualColIdx);
+    await startReadonlyCellTextSelection(item.id, actualColIdx, displayText, cellEditContentNeedsExpandedEditor({ displayText, editText: cellEditorTextForValue(item.data[actualColIdx], actualColIdx), target: event.currentTarget }));
+    return;
+  }
   await startDomCellEdit(item.id, actualColIdx, formatCellCached(item.data[actualColIdx], actualColIdx), event);
 }
 
@@ -5794,7 +5826,7 @@ function onCanvasMouseMove(event: MouseEvent) {
   if (canvasRef.value) {
     const overBooleanInteractive =
       booleanCellsUseCheckbox.value && hit != null && !hit.rowNumber && hitItem != null && actualColIdx !== undefined && isBooleanGridCell(hitItem, actualColIdx) && canEditCellItem(hitItem, actualColIdx) && booleanInteractiveHitFromCanvasEvent(hitItem, hit, actualColIdx, event);
-    canvasRef.value.style.cursor = hit?.rowNumber ? "default" : overBooleanInteractive ? "pointer" : hitItem && actualColIdx !== undefined && canEditCellItem(hitItem, actualColIdx) ? "text" : "cell";
+    canvasRef.value.style.cursor = hit?.rowNumber ? "default" : overBooleanInteractive ? "pointer" : hitItem && actualColIdx !== undefined ? "text" : "cell";
   }
   if (next?.rowIndex === canvasHoverCell.value?.rowIndex && next?.visibleColIdx === canvasHoverCell.value?.visibleColIdx) {
     return;
@@ -5933,7 +5965,10 @@ async function onCanvasDblClick(event: MouseEvent) {
   const item = displayItemAt(hit.rowIndex);
   const actualColIdx = visibleColumnIndexes.value[hit.visibleColIdx];
   if (!item || actualColIdx === undefined) return;
-  if (showReadonlyCellDetailsOnDblClick(item, item.displayIndex, hit.visibleColIdx, actualColIdx)) return;
+  if (!canEditCellItem(item, actualColIdx)) {
+    await startReadonlyCellTextSelection(item.id, actualColIdx, formatCellCached(item.data[actualColIdx], actualColIdx), canvasCellContentOverflows(item, actualColIdx, hit.visibleColIdx));
+    return;
+  }
   if (booleanCellsUseCheckbox.value && isBooleanGridCell(item, actualColIdx) && canEditCellItem(item, actualColIdx)) return;
   await startCellEdit(item.id, actualColIdx, canvasCellContentOverflows(item, actualColIdx, hit.visibleColIdx));
 }
@@ -6005,6 +6040,17 @@ const canvasEditingCell = computed(() => {
   };
 });
 
+const canvasReadonlyTextCell = computed(() => {
+  const cell = readonlyTextCell.value;
+  if (!cell || !useCanvasGridRows.value) return null;
+  const rowIndex = displayRowIndexById(cell.rowId);
+  const visibleColIdx = visibleColumnIndexes.value.indexOf(cell.col);
+  if (rowIndex < 0 || visibleColIdx < 0) return null;
+  const rect = canvasCellViewportRect(rowIndex, visibleColIdx);
+  if (!rect) return null;
+  return { ...cell, rowIndex, visibleColIdx, actualColIdx: cell.col, rect };
+});
+
 function canvasEffectiveViewportWidth(): number {
   return canvasViewportWidth.value || canvasScrollerElement()?.clientWidth || 0;
 }
@@ -6024,6 +6070,20 @@ const canvasOverlayStyle = computed(() => {
 
 const canvasEditingCellStyle = computed(() => {
   const cell = canvasEditingCell.value;
+  if (!cell) return {};
+  const viewportWidth = canvasEffectiveViewportWidth();
+  const clippedLeft = Math.max(rowNumberWidth.value, cell.rect.left);
+  const clippedRight = viewportWidth > 0 ? Math.min(viewportWidth, cell.rect.left + cell.rect.width) : cell.rect.left + cell.rect.width;
+  return {
+    left: `${clippedLeft}px`,
+    top: `${cell.rect.top}px`,
+    width: `${Math.max(0, clippedRight - clippedLeft)}px`,
+    height: `${cell.rect.height}px`,
+  };
+});
+
+const canvasReadonlyTextCellStyle = computed(() => {
+  const cell = canvasReadonlyTextCell.value;
   if (!cell) return {};
   const viewportWidth = canvasEffectiveViewportWidth();
   const clippedLeft = Math.max(rowNumberWidth.value, cell.rect.left);
@@ -6718,7 +6778,7 @@ async function onTransposeCellDblClick(rowIndex: number, actualColIdx: number, d
   const item = displayItemAt(rowIndex);
   if (!item) return;
   if (!canEditCellItem(item, actualColIdx)) {
-    showTransposeCellDetails(rowIndex, actualColIdx);
+    await startReadonlyCellTextSelection(item.id, actualColIdx, displayText, cellEditContentNeedsExpandedEditor({ displayText, editText: cellEditorTextForValue(item.data[actualColIdx], actualColIdx), target: event.currentTarget }));
     return;
   }
   await startDomCellEdit(item.id, actualColIdx, displayText, event);
@@ -8292,6 +8352,7 @@ watch(
       clearResetScrollAfterResult();
       resetGridVerticalScroll();
     }
+    closeReadonlyCellTextSelection();
     clearCellSelection();
     clearRowSelection();
     invalidateSyntheticContextSelection();
@@ -10227,7 +10288,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           'bg-yellow-500/10 cell-dirty': displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
                           'bg-yellow-200/60 dark:bg-yellow-500/20': cellIsSearchMatch(cell.recordIndex, cell.valueIndex),
                           'ring-2 ring-inset ring-yellow-500 bg-yellow-300/60 dark:bg-yellow-500/40': cellIsCurrentMatch(cell.recordIndex, cell.valueIndex),
-                          'cursor-text': !isScrolling && canEditCellItem(displayItems[cell.recordIndex], cell.valueIndex),
+                          'cursor-text': !isScrolling,
                           'hover:bg-gray-200 hover:text-foreground dark:hover:bg-gray-800':
                             !isScrolling && canEditCellItem(displayItems[cell.recordIndex], cell.valueIndex) && !transposeRecordUsesSelectionVisual(cell.recordIndex) && !transposeRecordUsesActiveHighlight(cell.recordIndex) && !transposeCellIsSelected(cell.recordIndex, cell.valueIndex),
                         },
@@ -10243,7 +10304,10 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                       @contextmenu="onTransposeCellContext(cell.recordIndex, cell.valueIndex, $event)"
                       @dblclick.stop="onTransposeCellDblClick(cell.recordIndex, cell.valueIndex, cell.display, $event)"
                     >
-                      <template v-if="editingCell?.rowId === displayItems[cell.recordIndex]?.id && editingCell?.col === cell.valueIndex">
+                      <template v-if="readonlyTextCellMatches(displayItems[cell.recordIndex]?.id, cell.valueIndex)">
+                        <DataGridReadonlyTextSelection :value="readonlyTextCell!.value" :expanded="readonlyTextCell!.expanded" @close="closeReadonlyCellTextSelection" @escape="escapeReadonlyCellTextSelection" />
+                      </template>
+                      <template v-else-if="editingCell?.rowId === displayItems[cell.recordIndex]?.id && editingCell?.col === cell.valueIndex">
                         <TemporalCellEditor
                           v-if="temporalEditorConfigForColumn(cell.valueIndex)"
                           v-model="editValue"
@@ -10803,6 +10867,9 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                     @dblclick="onCanvasDblClick"
                   />
                   <div ref="canvasOverlayRef" class="canvas-grid-overlay dbx-data-grid-font-family sticky left-0 top-0 z-10 overflow-visible" :style="canvasOverlayStyle">
+                    <div v-if="canvasReadonlyTextCell" class="absolute pointer-events-auto z-20 tabular-nums" :style="canvasReadonlyTextCellStyle" @mousedown.stop @click.stop>
+                      <DataGridReadonlyTextSelection :value="canvasReadonlyTextCell.value" :expanded="canvasReadonlyTextCell.expanded" @close="closeReadonlyCellTextSelection" @escape="escapeReadonlyCellTextSelection" />
+                    </div>
                     <div v-if="canvasEditingCell" class="absolute pointer-events-auto z-20 tabular-nums" :style="canvasEditingCellStyle" @mousedown.stop @click.stop>
                       <TemporalCellEditor
                         v-if="temporalEditorConfigForColumn(canvasEditingCell.actualColIdx)"
@@ -10936,7 +11003,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                         'data-grid-row--draft': item.isDraft && !isRowActive(item.displayIndex),
                         'data-grid-row--striped': !item.isNew && !item.isDraft && !item.isDeleted && !isRowActive(item.displayIndex) && item.displayIndex % 2 === 1,
                         'active-row': isRowActive(item.displayIndex) && !item.isDeleted,
-                        'relative z-20 overflow-visible': editingCell?.rowId === item.id,
+                        'relative z-20 overflow-visible': editingCell?.rowId === item.id || readonlyTextCell?.rowId === item.id,
                       }"
                       :style="dataGridRowStyle(item)"
                       :data-row-index="item.displayIndex"
@@ -10987,11 +11054,12 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                             'bg-yellow-200/60 dark:bg-yellow-500/20': cellIsSearchMatch(item.displayIndex, col.actualColIdx),
                             'ring-2 ring-inset ring-yellow-500 bg-yellow-300/60 dark:bg-yellow-500/40': cellIsCurrentMatch(item.displayIndex, col.actualColIdx),
                             'tabular-nums': typeof item.data[col.actualColIdx] === 'number',
+                            'cursor-text': !isScrolling && !canEditCellItem(item, col.actualColIdx),
                             'cursor-text hover:bg-gray-200 hover:text-foreground dark:hover:bg-gray-800': !isScrolling && canEditCellItem(item, col.actualColIdx) && !(booleanCellsUseCheckbox && isBooleanGridCell(item, col.actualColIdx) && item.data[col.actualColIdx] !== null),
                             'cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800': !isScrolling && booleanCellsUseCheckbox && isBooleanGridCell(item, col.actualColIdx) && item.data[col.actualColIdx] !== null && canEditCellItem(item, col.actualColIdx),
                             'line-through': item.isDeleted,
-                            'overflow-visible z-20 border-r-transparent': editingCell?.rowId === item.id && editingCell?.col === col.actualColIdx,
-                            'overflow-hidden': !(editingCell?.rowId === item.id && editingCell?.col === col.actualColIdx),
+                            'overflow-visible z-20 border-r-transparent': (editingCell?.rowId === item.id && editingCell?.col === col.actualColIdx) || readonlyTextCellMatches(item.id, col.actualColIdx),
+                            'overflow-hidden': !((editingCell?.rowId === item.id && editingCell?.col === col.actualColIdx) || readonlyTextCellMatches(item.id, col.actualColIdx)),
                           },
                         ]"
                         @mousedown="
@@ -11000,11 +11068,14 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                         "
                         @mouseenter="onCellMouseenter(item.displayIndex, col.visibleColIdx, col.actualColIdx)"
                         @mouseleave="onCellMouseleave(item.displayIndex, col.actualColIdx)"
-                        @dblclick="onDomCellDblClick(item, item.displayIndex, col.visibleColIdx, col.actualColIdx, $event)"
+                        @dblclick="onDomCellDblClick(item, col.actualColIdx, $event)"
                         :data-visible-col-index="col.visibleColIdx"
                         @contextmenu="onCellContext(item.id, item.displayIndex, col.actualColIdx, col.visibleColIdx, $event)"
                       >
-                        <template v-if="editingCell?.rowId === item.id && editingCell?.col === col.actualColIdx">
+                        <template v-if="readonlyTextCellMatches(item.id, col.actualColIdx)">
+                          <DataGridReadonlyTextSelection :value="readonlyTextCell!.value" :expanded="readonlyTextCell!.expanded" @close="closeReadonlyCellTextSelection" @escape="escapeReadonlyCellTextSelection" />
+                        </template>
+                        <template v-else-if="editingCell?.rowId === item.id && editingCell?.col === col.actualColIdx">
                           <TemporalCellEditor
                             v-if="temporalEditorConfigForColumn(col.actualColIdx)"
                             v-model="editValue"
