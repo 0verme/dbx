@@ -2960,6 +2960,106 @@ describe("connectionStore metadata loading", () => {
     expect(tablesGroup.children?.some((child) => child.label?.startsWith("fresh_"))).toBe(true);
   });
 
+  it("restores and drains unfiltered pages when expand-all races a search clear reload", async () => {
+    const tables = Array.from({ length: 5 }, (_, index) => ({
+      name: `t_${String(index + 1).padStart(4, "0")}`,
+      table_type: "TABLE" as const,
+      comment: null,
+    }));
+    let resolveSearchClearReload!: (tables: TableInfo[]) => void;
+    let unfilteredFirstPageCalls = 0;
+    const listTables = vi.fn(
+      (_connectionId: string, _database: string, _schema: string, searchFilter?: string, limit?: number, offset?: number) => {
+        if (searchFilter) return Promise.resolve(tables.filter((table) => table.name.includes(searchFilter)));
+        if ((offset ?? 0) === 0 && ++unfilteredFirstPageCalls === 1) {
+          return new Promise<TableInfo[]>((resolve) => {
+            resolveSearchClearReload = resolve;
+          });
+        }
+        return Promise.resolve(tables.slice(offset ?? 0, (offset ?? 0) + (limit ?? tables.length)));
+      },
+    );
+
+    vi.doMock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => false }));
+    vi.doMock("@/lib/backend/api", () => ({
+      checkConnectionHealth: vi.fn().mockResolvedValue(undefined),
+      deleteSchemaCachePrefix: vi.fn().mockResolvedValue(undefined),
+      listTables,
+      loadSchemaCache: vi.fn().mockResolvedValue(null),
+      saveSchemaCache: vi.fn().mockResolvedValue(undefined),
+      saveConnections: vi.fn().mockResolvedValue(undefined),
+      saveSidebarLayout: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const { useConnectionStore } = await import("@/stores/connectionStore");
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    const store = useConnectionStore();
+    const settingsStore = useSettingsStore();
+    settingsStore.editorSettings.sidebarObjectDisplay = "grouped";
+    settingsStore.desktopSettings.sidebar_table_page_size = 2;
+
+    const connection = mysqlConnection();
+    const tablesGroup: TreeNode = {
+      id: "mysql-1:app:__tables",
+      label: "tree.tables",
+      type: "group-tables",
+      connectionId: connection.id,
+      database: "app",
+      isExpanded: true,
+      children: [],
+    };
+    store.connections = [connection];
+    store.connectedIds.add(connection.id);
+    store.treeNodes = [
+      {
+        id: connection.id,
+        label: connection.name,
+        type: "connection",
+        connectionId: connection.id,
+        isExpanded: true,
+        children: [
+          {
+            id: "mysql-1:app",
+            label: "app",
+            type: "database",
+            connectionId: connection.id,
+            database: "app",
+            isExpanded: true,
+            children: [tablesGroup],
+          },
+        ],
+      },
+    ];
+
+    store.sidebarSearchQuery = "0003";
+    await store.loadObjectGroupChildren(tablesGroup, { force: true });
+    expect(tablesGroup.children?.map((child) => child.label)).toEqual(["t_0003"]);
+    expect(store.isTreeNodeChildrenLoaded(tablesGroup.id)).toBe(true);
+
+    store.sidebarSearchQuery = "";
+    const searchClearReload = store.loadObjectGroupChildren(tablesGroup, { force: true });
+    await vi.waitFor(() => expect(listTables).toHaveBeenCalledTimes(2));
+
+    await store.loadAllObjectGroupChildren(tablesGroup);
+    resolveSearchClearReload(tables.slice(0, 3));
+    await searchClearReload;
+
+    expect(tablesGroup.children?.map((child) => child.label)).toEqual(tables.map((table) => table.name));
+    expect(tablesGroup.children?.some((child) => child.type === "load-more")).toBe(false);
+    expect(tablesGroup.objectCount).toBe(5);
+    expect(tablesGroup.isLoading).toBe(false);
+    expect(listTables.mock.calls.map((call) => [call[3], call[4], call[5]])).toEqual([
+      ["0003", 2, undefined],
+      [undefined, 3, 0],
+      [undefined, 3, 0],
+      [undefined, 3, 2],
+      [undefined, 3, 4],
+    ]);
+
+    await store.loadAllObjectGroupChildren(tablesGroup);
+    expect(listTables).toHaveBeenCalledTimes(5);
+  });
+
   it("merges load-more table pages onto the live group node after an in-tree replacement", async () => {
     const firstPage = Array.from({ length: 201 }, (_, index) => ({
       name: `t_${String(index + 1).padStart(4, "0")}`,

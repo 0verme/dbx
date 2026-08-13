@@ -294,6 +294,10 @@ interface LoadTreeOptions {
   connectedOnly?: boolean;
   expectedSidebarSearchQuery?: string;
   searchFilter?: string;
+  // Explicit actions can load the unfiltered backing group while the global search
+  // continues to control presentation; normal watcher refreshes still reject mismatches.
+  allowGlobalSearchMismatch?: boolean;
+  onChildrenApplied?: (node: TreeNode) => void;
   sidebarTableSearchParentId?: string;
   expectedSidebarTableSearchQuery?: string;
   tableNameFilterScopeKey?: string;
@@ -475,6 +479,7 @@ export const useConnectionStore = defineStore("connection", () => {
   const connectionStateRevisions = new Map<string, number>();
   const connectionErrorRevisions = new Map<string, number>();
   const treeNodeLoads = new TreeNodeLoadRegistry();
+  const filteredObjectGroupChildrenIds = new Set<string>();
   const primaryVisibleObjectRefreshInFlight = new Set<string>();
   let nextLocalConnectionAttempt = 0;
   let beforeConnectHandler: BeforeConnectHandler | null = null;
@@ -1237,6 +1242,7 @@ export const useConnectionStore = defineStore("connection", () => {
 
   /** Drop loaded/confirmed-empty markers, metadata caches, and generations for a discarded shell. */
   function forgetTreeNodeLoadState(nodeId: string) {
+    filteredObjectGroupChildrenIds.delete(nodeId);
     clearLoadedChildrenCache(nodeId);
     treeNodeLoads.invalidatePrefix(nodeId);
   }
@@ -2170,6 +2176,7 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function isTreeLoadSearchChanged(searchFilter: string, options?: LoadTreeOptions): boolean {
     if (options?.sidebarTableSearchParentId) return isSidebarTableSearchQueryChanged(options);
+    if (options?.allowGlobalSearchMismatch) return false;
     return (sidebarSearchQuery.value || "") !== searchFilter || isSidebarSearchQueryChanged(options);
   }
 
@@ -2260,6 +2267,11 @@ export const useConnectionStore = defineStore("connection", () => {
     for (const id of confirmedEmptyTreeNodeIds.value) {
       if (id === prefix || id.startsWith(`${prefix}:`)) {
         confirmedEmptyTreeNodeIds.value.delete(id);
+      }
+    }
+    for (const id of filteredObjectGroupChildrenIds) {
+      if (id === prefix || id.startsWith(`${prefix}:`)) {
+        filteredObjectGroupChildrenIds.delete(id);
       }
     }
     invalidateMetadataCachesByTreePrefix(prefix);
@@ -4534,6 +4546,7 @@ export const useConnectionStore = defineStore("connection", () => {
     });
     if (!options?.force && !searchFilter && !options?.sidebarTableSearchParentId && !tableNameFilterForScope) {
       if (await hydrateTreeNodeFromCache(node, objectGroupCacheKey(node))) {
+        filteredObjectGroupChildrenIds.delete(node.id);
         void loadObjectGroupChildren(node, { ...options, force: true }).catch(() => undefined);
         return;
       }
@@ -4559,7 +4572,10 @@ export const useConnectionStore = defineStore("connection", () => {
         try {
           await ensureConnected(node.connectionId);
           load = reclaimTreeNodeLoad(load, node);
-          if (useCachedChildren(node, options, load)) return;
+          if (useCachedChildren(node, options, load)) {
+            filteredObjectGroupChildrenIds.delete(node.id);
+            return;
+          }
           const objectTypes = objectTypesForGroupNode(node.type);
           const parentNodeId = objectGroupRefreshParentId(node);
           if (!objectTypes || !parentNodeId) return;
@@ -4580,6 +4596,7 @@ export const useConnectionStore = defineStore("connection", () => {
           if (!options?.force && !searchFilter && !tableNameFilter) {
             const cached = await loadPersistedTreeChildren(node, cacheKey, load);
             if (cached.hit) {
+              filteredObjectGroupChildrenIds.delete(node.id);
               if (cached.isStale) refreshStaleTreeNode(node);
               return;
             }
@@ -4624,6 +4641,9 @@ export const useConnectionStore = defineStore("connection", () => {
           if (!targetNode) return;
           targetNode.objectCount = nextObjectCount;
           setChildren(targetNode, children);
+          if (searchFilter) filteredObjectGroupChildrenIds.add(targetNode.id);
+          else filteredObjectGroupChildrenIds.delete(targetNode.id);
+          options?.onChildrenApplied?.(targetNode);
           if (!searchFilter && !isSidebarTableSearch && !tableNameFilter) {
             await savePersistedTreeChildren(cacheKey, children);
           }
@@ -4664,7 +4684,7 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
-  async function loadMoreObjectGroupChildren(node: TreeNode) {
+  async function loadMoreObjectGroupChildren(node: TreeNode, options?: { searchFilter?: string }) {
     if (node.type !== "load-more" || !node.loadMore) return;
     const loadMore = node.loadMore;
     const parent = findNode(treeNodes.value, node.loadMore.parentId);
@@ -4743,6 +4763,7 @@ export const useConnectionStore = defineStore("connection", () => {
               objectTypes,
               offset: loadMore.offset,
               pageSize: loadMore.pageSize,
+              searchFilter: options?.searchFilter,
               force: false,
             });
             const targetParent = treeNodeLoadRelatedTarget(load, parent);
@@ -4759,6 +4780,7 @@ export const useConnectionStore = defineStore("connection", () => {
               objectTypes,
               offset: loadMore.offset,
               pageSize: loadMore.pageSize,
+              searchFilter: options?.searchFilter,
               force: false,
             });
             const targetParent = treeNodeLoadRelatedTarget(load, parent);
@@ -4929,20 +4951,32 @@ export const useConnectionStore = defineStore("connection", () => {
   async function loadAllObjectGroupChildren(parent: TreeNode) {
     if (!parent.connectionId || !hasTreeNodeDatabaseContext(parent)) return;
     if (!objectTypesForGroupNode(parent.type)) return;
-    let load = beginTreeNodeLoad(parent);
+    const liveParent = treeNodeInSidebarTree(parent);
+    if (!liveParent) return;
+    if (!isTreeNodeChildrenLoaded(liveParent.id) || filteredObjectGroupChildrenIds.has(liveParent.id)) {
+      let isPreparedPageCurrent: (() => boolean) | undefined;
+      await loadObjectGroupChildren(liveParent, {
+        force: true,
+        searchFilter: "",
+        allowGlobalSearchMismatch: true,
+        onChildrenApplied: (targetNode) => {
+          const epoch = treeNodeLoads.observe(targetNode.id);
+          isPreparedPageCurrent = () => epoch.isCurrent();
+        },
+      });
+      if (!isPreparedPageCurrent?.()) return;
+    }
+
+    const refreshedParent = treeNodeInSidebarTree(parent);
+    if (!refreshedParent) return;
+    const load = beginTreeNodeLoad(refreshedParent);
     try {
-      await ensureConnected(parent.connectionId);
-      load = reclaimTreeNodeLoad(load, parent);
       const liveParent = treeNodeLoadTarget(load);
       if (!liveParent) return;
-      if (!isTreeNodeChildrenLoaded(liveParent.id)) {
-        await loadObjectGroupChildren(liveParent);
-      }
-      if (!load.isCurrent()) return;
 
       let loadMoreNode = findTreeNodes(liveParent.children ?? [], (child) => child.type === "load-more")[0];
       while (loadMoreNode?.loadMore) {
-        await loadMoreObjectGroupChildren(loadMoreNode);
+        await loadMoreObjectGroupChildren(loadMoreNode, { searchFilter: "" });
         if (!load.isCurrent()) return;
         const currentParent = treeNodeLoadTarget(load);
         if (!currentParent) return;
@@ -4951,7 +4985,7 @@ export const useConnectionStore = defineStore("connection", () => {
       const finishedParent = treeNodeLoadTarget(load);
       if (finishedParent) finishedParent.isExpanded = true;
     } catch (e) {
-      recordMetadataLoadError(parent.connectionId, e, load);
+      recordMetadataLoadError(refreshedParent.connectionId!, e, load);
       throw e;
     } finally {
       finishTreeNodeLoad(load);
