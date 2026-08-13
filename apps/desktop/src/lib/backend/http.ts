@@ -3787,8 +3787,8 @@ export async function checkMcpServerStatus(): Promise<import("@/lib/backend/taur
     native_bin_path: null,
     script_path: null,
     data_dir: null,
-    install_command: "npm install -g @dbx-app/mcp-server@latest --registry=https://registry.npmjs.org",
-    update_command: "npm install -g @dbx-app/mcp-server@latest --registry=https://registry.npmjs.org",
+    install_command: "npm install -g @dbx-app/mcp-server@latest",
+    update_command: "npm install -g @dbx-app/mcp-server@latest",
     error: "MCP Server status is only available in the desktop app.",
   };
 }
