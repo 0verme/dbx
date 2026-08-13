@@ -107,6 +107,19 @@ test("completion column sorting defaults to alphabetical and normalizes saved bo
   assert.equal(normalizeEditorSettings({ sortCompletionColumnsAlphabetically: "false" as unknown as boolean }).sortCompletionColumnsAlphabetically, true);
 });
 
+test("table DDL wrapping defaults on and normalizes saved booleans independently", () => {
+  assert.equal(DEFAULT_EDITOR_SETTINGS.tableDdlWordWrap, true);
+  assert.equal(DEFAULT_EDITOR_SETTINGS.wordWrap, false);
+  assert.equal(normalizeEditorSettings({}).tableDdlWordWrap, true);
+  assert.equal(normalizeEditorSettings({ tableDdlWordWrap: false }).tableDdlWordWrap, false);
+  assert.equal(normalizeEditorSettings({ tableDdlWordWrap: true }).tableDdlWordWrap, true);
+  assert.equal(normalizeEditorSettings({ tableDdlWordWrap: "false" as unknown as boolean }).tableDdlWordWrap, true);
+
+  const settings = normalizeEditorSettings({ tableDdlWordWrap: false, wordWrap: true });
+  assert.equal(settings.tableDdlWordWrap, false);
+  assert.equal(settings.wordWrap, true);
+});
+
 test("updateEditorSettings persists completion column sort toggles", async () => {
   await withMockLocalStorage({}, async () => {
     setActivePinia(createPinia());
@@ -118,6 +131,21 @@ test("updateEditorSettings persists completion column sort toggles", async () =>
     await vi.waitFor(() => {
       const saved = saveEditorSettingsMock.mock.calls.at(-1)?.[0] as { sortCompletionColumnsAlphabetically?: boolean } | undefined;
       assert.equal(saved?.sortCompletionColumnsAlphabetically, false);
+    });
+  });
+});
+
+test("updateEditorSettings persists table DDL wrapping toggles", async () => {
+  await withMockLocalStorage({}, async () => {
+    setActivePinia(createPinia());
+    const store = useSettingsStore();
+    await store.initEditorSettings();
+
+    store.updateEditorSettings({ tableDdlWordWrap: false });
+    assert.equal(store.editorSettings.tableDdlWordWrap, false);
+    await vi.waitFor(() => {
+      const saved = saveEditorSettingsMock.mock.calls.at(-1)?.[0] as { tableDdlWordWrap?: boolean } | undefined;
+      assert.equal(saved?.tableDdlWordWrap, false);
     });
   });
 });

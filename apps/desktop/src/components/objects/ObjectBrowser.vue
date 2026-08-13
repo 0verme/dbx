@@ -191,7 +191,6 @@ const tableForeignKeysLoading = ref(false);
 const tableTriggers = ref<TriggerInfo[]>([]);
 const tableTriggersLoading = ref(false);
 const tableInfoSearchQuery = ref("");
-const tableInfoWrap = ref(true);
 const tableInfoDdlPreRef = ref<HTMLPreElement | null>(null);
 const SIDE_PANEL_MIN_WIDTH = 280;
 const SIDE_PANEL_MAX_WIDTH = 900;
@@ -206,6 +205,12 @@ const effectiveDatabaseType = computed(() => effectiveDatabaseTypeForConnection(
 const isGaussdbM = computed(() => effectiveDatabaseType.value === "gaussdb" && props.connection.driver_profile?.toLowerCase() === "gaussdb-m");
 const isVictoriaMetrics = computed(() => effectiveDatabaseType.value === "victoriametrics");
 const objectRowsLabel = computed(() => t(isVictoriaMetrics.value ? "objects.series" : "objects.rows"));
+
+function toggleTableDdlWordWrap() {
+  settingsStore.updateEditorSettings({
+    tableDdlWordWrap: !settingsStore.editorSettings.tableDdlWordWrap,
+  });
+}
 
 function gaussdbMColumnType(dataType: string): string {
   if (isGaussdbM.value) {
@@ -3144,7 +3149,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
                 <Copy class="w-3 h-3" />
                 <span class="table-info-action-label">{{ t("grid.copyDdl") }}</span>
               </Button>
-              <Button variant="ghost" size="icon" class="h-6 w-6" :class="{ 'bg-accent': tableInfoWrap }" @click="tableInfoWrap = !tableInfoWrap">
+              <Button variant="ghost" size="icon" class="h-6 w-6" :class="{ 'bg-accent': settingsStore.editorSettings.tableDdlWordWrap }" @click="toggleTableDdlWordWrap">
                 <WrapText class="w-3 h-3" />
               </Button>
             </div>
@@ -3284,7 +3289,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
             data-native-clipboard
             tabindex="0"
             class="flex-1 min-w-0 text-xs font-mono p-3 overflow-auto ddl-code leading-5 select-text outline-none"
-            :class="tableInfoWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
+            :class="settingsStore.editorSettings.tableDdlWordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
             v-html="filteredTableDdlContent"
             @keydown="onTableInfoDdlKeydown"
           ></pre>
