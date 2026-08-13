@@ -561,9 +561,13 @@ const infiniteScrollMaxRows = computed(() => continuousQueryResultMaxRows(settin
 const flatteningMultiLineEnabled = computed(() => settingsStore.editorSettings.flatteningMultiLineText);
 const expandedCellEditor = ref<{ rowId: number; col: number } | null>(null);
 
-function headerColumnComment(column: string): string {
+function resolvedColumnComment(column: string, actualColIdx: number): string | undefined {
+  return dataGridColumnCommentFor(columnCommentMap.value, column, props.sourceColumns?.[actualColIdx]);
+}
+
+function headerColumnComment(column: string, actualColIdx: number): string {
   if (!showColumnCommentsInHeader.value) return "";
-  return columnCommentMap.value.get(column) || "";
+  return resolvedColumnComment(column, actualColIdx) ?? "";
 }
 
 function headerColumnType(column: string, actualColIdx: number): string {
@@ -582,7 +586,7 @@ function headerColumnNullability(actualColIdx: number): "nullable" | "required" 
 
 const reserveColumnTypeLine = computed(() => reserveDataGridHeaderLine(showColumnTypesInHeader.value, props.result.columns, (column, index) => headerColumnType(column, index)));
 // Match the rendered header columns so comments from unprojected metadata cannot add an empty row.
-const reserveColumnCommentLine = computed(() => reserveDataGridHeaderLine(showColumnCommentsInHeader.value, props.result.columns, (column) => headerColumnComment(column)));
+const reserveColumnCommentLine = computed(() => reserveDataGridHeaderLine(showColumnCommentsInHeader.value, props.result.columns, (column, index) => headerColumnComment(column, index)));
 
 function shortTypeName(t: string): string {
   const s = t.toLowerCase();
@@ -10366,11 +10370,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                     :frozen-separator="frozenColumnCount > 0 && col.visibleColIdx === frozenColumnCount - 1"
                     :tooltip-disabled="columnHeaderTooltipsDisabled"
                     :column-type="headerColumnType(col.name, col.actualColIdx)"
-                    :column-comment="headerColumnComment(col.name)"
+                    :column-comment="headerColumnComment(col.name, col.actualColIdx)"
                     :show-type-line="reserveColumnTypeLine"
                     :show-comment-line="reserveColumnCommentLine"
                     :tooltip-column-type="columnTypeMap.get(col.name)"
-                    :tooltip-column-comment="columnCommentMap.get(col.name)"
+                    :tooltip-column-comment="resolvedColumnComment(col.name, col.actualColIdx)"
                     :column-nullability="headerColumnNullability(col.actualColIdx)"
                     :type-class="typeColorClass(headerColumnType(col.name, col.actualColIdx))"
                     :drag-class="columnHeaderDragClass(col.visibleColIdx)"
