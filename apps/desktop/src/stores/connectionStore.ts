@@ -4161,7 +4161,7 @@ export const useConnectionStore = defineStore("connection", () => {
   async function loadVectorCollections(connectionId: string, database?: string) {
     const config = getConfig(connectionId);
     const isMilvus = config?.db_type === "milvus";
-    const effectiveDb = database || config?.database || "default";
+    const effectiveDb = database || config?.database || (config?.db_type === "chromadb" ? "default_database" : "default");
     // Milvus groups collections under a per-database node; other vector stores stay flat under the connection.
     const node = isMilvus && database ? findNode(treeNodes.value, `${connectionId}:${database}`) : findConnectionNode(connectionId);
     if (!node) return;
