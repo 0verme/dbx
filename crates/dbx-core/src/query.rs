@@ -1558,7 +1558,7 @@ async fn configured_operation_budget_for_pool_key(state: &AppState, pool_key: &s
 fn oceanbase_mysql_session_timeout_sql(config: Option<&ConnectionConfig>, timeout_secs: Option<u64>) -> Option<String> {
     let config = config?;
     let timeout_secs = timeout_secs.unwrap_or(config.query_timeout_secs);
-    crate::connection::oceanbase_mysql_query_timeout_sql(config, timeout_secs)
+    crate::db::oceanbase_mysql::query_timeout_sql(config, timeout_secs)
 }
 
 async fn apply_oceanbase_mysql_session_timeout(

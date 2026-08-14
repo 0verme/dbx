@@ -265,7 +265,7 @@ pub fn resolve_external_transfer_catalog_for_config<'a>(
     config: &crate::models::connection::ConnectionConfig,
 ) -> Option<&'a str> {
     let catalog = normalize_external_catalog_name(catalog)?;
-    if crate::schema::is_doris_family_catalog_capable_config(config) {
+    if db::mysql_compatible::supports_external_catalogs(config) {
         Some(catalog)
     } else {
         None
@@ -3320,11 +3320,6 @@ fn max_transfer_write_rows(db_type: &DatabaseType, mode: &TransferMode) -> usize
     }
 }
 
-fn is_oceanbase_mysql_profile(db_type: &DatabaseType, driver_profile: Option<&str>) -> bool {
-    matches!(db_type, DatabaseType::Mysql)
-        && driver_profile.is_some_and(|profile| profile.eq_ignore_ascii_case("oceanbase"))
-}
-
 fn contains_oceanbase_mysql_table_options(sql: &str) -> bool {
     let (sql_without_literals_or_comments, _) = protect_sql_literals(sql, true);
     OCEANBASE_MYSQL_TABLE_OPTION_RE.is_match(&sql_without_literals_or_comments)
@@ -3383,8 +3378,8 @@ fn can_reuse_source_table_ddl(
     target_driver_profile: Option<&str>,
     preserves_target_table_name: bool,
 ) -> bool {
-    if is_oceanbase_mysql_profile(source_db_type, source_driver_profile)
-        && !is_oceanbase_mysql_profile(target_db_type, target_driver_profile)
+    if db::oceanbase_mysql::is_profile(source_db_type, source_driver_profile)
+        && !db::oceanbase_mysql::is_profile(target_db_type, target_driver_profile)
     {
         return false;
     }
@@ -6593,7 +6588,7 @@ where
                     }
                 };
                 if contains_oceanbase_mysql_table_options(&source_ddl)
-                    && !is_oceanbase_mysql_profile(target_db_type, target_driver_profile.as_deref())
+                    && !db::oceanbase_mysql::is_profile(target_db_type, target_driver_profile.as_deref())
                 {
                     generate_create_table_ddl(
                         &columns,
