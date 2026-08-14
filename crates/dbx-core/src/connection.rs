@@ -14,7 +14,7 @@ use crate::agent_connection::{
     oracle_alternate_connect_configs, oracle_error_with_driver_hint, should_retry_mongo_with_legacy_driver,
     trino_like_jdbc_connection_string, AgentSessionRole,
 };
-use crate::agent_manager::{JavaRuntimeMode, DEFAULT_JRE_KEY};
+use crate::agent_manager::{AgentManager, JavaRuntimeMode, DEFAULT_JRE_KEY};
 use crate::agent_recovery::{RecoveryDecision, RecoveryPolicy, RecoveryScope};
 use crate::database_capabilities;
 use crate::db;
@@ -1992,8 +1992,23 @@ impl AppState {
                     if should_retry_mongo_with_legacy_driver(&native_err) {
                         log::info!("Native MongoDB driver failed ({native_err}), falling back to agent driver");
                         let connect_params = serde_json::json!({ "connection": agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")) });
+                        let legacy_agent_key =
+                            AgentManager::db_type_to_agent_key(&DatabaseType::MongoDb, Some("mongodb-legacy"))
+                                .ok_or_else(|| "MongoDB (Legacy) Agent mapping is unavailable".to_string())?;
+                        crate::agent_service::ensure_agent_driver_ready(&self.agent_manager, legacy_agent_key)
+                            .await
+                            .map_err(|err| {
+                                format!("{native_err}\n\nFailed to prepare MongoDB (Legacy) fallback driver: {err}")
+                            })?;
                         let mut client =
-                            self.agent_manager.spawn(&DatabaseType::MongoDb, Some("mongodb-legacy")).await?;
+                            self.agent_manager.spawn(&DatabaseType::MongoDb, Some("mongodb-legacy")).await.map_err(
+                                |err| {
+                                    format!(
+                                        "{native_err}\n\nFallback with MongoDB (Legacy) driver failed: {}",
+                                        mongo_legacy_error_with_auth_hint(&err)
+                                    )
+                                },
+                            )?;
                         client.connect(connect_params).await.map_err(|err| {
                             format!(
                                 "{native_err}\n\nFallback with MongoDB (Legacy) driver failed: {}",
