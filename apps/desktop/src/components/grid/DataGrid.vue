@@ -6453,6 +6453,7 @@ function copyExtractorLabel(extractor: DataGridCopyExtractorId): string {
     "sql-in-list": t("grid.copyExtractorSqlInList"),
     "sql-inserts": t("grid.copyExtractorSqlInserts"),
     "sql-updates": t("grid.copyExtractorSqlUpdates"),
+    "sql-select": t("grid.copyExtractorSqlSelect"),
     "where-clause": t("grid.copyExtractorWhereClause"),
     markdown: "Markdown",
     html: "HTML",

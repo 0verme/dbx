@@ -1409,6 +1409,7 @@ export default withEnglishFallback({
     copyExtractorSqlInsertsWithPrimaryKeys: "SQL INSERT 语句（含主键）",
     copyExtractorSqlInsertsWithoutPrimaryKeys: "SQL INSERT 语句（不含主键）",
     copyExtractorSqlUpdates: "SQL UPDATE 语句",
+    copyExtractorSqlSelect: "SQL SELECT 语句",
     copyExtractorWhereClause: "WHERE 条件",
     copyExtractorPipeSeparated: "竖线分隔",
     copyExtractorPretty: "表格文本",

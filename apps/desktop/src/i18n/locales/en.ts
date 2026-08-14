@@ -1485,6 +1485,7 @@ export default {
     copyExtractorSqlInsertsWithPrimaryKeys: "SQL Inserts (with Primary Keys)",
     copyExtractorSqlInsertsWithoutPrimaryKeys: "SQL Inserts (without Primary Keys)",
     copyExtractorSqlUpdates: "SQL Updates",
+    copyExtractorSqlSelect: "SQL Select",
     copyExtractorWhereClause: "Where Clause",
     copyExtractorPipeSeparated: "Pipe-separated",
     copyExtractorPretty: "Pretty Table",
