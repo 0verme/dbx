@@ -1865,6 +1865,7 @@ export default withEnglishFallback({
     copyExtractorInsertMerged: "Unisci più righe",
     copyExtractorInsertRowByRow: "Una istruzione per riga",
     copyExtractorPrettyJson: "JSON formattato",
+    copyExtractorCamelCaseJsonFields: "Converti i campi snake_case in camelCase",
     copyExtractorPreview: "Anteprima (selezione corrente)",
     copyExtractorEmptySelection: "Seleziona i dati per visualizzare l'anteprima dell'estrazione.",
     copyExtractorUnsupportedSelection: "L'estrattore corrente richiede la stessa selezione di colonne per ogni riga.",

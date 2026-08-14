@@ -1521,6 +1521,7 @@ export default {
     copyExtractorInsertMerged: "Merge rows",
     copyExtractorInsertRowByRow: "One statement per row",
     copyExtractorPrettyJson: "Pretty-print JSON",
+    copyExtractorCamelCaseJsonFields: "Convert snake_case fields to camelCase",
     copyExtractorPreview: "Preview (current selection)",
     copyExtractorEmptySelection: "Select data to preview the extractor output.",
     copyExtractorUnsupportedSelection: "This extractor requires the same columns to be selected in every row.",

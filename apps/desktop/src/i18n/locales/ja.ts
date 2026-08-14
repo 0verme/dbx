@@ -1887,6 +1887,7 @@ export default withEnglishFallback({
     copyExtractorInsertMerged: "複数行をマージ",
     copyExtractorInsertRowByRow: "1行ごとに1文",
     copyExtractorPrettyJson: "JSONを整形",
+    copyExtractorCamelCaseJsonFields: "snake_caseのフィールド名をcamelCaseに変換",
     copyExtractorPreview: "プレビュー（現在の選択）",
     copyExtractorEmptySelection: "データを選択してから抽出結果をプレビューしてください。",
     copyExtractorUnsupportedSelection: "現在の抽出器では各行で同じ列を選択する必要があります。",

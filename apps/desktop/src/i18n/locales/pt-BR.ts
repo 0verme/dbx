@@ -1867,6 +1867,7 @@ export default withEnglishFallback({
     copyExtractorInsertMerged: "Mesclar várias linhas",
     copyExtractorInsertRowByRow: "Uma instrução por linha",
     copyExtractorPrettyJson: "JSON formatado",
+    copyExtractorCamelCaseJsonFields: "Converter campos snake_case para camelCase",
     copyExtractorPreview: "Visualizar (seleção atual)",
     copyExtractorEmptySelection: "Selecione dados para visualizar os resultados da extração.",
     copyExtractorUnsupportedSelection: "O extrator atual exige que as mesmas colunas sejam selecionadas para cada linha.",

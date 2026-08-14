@@ -1871,6 +1871,7 @@ export default withEnglishFallback({
     copyExtractorInsertMerged: "合併多行",
     copyExtractorInsertRowByRow: "每行一條語句",
     copyExtractorPrettyJson: "格式化 JSON",
+    copyExtractorCamelCaseJsonFields: "將底線欄位名稱轉為小駝峰",
     copyExtractorPreview: "預覽（目前選擇）",
     copyExtractorEmptySelection: "請選擇資料後預覽提取結果。",
     copyExtractorUnsupportedSelection: "目前提取器要求每一行選擇相同的列。",

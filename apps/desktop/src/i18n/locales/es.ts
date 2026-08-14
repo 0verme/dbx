@@ -1867,6 +1867,7 @@ export default withEnglishFallback({
     copyExtractorInsertMerged: "Combinar varias filas",
     copyExtractorInsertRowByRow: "Una sentencia por fila",
     copyExtractorPrettyJson: "JSON formateado",
+    copyExtractorCamelCaseJsonFields: "Convertir campos snake_case a camelCase",
     copyExtractorPreview: "Vista previa (selección actual)",
     copyExtractorEmptySelection: "Seleccione datos para previsualizar el resultado de la extracción.",
     copyExtractorUnsupportedSelection: "El extractor actual requiere seleccionar las mismas columnas en cada fila.",

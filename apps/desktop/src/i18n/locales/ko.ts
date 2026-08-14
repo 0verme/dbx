@@ -1405,6 +1405,7 @@ export default withEnglishFallback({
     copyExtractorInsertMerged: "행 병합",
     copyExtractorInsertRowByRow: "행별 한 구문",
     copyExtractorPrettyJson: "JSON 보기 좋게",
+    copyExtractorCamelCaseJsonFields: "snake_case 필드 이름을 camelCase로 변환",
     copyExtractorPreview: "미리보기 (현재 선택)",
     copyExtractorEmptySelection: "추출기 출력을 미리보려면 데이터를 선택하세요.",
     copyExtractorUnsupportedSelection: "이 추출기는 모든 행에서 동일한 컬럼이 선택되어야 합니다.",
