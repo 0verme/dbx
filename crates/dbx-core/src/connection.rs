@@ -658,6 +658,17 @@ pub fn gaussdb_m_jdbc_config_for_endpoint(config: &ConnectionConfig, host: &str,
     });
     let params = upsert_connection_url_param(Some(raw_params), "sslmode", &sslmode);
     let params = upsert_connection_url_param(Some(&params), "ssl", if sslmode == "disable" { "false" } else { "true" });
+    let target_server_type = config
+        .external_config
+        .as_ref()
+        .and_then(|ext| ext.get("gaussdbTargetServerType"))
+        .and_then(|v| v.as_str())
+        .filter(|v| *v == "master" || *v == "slave" || *v == "any");
+    let params = if let Some(value) = target_server_type {
+        upsert_connection_url_param(Some(&params), "targetServerType", value)
+    } else {
+        params
+    };
     if !params.is_empty() {
         jdbc_url.push('?');
         jdbc_url.push_str(&params);
@@ -5637,6 +5648,32 @@ mod tests {
         assert_eq!(
             gaussdb_m_jdbc_config_for_endpoint(&config, "db.internal", 8000).connection_string.as_deref(),
             Some("jdbc:gaussdb://db.internal:8000/postgres?currentSchema=legacy&sslmode=prefer&ssl=true")
+        );
+    }
+
+    #[test]
+    fn gaussdb_m_jdbc_target_server_type_preserves_url_params_and_allows_explicit_override() {
+        let mut config = mysql_config(Some("postgres"));
+        config.db_type = DatabaseType::Gaussdb;
+        config.driver_profile = Some(GAUSSDB_M_JDBC_DRIVER_PROFILE.to_string());
+
+        let default_url = gaussdb_m_jdbc_config_for_endpoint(&config, "db.internal", 8000).connection_string.unwrap();
+        assert!(!default_url.to_ascii_lowercase().contains("targetservertype="));
+
+        config.url_params = Some("targetServerType=slave&currentSchema=app".to_string());
+        assert_eq!(
+            gaussdb_m_jdbc_config_for_endpoint(&config, "db.internal", 8000).connection_string.as_deref(),
+            Some(
+                "jdbc:gaussdb://db.internal:8000/postgres?targetServerType=slave&currentSchema=app&sslmode=prefer&ssl=true"
+            )
+        );
+
+        config.external_config = Some(serde_json::json!({ "gaussdbTargetServerType": "master" }));
+        assert_eq!(
+            gaussdb_m_jdbc_config_for_endpoint(&config, "db.internal", 8000).connection_string.as_deref(),
+            Some(
+                "jdbc:gaussdb://db.internal:8000/postgres?currentSchema=app&sslmode=prefer&ssl=true&targetServerType=master"
+            )
         );
     }
 

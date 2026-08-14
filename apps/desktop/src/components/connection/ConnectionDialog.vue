@@ -118,7 +118,19 @@ import {
   elasticsearchKibanaBasePathFromConfig,
   type ElasticsearchConnectionMode,
 } from "@/lib/connection/elasticsearchKibanaProxy";
-import { GAUSSDB_M_JDBC_DRIVER_CLASS, gaussdbConnectionMode, gaussdbIdentifierQuoteStyle, setGaussdbConnectionMode, setGaussdbIdentifierQuoteStyle, supportsGaussdbIdentifierQuoteStyle, type GaussdbConnectionMode, type GaussdbIdentifierQuoteStyle } from "@/lib/database/jdbcDialect";
+import {
+  GAUSSDB_M_JDBC_DRIVER_CLASS,
+  gaussdbConnectionMode,
+  gaussdbIdentifierQuoteStyle,
+  gaussdbTargetServerType,
+  setGaussdbConnectionMode,
+  setGaussdbIdentifierQuoteStyle,
+  setGaussdbTargetServerType,
+  supportsGaussdbIdentifierQuoteStyle,
+  type GaussdbConnectionMode,
+  type GaussdbIdentifierQuoteStyle,
+  type GaussdbTargetServerType,
+} from "@/lib/database/jdbcDialect";
 import { normalizeStoredConnectionDatabase } from "@/lib/database/sqliteNamespace";
 import {
   createJdbcProductConnectionFieldsByMode,
@@ -528,6 +540,14 @@ const gaussdbQuoteStyle = computed<GaussdbIdentifierQuoteStyle>({
   get: () => gaussdbIdentifierQuoteStyle(form.value),
   set: (style) => {
     setGaussdbIdentifierQuoteStyle(form.value, style);
+    resetTestState();
+  },
+});
+
+const gaussdbTargetServerTypeComputed = computed<GaussdbTargetServerType>({
+  get: () => gaussdbTargetServerType(form.value),
+  set: (value) => {
+    setGaussdbTargetServerType(form.value, value);
     resetTestState();
   },
 });
@@ -3866,8 +3886,10 @@ function connectionConfigForSubmit(id: string, generatedName = ""): ConnectionCo
     config.external_config = sqlServerPortExplicitFromConfig(config) ? { portExplicit: true } : undefined;
   } else if (supportsGaussdbIdentifierQuoteStyle(config)) {
     const style = gaussdbIdentifierQuoteStyle(config);
+    const targetServerType = gaussdbTargetServerType(config);
     config.external_config = undefined;
     setGaussdbIdentifierQuoteStyle(config, style);
+    setGaussdbTargetServerType(config, targetServerType);
   } else if (!isDoltDriverProfile(config.driver_profile)) {
     config.external_config = undefined;
   }
@@ -7787,6 +7809,24 @@ function openExternalUrl(url: string) {
                       </SelectContent>
                     </Select>
                     <p class="text-xs leading-5 text-muted-foreground">{{ t("connection.gaussdbIdentifierQuoteHint") }}</p>
+                  </div>
+                </div>
+                <div v-if="isGaussdbMJdbcConnection" class="grid grid-cols-4 items-start gap-4">
+                  <Label :class="connectionLabelSmallPaddedClass">{{ t("connection.gaussdbTargetServerType") }}</Label>
+                  <div class="col-span-3 grid gap-1">
+                    <Select v-model="gaussdbTargetServerTypeComputed">
+                      <SelectTrigger class="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="master">{{ t("connection.gaussdbTargetServerTypeMaster") }}</SelectItem>
+                        <SelectItem value="slave">{{ t("connection.gaussdbTargetServerTypeSlave") }}</SelectItem>
+                        <SelectItem value="any">{{ t("connection.gaussdbTargetServerTypeAny") }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p class="text-xs leading-5 text-muted-foreground">
+                      {{ t("connection.gaussdbTargetServerTypeHint") }}
+                    </p>
                   </div>
                 </div>
                 <div class="grid grid-cols-4 items-center gap-4">
