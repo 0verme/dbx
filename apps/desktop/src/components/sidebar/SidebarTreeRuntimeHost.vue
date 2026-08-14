@@ -485,7 +485,25 @@ const {
   confirmDropAllMongoIndexes,
 } = useSidebarDatabaseSpecificMutationRuntime({ activeNode, connectionStore });
 
-const { isTableNotView, supportsTruncate, supportsMysqlAutoIncrement, canDropTableCascade, canTruncateTableCascade, refreshDropTablePreviewSql, refreshTruncateTablePreviewSql, dropTable, refreshTableList, confirmDropTable, emptyTable, confirmEmptyTable, truncateTable, confirmTruncateTable, mysqlAutoIncrement, refreshMysqlAutoIncrementPreviewSql, confirmMysqlAutoIncrement } = useSidebarTableMutationRuntime({
+const {
+  isTableNotView,
+  supportsTruncate,
+  supportsMysqlAutoIncrement,
+  canDropTableCascade,
+  canTruncateTableCascade,
+  refreshDropTablePreviewSql,
+  refreshTruncateTablePreviewSql,
+  dropTable,
+  refreshTableList,
+  confirmDropTable,
+  emptyTable,
+  confirmEmptyTable,
+  truncateTable,
+  confirmTruncateTable,
+  mysqlAutoIncrement,
+  refreshMysqlAutoIncrementPreviewSql,
+  confirmMysqlAutoIncrement,
+} = useSidebarTableMutationRuntime({
   activeNode,
   releaseActiveNodeReference,
   connectionStore,
