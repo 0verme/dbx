@@ -10,6 +10,7 @@ const i18n = {
     docs: "Docs",
     changelog: "Changelog",
     community: "Community",
+    issue: "Feedback",
     sponsors: "Sponsors",
     contributors: "Contributors",
     drivers: "Offline Drivers",
@@ -22,6 +23,7 @@ const i18n = {
     docs: "文档",
     changelog: "更新日志",
     community: "交流群",
+    issue: "反馈",
     sponsors: "赞助商",
     contributors: "贡献者",
     drivers: "离线驱动",
@@ -31,7 +33,7 @@ const i18n = {
   },
 };
 
-export function LandingNav({ lang, active }: { lang: "en" | "cn"; active?: "home" | "databases" | "changelog" | "community" | "sponsors" | "contributors" | "drivers" }) {
+export function LandingNav({ lang, active }: { lang: "en" | "cn"; active?: "home" | "databases" | "changelog" | "community" | "issue" | "sponsors" | "contributors" | "drivers" }) {
   const ref = useRef<HTMLElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const t = i18n[lang];
@@ -40,6 +42,7 @@ export function LandingNav({ lang, active }: { lang: "en" | "cn"; active?: "home
     databases: `/${otherLang}/databases`,
     changelog: `/${otherLang}/changelog`,
     community: `/${otherLang}/community`,
+    issue: `/${otherLang}/issue`,
     sponsors: `/${otherLang}/sponsors`,
     contributors: `/${otherLang}/contributors`,
     drivers: `/${otherLang}/drivers`,
@@ -50,6 +53,7 @@ export function LandingNav({ lang, active }: { lang: "en" | "cn"; active?: "home
     { id: "docs", href: `/${lang}/docs/what-is-dbx`, label: t.docs, tabletHidden: false },
     { id: "changelog", href: `/${lang}/changelog`, label: t.changelog, tabletHidden: false },
     { id: "community", href: `/${lang}/community`, label: t.community, tabletHidden: false },
+    { id: "issue", href: `/${lang}/issue`, label: t.issue, tabletHidden: false },
     { id: "sponsors", href: `/${lang}/sponsors`, label: t.sponsors, tabletHidden: true },
     { id: "contributors", href: `/${lang}/contributors`, label: t.contributors, tabletHidden: true },
     { id: "drivers", href: `/${lang}/drivers`, label: t.drivers, tabletHidden: false },
