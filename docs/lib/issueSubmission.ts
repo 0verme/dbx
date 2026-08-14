@@ -2,6 +2,8 @@ export const ISSUE_RATE_LIMIT = 8;
 export const ISSUE_RATE_WINDOW_MS = 60 * 60 * 1000;
 export const ISSUE_DRAFT_TTL_MS = 30 * 60 * 1000;
 export const ISSUE_CLAIM_TTL_MS = 2 * 60 * 1000;
+export const ISSUE_AI_TEXT_TIMEOUT_MS = 45_000;
+export const ISSUE_AI_IMAGE_TIMEOUT_MS = 90_000;
 export const MAX_ISSUE_IMAGES = 3;
 export const MAX_ISSUE_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_ISSUE_IMAGE_TOTAL_BYTES = 12 * 1024 * 1024;
@@ -236,6 +238,10 @@ function issueAiEndpoint(apiBase: string): string {
   return `${normalized}/v1/chat/completions`;
 }
 
+export function issueAiRequestTimeoutMs(imageCount: number): number {
+  return imageCount > 0 ? ISSUE_AI_IMAGE_TIMEOUT_MS : ISSUE_AI_TEXT_TIMEOUT_MS;
+}
+
 function issuePrompt(language: IssueLanguage): string {
   if (language === "en") {
     return [
@@ -333,9 +339,12 @@ export async function createIssuePreview(
           { role: "user", content: userContent },
         ],
       }),
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(issueAiRequestTimeoutMs(images.length)),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      throw new IssueSubmissionError("AI_REQUEST_TIMEOUT", 504);
+    }
     throw new IssueSubmissionError("AI_REQUEST_FAILED", 502);
   }
 

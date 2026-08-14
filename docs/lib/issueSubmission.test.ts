@@ -4,6 +4,7 @@ import {
   buildGitHubIssueBody,
   consumeRollingLimit,
   detectIssueImageType,
+  issueAiRequestTimeoutMs,
   normalizeIssueTitle,
   parseIssueAiResponse,
   validateEditableIssue,
@@ -53,6 +54,12 @@ test("image validation trusts magic bytes rather than the browser MIME value", (
     extension: "png",
   });
   assert.equal(detectIssueImageType(new TextEncoder().encode("not an image")), null);
+});
+
+test("image drafts allow more time than text-only drafts", () => {
+  assert.equal(issueAiRequestTimeoutMs(0), 45_000);
+  assert.equal(issueAiRequestTimeoutMs(1), 90_000);
+  assert.equal(issueAiRequestTimeoutMs(3), 90_000);
 });
 
 test("published bodies append public attachments and an anonymous-source marker", () => {

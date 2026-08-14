@@ -18,12 +18,20 @@ const metadata = {
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   const locale = lang === "cn" ? "cn" : "en";
-  return buildMetadata({
+  const pageMetadata = buildMetadata({
     title: metadata[locale].title,
     description: metadata[locale].description,
     path: `/${locale}/issue`,
     lang: locale,
   });
+  return {
+    ...pageMetadata,
+    robots: {
+      index: false,
+      follow: false,
+      nocache: true,
+    },
+  };
 }
 
 export default async function IssuePage({ params }: { params: Promise<{ lang: string }> }) {
