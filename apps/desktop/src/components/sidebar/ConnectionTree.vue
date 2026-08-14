@@ -21,6 +21,7 @@ import {
 } from "@/lib/sidebar/sidebarSearchTree";
 import { createSidebarLabelMatcher, matchSidebarLabel } from "@/lib/sidebar/sidebarSearch";
 import { collectSidebarRegexIndexScopes, resolveSidebarRemoteSearchQuery, resolveSidebarSearchDispatchMode } from "@/lib/sidebar/sidebarRegexSearchIndex";
+import { createSidebarSearchExpansionState } from "@/lib/sidebar/sidebarSearchExpansionState";
 import { buildTableTreeNodes } from "@/lib/table/tableTree";
 import { isCancelSearchShortcut, isCopySidebarSelectionShortcut, isEditSidebarConnectionShortcut, isPasteSidebarSelectionShortcut, isViewTableDdlShortcut } from "@/lib/editor/keyboardShortcuts";
 import { sidebarNodeSupportsDdlView } from "@/lib/sidebar/sidebarTreeDdlShortcut";
@@ -136,7 +137,13 @@ const sidebarObjectSourceFormatDialect = computed(() => sqlFormatDialectForDbTyp
 type SearchScope = "connection" | "database" | "schema" | "table" | "view";
 const selectedSearchScopes = ref<SearchScope[]>([]);
 const searchCollapsedIds = ref<Set<string>>(new Set());
-const searchRefreshedNodeIds = new Set<string>();
+const searchExpansionState = createSidebarSearchExpansionState();
+const searchRefreshedNodeIds = searchExpansionState.filteredNodeIds;
+// Group nodes that search force-expanded on the user's behalf (they were
+// collapsed before the query started). Cleared alongside searchRefreshedNodeIds
+// so clearing the search box collapses them back instead of leaving every
+// touched group open and reloading it again.
+const searchAutoExpandedNodeIds = searchExpansionState.autoExpandedNodeIds;
 let searchTimer: number | undefined;
 const tableSearchTimers = new Map<string, number>();
 const tableSearchFocusRestoreTokens = new Map<string, number>();
@@ -253,11 +260,21 @@ watch([deferredSearchQuery, regexMode], ([newQuery, isRegexMode], [oldQuery, was
   if (dispatchMode === "regex") {
     // Regex search is a read-only projection over live nodes and the local
     // table index. It must never trigger ensureConnected/listTables.
-    void loadRegexTableSearchIndexes();
+    const restoreTasks = restoreTrackedSearchTargets();
+    void Promise.all([loadRegexTableSearchIndexes(), ...restoreTasks])
+      .then(() => {
+        if (restoreTasks.length > 0) refreshActiveSidebarTableSearches();
+      })
+      .catch(() => {});
     return;
   }
   if (dispatchMode === "none") {
-    if (!wasRegexMode && !newQuery && oldQuery) searchRefreshedNodeIds.clear();
+    const restoreTasks = restoreTrackedSearchTargets();
+    if (restoreTasks.length > 0) {
+      void Promise.all(restoreTasks)
+        .then(() => refreshActiveSidebarTableSearches())
+        .catch(() => {});
+    }
     return;
   }
   const tasks: Promise<void>[] = [];
@@ -266,7 +283,7 @@ watch([deferredSearchQuery, regexMode], ([newQuery, isRegexMode], [oldQuery, was
     collectExpandedObjectSearchTargets(root, tasks, newQuery ? searchRefreshedNodeIds : undefined, preservesSearchSubtree);
   }
   if (!newQuery && oldQuery) {
-    searchRefreshedNodeIds.clear();
+    searchExpansionState.clear();
   }
   Promise.all(tasks)
     .then(() => {
@@ -306,18 +323,25 @@ function collectExpandedObjectSearchTargets(node: TreeNode, tasks: Promise<void>
     for (const child of node.children) {
       if (child.connectionId && searchableObjectGroupTypes.has(child.type)) {
         if (preservesSearchSubtree) {
-          if (refreshedNodeIds.delete(child.id)) {
+          if (searchExpansionState.markUnfiltered(child.id)) {
             tasks.push(store.loadObjectGroupChildren(child, { force: true, searchFilter: "", allowGlobalSearchMismatch: true, expectedSidebarSearchQuery: store.sidebarSearchQuery }));
           }
         } else {
-          refreshedNodeIds.add(child.id);
+          searchExpansionState.markFiltered(child.id, !child.isExpanded);
           tasks.push(store.loadObjectGroupChildren(child, { force: true }));
         }
       }
     }
-  } else if (!refreshedNodeIds && searchRefreshedNodeIds.has(node.id)) {
+  } else if (!refreshedNodeIds && searchExpansionState.shouldRestore(node.id)) {
     if (searchableObjectGroupTypes.has(node.type)) {
-      tasks.push(store.loadObjectGroupChildren(node, { force: true }));
+      if (searchAutoExpandedNodeIds.has(node.id)) {
+        // Search opened this group on the user's behalf to check for matches;
+        // once the query is gone there is nothing to show, so collapse it back
+        // instead of reloading and leaving it open.
+        node.isExpanded = false;
+      } else {
+        tasks.push(store.loadObjectGroupChildren(node, { force: true }));
+      }
     } else if (simpleObjectParentTypes.has(node.type)) {
       tasks.push(store.refreshTreeNode(node));
     }
@@ -327,6 +351,16 @@ function collectExpandedObjectSearchTargets(node: TreeNode, tasks: Promise<void>
       collectExpandedObjectSearchTargets(child, tasks, refreshedNodeIds, preservesNodeSubtree, preservesSearchSubtree);
     }
   }
+}
+
+function restoreTrackedSearchTargets(): Promise<void>[] {
+  if (!searchExpansionState.hasTrackedNodes()) return [];
+  const tasks: Promise<void>[] = [];
+  for (const root of store.treeNodes) {
+    collectExpandedObjectSearchTargets(root, tasks);
+  }
+  searchExpansionState.clear();
+  return tasks;
 }
 
 const sidebarFilterGuards = computed(() => resolveSidebarFilterGuards(showConnectedConnectionsOnly.value, searchQuery.value, hasSearchScopeFilter.value));
