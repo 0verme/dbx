@@ -4328,6 +4328,7 @@ const {
   selectionFocus,
   finishCellSelection,
   extendCellSelection,
+  isCellSelectionDragConfirmed,
   restoreCellSelectionState,
   cellIsSelected,
   columnIsSelected,
@@ -4505,7 +4506,7 @@ function onCellMouseenter(rowIndex: number, visibleColIdx: number, actualColIdx:
     quickDownloadMenuCell.value = retainBinaryCellDownloadMenuForHover(quickDownloadMenuCell.value, { rowIndex, col: actualColIdx });
     if (!isScrolling.value) hoveredDetailCell.value = { rowIndex, col: actualColIdx };
   }
-  extendCellSelection(rowIndex, visibleColIdx);
+  if (isCellSelectionDragConfirmed()) extendCellSelection(rowIndex, visibleColIdx);
 }
 
 function onCellMouseleave(rowIndex: number, actualColIdx: number) {
