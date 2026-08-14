@@ -6002,6 +6002,7 @@ export default {
     shortcutIndentMore: "Indent more",
     shortcutIndentLess: "Indent less",
     shortcutInsertLineBelow: "Insert line below",
+    shortcutJoinLines: "Join lines",
     shortcutDuplicateLine: "Duplicate current line",
     shortcutDeleteLine: "Delete current line",
     shortcutMoveLineUp: "Move line up",

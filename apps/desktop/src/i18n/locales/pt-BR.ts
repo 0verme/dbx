@@ -5708,6 +5708,7 @@ export default withEnglishFallback({
     shortcutIndentMore: "Aumentar recuo",
     shortcutIndentLess: "Reduzir recuo",
     shortcutInsertLineBelow: "Inserir uma linha abaixo",
+    shortcutJoinLines: "Unir linhas",
     shortcutDuplicateLine: "Duplicar linha atual",
     shortcutDeleteLine: "Excluir linha atual",
     shortcutMoveLineUp: "Mover linha para cima",
