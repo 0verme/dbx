@@ -66,6 +66,23 @@ func TestConnectionConfiguration(t *testing.T) {
 	if resolveAuthScheme(connectionConfig{URLParams: "?foo=1;auth_scheme=SASL_DIGEST"}) != saslDigestAuthScheme {
 		t.Fatal("URL auth_scheme was not resolved")
 	}
+	for _, test := range []struct {
+		name     string
+		config   connectionConfig
+		expected int
+	}{
+		{"default", connectionConfig{}, defaultMaxBufferSize},
+		{"field", connectionConfig{MaxBufferSize: intPointer(64 * 1024 * 1024)}, 64 * 1024 * 1024},
+		{"URL param", connectionConfig{URLParams: "?foo=1;max_buffer_size=16777216"}, 16 * 1024 * 1024},
+		{"field precedence", connectionConfig{MaxBufferSize: intPointer(8 * 1024 * 1024), URLParams: "max_buffer_size=16777216"}, 8 * 1024 * 1024},
+	} {
+		t.Run("max buffer "+test.name, func(t *testing.T) {
+			got, err := resolveMaxBufferSize(test.config)
+			if err != nil || got != test.expected {
+				t.Fatalf("resolveMaxBufferSize()=%d,%v want %d", got, err, test.expected)
+			}
+		})
+	}
 	if !hasTLSOptions(connectionConfig{CACertPath: "/tmp/ca.pem"}) {
 		t.Fatal("TLS path was not detected")
 	}
@@ -88,6 +105,9 @@ func TestConnectionValidationHappensBeforeNetwork(t *testing.T) {
 		{"sasl password", connectionConfig{AuthScheme: saslDigestAuthScheme, Username: "user"}, `password is required when auth_scheme = "sasl_digest"`},
 		{"negative base sleep", connectionConfig{BaseSleepTimeMS: intPointer(-1)}, "base_sleep_time_ms must be non-negative"},
 		{"negative retries", connectionConfig{MaxRetries: intPointer(-1)}, "max_retries must be non-negative"},
+		{"invalid max buffer", connectionConfig{URLParams: "max_buffer_size=large"}, "max_buffer_size must be an integer number of bytes"},
+		{"zero max buffer", connectionConfig{MaxBufferSize: intPointer(0)}, "max_buffer_size must be between 1 and"},
+		{"oversized max buffer", connectionConfig{MaxBufferSize: intPointer(maximumMaxBufferSize + 1)}, "max_buffer_size must be between 1 and"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

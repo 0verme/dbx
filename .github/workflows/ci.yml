@@ -823,6 +823,10 @@ jobs:
             fi
             DBX_ZOOKEEPER_TEST_CONNECT_STRING=127.0.0.1:2181 \
               go test -run '^TestZooKeeperIntegration$' -count=1 ./...
+            if [ "$version" = "3.7.0" ]; then
+              DBX_ZOOKEEPER_TEST_CONNECT_STRING=127.0.0.1:2181 \
+                go test -run '^TestZooKeeperLargeChildrenIntegration$' -count=1 ./...
+            fi
             cleanup
             trap - EXIT
           done

@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/go-zookeeper/zk"
 )
 
 const integrationConnectStringEnv = "DBX_ZOOKEEPER_TEST_CONNECT_STRING"
@@ -56,6 +60,70 @@ func TestZooKeeperIntegration(t *testing.T) {
 	deleted, err := service.delete(mustJSON(map[string]any{"key": root, "recursive": true}))
 	if err != nil || deleted["deleted"].(int) < 4 {
 		t.Fatalf("delete=%#v err=%v", deleted, err)
+	}
+}
+
+func TestZooKeeperLargeChildrenIntegration(t *testing.T) {
+	connectString := os.Getenv(integrationConnectStringEnv)
+	if connectString == "" {
+		t.Skip(integrationConnectStringEnv + " is not set")
+	}
+	const (
+		childCount    = 1600
+		childNameSize = 800
+		workerCount   = 32
+		listLimit     = 100
+	)
+	if childCount*(childNameSize+4) <= 1024*1024 {
+		t.Fatal("large children fixture must exceed the Java client's default 1 MiB receive limit")
+	}
+
+	service := &server{statLookupConcurrency: 16}
+	connection := map[string]any{"zookeeper_connect_string": connectString}
+	if _, err := service.connect(mustJSON(map[string]any{"connection": connection})); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(service.closeClient)
+	root := fmt.Sprintf("/dbx-go-large-children-%d", time.Now().UnixNano())
+	if _, err := service.activeClient.Create(root, nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = service.delete(mustJSON(map[string]any{"key": root, "recursive": true})) })
+
+	jobs := make(chan int, childCount)
+	for index := 0; index < childCount; index++ {
+		jobs <- index
+	}
+	close(jobs)
+	errors := make(chan error, workerCount)
+	var waitGroup sync.WaitGroup
+	suffix := strings.Repeat("x", childNameSize-7)
+	for worker := 0; worker < workerCount; worker++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			for index := range jobs {
+				name := fmt.Sprintf("%06d-%s", index, suffix)
+				if _, err := service.activeClient.Create(root+"/"+name, nil, 0); err != nil && err != zk.ErrNodeExists {
+					errors <- err
+					return
+				}
+			}
+		}()
+	}
+	waitGroup.Wait()
+	close(errors)
+	for err := range errors {
+		t.Fatal(err)
+	}
+
+	recursive := false
+	listed, err := service.listPrefix(mustJSON(listRequest{Prefix: root, Recursive: &recursive, Limit: listLimit}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Keys) != listLimit || listed.Continuation == nil {
+		t.Fatalf("list keys=%d continuation=%t", len(listed.Keys), listed.Continuation != nil)
 	}
 }
 

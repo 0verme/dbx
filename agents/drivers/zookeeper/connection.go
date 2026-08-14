@@ -21,9 +21,12 @@ const (
 	defaultProbeTimeout        = 2 * time.Second
 	defaultBaseSleepTime       = 250 * time.Millisecond
 	defaultMaxRetries          = 2
+	defaultMaxBufferSize       = 32 * 1024 * 1024
+	maximumMaxBufferSize       = 256 * 1024 * 1024
 	defaultPort                = 2181
 	defaultAuthScheme          = "digest"
 	saslDigestAuthScheme       = "sasl_digest"
+	maxBufferSizeParam         = "max_buffer_size"
 	statLookupConcurrencyEnv   = "DBX_ZOOKEEPER_STAT_LOOKUP_CONCURRENCY"
 	defaultStatLookupWorkers   = 16
 	minimumStatLookupWorkers   = 1
@@ -46,6 +49,7 @@ type connectionConfig struct {
 	ConnectionTimeoutMS    int    `json:"connection_timeout_ms"`
 	BaseSleepTimeMS        *int   `json:"base_sleep_time_ms"`
 	MaxRetries             *int   `json:"max_retries"`
+	MaxBufferSize          *int   `json:"max_buffer_size"`
 	SSL                    bool   `json:"ssl"`
 	CACertPath             string `json:"ca_cert_path"`
 	ClientCertPath         string `json:"client_cert_path"`
@@ -148,6 +152,10 @@ func openClient(config connectionConfig) (*clientSession, error) {
 	if config.MaxRetries != nil && *config.MaxRetries < 0 {
 		return nil, errors.New("max_retries must be non-negative")
 	}
+	maxBufferSize, err := resolveMaxBufferSize(config)
+	if err != nil {
+		return nil, err
+	}
 
 	target, err := parseConnectTarget(connectionString(config))
 	if err != nil {
@@ -173,6 +181,7 @@ func openClient(config connectionConfig) (*clientSession, error) {
 		sessionTimeout,
 		zk.WithDialer(dialer),
 		zk.WithLogInfo(false),
+		zk.WithMaxBufferSize(maxBufferSize),
 	)
 	if err != nil {
 		return nil, err
@@ -360,14 +369,36 @@ func resolveAuthScheme(config connectionConfig) string {
 	if strings.TrimSpace(config.AuthScheme) != "" {
 		return strings.ToLower(strings.TrimSpace(config.AuthScheme))
 	}
-	params := strings.TrimPrefix(strings.TrimSpace(config.URLParams), "?")
-	params = strings.ReplaceAll(params, ";", "&")
-	if parsed, err := url.ParseQuery(params); err == nil {
-		if configured := strings.TrimSpace(parsed.Get("auth_scheme")); configured != "" {
-			return strings.ToLower(configured)
-		}
+	if configured := strings.TrimSpace(connectionURLParams(config).Get("auth_scheme")); configured != "" {
+		return strings.ToLower(configured)
 	}
 	return defaultAuthScheme
+}
+
+func resolveMaxBufferSize(config connectionConfig) (int, error) {
+	configured := config.MaxBufferSize
+	if configured == nil {
+		value := strings.TrimSpace(connectionURLParams(config).Get(maxBufferSizeParam))
+		if value == "" {
+			return defaultMaxBufferSize, nil
+		}
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be an integer number of bytes", maxBufferSizeParam)
+		}
+		configured = &parsed
+	}
+	if *configured <= 0 || *configured > maximumMaxBufferSize {
+		return 0, fmt.Errorf("%s must be between 1 and %d bytes", maxBufferSizeParam, maximumMaxBufferSize)
+	}
+	return *configured, nil
+}
+
+func connectionURLParams(config connectionConfig) url.Values {
+	params := strings.TrimPrefix(strings.TrimSpace(config.URLParams), "?")
+	params = strings.ReplaceAll(params, ";", "&")
+	parsed, _ := url.ParseQuery(params)
+	return parsed
 }
 
 func hasTLSOptions(config connectionConfig) bool {
