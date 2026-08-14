@@ -5962,6 +5962,7 @@ export default {
     clickTableNavigationTargetDescription: "When enabled, Ctrl/Cmd+clicking a table name opens the table structure editor (DDL). When disabled, it opens the table data view.",
     sqlVariableSyntax: "SQL variable & placeholder substitution",
     sqlVariableSyntaxDescription: "Choose which variable and placeholder syntaxes DBX substitutes before running SQL, per database type. All are enabled by default.",
+    sqlVariableSubstitutionEnabled: "Enabled",
     sqlVariableSyntax_positional: "Positional placeholder",
     sqlVariableSyntax_positionalDescription: "Prompt for a value to substitute each positional placeholder in order.",
     sqlVariableSyntax_named: "Named placeholder",

@@ -5013,6 +5013,7 @@ export default withEnglishFallback({
     clickTableNavigationTargetDescription: "開啟後，Ctrl/Cmd+點擊表名將開啟表結構編輯器（DDL）；關閉則開啟表資料檢視。",
     sqlVariableSyntax: "SQL 變數與佔位符替換",
     sqlVariableSyntaxDescription: "依資料庫類型選擇執行 SQL 前替換哪些變數與佔位符語法，預設全部開啟。",
+    sqlVariableSubstitutionEnabled: "啟用替換",
     sqlVariableSyntax_positional: "位置佔位符",
     sqlVariableSyntax_positionalDescription: "依序為每個位置佔位符提示輸入替換值。",
     sqlVariableSyntax_named: "具名佔位符",

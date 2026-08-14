@@ -5679,6 +5679,7 @@ export default withEnglishFallback({
     clickTableNavigationTargetDescription: "Quando ativado, Ctrl/Cmd+clicar no nome da tabela abre o editor de estrutura (DDL). Quando desativado, abre a visualização de dados.",
     sqlVariableSyntax: "Substituição de variáveis e espaços reservados SQL",
     sqlVariableSyntaxDescription: "Escolha quais sintaxes de variáveis e espaços reservados o DBX substitui antes de executar SQL, por tipo de banco de dados. Todas ativadas por padrão.",
+    sqlVariableSubstitutionEnabled: "Ativada",
     sqlVariableSyntax_positional: "Espaço reservado posicional",
     sqlVariableSyntax_positionalDescription: "Solicita um valor para substituir cada espaço reservado posicional em ordem.",
     sqlVariableSyntax_named: "Espaço reservado nomeado",

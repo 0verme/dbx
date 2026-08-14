@@ -5677,6 +5677,7 @@ export default withEnglishFallback({
     clickTableNavigationTargetDescription: "Quando attivato, Ctrl/Cmd+clic sul nome della tabella apre l'editor di struttura (DDL). Quando disattivato, apre la vista dati.",
     sqlVariableSyntax: "Sostituzione di variabili e segnaposto SQL",
     sqlVariableSyntaxDescription: "Scegli quali sintassi di variabili e segnaposto DBX sostituisce prima di eseguire SQL, per tipo di database. Tutte abilitate per impostazione predefinita.",
+    sqlVariableSubstitutionEnabled: "Attiva",
     sqlVariableSyntax_positional: "Segnaposto posizionale",
     sqlVariableSyntax_positionalDescription: "Richiede un valore per sostituire ogni segnaposto posizionale in ordine.",
     sqlVariableSyntax_named: "Segnaposto con nome",

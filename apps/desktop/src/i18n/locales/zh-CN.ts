@@ -5948,6 +5948,7 @@ export default withEnglishFallback({
     clickTableNavigationTargetDescription: "开启后，Ctrl/Cmd+点击表名将打开表结构编辑器（DDL）；关闭则打开表数据视图。",
     sqlVariableSyntax: "SQL 变量与占位符替换",
     sqlVariableSyntaxDescription: "按数据库类型选择执行 SQL 前替换哪些变量与占位符语法，默认全部开启。",
+    sqlVariableSubstitutionEnabled: "启用替换",
     sqlVariableSyntax_positional: "位置占位符",
     sqlVariableSyntax_positionalDescription: "按顺序为每个位置占位符提示输入替换值。",
     sqlVariableSyntax_named: "命名占位符",

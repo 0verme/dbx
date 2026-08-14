@@ -5433,6 +5433,7 @@ export default withEnglishFallback({
     prefillNewQueryWithSelectDescription: "새 쿼리를 만들 때 활성 테이블 탭이나 사이드바에서 선택한 테이블을 기반으로 편집기에 SELECT * FROM <table>을 미리 채웁니다.",
     sqlVariableSyntax: "SQL 변수 및 자리표시자 치환",
     sqlVariableSyntaxDescription: "데이터베이스 유형별로 SQL을 실행하기 전에 DBX가 치환할 변수와 자리표시자 문법을 선택하세요. 모두 기본적으로 활성화됩니다.",
+    sqlVariableSubstitutionEnabled: "치환 사용",
     sqlVariableSyntax_positional: "위치 자리표시자",
     sqlVariableSyntax_positionalDescription: "각 위치 자리표시자를 순서대로 치환할 값을 입력하라는 메시지를 표시합니다.",
     sqlVariableSyntax_named: "이름 있는 자리표시자",

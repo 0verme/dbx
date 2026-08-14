@@ -5677,6 +5677,7 @@ export default withEnglishFallback({
     clickTableNavigationTargetDescription: "Cuando está activado, Ctrl/Cmd+clic en el nombre de la tabla abre el editor de estructura (DDL). Cuando está desactivado, abre la vista de datos.",
     sqlVariableSyntax: "Sustitución de variables y marcadores SQL",
     sqlVariableSyntaxDescription: "Elige qué sintaxis de variables y marcadores sustituye DBX antes de ejecutar SQL, por tipo de base de datos. Todas están habilitadas de forma predeterminada.",
+    sqlVariableSubstitutionEnabled: "Activada",
     sqlVariableSyntax_positional: "Marcador posicional",
     sqlVariableSyntax_positionalDescription: "Solicita un valor para sustituir cada marcador posicional en orden.",
     sqlVariableSyntax_named: "Marcador con nombre",

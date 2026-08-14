@@ -5699,6 +5699,7 @@ export default withEnglishFallback({
     clickTableNavigationTargetDescription: "有効にすると、Ctrl/Cmd+クリックでテーブル構造エディタ（DDL）を開きます。無効の場合はテーブルデータビューを開きます。",
     sqlVariableSyntax: "SQL 変数・プレースホルダー置換",
     sqlVariableSyntaxDescription: "SQL 実行前に置換する変数・プレースホルダー構文をデータベース種別ごとに選択します。既定ではすべて有効です。",
+    sqlVariableSubstitutionEnabled: "置換を有効化",
     sqlVariableSyntax_positional: "位置プレースホルダー",
     sqlVariableSyntax_positionalDescription: "各位置プレースホルダーを順番に置き換える値の入力を求めます。",
     sqlVariableSyntax_named: "名前付きプレースホルダー",
