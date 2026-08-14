@@ -56,7 +56,9 @@ fn large_value_preview_kind(database_type: Option<DatabaseType>, data_type: &str
             }
         }
         Some(DatabaseType::Postgres) => {
-            if base == "bytea" {
+            if normalized.contains('[') {
+                None
+            } else if base == "bytea" {
                 Some(LargeValuePreviewKind::Binary)
             } else if matches!(base.as_str(), "char" | "character" | "varchar" | "text" | "citext" | "name" | "xml")
                 || normalized.starts_with("character varying")

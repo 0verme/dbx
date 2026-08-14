@@ -734,6 +734,80 @@ fn builds_postgres_table_data_large_value_previews() {
 }
 
 #[test]
+fn preserves_postgres_array_types_in_large_value_previews() {
+    let sql = build_table_data_select_sql(TableDataSelectSqlOptions {
+        database_type: Some(DatabaseType::Postgres),
+        schema: Some("public".to_string()),
+        table_name: "array_preview".to_string(),
+        primary_keys: vec!["id".to_string()],
+        columns: [
+            "id",
+            "varchar_array",
+            "text_array",
+            "bytea_array",
+            "jsonb_array",
+            "vector_array",
+            "integer_array",
+            "text_value",
+            "varchar_value",
+            "varying_value",
+            "json_value",
+            "jsonb_value",
+            "tsvector_value",
+            "vector_value",
+            "bytea_value",
+        ]
+        .map(str::to_string)
+        .to_vec(),
+        column_types: [
+            "integer",
+            "character varying[]",
+            "text[][]",
+            "bytea[]",
+            "jsonb[]",
+            "vector(3)[]",
+            "integer[]",
+            "text",
+            "varchar(255)",
+            "character varying(255)",
+            "json",
+            "jsonb",
+            "tsvector",
+            "vector(3)",
+            "bytea",
+        ]
+        .map(str::to_string)
+        .to_vec(),
+        large_value_preview_size: Some(8),
+        limit: Some(25),
+        ..Default::default()
+    });
+
+    assert!(sql.starts_with(
+        "SELECT \"id\", \"varchar_array\", \"text_array\", \"bytea_array\", \"jsonb_array\", \
+         \"vector_array\", \"integer_array\", left(\"text_value\", 9) AS \"text_value\""
+    ));
+    for index in 1..=6 {
+        assert!(!sql.contains(&format!("__DBX_LARGE_VALUE_BYTES_T_{index}\"")));
+        assert!(!sql.contains(&format!("__DBX_LARGE_VALUE_BYTES_B_{index}\"")));
+        assert!(!sql.contains(&format!("__DBX_LARGE_VALUE_BYTES_K_{index}\"")));
+        assert!(!sql.contains(&format!("__DBX_LARGE_VALUE_BYTES_V_{index}\"")));
+    }
+    assert!(sql.contains("left(\"varchar_value\", 9) AS \"varchar_value\""));
+    assert!(sql.contains("left(\"varying_value\", 9) AS \"varying_value\""));
+    assert!(sql.contains("left(\"json_value\"::text, 9) AS \"json_value\""));
+    assert!(sql.contains("left(\"jsonb_value\"::text, 9) AS \"jsonb_value\""));
+    assert!(sql.contains("left(\"tsvector_value\"::text, 9) AS \"tsvector_value\""));
+    assert!(sql.contains("left(\"vector_value\"::text, 9) AS \"vector_value\""));
+    assert!(sql.contains("substring(\"bytea_value\" from 1 for 9) AS \"bytea_value\""));
+    assert!(sql.contains("'T:8' AS \"__DBX_LARGE_VALUE_BYTES_J_10\""));
+    assert!(sql.contains("'T:8' AS \"__DBX_LARGE_VALUE_BYTES_K_11\""));
+    assert!(sql.contains("'T:8' AS \"__DBX_LARGE_VALUE_BYTES_S_12\""));
+    assert!(sql.contains("'V:8' AS \"__DBX_LARGE_VALUE_BYTES_V_13\""));
+    assert!(sql.contains("'B:8' AS \"__DBX_LARGE_VALUE_BYTES_B_14\""));
+}
+
+#[test]
 fn builds_pgvector_table_data_preview_with_compatible_text_cast() {
     let sql = build_table_data_select_sql(TableDataSelectSqlOptions {
         database_type: Some(DatabaseType::Postgres),
