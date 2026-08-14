@@ -1031,6 +1031,14 @@ const driverProfiles: Record<
     icon: "cloudberry",
     urlParams: "",
   },
+  opentenbase: {
+    type: "postgres",
+    port: 11000,
+    user: "opentenbase",
+    label: "OpenTenBase",
+    icon: "opentenbase",
+    urlParams: "",
+  },
   redis: { type: "redis", port: 6379, user: "", label: "Redis", icon: "redis" },
   sqlite: { type: "sqlite", port: 0, user: "", label: "SQLite", icon: "sqlite" },
   rqlite: { type: "rqlite", port: 4001, user: "", label: "RQLite", icon: "rqlite" },
@@ -2720,6 +2728,7 @@ const iconTypeMap: Record<string, string> = {
   mysql: "mysql",
   postgres: "postgres",
   cloudberry: "cloudberry",
+  opentenbase: "opentenbase",
   sqlite: "sqlite",
   rqlite: "rqlite",
   turso: "turso",
@@ -2813,6 +2822,7 @@ const iconTypeMap: Record<string, string> = {
 const dbOptions: DbOption[] = [
   { value: "postgres", label: "PostgreSQL" },
   { value: "cloudberry", label: "Apache Cloudberry" },
+  { value: "opentenbase", label: "OpenTenBase" },
   { value: "mysql", label: "MySQL" },
   { value: "mongodb", label: "MongoDB" },
   { value: "redis", label: "Redis" },
@@ -2920,7 +2930,7 @@ const dbCategoryDefinitions: Array<{
   {
     key: "domestic",
     titleKey: "connection.databaseCategoryDomestic",
-    optionValues: ["dm", "opengauss", "gaussdb", "kwdb", "tidb", "oceanbase", "goldendb", "tdsql", "polardb", "greatsql", "gbase", "kingbase", "highgo", "uxdb", "yashandb", "vastbase", "sundb", "oscar", "xugu"],
+    optionValues: ["dm", "opengauss", "opentenbase", "gaussdb", "kwdb", "tidb", "oceanbase", "goldendb", "tdsql", "polardb", "greatsql", "gbase", "kingbase", "highgo", "uxdb", "yashandb", "vastbase", "sundb", "oscar", "xugu"],
   },
   {
     key: "lightweight",

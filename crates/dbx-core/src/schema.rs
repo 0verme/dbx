@@ -6616,6 +6616,9 @@ async fn get_table_ddl_once(
         PoolKind::Postgres(p) if db_config.as_ref().is_some_and(is_cloudberry_config) => {
             cloudberry_ddl(p, schema, table).await
         }
+        PoolKind::Postgres(p) if db_config.as_ref().is_some_and(db::opentenbase::is_config) => {
+            opentenbase_ddl(p, schema, table).await
+        }
         PoolKind::Postgres(p)
             if include_postgres_access && db_config.as_ref().is_some_and(is_native_postgres_config) =>
         {
@@ -9447,6 +9450,34 @@ pub async fn cloudberry_ddl(pool: &deadpool_postgres::Pool, schema: &str, table:
                     "Cloudberry pg_get_tabledef failed: {native_error}; DDL rendering fallback failed: {fallback_error}"
                 )
             })
+        }
+    }
+}
+
+pub async fn opentenbase_ddl(pool: &deadpool_postgres::Pool, schema: &str, table: &str) -> Result<String, String> {
+    let ddl = pg_ddl(pool, schema, table).await?;
+    match db::opentenbase::table_distribution(pool, schema, table).await {
+        Ok(Some(distribution)) => match db::opentenbase::append_distribution_clause(&ddl, &distribution) {
+            Ok(ddl) => Ok(ddl),
+            Err(error) => {
+                log::warn!(
+                    "[schema][opentenbase:table-ddl-distribution-render-fallback] schema={} table={} error={}",
+                    schema,
+                    table,
+                    error
+                );
+                Ok(ddl)
+            }
+        },
+        Ok(None) => Ok(ddl),
+        Err(error) => {
+            log::warn!(
+                "[schema][opentenbase:table-ddl-distribution-query-fallback] schema={} table={} error={}",
+                schema,
+                table,
+                error
+            );
+            Ok(ddl)
         }
     }
 }
