@@ -3,6 +3,7 @@
 import { ChevronDown, Download, Server } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createInstallOptions } from "@/lib/downloadLinks";
+import { detectPlatformId } from "@/lib/platformDetection";
 
 type InstallTabsProps = {
   lang: "en" | "cn";
@@ -32,14 +33,6 @@ const platformIconPaths = {
   },
 };
 
-function detectPlatformId(): string {
-  if (typeof navigator === "undefined") return "macos-arm";
-  const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes("win")) return "windows";
-  if (ua.includes("linux")) return ua.includes("aarch64") || ua.includes("arm") ? "linux-arm" : "linux";
-  return "macos-arm";
-}
-
 function PlatformIcon({ id, size, variant }: { id: string; size: number; variant: "dark" | "light" }) {
   const src = platformIconPaths[variant][id as keyof (typeof platformIconPaths)["dark"]];
   if (!src) return <Server size={size} />;
@@ -52,7 +45,15 @@ export function InstallTabs({ lang, version }: InstallTabsProps) {
   const [platformId, setPlatformId] = useState("macos-arm");
 
   useEffect(() => {
-    setPlatformId(detectPlatformId());
+    let cancelled = false;
+
+    void detectPlatformId(navigator).then((detectedPlatformId) => {
+      if (!cancelled) setPlatformId(detectedPlatformId);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
