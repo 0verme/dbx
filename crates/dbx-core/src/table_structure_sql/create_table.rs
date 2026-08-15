@@ -183,6 +183,7 @@ pub fn build_create_table_sql(mut options: TableStructureSqlOptions) -> TableStr
             options.schema.as_deref(),
             &options.table_name,
             false,
+            capabilities.index_concurrent,
         ));
     }
 

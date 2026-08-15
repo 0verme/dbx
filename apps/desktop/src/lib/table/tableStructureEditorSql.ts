@@ -44,6 +44,8 @@ export interface EditableStructureIndex {
   indexType: string;
   includedColumns: string[];
   comment: string;
+  /** Build the index with PostgreSQL `CREATE INDEX CONCURRENTLY` (PostgreSQL only, default off). */
+  concurrently?: boolean;
   original?: IndexInfo;
   markedForDrop: boolean;
 }

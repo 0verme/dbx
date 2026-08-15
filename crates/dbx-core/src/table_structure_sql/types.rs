@@ -96,6 +96,8 @@ pub struct EditableStructureIndex {
     pub included_columns: Vec<String>,
     #[serde(default)]
     pub comment: String,
+    #[serde(default)]
+    pub concurrently: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original: Option<IndexInfo>,
     #[serde(default)]

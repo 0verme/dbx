@@ -3179,6 +3179,8 @@ export default withEnglishFallback({
     includedColumns: "包含",
     includedColumnsPlaceholder: "選擇欄位……",
     filter: "過濾條件",
+    concurrent: "並行建立",
+    concurrentTooltip: "並行建立索引以避免封鎖寫入。通常需要更長時間，且無法在交易區塊內執行。",
     foreignKeyName: "外鍵名稱",
     referencedSchema: "引用資料庫",
     referencedTable: "引用資料表",

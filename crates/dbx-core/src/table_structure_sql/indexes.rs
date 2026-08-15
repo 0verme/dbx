@@ -66,6 +66,7 @@ pub(super) fn build_index_sql(options: &TableStructureSqlOptions, warnings: &mut
                 options.schema.as_deref(),
                 &options.table_name,
                 or_replace,
+                capabilities.index_concurrent,
             ));
             continue;
         }
@@ -82,6 +83,7 @@ pub(super) fn build_index_sql(options: &TableStructureSqlOptions, warnings: &mut
             options.schema.as_deref(),
             &options.table_name,
             false,
+            capabilities.index_concurrent,
         ));
     }
 
@@ -99,6 +101,7 @@ pub(super) fn has_existing_index_change(index: &EditableStructureIndex) -> bool 
         || index_list_changed(&index.included_columns, original.included_columns.as_ref())
         || clean(&index.filter) != clean(original.filter.as_deref().unwrap_or(""))
         || clean(&index.comment) != clean(original.comment.as_deref().unwrap_or(""))
+        || index.concurrently
 }
 
 pub(super) fn index_list_changed(next: &[String], previous: Option<&Vec<String>>) -> bool {
@@ -168,6 +171,7 @@ pub(super) fn build_create_index_statements(
     schema: Option<&str>,
     table_name: &str,
     or_replace: bool,
+    concurrently_supported: bool,
 ) -> Vec<String> {
     let capabilities = capabilities_for(database_type_for_dialect(dialect));
     let name = clean(&index.name);
@@ -176,6 +180,12 @@ pub(super) fn build_create_index_statements(
     if name.is_empty() || columns.is_empty() {
         return Vec::new();
     }
+
+    // `CREATE INDEX CONCURRENTLY` is PostgreSQL-only: the flag is honored only when
+    // the caller's real database type advertises the capability, so a stale or
+    // forged `concurrently: true` from another engine is ignored and the original
+    // SQL is generated unchanged.
+    let concurrently = index.concurrently && concurrently_supported && dialect == StructureDialect::Postgres;
 
     let unique = if index.is_unique { "UNIQUE " } else { "" };
     let replace = if or_replace { "OR REPLACE " } else { "" };
@@ -243,8 +253,9 @@ pub(super) fn build_create_index_statements(
     let create_table =
         if dialect == StructureDialect::Sqlite { quote_ident(dialect, table_name) } else { table.to_string() };
     let create_sql = if dialect == StructureDialect::Postgres {
+        let concurrent_clause = if concurrently { "CONCURRENTLY " } else { "" };
         format!(
-            "CREATE {replace}{unique}{type_prefix}INDEX {index_name} ON {create_table}{using_clause} ({cols}){include_clause}{where_clause};"
+            "CREATE {replace}{unique}INDEX {concurrent_clause}{index_name} ON {create_table}{using_clause} ({cols}){include_clause}{where_clause};"
         )
     } else {
         format!(

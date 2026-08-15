@@ -3576,6 +3576,8 @@ export default withEnglishFallback({
     includedColumns: "包含列",
     includedColumnsPlaceholder: "选择列...",
     filter: "过滤条件",
+    concurrent: "并发创建",
+    concurrentTooltip: "并发创建索引，避免阻塞写入。构建通常更慢，且不能在事务块内执行。",
     foreignKeyName: "外键名",
     referencedSchema: "引用库",
     referencedTable: "引用表",

@@ -73,6 +73,7 @@ fn index(name: &str, columns: &[&str]) -> EditableStructureIndex {
         index_type: String::new(),
         included_columns: Vec::new(),
         comment: String::new(),
+        concurrently: false,
         original: None,
         marked_for_drop: false,
     }
@@ -4649,4 +4650,230 @@ fn oscar_table_comment_uses_comment_on_table() {
 
     assert_eq!(result.warnings, Vec::<String>::new());
     assert_eq!(result.statements, vec!["COMMENT ON TABLE \"SYSDBA\".\"users\" IS 'new comment';"]);
+}
+
+#[test]
+fn postgres_existing_index_concurrent_only_change_triggers_rebuild() {
+    let mut idx = existing_index("idx_users_email", &["email"], false);
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec![
+            "DROP INDEX \"public\".\"idx_users_email\";",
+            "CREATE INDEX CONCURRENTLY \"idx_users_email\" ON \"public\".\"USERS\" (\"email\");",
+        ]
+    );
+}
+
+#[test]
+fn postgres_default_index_keeps_plain_create_index() {
+    let idx = index("idx_users_email", &["email"]);
+    assert!(!idx.concurrently);
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(result.statements, vec!["CREATE INDEX \"idx_users_email\" ON \"public\".\"USERS\" (\"email\");"]);
+}
+
+#[test]
+fn postgres_concurrent_index_emits_concurrently() {
+    let mut idx = index("idx_users_email", &["email"]);
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec!["CREATE INDEX CONCURRENTLY \"idx_users_email\" ON \"public\".\"USERS\" (\"email\");"]
+    );
+}
+
+#[test]
+fn postgres_concurrent_unique_index() {
+    let mut idx = index("uniq_users_email", &["email"]);
+    idx.is_unique = true;
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec!["CREATE UNIQUE INDEX CONCURRENTLY \"uniq_users_email\" ON \"public\".\"USERS\" (\"email\");"]
+    );
+}
+
+#[test]
+fn postgres_concurrent_partial_index_keeps_where_clause() {
+    let mut idx = index("idx_users_active", &["status"]);
+    idx.filter = "status = 'active'".to_string();
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec![
+            "CREATE INDEX CONCURRENTLY \"idx_users_active\" ON \"public\".\"USERS\" (\"status\") WHERE status = 'active';"
+        ]
+    );
+}
+
+#[test]
+fn postgres_concurrent_include_index() {
+    let mut idx = index("idx_users_email", &["email"]);
+    idx.included_columns = vec!["name".to_string(), "created_at".to_string()];
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec![
+            "CREATE INDEX CONCURRENTLY \"idx_users_email\" ON \"public\".\"USERS\" (\"email\") INCLUDE (\"name\", \"created_at\");"
+        ]
+    );
+}
+
+#[test]
+fn postgres_concurrent_index_with_using_and_comment() {
+    let mut idx = index("idx_users_name", &["name"]);
+    idx.index_type = "gin".to_string();
+    idx.comment = "search".to_string();
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec![
+            "CREATE INDEX CONCURRENTLY \"idx_users_name\" ON \"public\".\"USERS\" USING GIN (\"name\");",
+            "COMMENT ON INDEX \"idx_users_name\" IS 'search';",
+        ]
+    );
+}
+
+#[test]
+fn postgres_create_table_concurrent_index() {
+    let mut id = column("id");
+    id.data_type = "integer".to_string();
+    id.is_nullable = false;
+    let mut idx = index("idx_users_name", &["name"]);
+    idx.concurrently = true;
+
+    let result = build_create_table_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Postgres),
+        schema: Some("public".to_string()),
+        table_name: "users".to_string(),
+        columns: vec![id],
+        indexes: vec![idx],
+        foreign_keys: Vec::new(),
+        triggers: Vec::new(),
+        table_comment: None,
+        original_table_comment: None,
+    });
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec![
+            "CREATE TABLE \"public\".\"users\" (\n  \"id\" integer NOT NULL\n);",
+            "CREATE INDEX CONCURRENTLY \"idx_users_name\" ON \"public\".\"users\" (\"name\");",
+        ]
+    );
+}
+
+#[test]
+fn postgres_serde_missing_concurrently_field_defaults_to_false() {
+    let json = serde_json::json!({
+        "id": "idx_users_email",
+        "name": "idx_users_email",
+        "columns": ["email"],
+        "isUnique": false,
+        "isPrimary": false,
+        "filter": "",
+        "indexType": "",
+        "includedColumns": [],
+        "comment": "",
+        "markedForDrop": false,
+    });
+    let index: EditableStructureIndex = serde_json::from_value(json).unwrap();
+    assert!(!index.concurrently);
+}
+
+#[test]
+fn postgres_serde_concurrently_field_roundtrip() {
+    let json = serde_json::json!({
+        "id": "idx_users_email",
+        "name": "idx_users_email",
+        "columns": ["email"],
+        "isUnique": false,
+        "isPrimary": false,
+        "filter": "",
+        "indexType": "",
+        "includedColumns": [],
+        "comment": "",
+        "concurrently": true,
+        "markedForDrop": false,
+    });
+    let index: EditableStructureIndex = serde_json::from_value(json).unwrap();
+    assert!(index.concurrently);
+}
+
+#[test]
+fn kingbase_concurrent_flag_is_ignored() {
+    let mut idx = index("idx_users_email", &["email"]);
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Kingbase, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(result.statements, vec!["CREATE INDEX \"idx_users_email\" ON \"public\".\"USERS\" (\"email\");"]);
+}
+
+#[test]
+fn pg_family_concurrent_flag_is_ignored() {
+    for database_type in [
+        DatabaseType::Gaussdb,
+        DatabaseType::OpenGauss,
+        DatabaseType::Highgo,
+        DatabaseType::Uxdb,
+        DatabaseType::Vastbase,
+        DatabaseType::Kwdb,
+        DatabaseType::Firebird,
+    ] {
+        let mut idx = index("idx_users_email", &["email"]);
+        idx.concurrently = true;
+        let result = build_table_structure_change_sql(index_change_options(database_type, Some("public"), idx));
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert_eq!(
+            result.statements,
+            vec!["CREATE INDEX \"idx_users_email\" ON \"public\".\"USERS\" (\"email\");"],
+            "{database_type:?} must not emit CONCURRENTLY"
+        );
+    }
+}
+
+#[test]
+fn non_postgres_concurrent_flag_is_ignored() {
+    for database_type in [DatabaseType::Mysql, DatabaseType::Sqlite, DatabaseType::SqlServer] {
+        let mut idx = index("idx_users_email", &["email"]);
+        idx.concurrently = true;
+        let result = build_table_structure_change_sql(index_change_options(database_type, None, idx));
+        assert_eq!(result.warnings, Vec::<String>::new());
+        let statements = result.statements.join("\n");
+        assert!(
+            !statements.contains("CONCURRENTLY"),
+            "{database_type:?} must not emit CONCURRENTLY, got: {statements}"
+        );
+    }
 }

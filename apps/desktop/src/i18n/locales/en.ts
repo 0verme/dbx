@@ -3588,6 +3588,8 @@ export default {
     includedColumns: "Included",
     includedColumnsPlaceholder: "Select columns...",
     filter: "Filter",
+    concurrent: "Concurrent",
+    concurrentTooltip: "Build the index concurrently to avoid blocking writes. This usually takes longer and cannot run inside a transaction block.",
     foreignKeyName: "Foreign key",
     referencedSchema: "Ref schema",
     referencedTable: "Ref table",

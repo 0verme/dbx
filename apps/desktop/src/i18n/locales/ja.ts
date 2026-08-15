@@ -3482,6 +3482,8 @@ export default withEnglishFallback({
     includedColumns: "付加列",
     includedColumnsPlaceholder: "列を選択...",
     filter: "フィルター",
+    concurrent: "同時実行",
+    concurrentTooltip: "書き込みのブロックを避けるためにインデックスを同時実行で作成します。通常は時間がかかり、トランザクションブロック内では実行できません。",
     foreignKeyName: "外部キー",
     referencedSchema: "参照スキーマ",
     referencedTable: "参照テーブル",

@@ -237,7 +237,8 @@ function indexChanged(index: EditableStructureIndex): boolean {
     !sameText(index.filter, original.filter) ||
     !sameStructureIndexType(index.indexType, original.index_type) ||
     !sameList(index.includedColumns, original.included_columns) ||
-    !sameText(index.comment, original.comment)
+    !sameText(index.comment, original.comment) ||
+    !!index.concurrently
   );
 }
 
@@ -286,7 +287,7 @@ const STRUCTURE_COLUMNS_WIDTHS_STORAGE_KEY = "dbx-structure-editor-column-widths
 const STRUCTURE_INDEX_COLUMNS_WIDTHS_STORAGE_KEY = "dbx-structure-editor-index-column-widths";
 const STRUCTURE_SQL_PREVIEW_COLLAPSED_STORAGE_KEY = "dbx-structure-editor-sql-preview-collapsed";
 const STRUCTURE_COLUMN_WIDTH_COUNT = 12;
-const STRUCTURE_INDEX_COLUMN_WIDTH_COUNT = 8;
+const STRUCTURE_INDEX_COLUMN_WIDTH_COUNT = 9;
 const PERSISTED_STRUCTURE_INDEX_COLUMN_WIDTHS = new Set([0, 1, 6]);
 const structureDensityMetrics: Record<
   StructureEditorDensity,
@@ -311,7 +312,7 @@ const structureDensityMetrics: Record<
 > = {
   compact: {
     columns: [28, 168, 136, 82, 60, 52, 108, 220, 80, 120, 144, 108],
-    indexes: [120, 180, 60, 88, 124, 144, 120, 70],
+    indexes: [120, 180, 60, 88, 124, 144, 120, 84, 70],
     minColumnWidth: 24,
     minLengthColumnWidth: 140,
     minIndexColumnWidth: 48,
@@ -329,7 +330,7 @@ const structureDensityMetrics: Record<
   },
   standard: {
     columns: [32, 200, 160, 104, 72, 64, 128, 260, 90, 140, 160, 136],
-    indexes: [148, 224, 72, 108, 148, 180, 148, 84],
+    indexes: [148, 224, 72, 108, 148, 180, 148, 100, 84],
     minColumnWidth: 28,
     minLengthColumnWidth: 156,
     minIndexColumnWidth: 60,
@@ -347,7 +348,7 @@ const structureDensityMetrics: Record<
   },
   comfortable: {
     columns: [36, 232, 188, 116, 84, 76, 152, 300, 100, 160, 188, 148],
-    indexes: [176, 260, 84, 124, 176, 216, 176, 104],
+    indexes: [176, 260, 84, 124, 176, 216, 176, 116, 104],
     minColumnWidth: 32,
     minLengthColumnWidth: 176,
     minIndexColumnWidth: 64,
@@ -808,7 +809,17 @@ const colLabels = computed(() => {
   labels.push({ key: "actions", label: t("structureEditor.actions"), widthIndex: 11 });
   return labels;
 });
-const indexColLabels = computed(() => [t("structureEditor.indexName"), t("structureEditor.indexColumns"), t("structureEditor.unique"), t("structureEditor.indexType"), t("structureEditor.includedColumns"), t("structureEditor.filter"), t("structureEditor.comment"), t("structureEditor.actions")]);
+const indexColLabels = computed(() => [
+  t("structureEditor.indexName"),
+  t("structureEditor.indexColumns"),
+  t("structureEditor.unique"),
+  t("structureEditor.indexType"),
+  t("structureEditor.includedColumns"),
+  t("structureEditor.filter"),
+  t("structureEditor.comment"),
+  t("structureEditor.concurrent"),
+  t("structureEditor.actions"),
+]);
 const filteredColumnRowIds = computed(() => {
   const query = columnSearchText.value.trim().toLowerCase();
   if (!query) return new Set<string>();
@@ -2117,6 +2128,7 @@ function addIndex() {
     indexType: "",
     includedColumns: [],
     comment: "",
+    concurrently: false,
     markedForDrop: false,
   });
   void nextTick(() => {
@@ -3273,6 +3285,13 @@ watch([activeTab, ddlLoading], ([tab, loading]) => {
                   </td>
                   <td :class="structureCellClass">
                     <Input v-model="index.comment" :class="[structureControlClass, indexSearchFieldClass(index, index.comment)]" :disabled="!canEditIndexComment(index)" />
+                  </td>
+                  <td :class="structureCellClass">
+                    <label v-if="structureCapabilities.indexConcurrent" class="flex items-center gap-1.5" :title="t('structureEditor.concurrentTooltip')">
+                      <input v-model="index.concurrently" type="checkbox" :class="structureCheckboxClass" :disabled="!canEditIndexDraft(index)" />
+                      <span>{{ index.concurrently ? t("structureEditor.yes") : t("structureEditor.no") }}</span>
+                    </label>
+                    <span v-else class="text-[length:var(--structure-font-size)] text-muted-foreground">—</span>
                   </td>
                   <td :class="structureLastCellClass">
                     <Badge v-if="index.isPrimary" variant="outline">{{ t("structureEditor.primary") }}</Badge>

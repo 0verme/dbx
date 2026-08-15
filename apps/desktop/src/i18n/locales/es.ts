@@ -3423,6 +3423,8 @@ export default withEnglishFallback({
     includedColumns: "Incluidas",
     includedColumnsPlaceholder: "Seleccionar columnas...",
     filter: "Filtro",
+    concurrent: "Concurrente",
+    concurrentTooltip: "Crea el índice de forma concurrente para evitar bloquear escrituras. Suele tardar más y no puede ejecutarse dentro de un bloque de transacción.",
     foreignKeyName: "Clave foránea",
     referencedSchema: "Esquema ref",
     referencedTable: "Tabla ref",

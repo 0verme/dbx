@@ -3407,6 +3407,8 @@ export default withEnglishFallback({
     includedColumns: "포함",
     includedColumnsPlaceholder: "컬럼 선택...",
     filter: "필터",
+    concurrent: "동시 생성",
+    concurrentTooltip: "쓰기 차단을 피하기 위해 인덱스를 동시에 생성합니다. 일반적으로 더 오래 걸리며 트랜잭션 블록 내에서 실행할 수 없습니다.",
     foreignKeyName: "외래 키",
     referencedSchema: "참조 스키마",
     referencedTable: "참조 테이블",
