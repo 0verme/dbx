@@ -1633,7 +1633,7 @@ export const useQueryStore = defineStore("query", () => {
     const tab: QueryTab = {
       id,
       title: title || `query_${tabs.value.length + 1}`,
-      customTitle: mode === "query" && !!title ? true : undefined,
+      customTitle: mode === "query" && title ? true : undefined,
       forceWordWrap: options.forceWordWrap,
       connectionId,
       database,
@@ -2685,6 +2685,8 @@ export const useQueryStore = defineStore("query", () => {
       tableMeta: original.tableMeta ? { ...original.tableMeta, columns: [...original.tableMeta.columns], primaryKeys: [...original.tableMeta.primaryKeys] } : undefined,
       queryAnalysis: original.queryAnalysis ? { ...original.queryAnalysis, sources: original.queryAnalysis.sources?.map((source) => ({ ...source })), columns: original.queryAnalysis.columns.map((c) => ({ ...c })) } : undefined,
       querySourceColumns: original.querySourceColumns ? [...original.querySourceColumns] : undefined,
+      resultColumnComments: original.resultColumnComments ? { ...original.resultColumnComments } : undefined,
+      queryDisplaySourceColumns: original.queryDisplaySourceColumns ? [...original.queryDisplaySourceColumns] : undefined,
       queryEditabilityReason: original.queryEditabilityReason,
       resultEvicted: undefined,
       whereInput: original.whereInput,
@@ -3380,7 +3382,7 @@ export const useQueryStore = defineStore("query", () => {
     return producedResult;
   }
 
-  type QueryMetadataPatch = Pick<QueryTab, "queryAnalysis" | "querySourceColumns" | "queryEditabilityReason" | "tableMeta">;
+  type QueryMetadataPatch = Pick<QueryTab, "queryAnalysis" | "querySourceColumns" | "queryEditabilityReason" | "tableMeta" | "resultColumnComments" | "queryDisplaySourceColumns">;
 
   type LoadedEditableSource = {
     source: EditableQuerySource;
@@ -3394,6 +3396,46 @@ export const useQueryStore = defineStore("query", () => {
     request: TableMetadataRequest;
     writeSchema?: string;
   };
+
+  /**
+   * Merge column comments from every loaded source table. Keyed by the
+   * physical column name and its lower-cased form, matching the lookup keys
+   * the data grid builds from a single-table `tableMeta`. First source wins so
+   * identical column names across joined tables keep a stable comment.
+   */
+  function mergeEditableSourceColumnComments(loadedSources: LoadedEditableSource[]): Record<string, string> {
+    const comments: Record<string, string> = {};
+    for (const loaded of loadedSources) {
+      for (const column of loaded.tableMeta.columns) {
+        const comment = column.comment?.trim();
+        if (!comment) continue;
+        if (!comments[column.name]) comments[column.name] = comment;
+        const lowerName = column.name.toLowerCase();
+        if (!comments[lowerName]) comments[lowerName] = comment;
+      }
+    }
+    return comments;
+  }
+
+  /**
+   * Build a display-only result-column -> source-column mapping across every
+   * source table of a multi-source query. Unlike `querySourceColumns` (which
+   * stays undefined for non-editable results) this exists purely so the data
+   * grid can resolve column comments; it must never be used for row identity.
+   */
+  function mergeEditableSourceDisplayColumns(analysis: EditableQueryInfo, resultColumns: string[], sources: EditableQuerySource[]): Array<string | undefined> | undefined {
+    let merged: Array<string | undefined> | undefined;
+    for (const source of sources) {
+      const mapped = sourceColumnsForResult(analysis, resultColumns, source.key);
+      if (!mapped) continue;
+      merged ??= resultColumns.map(() => undefined);
+      for (let index = 0; index < mapped.length; index++) {
+        const sourceName = mapped[index];
+        if (sourceName !== undefined && merged[index] === undefined) merged[index] = sourceName;
+      }
+    }
+    return merged;
+  }
 
   function canInsertIntoEditableQuerySource(tab: QueryTab, databaseType: DatabaseType | undefined, loaded: LoadedEditableSource, sourceColumns: readonly (string | undefined)[] | undefined): boolean {
     if (!canInsertTableRows(databaseType) || !sourceColumns?.length || !sourceColumns.every(Boolean)) return false;
@@ -3418,6 +3460,8 @@ export const useQueryStore = defineStore("query", () => {
     tab.queryEditabilityReason = patch.queryEditabilityReason;
     tab.mongoEditTarget = undefined;
     tab.tableMeta = patch.tableMeta;
+    tab.resultColumnComments = patch.resultColumnComments;
+    tab.queryDisplaySourceColumns = patch.queryDisplaySourceColumns;
   }
 
   function resolveEditableSourceMetadataTarget(tab: QueryTab, analysis: EditableQueryInfo, source: EditableQuerySource, conn: ConnectionConfig | undefined, dbType: string, executionDatabase: string): EditableSourceMetadataTarget {
@@ -3733,12 +3777,21 @@ export const useQueryStore = defineStore("query", () => {
         };
       }
 
+      // Multi-source results cannot carry a single tableMeta, but every source
+      // table's metadata is already loaded. Surface merged column comments and
+      // a display-only result->source mapping so the data grid can still show
+      // comments for joined results (fixes #2129 / #6352).
+      const multiSourceComments = loadedSources.length > 1 ? mergeEditableSourceColumnComments(loadedSources) : undefined;
+      const multiSourceDisplayColumns = loadedSources.length > 1 ? mergeEditableSourceDisplayColumns(analysis, tab.result.columns, sources) : undefined;
+
       if (candidates.length === 0) {
         return {
           queryAnalysis: undefined,
           querySourceColumns: undefined,
           queryEditabilityReason: loadedSources.some((loaded) => loaded.tableMeta.primaryKeys.length > 0) ? "primary-key-not-returned" : "no-primary-key",
           tableMeta: undefined,
+          resultColumnComments: multiSourceComments,
+          queryDisplaySourceColumns: multiSourceDisplayColumns,
         };
       }
 
@@ -3748,6 +3801,8 @@ export const useQueryStore = defineStore("query", () => {
           querySourceColumns: undefined,
           queryEditabilityReason: "complex-source",
           tableMeta: undefined,
+          resultColumnComments: multiSourceComments,
+          queryDisplaySourceColumns: multiSourceDisplayColumns,
         };
       }
 
@@ -3763,6 +3818,8 @@ export const useQueryStore = defineStore("query", () => {
         querySourceColumns: target.sourceColumns,
         queryEditabilityReason: undefined,
         tableMeta: target.tableMeta,
+        resultColumnComments: multiSourceComments,
+        queryDisplaySourceColumns: multiSourceDisplayColumns,
       };
     } catch (err) {
       console.error("[DBX] ERROR fetching columns for query metadata:", err);

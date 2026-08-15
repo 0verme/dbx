@@ -1273,6 +1273,20 @@ export interface QueryTab {
     }[];
   };
   querySourceColumns?: Array<string | undefined>;
+  /**
+   * Column comments merged from every source table of the executed query,
+   * keyed by physical column name (and lower-cased alias). Populated even when
+   * the result is not editable (e.g. multi-table JOIN), so the data grid can
+   * still show comments for result columns that map back to a base column.
+   */
+  resultColumnComments?: Record<string, string>;
+  /**
+   * Result-column to source-column mapping for display purposes (column
+   * comments / tooltips). Unlike querySourceColumns it is also populated for
+   * multi-source results that are not editable, and must not be used for row
+   * identity or editing.
+   */
+  queryDisplaySourceColumns?: Array<string | undefined>;
   queryEditabilityReason?: "not-select" | "cte" | "set-operation" | "aggregation" | "external-source" | "complex-source" | "computed-columns" | "no-table" | "no-primary-key" | "primary-key-not-returned" | "aliased-columns" | "metadata-unavailable";
   mongoEditTarget?: {
     collection: string;

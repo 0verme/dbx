@@ -335,6 +335,19 @@ interface DataGridProps {
   context?: "results" | "table-data";
   autoTransposeSingleRow?: boolean;
   sourceColumns?: Array<string | undefined>;
+  /**
+   * Column comments merged from every source table of a multi-source query
+   * (e.g. JOIN). Populated even when the result is not editable, so joined
+   * results still show comments. Keyed by physical column name (and its
+   * lower-cased form), same keys as the `tableMeta`-derived map.
+   */
+  resultColumnComments?: Record<string, string>;
+  /**
+   * Display-only result-column -> source-column mapping for multi-source
+   * results that are not editable. Used to resolve column comments precisely;
+   * never used for row identity or editing.
+   */
+  queryDisplaySourceColumns?: Array<string | undefined>;
   initialWhereInput?: string;
   initialOrderByInput?: string;
   sortColumn?: string;
@@ -539,6 +552,11 @@ const columnCommentMap = computed(() => {
       if (!map.has(normalizedName)) map.set(normalizedName, col.comment);
     }
   }
+  if (props.resultColumnComments) {
+    for (const [name, comment] of Object.entries(props.resultColumnComments)) {
+      if (comment && !map.has(name)) map.set(name, comment);
+    }
+  }
   return map;
 });
 const dataGridTopbarWidth = ref(0);
@@ -575,7 +593,9 @@ const readonlyTextCell = ref<{
 } | null>(null);
 
 function resolvedColumnComment(column: string, actualColIdx: number): string | undefined {
-  return dataGridColumnCommentFor(columnCommentMap.value, column, props.sourceColumns?.[actualColIdx]);
+  const displaySource = props.queryDisplaySourceColumns?.[actualColIdx];
+  const sourceName = displaySource ?? props.sourceColumns?.[actualColIdx];
+  return dataGridColumnCommentFor(columnCommentMap.value, column, sourceName);
 }
 
 function headerColumnComment(column: string, actualColIdx: number): string {
@@ -2031,7 +2051,12 @@ const allColumnTypes = computed(() =>
 const visibleColumnTypes = computed(() => visibleColumnIndexes.value.map((index) => allColumnTypes.value[index]));
 const allColumnTypeVisualKinds = computed(() => allColumnTypes.value.map((type) => resolveDataGridTypeVisualKind(type, resolvedDatabaseType.value)));
 const visibleColumnTypeVisualKinds = computed(() => visibleColumnIndexes.value.map((index) => allColumnTypeVisualKinds.value[index] ?? "unknown"));
-const visibleColumnComments = computed(() => visibleColumnIndexes.value.map((index) => dataGridColumnCommentFor(columnCommentMap.value, props.result.columns[index] ?? "", props.sourceColumns?.[index])));
+const visibleColumnComments = computed(() =>
+  visibleColumnIndexes.value.map((index) => {
+    const displaySource = props.queryDisplaySourceColumns?.[index] ?? props.sourceColumns?.[index];
+    return dataGridColumnCommentFor(columnCommentMap.value, props.result.columns[index] ?? "", displaySource);
+  }),
+);
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
 
 const numericColumnRightAlign = computed(() => (settingsStore.editorSettings.numericColumnRightAlign ?? true) && !showTranspose.value);
