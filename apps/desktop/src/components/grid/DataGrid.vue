@@ -11300,7 +11300,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               <div v-if="gridSurfaceBusy" class="absolute inset-0 z-20 bg-background/50 flex items-center justify-center">
                 <div class="flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
                   <Loader2 class="w-3.5 h-3.5 animate-spin" />
-                  <span>{{ formatElapsedSeconds(loadingElapsed) }}s</span>
+                  <span class="tabular-nums">{{ formatElapsedSeconds(loadingElapsed) }}s</span>
                 </div>
               </div>
             </template>
