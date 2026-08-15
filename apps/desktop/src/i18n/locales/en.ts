@@ -5812,6 +5812,8 @@ export default {
     disconnectTabHandlingModeKeepTabsKeepResultsDescription: "Keep related tabs, SQL text, and current results without extra cleanup.",
     reuseDataTab: "Reuse data tab",
     reuseDataTabDescription: "Choose how opening a table uses data tabs.",
+    openDataTabsNextToActive: "Open new data tabs next to the active tab",
+    openDataTabsNextToActiveDescription: "Place newly created table data tabs immediately after the active tab.",
     dataTabReuseAlwaysNew: "Always open a new tab",
     dataTabReuseAlwaysNewDescription: "Create a new data tab every time, even when the table is already open.",
     dataTabReuseSameTable: "Reuse the same table",

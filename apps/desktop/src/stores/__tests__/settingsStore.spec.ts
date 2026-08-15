@@ -28,6 +28,14 @@ describe("normalizeEditorSettings", () => {
     expect(normalizeEditorSettings({ reuseDataTab: true } as any).dataTabReuseMode).toBe("same-table");
   });
 
+  it("keeps adjacent data-tab opening disabled unless explicitly enabled", () => {
+    expect(normalizeEditorSettings({}).openDataTabsNextToActive).toBe(false);
+    expect(normalizeEditorSettings({ openDataTabsNextToActive: true }).openDataTabsNextToActive).toBe(true);
+    expect(normalizeEditorSettings({ openDataTabsNextToActive: false }).openDataTabsNextToActive).toBe(false);
+    expect(normalizeEditorSettings({ openDataTabsNextToActive: "true" } as any).openDataTabsNextToActive).toBe(false);
+    expect(normalizeEditorSettings({ openDataTabsNextToActive: null } as any).openDataTabsNextToActive).toBe(false);
+  });
+
   it("defaults and bounds the regular expression match limit", () => {
     expect(normalizeEditorSettings({}).regexMaxMatchCount).toBe(1000);
     expect(normalizeEditorSettings({ regexMaxMatchCount: 2500 }).regexMaxMatchCount).toBe(2500);
@@ -661,6 +669,23 @@ describe("settingsStore persisted settings initialization", () => {
         sqlVariableSyntaxOverrides: { mysql: { shell: false } },
       }),
     );
+  });
+
+  it("loads and persists adjacent data-tab opening", async () => {
+    const loadEditorSettings = vi.fn().mockResolvedValue({ openDataTabsNextToActive: true });
+    const saveEditorSettings = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("@/lib/backend/api", () => ({ loadEditorSettings, saveEditorSettings }));
+
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    const store = useSettingsStore();
+    await store.initEditorSettings();
+
+    expect(store.editorSettings.openDataTabsNextToActive).toBe(true);
+
+    await store.updateEditorSettingsAndPersist({ openDataTabsNextToActive: false });
+
+    expect(store.editorSettings.openDataTabsNextToActive).toBe(false);
+    expect(saveEditorSettings).toHaveBeenLastCalledWith(expect.objectContaining({ openDataTabsNextToActive: false }));
   });
 
   it("shares concurrent initialization and applies startup changes after saved settings load", async () => {

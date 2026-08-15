@@ -5556,6 +5556,8 @@ export default withEnglishFallback({
     disconnectTabHandlingModeKeepTabsKeepResultsDescription: "Mantieni le schede correlate, il testo SQL e i risultati correnti senza ulteriore pulizia.",
     reuseDataTab: "Riusa scheda dati",
     reuseDataTabDescription: "Scegli come usare le schede dati quando apri una tabella.",
+    openDataTabsNextToActive: "Apri le nuove schede dati accanto a quella attiva",
+    openDataTabsNextToActiveDescription: "Posiziona le nuove schede dati delle tabelle subito dopo la scheda attiva.",
     dataTabReuseAlwaysNew: "Apri sempre una nuova scheda",
     dataTabReuseAlwaysNewDescription: "Crea ogni volta una nuova scheda dati, anche se la tabella è già aperta.",
     dataTabReuseSameTable: "Riusa solo la stessa tabella",

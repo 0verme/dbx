@@ -5292,6 +5292,8 @@ export default withEnglishFallback({
     disconnectTabHandlingModeKeepTabsKeepResultsDescription: "관련 탭, SQL 텍스트, 현재 결과를 추가 정리 없이 유지합니다.",
     reuseDataTab: "데이터 탭 재사용",
     reuseDataTabDescription: "테이블을 열 때 데이터 탭을 사용하는 방식을 선택합니다.",
+    openDataTabsNextToActive: "새 데이터 탭을 활성 탭 옆에 열기",
+    openDataTabsNextToActiveDescription: "새로 만든 테이블 데이터 탭을 활성 탭 바로 뒤에 배치합니다.",
     dataTabReuseAlwaysNew: "항상 새 탭 열기",
     dataTabReuseAlwaysNewDescription: "테이블이 이미 열려 있어도 매번 새 데이터 탭을 만듭니다.",
     dataTabReuseSameTable: "같은 테이블만 재사용",

@@ -5799,6 +5799,8 @@ export default withEnglishFallback({
     disconnectTabHandlingModeKeepTabsKeepResultsDescription: "保留相关页签、SQL 文本和当前结果，不做额外处理。",
     reuseDataTab: "复用数据标签页",
     reuseDataTabDescription: "选择打开表时如何使用数据标签页。",
+    openDataTabsNextToActive: "在当前标签页旁打开新数据标签页",
+    openDataTabsNextToActiveDescription: "将新建的表数据标签页放在当前标签页之后。",
     dataTabReuseAlwaysNew: "始终新建标签页",
     dataTabReuseAlwaysNewDescription: "每次打开表都新建标签页，即使该表已经打开。",
     dataTabReuseSameTable: "仅复用同一张表",

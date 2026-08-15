@@ -61,6 +61,10 @@ describe("EDITOR_SETTINGS_DRAFT_KEYS", () => {
     expect(EDITOR_SETTINGS_DRAFT_KEYS).toContain("dataTabReuseMode");
   });
 
+  it("includes adjacent data-tab opening", () => {
+    expect(EDITOR_SETTINGS_DRAFT_KEYS).toContain("openDataTabsNextToActive");
+  });
+
   it("includes data grid type colors", () => {
     expect(EDITOR_SETTINGS_DRAFT_KEYS).toContain("colorizeDataGridCellTypes");
   });
@@ -208,6 +212,14 @@ describe("editorSettingsDraftChanged", () => {
     expect(editorSettingsDraftChanged(draft, base)).toBe(true);
   });
 
+  it("detects adjacent data-tab opening changes", () => {
+    const settings = makeSettings({ openDataTabsNextToActive: false });
+    const draft = editorSettingsDraftFromSettings(settings);
+    const base = editorSettingsDraftFromSettings(settings);
+    draft.openDataTabsNextToActive = true;
+    expect(editorSettingsDraftChanged(draft, base)).toBe(true);
+  });
+
   it("detects completionTriggerMode change", () => {
     const settings = makeSettings({ completionTriggerMode: "positional" } as Partial<EditorSettings>);
     const draft = editorSettingsDraftFromSettings(settings);
@@ -264,6 +276,14 @@ describe("editorSettingsPatchFromDraft", () => {
     const base = editorSettingsDraftFromSettings(settings);
     draft.dataTabReuseMode = "always-new";
     expect(editorSettingsPatchFromDraft(draft, base).dataTabReuseMode).toBe("always-new");
+  });
+
+  it("includes adjacent data-tab opening when changed", () => {
+    const settings = makeSettings({ openDataTabsNextToActive: false });
+    const draft = editorSettingsDraftFromSettings(settings);
+    const base = editorSettingsDraftFromSettings(settings);
+    draft.openDataTabsNextToActive = true;
+    expect(editorSettingsPatchFromDraft(draft, base).openDataTabsNextToActive).toBe(true);
   });
 
   it("includes completionTriggerMode in patch when changed", () => {

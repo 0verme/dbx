@@ -5556,6 +5556,8 @@ export default withEnglishFallback({
     disconnectTabHandlingModeKeepTabsKeepResultsDescription: "Conserva las pestañas relacionadas, el texto SQL y los resultados actuales sin limpieza adicional.",
     reuseDataTab: "Reutilizar pestaña de datos",
     reuseDataTabDescription: "Elige cómo se usan las pestañas de datos al abrir una tabla.",
+    openDataTabsNextToActive: "Abrir nuevas pestañas de datos junto a la activa",
+    openDataTabsNextToActiveDescription: "Coloca las nuevas pestañas de datos de tablas justo después de la pestaña activa.",
     dataTabReuseAlwaysNew: "Abrir siempre una pestaña nueva",
     dataTabReuseAlwaysNewDescription: "Crea una pestaña de datos nueva cada vez, aunque la tabla ya esté abierta.",
     dataTabReuseSameTable: "Reutilizar solo la misma tabla",

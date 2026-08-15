@@ -5583,6 +5583,8 @@ export default withEnglishFallback({
     disconnectTabHandlingModeKeepTabsKeepResultsDescription: "関連タブ、SQLテキスト、現在の結果を追加のクリーンアップなしで保持します。",
     reuseDataTab: "データタブを再利用",
     reuseDataTabDescription: "テーブルを開くときのデータタブの使い方を選択します。",
+    openDataTabsNextToActive: "新しいデータタブをアクティブタブの隣に開く",
+    openDataTabsNextToActiveDescription: "新しく作成したテーブルのデータタブをアクティブタブの直後に配置します。",
     dataTabReuseAlwaysNew: "常に新しいタブを開く",
     dataTabReuseAlwaysNewDescription: "同じテーブルが開いていても、毎回新しいデータタブを作成します。",
     dataTabReuseSameTable: "同じテーブルだけ再利用",

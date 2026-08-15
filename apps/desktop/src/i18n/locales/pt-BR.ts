@@ -5558,6 +5558,8 @@ export default withEnglishFallback({
     disconnectTabHandlingModeKeepTabsKeepResultsDescription: "Manter abas relacionadas, texto SQL e resultados atuais sem limpeza adicional.",
     reuseDataTab: "Reutilizar aba de dados",
     reuseDataTabDescription: "Escolha como as abas de dados são usadas ao abrir uma tabela.",
+    openDataTabsNextToActive: "Abrir novas abas de dados ao lado da aba ativa",
+    openDataTabsNextToActiveDescription: "Coloca as novas abas de dados de tabelas logo após a aba ativa.",
     dataTabReuseAlwaysNew: "Sempre abrir uma nova aba",
     dataTabReuseAlwaysNewDescription: "Cria uma nova aba de dados todas as vezes, mesmo que a tabela já esteja aberta.",
     dataTabReuseSameTable: "Reutilizar apenas a mesma tabela",
