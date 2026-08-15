@@ -1244,7 +1244,7 @@ async function exportConfigArchive(scope: NacosConfigSelectionScope) {
 
 const batchTransferRequest = shallowRef<NacosConfigTransferRequest | null>(null);
 
-async function previewBatch(payload: { scope: NacosConfigSelectionScope; targetConnectionId: string; targetNamespace: string; policy: NacosConflictPolicy }) {
+async function previewBatch(payload: { scope: NacosConfigSelectionScope; targetConnectionId: string; targetNamespace: string; targetGroup: string; policy: NacosConflictPolicy }) {
   batchLoading.value = true;
   batchError.value = "";
   batchPreview.value = null;
@@ -1260,6 +1260,7 @@ async function previewBatch(payload: { scope: NacosConfigSelectionScope; targetC
         targetConnectionId: payload.targetConnectionId,
         source: buildConfigSelector(payload.scope),
         targetNamespace: payload.targetNamespace,
+        targetGroup: payload.targetGroup || undefined,
         conflictPolicy: payload.policy,
       };
       batchTransferRequest.value = req;
@@ -1272,7 +1273,7 @@ async function previewBatch(payload: { scope: NacosConfigSelectionScope; targetC
   }
 }
 
-async function applyBatch(payload: { scope: NacosConfigSelectionScope; targetConnectionId: string; targetNamespace: string; policy: NacosConflictPolicy }) {
+async function applyBatch(payload: { scope: NacosConfigSelectionScope; targetConnectionId: string; targetNamespace: string; targetGroup: string; policy: NacosConflictPolicy }) {
   if (batchLoading.value || batchReport.value || !batchPreview.value) return;
   if (payload.policy === "OVERWRITE" && !window.confirm(t("nacos.overwriteConfirm"))) return;
   const targetConnectionId = batchMode.value === "import" ? props.connectionId : payload.targetConnectionId;
