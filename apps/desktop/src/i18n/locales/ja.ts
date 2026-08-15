@@ -6041,6 +6041,10 @@ export default withEnglishFallback({
     completionTriggerModeManual: "手動のみ",
     completionTriggerModeRequirePrefix: "識別子入力後",
     completionTriggerModePositional: "スマート位置",
+    sidebarIndent: "サイドバーのインデント",
+    sidebarIndentDescription: "各ツリー階層のインデントのピクセルオフセット。",
+    sidebarFontSize: "サイドバーのフォントサイズ",
+    sidebarFontSizeDescription: "サイドバーのオブジェクトツリーのフォントサイズ（ピクセル）。エディターのフォントサイズとは独立しています。",
   },
   driverStore: {
     jreDirRemoveFailed: "古い JRE ディレクトリを削除できませんでした: {path}（元のエラー: {error}）",

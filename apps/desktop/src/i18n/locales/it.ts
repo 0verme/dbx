@@ -5988,6 +5988,10 @@ export default withEnglishFallback({
     syncSnippetMigrateLegacyCleanupRequired: "Lo snippet crittografato è stato creato, ma non è stato possibile eliminare lo snippet legacy {id}. Eliminalo manualmente e ruota le credenziali che potrebbero essere state esposte.",
     syncSnippetRetryLegacyCleanup: "Riprova pulizia legacy",
     syncSnippetLegacyCleanupSuccess: "Lo snippet legacy in testo semplice {id} è stato eliminato.",
+    sidebarIndent: "Indentazione della barra laterale",
+    sidebarIndentDescription: "Offset in pixel per l'indentazione di ogni livello dell'albero.",
+    sidebarFontSize: "Dimensione del carattere della barra laterale",
+    sidebarFontSizeDescription: "Dimensione del carattere (in pixel) per l'albero degli oggetti della barra laterale, indipendente dalla dimensione del carattere dell'editor.",
   },
   driverStore: {
     jreDirRemoveFailed: "Impossibile rimuovere la vecchia directory JRE: {path} (errore originale: {error})",

@@ -418,6 +418,12 @@ export type ResultRunDisplayMode = (typeof RESULT_RUN_DISPLAY_MODES)[number];
 export const TABLE_FONT_SIZE_MIN = 8;
 export const TABLE_FONT_SIZE_MAX = 16;
 export const TABLE_FONT_SIZE_DEFAULT = 13;
+export const SIDEBAR_FONT_SIZE_MIN = 9;
+export const SIDEBAR_FONT_SIZE_MAX = 24;
+export const SIDEBAR_FONT_SIZE_DEFAULT = 14;
+export const SIDEBAR_INDENT_MIN = 4;
+export const SIDEBAR_INDENT_MAX = 32;
+export const SIDEBAR_INDENT_DEFAULT = 16;
 const DISCONNECT_TAB_HANDLING_MODES = ["close-tabs", "keep-tabs-clear-results", "keep-tabs-keep-results"] as const;
 export type DisconnectTabHandlingMode = (typeof DISCONNECT_TAB_HANDLING_MODES)[number];
 
@@ -587,6 +593,8 @@ export interface EditorSettings {
   sidebarObjectInfoMode: SidebarObjectInfoMode;
   sidebarShowConnectionNotes: boolean;
   sidebarAllowHorizontalScroll: boolean;
+  sidebarIndent: number;
+  sidebarFontSize: number;
   columnFormatters: Record<string, ColumnFormatterConfig>;
   customColumnFormatters: Record<string, CustomColumnFormatterConfig>;
   globalDateTimeDisplayFormat: string;
@@ -786,6 +794,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   sidebarObjectInfoMode: "comment-inline",
   sidebarShowConnectionNotes: false,
   sidebarAllowHorizontalScroll: false,
+  sidebarIndent: SIDEBAR_INDENT_DEFAULT,
+  sidebarFontSize: SIDEBAR_FONT_SIZE_DEFAULT,
   columnFormatters: {},
   customColumnFormatters: {},
   globalDateTimeDisplayFormat: "",
@@ -870,6 +880,16 @@ function normalizeResultRunDisplayMode(value: unknown): ResultRunDisplayMode {
 function normalizeTableFontSize(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return TABLE_FONT_SIZE_DEFAULT;
   return Math.min(TABLE_FONT_SIZE_MAX, Math.max(TABLE_FONT_SIZE_MIN, Math.round(value)));
+}
+
+function normalizeSidebarFontSize(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return SIDEBAR_FONT_SIZE_DEFAULT;
+  return Math.min(SIDEBAR_FONT_SIZE_MAX, Math.max(SIDEBAR_FONT_SIZE_MIN, Math.round(value)));
+}
+
+function normalizeSidebarIndent(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return SIDEBAR_INDENT_DEFAULT;
+  return Math.min(SIDEBAR_INDENT_MAX, Math.max(SIDEBAR_INDENT_MIN, Math.round(value)));
 }
 
 function normalizeUpdateDownloadSource(value: unknown): UpdateDownloadSource {
@@ -1168,6 +1188,8 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     ),
     sidebarShowConnectionNotes: settings.sidebarShowConnectionNotes === true,
     sidebarAllowHorizontalScroll: settings.sidebarAllowHorizontalScroll ?? DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll,
+    sidebarIndent: normalizeSidebarIndent(settings.sidebarIndent),
+    sidebarFontSize: normalizeSidebarFontSize(settings.sidebarFontSize),
     columnFormatters: normalizeColumnFormatters(settings.columnFormatters),
     customColumnFormatters: normalizeCustomColumnFormatters(settings.customColumnFormatters),
     globalDateTimeDisplayFormat: normalizeGlobalDateTimePattern(settings.globalDateTimeDisplayFormat),
@@ -1712,6 +1734,8 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.sidebarObjectInfoMode !== undefined) editorSettings.value.sidebarObjectInfoMode = normalizeSidebarObjectInfoMode(partial.sidebarObjectInfoMode);
     if (partial.sidebarShowConnectionNotes !== undefined) editorSettings.value.sidebarShowConnectionNotes = partial.sidebarShowConnectionNotes === true;
     if (partial.sidebarAllowHorizontalScroll !== undefined) editorSettings.value.sidebarAllowHorizontalScroll = partial.sidebarAllowHorizontalScroll;
+    if (partial.sidebarIndent !== undefined) editorSettings.value.sidebarIndent = normalizeSidebarIndent(partial.sidebarIndent);
+    if (partial.sidebarFontSize !== undefined) editorSettings.value.sidebarFontSize = normalizeSidebarFontSize(partial.sidebarFontSize);
     if (partial.columnFormatters !== undefined) editorSettings.value.columnFormatters = partial.columnFormatters;
     if (partial.customColumnFormatters !== undefined) editorSettings.value.customColumnFormatters = partial.customColumnFormatters;
     if (partial.globalDateTimeDisplayFormat !== undefined) editorSettings.value.globalDateTimeDisplayFormat = normalizeGlobalDateTimePattern(partial.globalDateTimeDisplayFormat);

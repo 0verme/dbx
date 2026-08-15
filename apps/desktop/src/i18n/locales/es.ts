@@ -5988,6 +5988,10 @@ export default withEnglishFallback({
     syncSnippetMigrateLegacyCleanupRequired: "Se creó el fragmento cifrado, pero no se pudo eliminar el fragmento heredado {id}. Elimínelo manualmente y rote las credenciales que podrían haberse expuesto.",
     syncSnippetRetryLegacyCleanup: "Reintentar limpieza heredada",
     syncSnippetLegacyCleanupSuccess: "Se eliminó el fragmento heredado de texto sin formato {id}.",
+    sidebarIndent: "Sangría de la barra lateral",
+    sidebarIndentDescription: "Desplazamiento en píxeles de la sangría para cada nivel del árbol.",
+    sidebarFontSize: "Tamaño de fuente de la barra lateral",
+    sidebarFontSizeDescription: "Tamaño de fuente (en píxeles) del árbol de objetos de la barra lateral, independiente del tamaño de fuente del editor.",
   },
   driverStore: {
     jreDirRemoveFailed: "No se pudo eliminar el directorio JRE antiguo: {path} (error original: {error})",

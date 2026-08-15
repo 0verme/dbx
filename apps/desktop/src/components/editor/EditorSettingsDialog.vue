@@ -47,6 +47,10 @@ import {
   type CustomTheme,
   type ClickTableNavigationTarget,
   type SqlCompletionTriggerMode,
+  SIDEBAR_INDENT_MIN,
+  SIDEBAR_INDENT_MAX,
+  SIDEBAR_FONT_SIZE_MIN,
+  SIDEBAR_FONT_SIZE_MAX,
 } from "@/stores/settingsStore";
 import { createRunStatementButtonDom, loadEditorTheme, editorFontTheme } from "@/lib/editor/editorThemes";
 import { orderAiConfigsForDisplay } from "@/lib/ai/aiConfigOrdering";
@@ -406,6 +410,8 @@ const editUpdateNotificationsEnabled = ref(settingsStore.editorSettings.updateNo
 const editSidebarHiddenTablePrefixes = ref(settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n"));
 const editSidebarObjectInfoMode = ref<SidebarObjectInfoMode>(settingsStore.editorSettings.sidebarObjectInfoMode);
 const editSidebarAllowHorizontalScroll = ref(settingsStore.editorSettings.sidebarAllowHorizontalScroll);
+const editSidebarIndent = ref(settingsStore.editorSettings.sidebarIndent);
+const editSidebarFontSize = ref(settingsStore.editorSettings.sidebarFontSize);
 const editExportBatchSize = ref(settingsStore.editorSettings.exportBatchSize);
 const editGlobalDateTimeDisplayFormat = ref(settingsStore.editorSettings.globalDateTimeDisplayFormat);
 const editGlobalDateTimeExportFormat = ref(settingsStore.editorSettings.globalDateTimeExportFormat);
@@ -526,6 +532,8 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     updateNotificationsEnabled: editUpdateNotificationsEnabled.value,
     sidebarObjectInfoMode: editSidebarObjectInfoMode.value,
     sidebarAllowHorizontalScroll: editSidebarAllowHorizontalScroll.value,
+    sidebarIndent: editSidebarIndent.value,
+    sidebarFontSize: editSidebarFontSize.value,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value),
     exportBatchSize: editExportBatchSize.value,
     globalDateTimeDisplayFormat: editGlobalDateTimeDisplayFormat.value,
@@ -808,6 +816,8 @@ function syncEditorSettingsDraftFromStore() {
   editSidebarHiddenTablePrefixes.value = settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n");
   editSidebarObjectInfoMode.value = settingsStore.editorSettings.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = settingsStore.editorSettings.sidebarAllowHorizontalScroll;
+  editSidebarIndent.value = settingsStore.editorSettings.sidebarIndent;
+  editSidebarFontSize.value = settingsStore.editorSettings.sidebarFontSize;
   editExportBatchSize.value = settingsStore.editorSettings.exportBatchSize;
   editGlobalDateTimeDisplayFormat.value = settingsStore.editorSettings.globalDateTimeDisplayFormat;
   editGlobalDateTimeExportFormat.value = settingsStore.editorSettings.globalDateTimeExportFormat;
@@ -1023,6 +1033,8 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editUpdateNotificationsEnabled.value = DEFAULT_EDITOR_SETTINGS.updateNotificationsEnabled;
     editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
     editSidebarAllowHorizontalScroll.value = DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll;
+    editSidebarIndent.value = DEFAULT_EDITOR_SETTINGS.sidebarIndent;
+    editSidebarFontSize.value = DEFAULT_EDITOR_SETTINGS.sidebarFontSize;
     editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
     editToolbarItems.value = { ...DEFAULT_EDITOR_SETTINGS.toolbarItems };
   } else if (tab === "data") {
@@ -1132,6 +1144,8 @@ function resetAllDefaults() {
   editUpdateNotificationsEnabled.value = DEFAULT_EDITOR_SETTINGS.updateNotificationsEnabled;
   editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll;
+  editSidebarIndent.value = DEFAULT_EDITOR_SETTINGS.sidebarIndent;
+  editSidebarFontSize.value = DEFAULT_EDITOR_SETTINGS.sidebarFontSize;
   editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
   editExportBatchSize.value = DEFAULT_EDITOR_SETTINGS.exportBatchSize;
   editGlobalDateTimeDisplayFormat.value = DEFAULT_EDITOR_SETTINGS.globalDateTimeDisplayFormat;
@@ -4750,6 +4764,52 @@ onUnmounted(() => {
                   </HelpTooltip>
                 </div>
                 <Switch id="sidebar-allow-horizontal-scroll" v-model="editSidebarAllowHorizontalScroll" />
+              </div>
+              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="space-y-1">
+                  <Label for="sidebar-indent">{{ t("settings.sidebarIndent") }}</Label>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("settings.sidebarIndentDescription") }}
+                  </p>
+                </div>
+                <Input
+                  id="sidebar-indent"
+                  type="number"
+                  class="w-24 text-right"
+                  :min="SIDEBAR_INDENT_MIN"
+                  :max="SIDEBAR_INDENT_MAX"
+                  :step="2"
+                  :model-value="editSidebarIndent"
+                  @update:model-value="
+                    (value: string | number) => {
+                      const n = typeof value === 'string' ? parseInt(value) : value;
+                      if (!isNaN(n)) editSidebarIndent = n;
+                    }
+                  "
+                />
+              </div>
+              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="space-y-1">
+                  <Label for="sidebar-font-size">{{ t("settings.sidebarFontSize") }}</Label>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("settings.sidebarFontSizeDescription") }}
+                  </p>
+                </div>
+                <Input
+                  id="sidebar-font-size"
+                  type="number"
+                  class="w-24 text-right"
+                  :min="SIDEBAR_FONT_SIZE_MIN"
+                  :max="SIDEBAR_FONT_SIZE_MAX"
+                  :step="1"
+                  :model-value="editSidebarFontSize"
+                  @update:model-value="
+                    (value: string | number) => {
+                      const n = typeof value === 'string' ? parseInt(value) : value;
+                      if (!isNaN(n)) editSidebarFontSize = n;
+                    }
+                  "
+                />
               </div>
               <div class="space-y-2">
                 <Label for="sidebar-hidden-table-prefixes">{{ t("settings.sidebarHiddenTablePrefixes") }}</Label>

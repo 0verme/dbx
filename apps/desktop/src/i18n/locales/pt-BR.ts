@@ -5990,6 +5990,10 @@ export default withEnglishFallback({
     syncSnippetMigrateLegacyCleanupRequired: "O snippet criptografado foi criado, mas não foi possível excluir o snippet legado {id}. Exclua-o manualmente e altere as credenciais que possam ter sido expostas.",
     syncSnippetRetryLegacyCleanup: "Tentar limpeza legada novamente",
     syncSnippetLegacyCleanupSuccess: "O snippet legado em texto simples {id} foi removido.",
+    sidebarIndent: "Indentação da barra lateral",
+    sidebarIndentDescription: "O deslocamento em pixels da indentação para cada nível da árvore.",
+    sidebarFontSize: "Tamanho da fonte da barra lateral",
+    sidebarFontSizeDescription: "Tamanho da fonte (em pixels) da árvore de objetos da barra lateral, independente do tamanho da fonte do editor.",
   },
   driverStore: {
     jreDirRemoveFailed: "Não foi possível remover o diretório JRE antigo: {path} (erro original: {error})",

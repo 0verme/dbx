@@ -167,6 +167,8 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
   { id: "navigation-open-database-on-single-click", category: "navigation", titleKey: "settings.sidebarOpenDatabaseOnSingleClick", descriptionKey: "settings.sidebarOpenDatabaseOnSingleClickDescription", targetId: "navigation" },
   { id: "navigation-tabs-restore", category: "navigation", titleKey: "settings.openTabsRestoreMode", descriptionKey: "settings.openTabsRestoreModeDescription", targetId: "navigation" },
   { id: "navigation-sidebar-scroll", category: "navigation", titleKey: "settings.sidebarAllowHorizontalScroll", descriptionKey: "settings.sidebarAllowHorizontalScrollDescription", targetId: "navigation" },
+  { id: "navigation-sidebar-indent", category: "navigation", titleKey: "settings.sidebarIndent", descriptionKey: "settings.sidebarIndentDescription", targetId: "navigation" },
+  { id: "navigation-sidebar-font-size", category: "navigation", titleKey: "settings.sidebarFontSize", descriptionKey: "settings.sidebarFontSizeDescription", targetId: "navigation" },
   { id: "navigation-hidden-tables", category: "navigation", titleKey: "settings.sidebarHiddenTablePrefixes", descriptionKey: "settings.sidebarHiddenTablePrefixesDescription", targetId: "navigation" },
   { id: "navigation-table-page-size", category: "navigation", titleKey: "settings.sidebarTablePageSize", descriptionKey: "settings.sidebarTablePageSizeDescription", targetId: "navigation" },
   { id: "navigation-disconnect-tabs", category: "navigation", titleKey: "settings.disconnectTabHandlingMode", descriptionKey: "settings.disconnectTabHandlingModeDescription", targetId: "navigation" },

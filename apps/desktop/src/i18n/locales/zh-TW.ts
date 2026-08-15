@@ -5328,6 +5328,10 @@ export default withEnglishFallback({
     syncSnippetMigrateLegacyCleanupRequired: "已建立加密程式碼片段，但無法刪除舊程式碼片段 {id}。請手動刪除它，並輪換可能已暴露的憑據。",
     syncSnippetRetryLegacyCleanup: "重試清理舊版程式碼片段",
     syncSnippetLegacyCleanupSuccess: "已刪除舊版純文字程式碼片段 {id}。",
+    sidebarIndent: "側邊欄縮排",
+    sidebarIndentDescription: "每個樹層級縮排的像素位移量。",
+    sidebarFontSize: "側邊欄字型大小",
+    sidebarFontSizeDescription: "側邊欄物件樹的字型大小（像素），獨立於編輯器字型大小。",
   },
   driverStore: {
     jreDirRemoveFailed: "無法刪除舊的 JRE 目錄：{path}（原始錯誤：{error}）",
