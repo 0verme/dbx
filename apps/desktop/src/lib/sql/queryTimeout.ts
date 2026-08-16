@@ -3,6 +3,20 @@ import { tokenizeSqlSemantic } from "@/lib/sql/semantic/tokens";
 import type { ConnectionConfig, DatabaseType } from "@/types/database";
 
 export const DEFAULT_QUERY_TIMEOUT_SECS = 30;
+
+/**
+ * Query timeout (seconds) the table structure editor applies when the change
+ * script contains a PostgreSQL `CREATE INDEX CONCURRENTLY`.
+ *
+ * Concurrent builds scan the whole table while only taking `ShareUpdateExclusiveLock`,
+ * so they routinely run far beyond the default 30s query timeout — the default
+ * budget would cancel a legitimate build and leave an INVALID index behind.
+ * PostgreSQL itself does not impose a build deadline
+ * (https://www.postgresql.org/docs/current/sql-createindex.html), so DBX uses a
+ * dedicated 30-minute budget instead of the connection setting for these
+ * statements. `Some(0)` still disables the timeout entirely at the backend.
+ */
+export const CONCURRENT_INDEX_QUERY_TIMEOUT_SECS = 1800;
 const MAX_BROWSER_TIMER_DELAY_MS = 2_147_483_647;
 
 const POSTGRES_ROW_STATEMENT_KEYWORDS = new Set(["select", "show", "explain", "table", "with"]);

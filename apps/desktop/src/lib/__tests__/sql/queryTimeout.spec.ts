@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { frontendQueryTimeoutDelayMs, frontendQueryTimeoutSecsForSql, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
+import { CONCURRENT_INDEX_QUERY_TIMEOUT_SECS, frontendQueryTimeoutDelayMs, frontendQueryTimeoutSecsForSql, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
 
 describe("queryTimeout", () => {
+  it("gives CREATE INDEX CONCURRENTLY a dedicated long budget instead of the 30s default", () => {
+    expect(CONCURRENT_INDEX_QUERY_TIMEOUT_SECS).toBe(1800);
+    expect(CONCURRENT_INDEX_QUERY_TIMEOUT_SECS).toBeGreaterThan(30);
+    expect(frontendQueryTimeoutDelayMs(CONCURRENT_INDEX_QUERY_TIMEOUT_SECS)).toBe(1_800_000);
+  });
   it("lets PostgreSQL row queries use the backend inactivity timeout", () => {
     expect(frontendQueryTimeoutSecsForSql("SELECT * FROM sample_records LIMIT 2000", "postgres", 30)).toBe(0);
     expect(frontendQueryTimeoutSecsForSql("/* page */\nWITH rows AS (SELECT 1) SELECT * FROM rows", "postgres", 30)).toBe(0);

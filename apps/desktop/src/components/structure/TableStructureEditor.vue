@@ -24,7 +24,7 @@ import { type SqlHighlighter, createShikiSqlHighlighter } from "@/lib/sql/sqlHig
 import { joinSqlStatementsForScript } from "@/lib/sql/sqlBatchScript";
 import { copyToClipboard } from "@/lib/common/clipboard";
 import { formatSqlForDisplay, sqlFormatDialectForDbType } from "@/lib/sql/sqlFormatter";
-import { queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
+import { CONCURRENT_INDEX_QUERY_TIMEOUT_SECS, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 import { invalidateObjectDdl, loadObjectDdl } from "@/lib/metadata/objectDdlCache";
 import { loadObjectMetadataFacet, type ObjectMetadataFacet } from "@/lib/metadata/objectMetadataCache";
@@ -190,6 +190,10 @@ async function fetchDdl(force = false) {
 const errorMessage = ref("");
 const columns = ref<EditableStructureColumn[]>([]);
 const indexes = ref<EditableStructureIndex[]>([]);
+/** PostgreSQL partitioned parent (`relkind = 'p'`): `CREATE INDEX CONCURRENTLY`
+ * is rejected by the server on such tables, so the option is disabled and the
+ * save path downgrades any concurrent request with a warning. */
+const isPartitionedParent = ref(false);
 const pendingStatements = ref<string[]>([]);
 const warnings = ref<string[]>([]);
 const sqliteSchemaRevision = ref<string>();
@@ -1190,6 +1194,7 @@ function structureChangeOptions(): BuildTableStructureChangeSqlOptions {
     triggers: triggers.value,
     tableComment: tableComment.value,
     originalTableComment: isCreateMode.value ? undefined : originalTableComment.value,
+    partitioned: isPartitionedParent.value,
   };
 }
 
@@ -1255,6 +1260,7 @@ function resetState() {
   constraintsLoading.value = false;
   triggersLoading.value = false;
   errorMessage.value = "";
+  isPartitionedParent.value = false;
   columns.value = [];
   indexes.value = [];
   pendingStatements.value = [];
@@ -1353,6 +1359,8 @@ async function loadStructure(
 
     const metadataRequest = ddlRequest();
     const forceMetadata = options.forceMetadata === true;
+    const partitionStatusPromise =
+      databaseType.value === "postgres" && !isCreateMode.value ? api.getTablePartitionStatus(connectionId, database, schema, tableName).catch(() => ({ isPartitionedParent: false, isPartition: false })) : Promise.resolve({ isPartitionedParent: false, isPartition: false });
     const columnsPromise = scope.columns ? loadObjectMetadataFacet(metadataRequest, "columns", () => api.getColumns(connectionId, database, schema, tableName, catalog), { force: forceMetadata }).then((result) => result.value) : Promise.resolve(undefined);
     const indexesPromise = scope.indexes
       ? tableMetadataCapabilities.value.indexes
@@ -1403,6 +1411,10 @@ async function loadStructure(
       originalTableComment.value = nextTableComment;
       tableComment.value = nextTableComment;
       loadedMetadataFacets.add("comment");
+    }
+    const partitionStatus = await partitionStatusPromise;
+    if (requestId === structureLoadRequestId) {
+      isPartitionedParent.value = partitionStatus.isPartitionedParent;
     }
     const applySecondaryMetadata = async () => {
       const [nextIndexes, nextForeignKeys, nextConstraints, nextTriggers] = await Promise.all([indexesPromise, foreignKeysPromise, constraintsPromise, triggersPromise]);
@@ -2211,6 +2223,29 @@ function canEditIndexDraft(index: EditableStructureIndex): boolean {
   return structureCapabilities.value.rebuildIndex && structureCapabilities.value.createIndex && structureCapabilities.value.dropIndex;
 }
 
+/**
+ * Whether the Concurrent checkbox is actionable for this index draft.
+ *
+ * Plan A scope guard (PR #6361 review): concurrent builds apply only to newly
+ * created indexes on non-partitioned tables. Editing an existing index would
+ * require a `DROP INDEX CONCURRENTLY` + `CREATE INDEX CONCURRENTLY` replace
+ * flow (not implemented yet), and PostgreSQL rejects `CREATE INDEX
+ * CONCURRENTLY` on partitioned parents, so both are disabled here.
+ */
+function canEditIndexConcurrent(index: EditableStructureIndex): boolean {
+  if (indexesLoading.value) return false;
+  if (index.markedForDrop || index.isPrimary) return false;
+  if (index.original) return false;
+  if (isPartitionedParent.value) return false;
+  return structureCapabilities.value.indexConcurrent && structureCapabilities.value.createIndex;
+}
+
+function concurrentIndexCellTitle(index: EditableStructureIndex): string {
+  if (index.original) return t("structureEditor.concurrentExistingIndexTooltip");
+  if (isPartitionedParent.value) return t("structureEditor.concurrentPartitionedTooltip");
+  return t("structureEditor.concurrentTooltip");
+}
+
 function canEditIndexFilter(index: EditableStructureIndex): boolean {
   return canEditIndexDraft(index) && structureCapabilities.value.indexFilter;
 }
@@ -2307,6 +2342,21 @@ function primarySqlOperation(sql: string): string {
   return statement?.match(/^([a-z]+)/i)?.[1]?.toUpperCase() || "SQL";
 }
 
+/**
+ * Unquoted index names referenced by `CREATE [UNIQUE] INDEX CONCURRENTLY`
+ * statements, used to detect same-name INVALID leftovers before applying a
+ * concurrent build. The PG builder emits the index name as a single
+ * double-quoted identifier (optionally schema-qualified).
+ */
+function concurrentIndexNamesInStatements(statements: string[]): string[] {
+  const names: string[] = [];
+  for (const sql of statements) {
+    const match = sql.match(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(?:(?:"[^"]+")\s*\.\s*)?"([^"]+)"/i);
+    if (match?.[2]) names.push(match[2]);
+  }
+  return names;
+}
+
 async function recordStructureHistory(sql: string, start: number, success: boolean, result?: { affected_rows?: number }, error?: string) {
   const connection = store.getConfig(props.connectionId);
   try {
@@ -2371,6 +2421,27 @@ async function applyChanges() {
   saving.value = true;
   errorMessage.value = "";
   const refreshScope = captureStructureRefreshScope();
+  // Plan A guard: concurrent builds only run outside the default 30s query
+  // timeout (a cancelled build leaves an INVALID index behind), and are
+  // blocked up-front when a same-name INVALID index already exists.
+  const hasConcurrentIndexBuild = pendingStatements.value.some((statement) => statement.includes("CONCURRENTLY"));
+  if (hasConcurrentIndexBuild && !isCreateMode.value && databaseType.value === "postgres" && props.tableName) {
+    const concurrentIndexNames = concurrentIndexNamesInStatements(pendingStatements.value);
+    if (concurrentIndexNames.length > 0) {
+      try {
+        const invalidIndexes = await api.listInvalidIndexes(props.connectionId, props.database, metadataSchema.value, props.tableName);
+        const blocked = concurrentIndexNames.filter((name) => invalidIndexes.includes(name));
+        if (blocked.length > 0) {
+          errorMessage.value = t("structureEditor.invalidIndexBlocksSave", { indexNames: blocked.join(", ") });
+          saving.value = false;
+          return false;
+        }
+      } catch {
+        // Metadata probe failure must not block the save; the failure-time
+        // hint below still surfaces leftovers if the build errors out.
+      }
+    }
+  }
   const characterLengthUnitsAfterSave = new Map<string, string>();
   if (supportsCharacterLengthUnits.value) {
     for (const column of columns.value) {
@@ -2380,10 +2451,11 @@ async function applyChanges() {
     }
   }
   const startedAt = Date.now();
+  const executionTimeoutSecs = hasConcurrentIndexBuild ? CONCURRENT_INDEX_QUERY_TIMEOUT_SECS : queryTimeoutSecsForConnection(connection, settingsStore.editorSettings.globalQueryTimeoutSecs);
   try {
     const result = hasSqliteTypeChange.value
       ? await api.applySqliteTableStructureChange(props.connectionId, props.database, structureChangeOptions(), sqliteSchemaRevision.value!)
-      : await api.executeBatch(props.connectionId, props.database, pendingStatements.value, props.schema, queryTimeoutSecsForConnection(connection, settingsStore.editorSettings.globalQueryTimeoutSecs));
+      : await api.executeBatch(props.connectionId, props.database, pendingStatements.value, props.schema, executionTimeoutSecs);
     await recordStructureHistory(sql, startedAt, true, result);
     if (!isCreateMode.value && props.tableName) {
       invalidateTableMetadataCache({ connectionId: props.connectionId, database: props.database, schema: metadataSchema.value, tableName: props.tableName });
@@ -2413,7 +2485,11 @@ async function applyChanges() {
     }
     return true;
   } catch (e: any) {
-    errorMessage.value = e?.message || String(e);
+    const rawMessage = e?.message || String(e);
+    // A cancelled/errored concurrent build leaves a same-name INVALID index
+    // behind; surface that so retries are not silently doomed.
+    const invalidIndexHint = hasConcurrentIndexBuild && /already exists/i.test(rawMessage) ? `\n\n${t("structureEditor.invalidIndexRetryHint")}` : "";
+    errorMessage.value = `${rawMessage}${invalidIndexHint}`;
     await recordStructureHistory(sql, startedAt, false, undefined, errorMessage.value);
     return false;
   } finally {
@@ -3287,8 +3363,8 @@ watch([activeTab, ddlLoading], ([tab, loading]) => {
                     <Input v-model="index.comment" :class="[structureControlClass, indexSearchFieldClass(index, index.comment)]" :disabled="!canEditIndexComment(index)" />
                   </td>
                   <td :class="structureCellClass">
-                    <label v-if="structureCapabilities.indexConcurrent" class="flex items-center gap-1.5" :title="t('structureEditor.concurrentTooltip')">
-                      <input v-model="index.concurrently" type="checkbox" :class="structureCheckboxClass" :disabled="!canEditIndexDraft(index)" />
+                    <label v-if="structureCapabilities.indexConcurrent" class="flex items-center gap-1.5" :title="concurrentIndexCellTitle(index)">
+                      <input v-model="index.concurrently" type="checkbox" :class="structureCheckboxClass" :disabled="!canEditIndexConcurrent(index)" />
                       <span>{{ index.concurrently ? t("structureEditor.yes") : t("structureEditor.no") }}</span>
                     </label>
                     <span v-else class="text-[length:var(--structure-font-size)] text-muted-foreground">—</span>

@@ -1516,6 +1516,7 @@ mod tests {
             triggers: Vec::new(),
             table_comment: None,
             original_table_comment: None,
+            partitioned: false,
         }
     }
 

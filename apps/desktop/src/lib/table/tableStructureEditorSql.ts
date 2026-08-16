@@ -83,6 +83,9 @@ export interface BuildTableStructureChangeSqlOptions {
   triggers?: EditableStructureTrigger[];
   tableComment?: string;
   originalTableComment?: string;
+  /** The target table is a PostgreSQL partitioned parent (`relkind = 'p'`);
+   * the backend downgrades `CREATE INDEX CONCURRENTLY` with a warning. */
+  partitioned?: boolean;
 }
 
 export interface TableStructureChangeSql {

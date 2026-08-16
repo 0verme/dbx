@@ -206,6 +206,13 @@ pub struct TableStructureSqlOptions {
     pub table_comment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original_table_comment: Option<String>,
+    /// Whether the target table is a partitioned parent table (PostgreSQL
+    /// `relkind = 'p'`). PostgreSQL rejects `CREATE INDEX CONCURRENTLY` on
+    /// partitioned parents, so the builder downgrades such a request to a
+    /// regular `CREATE INDEX` and reports a warning instead of emitting SQL
+    /// the server will reject.
+    #[serde(default)]
+    pub partitioned: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

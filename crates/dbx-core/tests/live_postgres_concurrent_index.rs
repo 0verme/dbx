@@ -59,6 +59,7 @@ async fn live_postgres_concurrent_index_builds_valid_index() {
         triggers: Vec::new(),
         table_comment: None,
         original_table_comment: None,
+        partitioned: false,
     });
     assert!(result.warnings.is_empty(), "{:?}", result.warnings);
     assert_eq!(
@@ -110,6 +111,101 @@ async fn live_postgres_concurrent_index_rejects_transaction_block() {
         message.contains("cannot run inside a transaction block"),
         "expected transaction-block error, got: {message}"
     );
+
+    postgres::execute_batch(&pool, &cleanup).await.expect("cleanup live test schema");
+}
+
+/// A cancelled `CREATE INDEX CONCURRENTLY` leaves a same-name INVALID index
+/// behind (`pg_index.indisvalid = false`); `list_invalid_indexes` must report
+/// it so the editor can block a doomed retry and point the user at the fix.
+#[tokio::test]
+#[ignore = "requires DBX_LIVE_POSTGRES_HOST/PORT/USER/PASSWORD/DATABASE pointing at a writable PostgreSQL database"]
+async fn live_postgres_invalid_index_leftover_is_detected() {
+    let pool = postgres::connect(&live_postgres_url(), Duration::from_secs(10)).await.expect("connect PostgreSQL");
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let schema = format!("dbx_cic_{}", &suffix[..8]);
+    let cleanup = vec![format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE")];
+    let _ = postgres::execute_batch(&pool, &cleanup).await;
+    let setup = vec![
+        format!("CREATE SCHEMA \"{schema}\""),
+        format!("CREATE TABLE \"{schema}\".users (id integer PRIMARY KEY, email text)"),
+        // Simulate the leftover of a cancelled concurrent build.
+        format!("CREATE INDEX \"{schema}\".idx_users_email ON \"{schema}\".users (email)"),
+    ];
+    postgres::execute_batch(&pool, &setup).await.expect("create live test schema");
+
+    let invalid = postgres::list_invalid_indexes(&pool, &schema, "users").await.expect("list invalid indexes");
+    assert!(invalid.is_empty(), "fresh index must be valid, got: {invalid:?}");
+
+    // Flip indisvalid to false the same way an interrupted concurrent build does.
+    let client = pool.get().await.expect("checkout connection");
+    client
+        .batch_execute(&format!(
+            "UPDATE pg_index SET indisvalid = false WHERE indexrelid = to_regclass('{schema}.idx_users_email')"
+        ))
+        .await
+        .expect("mark index invalid");
+
+    let invalid = postgres::list_invalid_indexes(&pool, &schema, "users").await.expect("list invalid indexes");
+    assert_eq!(invalid, vec!["idx_users_email".to_string()], "invalid leftover must be reported");
+
+    postgres::execute_batch(&pool, &cleanup).await.expect("cleanup live test schema");
+}
+
+/// The structure editor must never emit `CREATE INDEX CONCURRENTLY` for a
+/// partitioned parent table — the builder downgrades it with a warning and
+/// the generated plain `CREATE INDEX` is what actually runs on the server.
+#[tokio::test]
+#[ignore = "requires DBX_LIVE_POSTGRES_HOST/PORT/USER/PASSWORD/DATABASE pointing at a writable PostgreSQL database"]
+async fn live_postgres_partitioned_parent_concurrent_request_downgrades() {
+    let pool = postgres::connect(&live_postgres_url(), Duration::from_secs(10)).await.expect("connect PostgreSQL");
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let schema = format!("dbx_cic_{}", &suffix[..8]);
+    let cleanup = vec![format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE")];
+    let _ = postgres::execute_batch(&pool, &cleanup).await;
+    let setup = vec![
+        format!("CREATE SCHEMA \"{schema}\""),
+        format!(
+            "CREATE TABLE \"{schema}\".events (id integer, created_at date) PARTITION BY RANGE (created_at)"
+        ),
+        format!("CREATE TABLE \"{schema}\".events_2026 PARTITION OF \"{schema}\".events FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')"),
+    ];
+    postgres::execute_batch(&pool, &setup).await.expect("create live test schema");
+
+    let mut idx = concurrent_index(vec!["id"]);
+    idx.name = "idx_events_id".to_string();
+    idx.id = "idx_events_id".to_string();
+    let result = build_table_structure_change_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Postgres),
+        schema: Some(schema.clone()),
+        table_name: "events".to_string(),
+        columns: Vec::new(),
+        indexes: vec![idx],
+        foreign_keys: Vec::new(),
+        triggers: Vec::new(),
+        table_comment: None,
+        original_table_comment: None,
+        partitioned: true,
+    });
+    assert_eq!(
+        result.warnings,
+        vec![format!(
+            "CREATE INDEX CONCURRENTLY is not supported on partitioned table \"events\"; downgrading to a regular CREATE INDEX."
+        )]
+    );
+    assert_eq!(result.statements, vec![format!("CREATE INDEX \"idx_events_id\" ON \"{schema}\".\"events\" (\"id\");")]);
+    // The downgraded statement must actually execute on the partitioned parent.
+    postgres::execute_batch(&pool, &result.statements).await.expect("execute downgraded index build");
+    let client = pool.get().await.expect("checkout connection");
+    let row = client
+        .query_one(
+            "SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass($1)",
+            &[&format!("{schema}.idx_events_id")],
+        )
+        .await
+        .expect("read pg_index");
+    let valid: bool = row.get(0);
+    assert!(valid, "downgraded index on partitioned parent must be valid");
 
     postgres::execute_batch(&pool, &cleanup).await.expect("cleanup live test schema");
 }

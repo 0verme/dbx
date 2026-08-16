@@ -184,6 +184,7 @@ pub fn build_create_table_sql(mut options: TableStructureSqlOptions) -> TableStr
             &options.table_name,
             false,
             capabilities.index_concurrent,
+            options.partitioned,
         ));
     }
 
