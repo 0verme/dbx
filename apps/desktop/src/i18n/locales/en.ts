@@ -6253,6 +6253,7 @@ export default {
     mcpVsCodeConfigPath: "VS Code/Copilot can use .vscode/mcp.json in the workspace or mcp.json in the user profile.",
     mcpWindsurfConfigPath: "Windsurf can use ~/.codeium/windsurf/mcp_config.json.",
     mcpOpenCodeConfigPath: "~/.config/opencode/opencode.json globally, or opencode.json at the project level.",
+    mcpPiConfigPath: "First install the Pi MCP adapter plugin: pi install npm:pi-mcp-adapter. Then save to ~/.pi/agent/mcp.json (global) or .mcp.json (project), run /mcp to verify, and /reload to pick it up in Pi.",
     mcpExecutionMode: "MCP execution permission",
     mcpExecutionModeDescription: "Choose the permission level DBX enforces for every MCP client. Client-side read/write settings cannot change this level.",
     mcpExecutionModeReadOnly: "Read only",

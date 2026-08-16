@@ -6242,6 +6242,7 @@ export default withEnglishFallback({
     mcpVsCodeConfigPath: "VS Code/Copilot 可放在工作区 .vscode/mcp.json 或用户配置文件 mcp.json。",
     mcpWindsurfConfigPath: "Windsurf 可放在 ~/.codeium/windsurf/mcp_config.json。",
     mcpOpenCodeConfigPath: "全局 ~/.config/opencode/opencode.json，项目级 opencode.json。",
+    mcpPiConfigPath: "先安装 Pi MCP 适配器插件：pi install npm:pi-mcp-adapter。然后保存到 ~/.pi/agent/mcp.json（全局）或 .mcp.json（项目），在 Pi 中运行 /mcp 确认、/reload 生效。",
     mcpExecutionMode: "MCP 执行权限",
     mcpExecutionModeDescription: "选择 DBX 对所有 MCP 客户端强制执行的权限级别。客户端的读写权限配置无法更改此级别。",
     mcpExecutionModeReadOnly: "只读",
