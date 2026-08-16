@@ -1,6 +1,7 @@
 import { withEnglishFallback } from "./fallback";
 import docs from "./docs/pt-BR";
 import { consulUiMessages } from "./consulUi";
+import { nacosAccessControlMessages, nacosAccessControlTabs } from "./nacosAccessControl";
 import { sqlServerTraceMessages as sqlServerTrace } from "./sqlServerTraceMessages";
 
 const consul = {
@@ -1253,6 +1254,7 @@ export default withEnglishFallback({
       exportQueryResultTo: "Exportar conjunto de resultados da consulta atual para {format}",
       copySelection: "Copiar seleção",
       commentSelection: "Comentar seleção",
+      blockCommentSelection: "Comentário de bloco na seleção",
       formatSelectionSql: "Formatar SQL selecionado",
       compressSelectionSql: "Compactar SQL selecionado",
       sendToAi: "Enviar para IA",
@@ -1369,6 +1371,7 @@ export default withEnglishFallback({
     gridfs: "GridFS",
     etcdDashboard: "painel etcd",
     etcdAccessControl: "controle de acesso do etcd",
+    ...nacosAccessControlTabs,
   },
   executionSummary: {
     empty: "Nenhum resumo",
@@ -3384,6 +3387,21 @@ export default withEnglishFallback({
     triggers: "Triggers",
     ddl: "DDL",
     addColumn: "Adicionar coluna",
+    copyColumns: "Copiar campos de outra tabela",
+    copyColumn: "Copiar coluna",
+    copyColumnsTitle: "Copiar colunas de outra tabela",
+    copyColumnsSourceTable: "Tabela de origem",
+    copyColumnsSelectSourceTable: "Selecione uma tabela de origem",
+    copyColumnsSelectFields: "Selecione campos",
+    copyColumnsSearchFields: "Pesquisar campos ou tipos",
+    copyColumnsSelectAll: "Selecionar tudo",
+    copyColumnsClearSelection: "Limpar seleção",
+    copyColumnsNoSourceTables: "Não há outras tabelas disponíveis neste esquema.",
+    copyColumnsNoFields: "A tabela selecionada não tem campos.",
+    copyColumnsNoMatchingFields: "Nenhum campo corresponde à pesquisa.",
+    copyColumnsAlreadyExists: "Já existe",
+    copyColumnsCancel: "Cancelar",
+    copyColumnsApply: "Copiar {count} campo(s)",
     columnTemplates: "Inserir campos predefinidos",
     configureColumnTemplates: "Configurar campos predefinidos",
     presetFieldsTemplate: "Conjunto de campos predefinidos",
@@ -5755,6 +5773,7 @@ export default withEnglishFallback({
     shortcutFormatSql: "Formatar SQL",
     shortcutExpandSelectStar: "Expandir * em colunas",
     shortcutToggleLineComment: "Alternar comentário de linha",
+    shortcutToggleBlockComment: "Alternar comentário de bloco",
     shortcutIndentMore: "Aumentar recuo",
     shortcutIndentLess: "Reduzir recuo",
     shortcutInsertLineBelow: "Inserir uma linha abaixo",
@@ -6030,6 +6049,15 @@ export default withEnglishFallback({
     sidebarIndentDescription: "O deslocamento em pixels da indentação para cada nível da árvore.",
     sidebarFontSize: "Tamanho da fonte da barra lateral",
     sidebarFontSizeDescription: "Tamanho da fonte (em pixels) da árvore de objetos da barra lateral, independente do tamanho da fonte do editor.",
+    themePaletteCustom: "Personalizado",
+    customUiReset: "Restaurar padrão",
+    customUiEditingLight: "Editando: paleta de cores clara",
+    customUiEditingDark: "Editando: paleta de cores escura",
+    customUiBackground: "Fundo",
+    customUiForeground: "Texto do primeiro plano",
+    customUiPrimary: "Cor primária",
+    customUiBorder: "Borda",
+    customUiSidebar: "Barra lateral",
   },
   driverStore: {
     jreDirRemoveFailed: "Não foi possível remover o diretório JRE antigo: {path} (erro original: {error})",
@@ -6205,6 +6233,7 @@ export default withEnglishFallback({
     exportCancelled: "Exportação cancelada",
   },
   nacos: {
+    ...nacosAccessControlMessages,
     dashboard: "Painel",
     dashboardTitle: "Painel de operações",
     dashboardUpdatedAt: "Atualizado {time}",
@@ -6520,6 +6549,15 @@ export default withEnglishFallback({
     nacosConnectionPlanDescription: "Escolha a implementação do serviço e a versão da API.",
     nacosServiceAddress: "Endereço do serviço",
     nacosServiceAddressHint: "Informe o endereço do serviço. A porta padrão é 8848, por exemplo http://host:8848/nacos.",
+    nacosManagedNamespaces: "IDs de namespaces gerenciados",
+    nacosManagedNamespacesPlaceholder: "Por exemplo: public, team-a",
+    nacosManagedNamespacesHint: "Informe os IDs acessíveis para este usuário comum, separados por vírgulas ou linhas. O teste de conexão valida a leitura de configurações e serviços para cada ID.",
+    nacosOrdinaryAccount: "Usuário comum",
+    nacosOrdinaryAccountHint: "Se a conta acima for um usuário comum, ative esta opção e selecione os namespaces autorizados; caso contrário, a conexão não funcionará corretamente.",
+    nacosManagedNamespacesSeparator: "Separados por vírgulas ou linhas",
+    nacosOrdinaryNamespacesRequired: "Informe pelo menos um ID de namespace que este usuário comum pode gerenciar.",
+    nacosManagedNamespacesRequired: "Este usuário comum do Nacos não pode listar namespaces nem dados de autorização. Informe pelo menos um ID que ele tenha permissão para gerenciar e tente novamente.",
+    nacosManagedNamespaceAccessDenied: "Estes namespaces falharam na verificação de leitura de configurações ou serviços: {detail}",
     nacosAuth: "Autenticação",
     nacosAuthHint: "Essas credenciais são usadas nos testes de conexão e no gerenciamento diário.",
     nacosUsernamePassword: "Usuário / senha",

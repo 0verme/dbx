@@ -8629,6 +8629,7 @@ mod ddl_tests {
             index_type: Some("btree".to_string()),
             included_columns: None,
             comment: None,
+            key_is_expression: Vec::new(),
         }];
         let partition_info = db::postgres::PostgresTablePartitionInfo {
             is_partition: true,
@@ -8675,6 +8676,7 @@ mod ddl_tests {
             index_type: Some("btree".to_string()),
             included_columns: None,
             comment: None,
+            key_is_expression: Vec::new(),
         }];
         let partition_info = db::postgres::PostgresTablePartitionInfo {
             is_partition: true,

@@ -71,7 +71,7 @@ import DataGridTextFilterWorkbench from "@/components/grid/DataGridTextFilterWor
 import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import EnumCellEditor from "@/components/grid/EnumCellEditor.vue";
 import DataGridReadonlyTextSelection from "@/components/grid/DataGridReadonlyTextSelection.vue";
-import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo, TableInfoTab } from "@/types/database";
+import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo, TableInfoTab, QueryResultSourceColumnRef } from "@/types/database";
 import { isQueryExecutionErrorResult } from "@/lib/query/queryResultError";
 import { tableObjectSourceKind } from "@/lib/table/tableObjectSourceKind";
 import { tableColumnDefaultDisplayValue } from "@/lib/table/tableColumnDefaultPresentation";
@@ -346,6 +346,22 @@ interface DataGridProps {
   context?: "results" | "table-data";
   autoTransposeSingleRow?: boolean;
   sourceColumns?: Array<string | undefined>;
+  /**
+   * Column comments for a multi-source query result (e.g. JOIN), indexed by
+   * result-column ordinal (projection order). Populated even when the result is
+   * not editable, so joined results still show comments. `undefined` for a
+   * column that cannot be resolved back to exactly one base column (ambiguous
+   * or computed) — the grid shows no comment instead of a wrong one.
+   */
+  resultColumnComments?: Array<string | undefined>;
+  /**
+   * Display-only result-column -> source mapping for multi-source results,
+   * indexed by result-column ordinal; each entry carries the source identity
+   * (sourceKey + canonical source column name). Used to resolve column
+   * comments per source instead of first-source-wins; never used for row
+   * identity or editing.
+   */
+  queryDisplaySourceColumns?: Array<QueryResultSourceColumnRef | undefined>;
   initialWhereInput?: string;
   initialOrderByInput?: string;
   sortColumn?: string;
@@ -586,6 +602,11 @@ const readonlyTextCell = ref<{
 } | null>(null);
 
 function resolvedColumnComment(column: string, actualColIdx: number): string | undefined {
+  // Multi-source results resolve comments per result ordinal; ambiguous or
+  // unresolved columns yield undefined instead of falling back to a
+  // first-source-wins name map.
+  const ordinalComments = props.resultColumnComments;
+  if (ordinalComments) return ordinalComments[actualColIdx];
   return dataGridColumnCommentFor(columnCommentMap.value, column, props.sourceColumns?.[actualColIdx]);
 }
 
@@ -2116,7 +2137,13 @@ const allColumnTypes = computed(() =>
 const visibleColumnTypes = computed(() => visibleColumnIndexes.value.map((index) => allColumnTypes.value[index]));
 const allColumnTypeVisualKinds = computed(() => allColumnTypes.value.map((type) => resolveDataGridTypeVisualKind(type, resolvedDatabaseType.value)));
 const visibleColumnTypeVisualKinds = computed(() => visibleColumnIndexes.value.map((index) => allColumnTypeVisualKinds.value[index] ?? "unknown"));
-const visibleColumnComments = computed(() => visibleColumnIndexes.value.map((index) => dataGridColumnCommentFor(columnCommentMap.value, props.result.columns[index] ?? "", props.sourceColumns?.[index])));
+const visibleColumnComments = computed(() =>
+  visibleColumnIndexes.value.map((index) => {
+    const ordinalComments = props.resultColumnComments;
+    if (ordinalComments) return ordinalComments[index];
+    return dataGridColumnCommentFor(columnCommentMap.value, props.result.columns[index] ?? "", props.sourceColumns?.[index]);
+  }),
+);
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
 
 const numericColumnRightAlign = computed(() => (settingsStore.editorSettings.numericColumnRightAlign ?? true) && !showTranspose.value);
@@ -10595,7 +10622,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                     <div
                       v-for="recordIndex in activeTransposeRecordIndexes"
                       :key="`transpose-head-${recordIndex}`"
-                      class="shrink-0 border-r border-border px-2 py-1.5 text-center tabular-nums relative"
+                      class="shrink-0 border-r border-border px-2 py-1.5 text-left tabular-nums relative"
                       :class="{
                         'transpose-record-header-selected text-primary font-semibold': transposeRecordUsesFramedHeader(recordIndex),
                         'transpose-record-header-active text-primary': transposeRecordUsesActiveHighlight(recordIndex) && !transposeRecordUsesFramedHeader(recordIndex),

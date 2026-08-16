@@ -1,6 +1,7 @@
 import { withEnglishFallback } from "./fallback";
 import docs from "./docs/ja";
 import { consulUiMessages } from "./consulUi";
+import { nacosAccessControlMessages, nacosAccessControlTabs } from "./nacosAccessControl";
 import { sqlServerTraceMessages as sqlServerTrace } from "./sqlServerTraceMessages";
 
 const consul = {
@@ -1272,6 +1273,7 @@ export default withEnglishFallback({
       exportQueryResultTo: "現在のクエリ結果セットを {format} にエクスポート",
       copySelection: "選択範囲をコピー",
       commentSelection: "選択範囲をコメント化",
+      blockCommentSelection: "選択範囲をブロックコメント化",
       formatSelectionSql: "選択した SQL をフォーマット",
       compressSelectionSql: "選択した SQL を圧縮",
       sendToAi: "AIに送信",
@@ -1389,6 +1391,7 @@ export default withEnglishFallback({
     gridfs: "GridFS",
     etcdDashboard: "etcd ダッシュボード",
     etcdAccessControl: "etcd アクセス制御",
+    ...nacosAccessControlTabs,
   },
   executionSummary: {
     empty: "サマリーはありません",
@@ -3443,6 +3446,21 @@ export default withEnglishFallback({
     triggers: "トリガー",
     ddl: "DDL",
     addColumn: "列を追加",
+    copyColumns: "別のテーブルから列をコピー",
+    copyColumn: "列をコピー",
+    copyColumnsTitle: "別のテーブルから列をコピー",
+    copyColumnsSourceTable: "コピー元テーブル",
+    copyColumnsSelectSourceTable: "コピー元テーブルを選択",
+    copyColumnsSelectFields: "フィールドを選択",
+    copyColumnsSearchFields: "フィールドまたは型を検索",
+    copyColumnsSelectAll: "すべて選択",
+    copyColumnsClearSelection: "選択を解除",
+    copyColumnsNoSourceTables: "このスキーマには他に選択可能なテーブルがありません。",
+    copyColumnsNoFields: "選択したテーブルにはフィールドがありません。",
+    copyColumnsNoMatchingFields: "検索に一致するフィールドはありません。",
+    copyColumnsAlreadyExists: "既に存在します",
+    copyColumnsCancel: "キャンセル",
+    copyColumnsApply: "{count} 個のフィールドをコピー",
     columnTemplates: "プリセット列を挿入",
     configureColumnTemplates: "プリセット列を設定",
     presetFieldsTemplate: "プリセット列セット",
@@ -5768,6 +5786,7 @@ export default withEnglishFallback({
     shortcutFormatSql: "SQLをフォーマット",
     shortcutExpandSelectStar: "* を列に展開",
     shortcutToggleLineComment: "行コメントを切り替え",
+    shortcutToggleBlockComment: "ブロックコメントを切り替え",
     shortcutIndentMore: "インデントを増やす",
     shortcutIndentLess: "インデントを減らす",
     shortcutInsertLineBelow: "下に行を挿入",
@@ -6081,6 +6100,15 @@ export default withEnglishFallback({
     sidebarIndentDescription: "各ツリー階層のインデントのピクセルオフセット。",
     sidebarFontSize: "サイドバーのフォントサイズ",
     sidebarFontSizeDescription: "サイドバーのオブジェクトツリーのフォントサイズ（ピクセル）。エディターのフォントサイズとは独立しています。",
+    themePaletteCustom: "カスタム",
+    customUiReset: "デフォルトに戻す",
+    customUiEditingLight: "編集中：ライト配色",
+    customUiEditingDark: "編集中：ダーク配色",
+    customUiBackground: "背景",
+    customUiForeground: "前景テキスト",
+    customUiPrimary: "プライマリカラー",
+    customUiBorder: "枠線",
+    customUiSidebar: "サイドバー",
   },
   driverStore: {
     jreDirRemoveFailed: "古い JRE ディレクトリを削除できませんでした: {path}（元のエラー: {error}）",
@@ -6256,6 +6284,7 @@ export default withEnglishFallback({
     exportCancelled: "エクスポートがキャンセルされました",
   },
   nacos: {
+    ...nacosAccessControlMessages,
     dashboard: "ダッシュボード",
     dashboardTitle: "運用ダッシュボード",
     dashboardUpdatedAt: "更新 {time}",
@@ -6571,6 +6600,15 @@ export default withEnglishFallback({
     nacosConnectionPlanDescription: "サービス実装と API バージョンを選択します。",
     nacosServiceAddress: "サービスアドレス",
     nacosServiceAddressHint: "サービスアドレスを入力してください。既定のポートは 8848 です（例: http://host:8848/nacos）。",
+    nacosManagedNamespaces: "管理対象の名前空間 ID",
+    nacosManagedNamespacesPlaceholder: "例: public, team-a",
+    nacosManagedNamespacesHint: "この一般ユーザーがアクセスできる名前空間 ID をカンマまたは改行区切りで入力してください。接続テストで各 ID の設定・サービス読み取り権限を確認します。",
+    nacosOrdinaryAccount: "一般ユーザー",
+    nacosOrdinaryAccountHint: "上記のアカウントが一般ユーザーの場合、この項目を有効にしてアクセス権のある名前空間を指定してください。指定しないと接続後に正常に使用できません。",
+    nacosManagedNamespacesSeparator: "カンマまたは改行区切り",
+    nacosOrdinaryNamespacesRequired: "一般ユーザーが管理を許可された名前空間 ID を 1 つ以上入力してください。",
+    nacosManagedNamespacesRequired: "この Nacos 一般ユーザーは名前空間または権限情報を一覧表示できません。管理を許可された名前空間 ID を 1 つ以上入力して再試行してください。",
+    nacosManagedNamespaceAccessDenied: "次の名前空間は設定またはサービスの読み取り権限チェックに失敗しました: {detail}",
     nacosAuth: "認証",
     nacosAuthHint: "接続テストと日常の管理に使用する認証情報です。",
     nacosUsernamePassword: "ユーザー名 / パスワード",

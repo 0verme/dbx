@@ -566,6 +566,8 @@ export interface IndexInfo {
   index_type?: string | null;
   included_columns?: string[] | null;
   comment?: string | null;
+  /** Parallel to `columns`: true at index i means columns[i] is a raw expression, not a plain column name. */
+  key_is_expression?: boolean[] | null;
 }
 
 export interface ForeignKeyInfo {
@@ -773,6 +775,11 @@ export interface SpatialColumn {
   srid: number | null;
 }
 
+export interface QueryResultSourceColumnRef {
+  sourceKey: string;
+  sourceColumn: string;
+}
+
 export interface QueryResultRun {
   id: string;
   title: string;
@@ -813,6 +820,8 @@ export interface QueryResultRun {
   resultEvicted?: boolean;
   queryAnalysis?: QueryTab["queryAnalysis"];
   querySourceColumns?: QueryTab["querySourceColumns"];
+  resultColumnComments?: QueryTab["resultColumnComments"];
+  queryDisplaySourceColumns?: QueryTab["queryDisplaySourceColumns"];
   queryEditabilityReason?: QueryTab["queryEditabilityReason"];
   mongoEditTarget?: QueryTab["mongoEditTarget"];
   tableMeta?: QueryTab["tableMeta"];
@@ -939,6 +948,7 @@ export type TreeNodeType =
   | "redis-db"
   | "mq-tenant"
   | "nacos-namespace"
+  | "nacos-access-control"
   | "etcd-root"
   | "etcd-dashboard"
   | "etcd-access-control"
@@ -1182,6 +1192,7 @@ export interface QueryTab {
     | "mqtt"
     | "nacos"
     | "nacos-dashboard"
+    | "nacos-access-control"
     | "databases"
     | "objects"
     | "structure"
@@ -1275,6 +1286,25 @@ export interface QueryTab {
     }[];
   };
   querySourceColumns?: Array<string | undefined>;
+  /**
+   * Column comments for a multi-source query result (e.g. JOIN), indexed by
+   * result-column ordinal (projection order). Each entry is the comment of the
+   * single base column that result column resolves to; `undefined` when the
+   * column is ambiguous (e.g. an unqualified name present in several sources)
+   * or cannot be resolved back to a base column, so the grid shows no comment
+   * instead of a wrong one. Populated even when the result is not editable
+   * (e.g. multi-table JOIN), so joined results still show column comments.
+   */
+  resultColumnComments?: Array<string | undefined>;
+  /**
+   * Display-only result-column to source mapping for multi-source results,
+   * indexed by result-column ordinal. Each entry carries the source identity
+   * (sourceKey + canonical source column name), so comments resolve per source
+   * instead of first-source-wins on name clashes. Unlike querySourceColumns it
+   * is also populated for multi-source results that are not editable, and must
+   * never be used for row identity or editing.
+   */
+  queryDisplaySourceColumns?: Array<QueryResultSourceColumnRef | undefined>;
   queryEditabilityReason?: "not-select" | "cte" | "set-operation" | "aggregation" | "external-source" | "complex-source" | "computed-columns" | "no-table" | "no-primary-key" | "primary-key-not-returned" | "aliased-columns" | "metadata-unavailable";
   mongoEditTarget?: {
     collection: string;
