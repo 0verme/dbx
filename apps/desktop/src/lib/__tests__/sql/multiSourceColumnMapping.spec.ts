@@ -115,7 +115,7 @@ describe("multi-source result column mapping", () => {
   });
 
   it("does not collapse an unquoted lower-case name onto a distinct quoted mixed-case column", () => {
-    const result = analyzeEditableQueryEditability("SELECT a.id, b.\"ID\" FROM orders a JOIN users b ON a.user_id = b.id");
+    const result = analyzeEditableQueryEditability('SELECT a.id, b."ID" FROM orders a JOIN users b ON a.user_id = b.id');
     expect(result.editable).toBe(true);
     if (!result.editable) return;
 
@@ -171,10 +171,6 @@ describe("multi-source result column mapping", () => {
       ],
       3,
     );
-    expect(resolved).toEqual([
-      { sourceKey: "a:0", sourceColumn: "id" },
-      undefined,
-      { sourceKey: "b:1", sourceColumn: "name" },
-    ]);
+    expect(resolved).toEqual([{ sourceKey: "a:0", sourceColumn: "id" }, undefined, { sourceKey: "b:1", sourceColumn: "name" }]);
   });
 });

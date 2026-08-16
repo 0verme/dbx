@@ -3418,12 +3418,7 @@ export const useQueryStore = defineStore("query", () => {
    * identifiers keep exact casing. Ambiguous or unresolved columns yield
    * `undefined` (no comment) instead of first-source-wins on a shared name.
    */
-  function resolveMultiSourceColumnInfo(
-    dbType: string,
-    analysis: EditableQueryInfo,
-    resultColumns: string[],
-    loadedSources: LoadedEditableSource[],
-  ): { comments: Array<string | undefined>; mapping: Array<QueryResultSourceColumnRef | undefined> } {
+  function resolveMultiSourceColumnInfo(dbType: string, analysis: EditableQueryInfo, resultColumns: string[], loadedSources: LoadedEditableSource[]): { comments: Array<string | undefined>; mapping: Array<QueryResultSourceColumnRef | undefined> } {
     const refs = resolveSourceColumnsByOrdinal(
       dbType,
       analysis,

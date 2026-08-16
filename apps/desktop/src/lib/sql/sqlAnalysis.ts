@@ -98,10 +98,7 @@ export interface ResolvedSourceColumnRef {
  * `undefined` (unresolvable). Whole-table `SELECT *` is expanded against the
  * single source table when present.
  */
-function expandProjectionColumnsForSources(
-  analysis: EditableQueryInfo,
-  tableSources: Array<{ source: EditableQuerySource; columns: readonly { name: string }[] }>,
-): Array<EditableQueryColumn | undefined> {
+function expandProjectionColumnsForSources(analysis: EditableQueryInfo, tableSources: Array<{ source: EditableQuerySource; columns: readonly { name: string }[] }>): Array<EditableQueryColumn | undefined> {
   if (analysis.selectStar || analysis.columns.length === 0) {
     return tableSources.flatMap(({ source, columns }) =>
       columns.map((column) => ({
@@ -138,11 +135,7 @@ function expandProjectionColumnsForSources(
   return expanded;
 }
 
-function resolveProjectionColumnToSource(
-  databaseType: string,
-  column: EditableQueryColumn | undefined,
-  tableSources: Array<{ source: EditableQuerySource; columns: readonly { name: string }[] }>,
-): ResolvedSourceColumnRef | undefined {
+function resolveProjectionColumnToSource(databaseType: string, column: EditableQueryColumn | undefined, tableSources: Array<{ source: EditableQuerySource; columns: readonly { name: string }[] }>): ResolvedSourceColumnRef | undefined {
   if (!column || column.star || !column.sourceName) return undefined;
   // A qualified reference whose qualifier could not be bound to a unique source
   // stays unresolved rather than guessing from the bare column name.
@@ -151,7 +144,12 @@ function resolveProjectionColumnToSource(
   if (column.sourceKey) {
     const tableIndex = tableSources.findIndex((entry) => entry.source.key === column.sourceKey);
     if (tableIndex < 0) return undefined;
-    const canonicalName = resolveMetadataColumnName(databaseType, column.sourceName, column.sourceNameQuoted, tableSources[tableIndex]!.columns.map((entry) => entry.name));
+    const canonicalName = resolveMetadataColumnName(
+      databaseType,
+      column.sourceName,
+      column.sourceNameQuoted,
+      tableSources[tableIndex]!.columns.map((entry) => entry.name),
+    );
     return canonicalName ? { sourceKey: column.sourceKey, sourceColumn: canonicalName } : undefined;
   }
 
@@ -160,7 +158,12 @@ function resolveProjectionColumnToSource(
   // first-source-wins.
   const matches: ResolvedSourceColumnRef[] = [];
   for (const tableSource of tableSources) {
-    const canonicalName = resolveMetadataColumnName(databaseType, column.sourceName, column.sourceNameQuoted, tableSource.columns.map((entry) => entry.name));
+    const canonicalName = resolveMetadataColumnName(
+      databaseType,
+      column.sourceName,
+      column.sourceNameQuoted,
+      tableSource.columns.map((entry) => entry.name),
+    );
     if (canonicalName) matches.push({ sourceKey: tableSource.source.key, sourceColumn: canonicalName });
   }
   return matches.length === 1 ? matches[0] : undefined;
@@ -182,12 +185,7 @@ function resolveProjectionColumnToSource(
  * columns, or a star whose source table is unknown. Consumers must show no
  * comment for such columns rather than guessing.
  */
-export function resolveSourceColumnsByOrdinal(
-  databaseType: string,
-  analysis: EditableQueryInfo,
-  tableSources: Array<{ source: EditableQuerySource; columns: readonly { name: string }[] }>,
-  columnCount: number,
-): Array<ResolvedSourceColumnRef | undefined> {
+export function resolveSourceColumnsByOrdinal(databaseType: string, analysis: EditableQueryInfo, tableSources: Array<{ source: EditableQuerySource; columns: readonly { name: string }[] }>, columnCount: number): Array<ResolvedSourceColumnRef | undefined> {
   const expanded = expandProjectionColumnsForSources(analysis, tableSources);
   const resolved: Array<ResolvedSourceColumnRef | undefined> = [];
   for (let index = 0; index < columnCount; index++) {
