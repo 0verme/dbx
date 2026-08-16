@@ -40,7 +40,7 @@ import { sidebarTreeContextKey } from "@/lib/sidebar/sidebarTreeContext";
 import { createSidebarTreeRuntime, sidebarTreeRuntimeKey, type SidebarTreeRuntimeHostInstance } from "@/lib/sidebar/sidebarTreeRuntime";
 import { createSidebarPasteHandlerRegistry } from "@/lib/sidebar/sidebarPasteHandlerRegistry";
 import { insertSidebarTableSearchControls, isSidebarTableSearchControlNode } from "@/lib/sidebar/sidebarTableSearchControl";
-import { loadOrBuildSidebarTableSearchIndex } from "@/lib/sidebar/sidebarTableSearchIndex";
+import { createSidebarTableSearchDebouncer, loadOrBuildSidebarTableSearchIndex } from "@/lib/sidebar/sidebarTableSearchIndex";
 import TreeItem from "./TreeItem.vue";
 import SidebarTreeRuntimeHost from "./SidebarTreeRuntimeHost.vue";
 import SidebarTreeItemDialogs from "./SidebarTreeItemDialogs.vue";
@@ -151,6 +151,9 @@ const searchRefreshedNodeIds = searchExpansionState.filteredNodeIds;
 const searchAutoExpandedNodeIds = searchExpansionState.autoExpandedNodeIds;
 let searchTimer: number | undefined;
 const tableSearchTimers = new Map<string, number>();
+// Local-mode table searches debounce like remote ones: rapid typing coalesces
+// into a single index load/build instead of one full build per keystroke.
+const localTableSearchDebouncer = createSidebarTableSearchDebouncer();
 const tableSearchFocusRestoreTokens = new Map<string, number>();
 let tableSearchFocusRestoreTokenSeq = 0;
 let latestTableSearchInteractionParentId: string | null = null;
@@ -608,6 +611,16 @@ function filterGloballyIndexedRegexTables(nodes: TreeNode[]): TreeNode[] {
   return mergeSidebarRegexIndexScopes(nodes, matchingScopes);
 }
 
+function scheduleLocalSidebarTableSearchRefresh(parentNodeId: string, focusRestore?: TableSearchFocusRestore) {
+  // Mirror the remote path: drop the pending load while a search projection is
+  // filtering the tree, so a stale build cannot land after the projection.
+  localTableSearchDebouncer.cancel(parentNodeId);
+  if (isTreeSearchFiltering.value) return;
+  localTableSearchDebouncer.schedule(parentNodeId, () => {
+    void loadLocalTableSearchResults(parentNodeId, false, focusRestore);
+  });
+}
+
 async function loadLocalTableSearchResults(parentNodeId: string, refresh = false, focusRestore?: TableSearchFocusRestore) {
   try {
     // A missing persisted index (null) means this scope was never indexed, so
@@ -615,13 +628,17 @@ async function loadLocalTableSearchResults(parentNodeId: string, refresh = false
     // silently misses alphabetically-late tables (e.g. "T_Erp_Nc_SuPlan_List"
     // for "erpncs") until an explicit index refresh happens. Build the index
     // on the first search so results always cover the complete table set,
-    // matching the behavior of an explicit refresh.
+    // matching the behavior of an explicit refresh. The scope key deduplicates
+    // concurrent full builds, and an empty (cleared) query never builds.
+    const query = store.sidebarTableSearchQueries[parentNodeId]?.trim() ?? "";
     const entries = await loadOrBuildSidebarTableSearchIndex(
+      parentNodeId,
+      query,
       () => store.loadSidebarTableSearchIndex(parentNodeId),
       () => store.refreshSidebarTableSearchIndex(parentNodeId),
       refresh,
     );
-    localTableSearchResults.value = { ...localTableSearchResults.value, [parentNodeId]: entries };
+    if (query || refresh) localTableSearchResults.value = { ...localTableSearchResults.value, [parentNodeId]: entries };
   } finally {
     if (focusRestore) restoreTableSearchInput(focusRestore);
   }
@@ -1107,7 +1124,7 @@ provide(sidebarTreeContextKey, {
         restoreTableSearchInput(focusRestore);
         localTableSearchFocusPending = false;
       });
-      void loadLocalTableSearchResults(parentNodeId, false, focusRestore);
+      scheduleLocalSidebarTableSearchRefresh(parentNodeId, focusRestore);
     } else scheduleSidebarTableSearchRefresh(parentNodeId, { focusRestore });
   },
   refreshTableSearchIndex: (parentNodeId) => void loadLocalTableSearchResults(parentNodeId, true),
@@ -2011,6 +2028,7 @@ onUnmounted(() => {
     window.clearTimeout(timer);
   }
   tableSearchTimers.clear();
+  localTableSearchDebouncer.cancelAll();
   tableSearchFocusRestoreTokens.clear();
   latestTableSearchInteractionParentId = null;
   latestTableSearchInteractionId = 0;

@@ -198,6 +198,19 @@ function sidebarObjectGroupPageSize(): number {
   return typeof size === "number" && size > 0 ? size : 500;
 }
 
+/**
+ * Upper bound for a single remote fuzzy table-search result set.
+ *
+ * Every fuzzy match travels database → IPC → store → tree rendering, so an
+ * unbounded result set (e.g. a single-letter query against a large schema)
+ * would push thousands of rows through the whole pipeline. The budget is 4×
+ * the default page size (500) and comfortably covers the reported #6190
+ * schema (801 fuzzy matches) while keeping a single IPC payload bounded.
+ * Queries whose fuzzy match set exceeds the budget are truncated; narrowing
+ * the query reaches later tables.
+ */
+export const SIDEBAR_TABLE_SEARCH_RESULT_BUDGET = 2000;
+
 function isFlatMqConnection(config: ConnectionConfig | undefined): boolean {
   if (!config || config.db_type !== "mq") return false;
   if (config.driver_profile === "kafka" || config.driver_profile === "rocketmq" || config.driver_profile === "rabbitmq") return true;
@@ -1858,9 +1871,11 @@ export const useConnectionStore = defineStore("connection", () => {
     // A search must never truncate the fuzzy result set to the first page: the
     // target table can sort beyond it (e.g. "T_Erp_Nc_SuPlan_List" for
     // "erpncs" in a large ERP schema), which silently drops it from the first
-    // search even though later, narrower queries succeed. Unfiltered loads
-    // keep the page+1 probe used for load-more detection.
-    const fetchLimit = searchFilter ? undefined : options.pageSize + 1;
+    // search even though later, narrower queries succeed. Results are bounded
+    // by SIDEBAR_TABLE_SEARCH_RESULT_BUDGET so a wide fuzzy query cannot push
+    // an unbounded result set through database → IPC → store → tree rendering.
+    // Unfiltered loads keep the page+1 probe used for load-more detection.
+    const fetchLimit = searchFilter ? SIDEBAR_TABLE_SEARCH_RESULT_BUDGET : options.pageSize + 1;
     const fetchOffset = searchFilter ? undefined : options.offset;
     const tables = await loadCachedMetadataListPage<TableInfo[]>(
       metadataListCacheScope({
@@ -1970,8 +1985,10 @@ export const useConnectionStore = defineStore("connection", () => {
       nodeKind: "simple-tables",
     });
     // A search must never truncate the fuzzy result set to the first page (see
-    // loadPagedTableGroupChildren); unfiltered loads keep the page+1 probe.
-    const fetchLimit = searchFilter ? undefined : options.pageSize + 1;
+    // loadPagedTableGroupChildren); results are bounded by
+    // SIDEBAR_TABLE_SEARCH_RESULT_BUDGET, and unfiltered loads keep the
+    // page+1 probe.
+    const fetchLimit = searchFilter ? SIDEBAR_TABLE_SEARCH_RESULT_BUDGET : options.pageSize + 1;
     const fetchOffset = searchFilter ? undefined : options.offset;
     const tables = await loadCachedMetadataListPage<TableInfo[]>(
       metadataListCacheScope({
