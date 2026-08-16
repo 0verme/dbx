@@ -120,7 +120,7 @@ import { LARGE_PASTE_HISTORY_USER_EVENT, normalizeQueryEditorPasteText, recovera
 import { computePasteCaretResyncTarget } from "@/lib/editor/queryEditorPasteCaretResync";
 import { extendQueryEditorSelection, runQueryEditorAltExtendSelection } from "@/lib/editor/queryEditorExtendSelection";
 import type { StatementExecutionMarker } from "@/lib/tabs/tabPresentation";
-import { isSchemaAware, isSingleDatabase, supportsDatabaseNameCompletion, supportsDatabaseSchemaQualifier, supportsSqlInListPaste } from "@/lib/database/databaseFeatureSupport";
+import { isSchemaAware, isSingleDatabase, supportsDatabaseNameCompletion, supportsDatabaseSchemaQualifier, supportsQueryEditorBlockComments, supportsSqlInListPaste } from "@/lib/database/databaseFeatureSupport";
 import { metadataSchemaForConnection, sqlSnippetDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { usesLocalOnlyEditorCompletionMetadata, usesOnDemandOnlyEditorColumnMetadata } from "@/lib/metadata/completionMetadataPolicy";
 import { loadTableMetadata } from "@/lib/metadata/tableMetadataCache";
@@ -548,6 +548,7 @@ let codeMirrorRedo: typeof import("@codemirror/commands").redo | null = null;
 let codeMirrorSelectAll: typeof import("@codemirror/commands").selectAll | null = null;
 let codeMirrorInsertNewlineKeepIndent: typeof import("@codemirror/commands").insertNewlineKeepIndent | null = null;
 let codeMirrorToggleLineComment: typeof import("@codemirror/commands").toggleLineComment | null = null;
+let codeMirrorToggleBlockComment: typeof import("@codemirror/commands").toggleBlockComment | null = null;
 let codeMirrorToggleFold: typeof import("@codemirror/language").toggleFold | null = null;
 let pendingCompletionTabTimer: ReturnType<typeof setTimeout> | null = null;
 let setSqlDiagnosticsEffect: import("@codemirror/state").StateEffectType<SqlSemanticDiagnostic[]> | null = null;
@@ -1401,6 +1402,13 @@ function toggleCommentFromContextMenu() {
   focusEditor();
 }
 
+function toggleBlockCommentFromContextMenu() {
+  const currentView = view.value;
+  if (!currentView || props.readOnly || !supportsQueryEditorBlockComments(props.databaseType)) return;
+  codeMirrorToggleBlockComment?.(currentView);
+  focusEditor();
+}
+
 function selectAllSqlFromContextMenu() {
   const currentView = view.value;
   if (!currentView) return;
@@ -1710,6 +1718,13 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
       shortcut: shortcuts.toggleLineComment,
     },
     {
+      label: t("editor.contextMenu.blockCommentSelection"),
+      action: toggleBlockCommentFromContextMenu,
+      disabled: props.readOnly || !canCopySelectedSql.value || !supportsQueryEditorBlockComments(props.databaseType),
+      icon: MessageSquareText,
+      shortcut: shortcuts.toggleBlockComment,
+    },
+    {
       label: t("editor.contextMenu.formatSelectionSql"),
       action: () => void formatCurrentSql(),
       disabled: props.readOnly || !canCopySelectedSql.value || !canFormatSqlForDatabaseType(props.databaseType),
@@ -1880,6 +1895,10 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
         ...binding(shortcuts.uppercaseSelection, () => convertSelectedSqlCase("upper")),
         ...binding(shortcuts.lowercaseSelection, () => convertSelectedSqlCase("lower")),
         ...binding(shortcuts.toggleLineComment, (view) => codeMirrorToggleLineComment?.(view) ?? false),
+        ...binding(shortcuts.toggleBlockComment, (view) => {
+          if (!supportsQueryEditorBlockComments(props.databaseType)) return false;
+          return codeMirrorToggleBlockComment?.(view) ?? false;
+        }),
         ...binding(shortcuts.toggleFold, (view) => codeMirrorToggleFold?.(view) ?? false),
         ...binding(shortcuts.exPasteSqlInCondition, () => {
           if (!supportsSqlInListPaste(props.databaseType)) return false;
@@ -4412,7 +4431,7 @@ onMounted(async () => {
     { EditorState, EditorSelection, Compartment, Prec, RangeSet, StateEffect, StateField },
     langSql,
     { autocompletion, startCompletion, acceptCompletion, closeBrackets, closeBracketsKeymap, snippetCompletion, completionStatus, completionKeymap, insertCompletionText, nextSnippetField, closeCompletion },
-    { copyLineDown, copyLineUp, deleteLine, indentLess, indentMore, insertNewlineKeepIndent, moveLineDown, moveLineUp, redo, selectAll, undo, toggleLineComment, history, defaultKeymap, historyKeymap },
+    { copyLineDown, copyLineUp, deleteLine, indentLess, indentMore, insertNewlineKeepIndent, moveLineDown, moveLineUp, redo, selectAll, undo, toggleLineComment, toggleBlockComment, history, defaultKeymap, historyKeymap },
     { bracketMatching, foldGutter, indentOnInput, indentUnit, syntaxHighlighting, defaultHighlightStyle, foldKeymap, toggleFold, ensureSyntaxTree },
     { searchKeymap },
   ] = await Promise.all([import("@codemirror/view"), import("@codemirror/state"), import("@codemirror/lang-sql"), import("@codemirror/autocomplete"), import("@codemirror/commands"), import("@codemirror/language"), import("@codemirror/search")]);
@@ -4461,6 +4480,7 @@ onMounted(async () => {
   codeMirrorSelectAll = selectAll;
   codeMirrorInsertNewlineKeepIndent = insertNewlineKeepIndent;
   codeMirrorToggleLineComment = toggleLineComment;
+  codeMirrorToggleBlockComment = toggleBlockComment;
   codeMirrorToggleFold = toggleFold;
   codeMirrorIndentUnit = indentUnit;
   window.addEventListener("keyup", clearTableNavigationHoverOnModifierRelease);
@@ -4856,7 +4876,13 @@ onMounted(async () => {
       activeLineHighlighter,
       // Vim must be mounted before DBX/default keymaps so normal-mode keys are handled first.
       vimModeComp.of(vimModeExtension(initialSettings.vimModeEnabled)),
-      keymap.of([...defaultKeymap, ...searchKeymapWithoutModD(searchKeymap), ...historyKeymap, ...foldKeymap, ...completionKeymap]),
+      keymap.of([
+        ...defaultKeymap.filter((item) => item.run !== toggleBlockComment),
+        ...searchKeymapWithoutModD(searchKeymap),
+        ...historyKeymap,
+        ...foldKeymap,
+        ...completionKeymap,
+      ]),
       sqlLanguageComp.of(buildSqlLanguageExtension()),
       sqlSemanticHighlightComp.of(buildSqlSemanticHighlightExtension()),
       tooltips({ parent: tooltipParent }),
