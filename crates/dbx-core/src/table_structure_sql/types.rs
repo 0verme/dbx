@@ -208,9 +208,9 @@ pub struct TableStructureSqlOptions {
     pub original_table_comment: Option<String>,
     /// Whether the target table is a partitioned parent table (PostgreSQL
     /// `relkind = 'p'`). PostgreSQL rejects `CREATE INDEX CONCURRENTLY` on
-    /// partitioned parents, so the builder downgrades such a request to a
-    /// regular `CREATE INDEX` and reports a warning instead of emitting SQL
-    /// the server will reject.
+    /// partitioned parents, so the builder refuses such a request up front
+    /// (`validate_concurrent_index_scope`) instead of emitting SQL the server
+    /// will reject or downgrading to a blocking `CREATE INDEX`.
     #[serde(default)]
     pub partitioned: bool,
 }

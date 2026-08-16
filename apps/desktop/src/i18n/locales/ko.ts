@@ -3412,6 +3412,7 @@ export default withEnglishFallback({
     concurrentExistingIndexTooltip: "새 인덱스에서만 사용할 수 있습니다. 기존 인덱스의 동시 재구축(DROP INDEX CONCURRENTLY + CREATE INDEX CONCURRENTLY)은 아직 지원되지 않습니다.",
     concurrentPartitionedTooltip: "파티션 부모 테이블에서는 사용할 수 없습니다. PostgreSQL은 파티션 부모 테이블에서의 동시 인덱스 생성을 거부합니다. 하위 인덱스를 동시에 생성한 후 연결하세요.",
     invalidIndexBlocksSave: '저장이 차단되었습니다: 취소된 동시 빌드가 남긴 같은 이름의 INVALID 인덱스가 이미 존재합니다: {indexNames}. 먼저 삭제(예: DROP INDEX "schema"."name")한 후 다시 시도하세요.',
+    concurrentUnavailableTooltip: "테이블의 파티션 상태를 확인할 수 없는 동안에는 사용할 수 없습니다. 동시 생성은 파티션이 아닌 테이블에서만 제공됩니다.",
     invalidIndexRetryHint: "이전에 취소된 동시 빌드가 남긴 같은 이름의 INVALID 인덱스 때문일 수 있습니다. 해당 인덱스를 먼저 삭제한 후 다시 시도하세요.",
     foreignKeyName: "외래 키",
     referencedSchema: "참조 스키마",

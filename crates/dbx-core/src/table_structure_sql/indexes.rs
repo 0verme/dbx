@@ -47,17 +47,6 @@ pub(super) fn build_index_sql(options: &TableStructureSqlOptions, warnings: &mut
                 warnings.push(format!("Primary index \"{}\" cannot be edited from this editor.", original.name));
                 continue;
             }
-            // Plan A scope guard: concurrent rebuilds of an existing index are
-            // not implemented (they would require `DROP INDEX CONCURRENTLY` +
-            // `CREATE INDEX CONCURRENTLY` to stay safe), so the flag is
-            // downgraded to a regular rebuild with an explicit warning rather
-            // than silently dropped.
-            if index.concurrently {
-                warnings.push(format!(
-                    "Concurrent rebuild of existing index \"{}\" is not supported from this editor; the index will be rebuilt with a regular DROP INDEX + CREATE INDEX instead.",
-                    original.name
-                ));
-            }
             let or_replace =
                 options.database_type == Some(DatabaseType::Dameng) && clean(&index.name) == clean(&original.name);
             if !or_replace {
@@ -78,7 +67,6 @@ pub(super) fn build_index_sql(options: &TableStructureSqlOptions, warnings: &mut
                 &options.table_name,
                 or_replace,
                 capabilities.index_concurrent,
-                options.partitioned,
             ));
             continue;
         }
@@ -96,7 +84,6 @@ pub(super) fn build_index_sql(options: &TableStructureSqlOptions, warnings: &mut
             &options.table_name,
             false,
             capabilities.index_concurrent,
-            options.partitioned,
         ));
     }
 
@@ -114,7 +101,6 @@ pub(super) fn has_existing_index_change(index: &EditableStructureIndex) -> bool 
         || index_list_changed(&index.included_columns, original.included_columns.as_ref())
         || clean(&index.filter) != clean(original.filter.as_deref().unwrap_or(""))
         || clean(&index.comment) != clean(original.comment.as_deref().unwrap_or(""))
-        || index.concurrently
 }
 
 pub(super) fn index_list_changed(next: &[String], previous: Option<&Vec<String>>) -> bool {
@@ -185,7 +171,6 @@ pub(super) fn build_create_index_statements(
     table_name: &str,
     or_replace: bool,
     concurrently_supported: bool,
-    partitioned: bool,
 ) -> Vec<String> {
     let capabilities = capabilities_for(database_type_for_dialect(dialect));
     let name = clean(&index.name);
@@ -198,27 +183,10 @@ pub(super) fn build_create_index_statements(
     // `CREATE INDEX CONCURRENTLY` is PostgreSQL-only: the flag is honored only when
     // the caller's real database type advertises the capability, so a stale or
     // forged `concurrently: true` from another engine is ignored and the original
-    // SQL is generated unchanged.
-    // A concurrent rebuild of an existing index is only safe via `DROP INDEX
-    // CONCURRENTLY` + `CREATE INDEX CONCURRENTLY`, which this editor does not
-    // implement (see the Plan A scope guard in build_index_sql), so existing
-    // indexes are never rebuilt concurrently even if a stale/forged flag is set.
-    let requested_concurrently =
-        index.concurrently && concurrently_supported && dialect == StructureDialect::Postgres && index.original.is_none();
-    // PostgreSQL rejects concurrent index builds on partitioned parent tables
-    // (see https://www.postgresql.org/docs/current/ddl-partitioning.html); the
-    // supported approach is to build child indexes concurrently and attach them,
-    // which is out of scope. Downgrade with an explicit warning instead of
-    // emitting SQL the server will reject.
-    let concurrently = if requested_concurrently && partitioned {
-        warnings.push(format!(
-            "CREATE INDEX CONCURRENTLY is not supported on partitioned table \"{}\"; downgrading to a regular CREATE INDEX.",
-            table_name
-        ));
-        false
-    } else {
-        requested_concurrently
-    };
+    // SQL is generated unchanged. Unsupported concurrent requests (existing index,
+    // partitioned parent) are rejected up front by `validate_concurrent_index_scope`
+    // before any statement is built — this function never downgrades them.
+    let concurrently = index.concurrently && concurrently_supported && dialect == StructureDialect::Postgres;
 
     let unique = if index.is_unique { "UNIQUE " } else { "" };
     let replace = if or_replace { "OR REPLACE " } else { "" };

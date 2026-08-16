@@ -4750,29 +4750,37 @@ fn oscar_table_comment_uses_comment_on_table() {
 }
 
 #[test]
-fn postgres_existing_index_concurrent_only_change_triggers_rebuild() {
+fn postgres_existing_index_concurrent_request_rejected() {
     let mut idx = existing_index("idx_users_email", &["email"], false);
     idx.concurrently = true;
 
     let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
 
-    // Plan A scope guard: concurrent rebuilds of an existing index are not
-    // implemented (they would need DROP INDEX CONCURRENTLY + CREATE INDEX
-    // CONCURRENTLY), so the flag is downgraded with an explicit warning and
-    // the index is rebuilt the regular way instead.
+    // Fail closed: a concurrent request on an existing index is refused up
+    // front. No DROP INDEX and no plain (blocking) CREATE INDEX may be
+    // generated behind the caller's back.
     assert_eq!(
         result.warnings,
         vec![
-            "Concurrent rebuild of existing index \"idx_users_email\" is not supported from this editor; the index will be rebuilt with a regular DROP INDEX + CREATE INDEX instead."
+            "CREATE INDEX CONCURRENTLY is only supported for newly created indexes. Editing an existing index \"idx_users_email\" with Concurrent enabled is not supported."
         ]
     );
-    assert_eq!(
-        result.statements,
-        vec![
-            "DROP INDEX \"public\".\"idx_users_email\";",
-            "CREATE INDEX \"idx_users_email\" ON \"public\".\"USERS\" (\"email\");",
-        ]
-    );
+    assert!(result.statements.is_empty(), "no statements may be generated, got: {:?}", result.statements);
+}
+
+#[test]
+fn postgres_existing_index_concurrent_flag_with_real_change_still_rejected() {
+    // The concurrent flag combined with a real edit (renamed index) must still
+    // be rejected rather than rebuilt the regular way.
+    let mut idx = existing_index("idx_users_email", &["email"], false);
+    idx.name = "idx_users_email_new".to_string();
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert_eq!(result.warnings.len(), 1);
+    assert!(result.warnings[0].contains("only supported for newly created indexes"));
+    assert!(result.statements.is_empty(), "no statements may be generated, got: {:?}", result.statements);
 }
 
 #[test]
@@ -4801,7 +4809,7 @@ fn postgres_concurrent_index_emits_concurrently() {
 }
 
 #[test]
-fn postgres_partitioned_parent_concurrent_flag_downgraded_with_warning() {
+fn postgres_partitioned_parent_concurrent_request_rejected() {
     let mut idx = index("idx_users_email", &["email"]);
     idx.concurrently = true;
 
@@ -4818,15 +4826,16 @@ fn postgres_partitioned_parent_concurrent_flag_downgraded_with_warning() {
         partitioned: true,
     });
 
-    // PostgreSQL rejects CREATE INDEX CONCURRENTLY on a partitioned parent, so
-    // the builder must downgrade instead of emitting SQL the server rejects.
+    // Fail closed: PostgreSQL rejects CREATE INDEX CONCURRENTLY on a
+    // partitioned parent, so the request is refused up front instead of
+    // downgrading to a blocking CREATE INDEX.
     assert_eq!(
         result.warnings,
         vec![
-            "CREATE INDEX CONCURRENTLY is not supported on partitioned table \"USERS\"; downgrading to a regular CREATE INDEX."
+            "CREATE INDEX CONCURRENTLY is not supported on PostgreSQL partitioned parent tables. Create indexes concurrently on individual partitions and attach them separately."
         ]
     );
-    assert_eq!(result.statements, vec!["CREATE INDEX \"idx_users_email\" ON \"public\".\"USERS\" (\"email\");"]);
+    assert!(result.statements.is_empty(), "no statements may be generated, got: {:?}", result.statements);
 }
 
 #[test]
@@ -4865,6 +4874,62 @@ fn postgres_partitioned_option_defaults_to_false() {
     });
     let options: TableStructureSqlOptions = serde_json::from_value(json).unwrap();
     assert!(!options.partitioned);
+}
+
+#[test]
+fn postgres_create_table_partitioned_concurrent_request_rejected() {
+    // The new-table path (`build_create_table_sql`) is a separate entry point
+    // and must refuse partitioned-parent concurrent requests the same way.
+    let mut idx = index("idx_events_id", &["id"]);
+    idx.concurrently = true;
+
+    let result = build_create_table_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Postgres),
+        schema: Some("public".to_string()),
+        table_name: "events".to_string(),
+        columns: vec![column("id")],
+        indexes: vec![idx],
+        foreign_keys: Vec::new(),
+        triggers: Vec::new(),
+        table_comment: None,
+        original_table_comment: None,
+        partitioned: true,
+    });
+
+    assert_eq!(
+        result.warnings,
+        vec![
+            "CREATE INDEX CONCURRENTLY is not supported on PostgreSQL partitioned parent tables. Create indexes concurrently on individual partitions and attach them separately."
+        ]
+    );
+    assert!(result.statements.is_empty(), "no statements may be generated, got: {:?}", result.statements);
+}
+
+#[test]
+fn mysql_stale_concurrently_flag_is_ignored() {
+    // Non-PostgreSQL engines cannot request a concurrent build at all; a stale
+    // or forged `concurrently` flag must not error and must not alter the SQL.
+    let mut idx = index("idx_users_email", &["email"]);
+    idx.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Mysql, Some("public"), idx));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(result.statements, vec!["CREATE INDEX `idx_users_email` ON `USERS` (`email`);"]);
+}
+
+#[test]
+fn mysql_existing_index_with_stale_concurrently_flag_ignored() {
+    // An existing-index edit on a non-PostgreSQL engine is driven by the actual
+    // field changes; a stale concurrently flag alone must not force a rebuild.
+    let idx = existing_index("idx_users_email", &["email"], false);
+    let mut changed = idx;
+    changed.concurrently = true;
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Mysql, Some("public"), changed));
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert!(result.statements.is_empty(), "no rebuild for a flag-only change, got: {:?}", result.statements);
 }
 
 #[test]

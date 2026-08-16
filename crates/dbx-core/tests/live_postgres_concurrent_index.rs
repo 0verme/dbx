@@ -153,11 +153,12 @@ async fn live_postgres_invalid_index_leftover_is_detected() {
 }
 
 /// The structure editor must never emit `CREATE INDEX CONCURRENTLY` for a
-/// partitioned parent table — the builder downgrades it with a warning and
-/// the generated plain `CREATE INDEX` is what actually runs on the server.
+/// partitioned parent table — the builder rejects the request up front
+/// (fail closed) and no SQL reaches the server at all, instead of downgrading
+/// to a blocking `CREATE INDEX`.
 #[tokio::test]
 #[ignore = "requires DBX_LIVE_POSTGRES_HOST/PORT/USER/PASSWORD/DATABASE pointing at a writable PostgreSQL database"]
-async fn live_postgres_partitioned_parent_concurrent_request_downgrades() {
+async fn live_postgres_partitioned_parent_concurrent_request_rejected() {
     let pool = postgres::connect(&live_postgres_url(), Duration::from_secs(10)).await.expect("connect PostgreSQL");
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let schema = format!("dbx_cic_{}", &suffix[..8]);
@@ -189,23 +190,26 @@ async fn live_postgres_partitioned_parent_concurrent_request_downgrades() {
     });
     assert_eq!(
         result.warnings,
-        vec![format!(
-            "CREATE INDEX CONCURRENTLY is not supported on partitioned table \"events\"; downgrading to a regular CREATE INDEX."
-        )]
+        vec![
+            "CREATE INDEX CONCURRENTLY is not supported on PostgreSQL partitioned parent tables. Create indexes concurrently on individual partitions and attach them separately."
+        ]
     );
-    assert_eq!(result.statements, vec![format!("CREATE INDEX \"idx_events_id\" ON \"{schema}\".\"events\" (\"id\");")]);
-    // The downgraded statement must actually execute on the partitioned parent.
-    postgres::execute_batch(&pool, &result.statements).await.expect("execute downgraded index build");
+    assert!(
+        result.statements.is_empty(),
+        "no SQL may be generated for an unsupported concurrent request, got: {:?}",
+        result.statements
+    );
+    // Nothing was executed: the partitioned parent still has no such index.
     let client = pool.get().await.expect("checkout connection");
     let row = client
         .query_one(
-            "SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass($1)",
-            &[&format!("{schema}.idx_events_id")],
+            "SELECT count(*) FROM pg_catalog.pg_class WHERE relname = $1 AND relnamespace = to_regnamespace($2)",
+            &[&"idx_events_id", &schema],
         )
         .await
-        .expect("read pg_index");
-    let valid: bool = row.get(0);
-    assert!(valid, "downgraded index on partitioned parent must be valid");
+        .expect("count index relations");
+    let count: i64 = row.get(0);
+    assert_eq!(count, 0, "rejected request must not create any index on the server");
 
     postgres::execute_batch(&pool, &cleanup).await.expect("cleanup live test schema");
 }

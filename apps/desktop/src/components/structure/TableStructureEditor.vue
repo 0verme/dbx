@@ -37,6 +37,7 @@ import { getSqliteDataTypeHelp } from "@/lib/table/sqliteDataTypeHelp";
 import { getTableMetadataCapabilities, firstStructureMetadataTab, isStructureMetadataTabSupported } from "@/lib/table/tableMetadataCapabilities";
 import { hasTableStructureRefreshWork, unloadedTableStructureRefreshScope, visibleTableStructureRefreshScope, type TableStructureRefreshScope } from "@/lib/table/tableStructureMetadataLoading";
 import { canAddTableStructureColumn, getTableStructureCapabilities, hasLocalTableColumnOrderChange, isPhysicalTableColumnOrderChange, sanitizeStructureIndexesForCapabilities, supportsLocalTableColumnReorder } from "@/lib/table/tableStructureCapabilities";
+import { getConcurrentIndexAvailability, concurrentIndexNamesInStatements, type ConcurrentIndexAvailability } from "@/lib/table/concurrentIndexAvailability";
 import { orderedColumnIndexes, uniqueDataGridColumnOrderKeys } from "@/lib/dataGrid/dataGridColumnOrder";
 import { loadTableDataGridColumnOrder, notifyTableDataGridColumnOrderChanged, removeTableDataGridColumnOrder, saveTableDataGridColumnOrder, tableDataGridColumnOrderScopeKey } from "@/lib/dataGrid/dataGridColumnLayoutStorage";
 import { connectionObjectTreeQuerySchema, tableStructureDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
@@ -191,9 +192,13 @@ const errorMessage = ref("");
 const columns = ref<EditableStructureColumn[]>([]);
 const indexes = ref<EditableStructureIndex[]>([]);
 /** PostgreSQL partitioned parent (`relkind = 'p'`): `CREATE INDEX CONCURRENTLY`
- * is rejected by the server on such tables, so the option is disabled and the
- * save path downgrades any concurrent request with a warning. */
+ * is rejected by the server on such tables, so the option is disabled here and
+ * the SQL builder refuses any concurrent request on it (fail closed). */
 const isPartitionedParent = ref(false);
+/** Whether the last partition-status probe succeeded. When it cannot be
+ * verified (probe failed), Concurrent is disabled — we must not assume a
+ * non-partitioned table we could not check. */
+const partitionStatusKnown = ref(true);
 const pendingStatements = ref<string[]>([]);
 const warnings = ref<string[]>([]);
 const sqliteSchemaRevision = ref<string>();
@@ -977,7 +982,10 @@ function restoreDraft(draft: TableStructureEditorDraft) {
   tableComment.value = draft.tableComment || "";
   originalTableComment.value = draft.originalTableComment || "";
   columns.value = cloneDraftValue(draft.columns || []);
-  indexes.value = cloneDraftValue(draft.indexes || []);
+  // Existing-index edits never support Concurrent (the checkbox is disabled and
+  // the core builder rejects the request), so a stale `concurrently: true`
+  // saved in a restored draft must not be submitted or deadlock the save.
+  indexes.value = cloneDraftValue(draft.indexes || []).map((index) => (index.original ? { ...index, concurrently: false } : index));
   foreignKeys.value = cloneDraftValue(draft.foreignKeys || []);
   constraints.value = cloneDraftValue(draft.constraints || []);
   // Drafts created before constraint loading existed have no saved facet.
@@ -1261,6 +1269,7 @@ function resetState() {
   triggersLoading.value = false;
   errorMessage.value = "";
   isPartitionedParent.value = false;
+  partitionStatusKnown.value = true;
   columns.value = [];
   indexes.value = [];
   pendingStatements.value = [];
@@ -1360,7 +1369,15 @@ async function loadStructure(
     const metadataRequest = ddlRequest();
     const forceMetadata = options.forceMetadata === true;
     const partitionStatusPromise =
-      databaseType.value === "postgres" && !isCreateMode.value ? api.getTablePartitionStatus(connectionId, database, schema, tableName).catch(() => ({ isPartitionedParent: false, isPartition: false })) : Promise.resolve({ isPartitionedParent: false, isPartition: false });
+      databaseType.value === "postgres" && !isCreateMode.value
+        ? api.getTablePartitionStatus(connectionId, database, schema, tableName).catch(() => {
+            // Fail closed: without a verified partition status we cannot rule
+            // out a partitioned parent, so Concurrent stays disabled until a
+            // later reload re-runs the probe.
+            partitionStatusKnown.value = false;
+            return { isPartitionedParent: false, isPartition: false };
+          })
+        : Promise.resolve({ isPartitionedParent: false, isPartition: false });
     const columnsPromise = scope.columns ? loadObjectMetadataFacet(metadataRequest, "columns", () => api.getColumns(connectionId, database, schema, tableName, catalog), { force: forceMetadata }).then((result) => result.value) : Promise.resolve(undefined);
     const indexesPromise = scope.indexes
       ? tableMetadataCapabilities.value.indexes
@@ -2229,21 +2246,39 @@ function canEditIndexDraft(index: EditableStructureIndex): boolean {
  * Plan A scope guard (PR #6361 review): concurrent builds apply only to newly
  * created indexes on non-partitioned tables. Editing an existing index would
  * require a `DROP INDEX CONCURRENTLY` + `CREATE INDEX CONCURRENTLY` replace
- * flow (not implemented yet), and PostgreSQL rejects `CREATE INDEX
- * CONCURRENTLY` on partitioned parents, so both are disabled here.
+ * flow (not implemented yet), PostgreSQL rejects `CREATE INDEX CONCURRENTLY`
+ * on partitioned parents, and an unverifiable partition status fails closed —
+ * all of those disable the checkbox here. The core SQL builder enforces the
+ * same scope as a hard error, so this is only the first layer.
  */
+function concurrentIndexAvailability(index: EditableStructureIndex): ConcurrentIndexAvailability {
+  if (indexesLoading.value) return { enabled: false, reason: "unknown" };
+  return getConcurrentIndexAvailability({
+    hasOriginal: !!index.original,
+    isPrimary: index.isPrimary,
+    markedForDrop: index.markedForDrop,
+    isPartitionedParent: isPartitionedParent.value,
+    partitionStatusKnown: partitionStatusKnown.value,
+    supportsIndexConcurrent: structureCapabilities.value.indexConcurrent,
+    supportsCreateIndex: structureCapabilities.value.createIndex,
+  });
+}
+
 function canEditIndexConcurrent(index: EditableStructureIndex): boolean {
-  if (indexesLoading.value) return false;
-  if (index.markedForDrop || index.isPrimary) return false;
-  if (index.original) return false;
-  if (isPartitionedParent.value) return false;
-  return structureCapabilities.value.indexConcurrent && structureCapabilities.value.createIndex;
+  return concurrentIndexAvailability(index).enabled;
 }
 
 function concurrentIndexCellTitle(index: EditableStructureIndex): string {
-  if (index.original) return t("structureEditor.concurrentExistingIndexTooltip");
-  if (isPartitionedParent.value) return t("structureEditor.concurrentPartitionedTooltip");
-  return t("structureEditor.concurrentTooltip");
+  switch (concurrentIndexAvailability(index).reason) {
+    case "existing":
+      return t("structureEditor.concurrentExistingIndexTooltip");
+    case "partitioned":
+      return t("structureEditor.concurrentPartitionedTooltip");
+    case "unknown":
+      return t("structureEditor.concurrentUnavailableTooltip");
+    default:
+      return t("structureEditor.concurrentTooltip");
+  }
 }
 
 function canEditIndexFilter(index: EditableStructureIndex): boolean {
@@ -2340,21 +2375,6 @@ function primarySqlOperation(sql: string): string {
     .map((part) => part.trim())
     .find(Boolean);
   return statement?.match(/^([a-z]+)/i)?.[1]?.toUpperCase() || "SQL";
-}
-
-/**
- * Unquoted index names referenced by `CREATE [UNIQUE] INDEX CONCURRENTLY`
- * statements, used to detect same-name INVALID leftovers before applying a
- * concurrent build. The PG builder emits the index name as a single
- * double-quoted identifier (optionally schema-qualified).
- */
-function concurrentIndexNamesInStatements(statements: string[]): string[] {
-  const names: string[] = [];
-  for (const sql of statements) {
-    const match = sql.match(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(?:(?:"[^"]+")\s*\.\s*)?"([^"]+)"/i);
-    if (match?.[2]) names.push(match[2]);
-  }
-  return names;
 }
 
 async function recordStructureHistory(sql: string, start: number, success: boolean, result?: { affected_rows?: number }, error?: string) {

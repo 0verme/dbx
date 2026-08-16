@@ -84,7 +84,8 @@ export interface BuildTableStructureChangeSqlOptions {
   tableComment?: string;
   originalTableComment?: string;
   /** The target table is a PostgreSQL partitioned parent (`relkind = 'p'`);
-   * the backend downgrades `CREATE INDEX CONCURRENTLY` with a warning. */
+   * the backend rejects `CREATE INDEX CONCURRENTLY` on such tables (fail
+   * closed) instead of downgrading to a blocking `CREATE INDEX`. */
   partitioned?: boolean;
 }
 

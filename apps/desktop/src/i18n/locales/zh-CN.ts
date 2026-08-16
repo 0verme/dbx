@@ -3581,6 +3581,7 @@ export default withEnglishFallback({
     concurrentExistingIndexTooltip: "仅可用于新建索引。尚不支持并发重建已有索引（DROP INDEX CONCURRENTLY + CREATE INDEX CONCURRENTLY）。",
     concurrentPartitionedTooltip: "分区父表不可用。PostgreSQL 拒绝在分区父表上并发建索引；请改为并发构建子索引后 attach。",
     invalidIndexBlocksSave: '保存已阻止：存在同名 INVALID 索引（通常由被取消的并发构建残留）：{indexNames}。请先删除该索引（例如 DROP INDEX "schema"."name"）后再重试。',
+    concurrentUnavailableTooltip: "在无法确认表的分区状态前不可用。仅非分区表支持并发创建索引。",
     invalidIndexRetryHint: "这可能是之前被取消的并发构建残留的同名 INVALID 索引导致。请先删除该索引，再重试。",
     foreignKeyName: "外键名",
     referencedSchema: "引用库",

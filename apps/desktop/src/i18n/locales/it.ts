@@ -3426,6 +3426,7 @@ export default withEnglishFallback({
     concurrentExistingIndexTooltip: "Disponibile solo per nuovi indici. La ricostruzione concorrente di un indice esistente (DROP INDEX CONCURRENTLY + CREATE INDEX CONCURRENTLY) non è ancora supportata.",
     concurrentPartitionedTooltip: "Non disponibile sulle tabelle padre partizionate. PostgreSQL rifiuta la creazione concorrente di indici sulle tabelle padre partizionate; crea gli indici figli in modo concorrente e collegalili.",
     invalidIndexBlocksSave: 'Salvataggio bloccato: esiste già un indice INVALID con lo stesso nome (residuo di una build concorrente annullata): {indexNames}. Eliminalo prima (es. DROP INDEX "schema"."name"), poi riprova.',
+    concurrentUnavailableTooltip: "Non disponibile finché non è possibile verificare lo stato di partizione della tabella. La creazione concorrente è disponibile solo su tabelle non partizionate.",
     invalidIndexRetryHint: "Potrebbe essere causato da un indice INVALID con lo stesso nome lasciato da una build concorrente annullata in precedenza. Elimina prima quell'indice, poi riprova.",
     foreignKeyName: "Chiave esterna",
     referencedSchema: "Schema rif.",
