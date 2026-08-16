@@ -6,4 +6,6 @@ pub(crate) fn mark_frontend_ready() {}
 
 pub(crate) fn record_run_event() {}
 
+pub(crate) fn record_runtime_recovery_event(_message: impl AsRef<str>) {}
+
 pub(crate) fn start_watchdog<R: tauri::Runtime>(_app: &tauri::AppHandle<R>) {}
