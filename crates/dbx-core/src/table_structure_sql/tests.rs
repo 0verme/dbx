@@ -1682,6 +1682,7 @@ fn quotes_expression_like_new_index_columns_without_provenance() {
         triggers: Vec::new(),
         table_comment: None,
         original_table_comment: None,
+        partitioned: false,
     });
 
     assert_eq!(result.warnings, Vec::<String>::new());
