@@ -4876,13 +4876,7 @@ onMounted(async () => {
       activeLineHighlighter,
       // Vim must be mounted before DBX/default keymaps so normal-mode keys are handled first.
       vimModeComp.of(vimModeExtension(initialSettings.vimModeEnabled)),
-      keymap.of([
-        ...defaultKeymap.filter((item) => item.run !== toggleBlockComment),
-        ...searchKeymapWithoutModD(searchKeymap),
-        ...historyKeymap,
-        ...foldKeymap,
-        ...completionKeymap,
-      ]),
+      keymap.of([...defaultKeymap.filter((item) => item.run !== toggleBlockComment), ...searchKeymapWithoutModD(searchKeymap), ...historyKeymap, ...foldKeymap, ...completionKeymap]),
       sqlLanguageComp.of(buildSqlLanguageExtension()),
       sqlSemanticHighlightComp.of(buildSqlSemanticHighlightExtension()),
       tooltips({ parent: tooltipParent }),
