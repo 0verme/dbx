@@ -3165,7 +3165,7 @@ describe("connectionStore metadata loading", () => {
     expect(tablesGroup.objectCount).toBe(5);
     expect(tablesGroup.isLoading).toBe(false);
     expect(listTables.mock.calls.map((call) => [call[3], call[4], call[5]])).toEqual([
-      ["0003", 2, undefined],
+      ["0003", undefined, undefined],
       [undefined, 3, 0],
       [undefined, 3, 0],
       [undefined, 3, 2],
@@ -3219,7 +3219,7 @@ describe("connectionStore metadata loading", () => {
     store.sidebarSearchQuery = "orders";
     await store.loadObjectGroupChildren(tablesGroup, { force: true });
 
-    expect(listTables).toHaveBeenLastCalledWith(connection.id, "basic", "basic", "orders", 200, undefined, ["TABLE"]);
+    expect(listTables).toHaveBeenLastCalledWith(connection.id, "basic", "basic", "orders", undefined, undefined, ["TABLE"]);
     expect(tablesGroup.children?.map((node) => node.label)).toEqual(["orders"]);
 
     let resolveAncestorLoad!: (tables: TableInfo[]) => void;

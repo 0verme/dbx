@@ -40,6 +40,7 @@ import { sidebarTreeContextKey } from "@/lib/sidebar/sidebarTreeContext";
 import { createSidebarTreeRuntime, sidebarTreeRuntimeKey, type SidebarTreeRuntimeHostInstance } from "@/lib/sidebar/sidebarTreeRuntime";
 import { createSidebarPasteHandlerRegistry } from "@/lib/sidebar/sidebarPasteHandlerRegistry";
 import { insertSidebarTableSearchControls, isSidebarTableSearchControlNode } from "@/lib/sidebar/sidebarTableSearchControl";
+import { loadOrBuildSidebarTableSearchIndex } from "@/lib/sidebar/sidebarTableSearchIndex";
 import TreeItem from "./TreeItem.vue";
 import SidebarTreeRuntimeHost from "./SidebarTreeRuntimeHost.vue";
 import SidebarTreeItemDialogs from "./SidebarTreeItemDialogs.vue";
@@ -609,7 +610,17 @@ function filterGloballyIndexedRegexTables(nodes: TreeNode[]): TreeNode[] {
 
 async function loadLocalTableSearchResults(parentNodeId: string, refresh = false, focusRestore?: TableSearchFocusRestore) {
   try {
-    const entries = refresh ? await store.refreshSidebarTableSearchIndex(parentNodeId) : await store.loadSidebarTableSearchIndex(parentNodeId);
+    // A missing persisted index (null) means this scope was never indexed, so
+    // only the currently loaded first page of children is searchable. That
+    // silently misses alphabetically-late tables (e.g. "T_Erp_Nc_SuPlan_List"
+    // for "erpncs") until an explicit index refresh happens. Build the index
+    // on the first search so results always cover the complete table set,
+    // matching the behavior of an explicit refresh.
+    const entries = await loadOrBuildSidebarTableSearchIndex(
+      () => store.loadSidebarTableSearchIndex(parentNodeId),
+      () => store.refreshSidebarTableSearchIndex(parentNodeId),
+      refresh,
+    );
     localTableSearchResults.value = { ...localTableSearchResults.value, [parentNodeId]: entries };
   } finally {
     if (focusRestore) restoreTableSearchInput(focusRestore);

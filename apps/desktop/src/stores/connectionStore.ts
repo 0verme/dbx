@@ -1855,7 +1855,12 @@ export const useConnectionStore = defineStore("connection", () => {
       catalog: options.node.catalog,
     });
     const tableNameFilter = effectiveTableNameFilterForNode(options.node, userTableNameFilter);
-    const fetchLimit = searchFilter ? options.pageSize : options.pageSize + 1;
+    // A search must never truncate the fuzzy result set to the first page: the
+    // target table can sort beyond it (e.g. "T_Erp_Nc_SuPlan_List" for
+    // "erpncs" in a large ERP schema), which silently drops it from the first
+    // search even though later, narrower queries succeed. Unfiltered loads
+    // keep the page+1 probe used for load-more detection.
+    const fetchLimit = searchFilter ? undefined : options.pageSize + 1;
     const fetchOffset = searchFilter ? undefined : options.offset;
     const tables = await loadCachedMetadataListPage<TableInfo[]>(
       metadataListCacheScope({
@@ -1964,7 +1969,9 @@ export const useConnectionStore = defineStore("connection", () => {
       schema: options.effectiveSchema ?? options.querySchema,
       nodeKind: "simple-tables",
     });
-    const fetchLimit = searchFilter ? options.pageSize : options.pageSize + 1;
+    // A search must never truncate the fuzzy result set to the first page (see
+    // loadPagedTableGroupChildren); unfiltered loads keep the page+1 probe.
+    const fetchLimit = searchFilter ? undefined : options.pageSize + 1;
     const fetchOffset = searchFilter ? undefined : options.offset;
     const tables = await loadCachedMetadataListPage<TableInfo[]>(
       metadataListCacheScope({
