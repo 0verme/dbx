@@ -118,7 +118,7 @@ describe("queryStore multi-source result column comments", () => {
     expect(listObjects).not.toHaveBeenCalled();
   });
 
-  it("merges column comments from every JOIN source table onto the non-editable result", async () => {
+  it("stores per-ordinal comments and source identity for every JOIN source column", async () => {
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
     const tabId = store.createTab("mysql-1", "app", "Query");
@@ -133,16 +133,202 @@ describe("queryStore multi-source result column comments", () => {
     expect(tab.queryEditabilityReason).toBe("complex-source");
     expect(tab.querySourceColumns).toBeUndefined();
 
-    // Comments from both sources are merged; the first source wins on name clashes.
-    expect(tab.resultColumnComments).toEqual({
-      id: "订单ID",
-      user_id: "下单用户",
-      amount: "订单金额",
-      name: "用户名",
-    });
+    // Comments are indexed by result ordinal, so the second `id` (users.id)
+    // keeps its own comment instead of first-source-wins on the name.
+    expect(tab.resultColumnComments).toEqual(["订单ID", "下单用户", "用户ID", "用户名"]);
 
-    // Display-only mapping resolves each result column back to its source column.
-    expect(tab.queryDisplaySourceColumns).toEqual(["id", "user_id", "id", "name"]);
+    // The display mapping carries source identity per ordinal.
+    expect(tab.queryDisplaySourceColumns).toEqual([
+      { sourceKey: "a", sourceColumn: "id" },
+      { sourceKey: "a", sourceColumn: "user_id" },
+      { sourceKey: "b", sourceColumn: "id" },
+      { sourceKey: "b", sourceColumn: "name" },
+    ]);
+  });
+
+  it("resolves a uniquely qualified unqualified alias back to its physical column", async () => {
+    analyzeEditableQueryEditability.mockResolvedValue({
+      editable: true,
+      analysis: {
+        schema: undefined,
+        tableName: "orders",
+        tableAlias: "a",
+        selectStar: false,
+        columns: [
+          { sourceName: "id", sourceKey: "a", resultName: "id", expression: "a.id" },
+          { sourceName: "name", sourceKey: undefined, resultName: "username", expression: "name" },
+        ],
+        sources: [
+          { key: "a", tableName: "orders", alias: "a" },
+          { key: "b", tableName: "users", alias: "b" },
+        ],
+        multiSource: true,
+        allowInsertDelete: false,
+      },
+    });
+    executeMulti.mockResolvedValue([
+      {
+        columns: ["id", "username"],
+        rows: [[1, "Alice"]],
+        affected_rows: 0,
+        execution_time_ms: 1,
+      },
+    ]);
+
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("mysql-1", "app", "Query");
+
+    // `name` exists only in users across the joined sources, so the unqualified
+    // alias resolves back to users.name despite the binder never seeing a key.
+    await store.executeTabSql(tabId, "SELECT a.id, name AS username FROM orders a JOIN users b ON a.user_id = b.id");
+
+    const tab = store.tabs.find((item) => item.id === tabId)!;
+    await vi.waitFor(() => expect(tab.resultColumnComments).toBeDefined());
+    expect(tab.resultColumnComments).toEqual(["订单ID", "用户名"]);
+    expect(tab.queryDisplaySourceColumns).toEqual([
+      { sourceKey: "a", sourceColumn: "id" },
+      { sourceKey: "b", sourceColumn: "name" },
+    ]);
+  });
+
+  it("returns no comment for an ambiguous unqualified column shared by several sources", async () => {
+    analyzeEditableQueryEditability.mockResolvedValue({
+      editable: true,
+      analysis: {
+        schema: undefined,
+        tableName: "orders",
+        tableAlias: "a",
+        selectStar: false,
+        columns: [{ sourceName: "id", sourceKey: undefined, resultName: "id", expression: "id" }],
+        sources: [
+          { key: "a", tableName: "orders", alias: "a" },
+          { key: "b", tableName: "users", alias: "b" },
+        ],
+        multiSource: true,
+        allowInsertDelete: false,
+      },
+    });
+    executeMulti.mockResolvedValue([
+      {
+        columns: ["id"],
+        rows: [[1]],
+        affected_rows: 0,
+        execution_time_ms: 1,
+      },
+    ]);
+
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("mysql-1", "app", "Query");
+
+    // Both orders and users expose `id`; the unqualified reference is
+    // ambiguous, so the result column must not claim either table's comment.
+    await store.executeTabSql(tabId, "SELECT id FROM orders a JOIN users b ON a.user_id = b.id");
+
+    const tab = store.tabs.find((item) => item.id === tabId)!;
+    await vi.waitFor(() => expect(tab.resultColumnComments).toBeDefined());
+    expect(tab.resultColumnComments).toEqual([undefined]);
+    expect(tab.queryDisplaySourceColumns).toEqual([undefined]);
+  });
+
+  it("resolves quoted mixed-case identifiers exactly, per the database's rules", async () => {
+    getConnectionConfig.mockReturnValue({ id: "pg-1", name: "PostgreSQL", db_type: "postgres", database: "app", query_timeout_secs: 30 });
+    const quotedOrders = [column("id", "订单ID", true), column("ID", "大写ID"), column("user_id", "下单用户")];
+    const quotedUsers = [column("id", "用户ID", true), column("Name", "大写Name")];
+    getColumns.mockImplementation(async (_connectionId: string, _database: string, _schema: string, table: string) => (table === "orders" ? quotedOrders : quotedUsers));
+    analyzeEditableQueryEditability.mockResolvedValue({
+      editable: true,
+      analysis: {
+        schema: undefined,
+        tableName: "orders",
+        tableAlias: "a",
+        selectStar: false,
+        columns: [
+          { sourceName: "id", sourceNameQuoted: false, sourceKey: "a", resultName: "id", expression: "a.id" },
+          { sourceName: "ID", sourceNameQuoted: true, sourceKey: "a", resultName: "ID", expression: 'a."ID"' },
+          { sourceName: "Name", sourceNameQuoted: true, sourceKey: "b", resultName: "Name", expression: 'b."Name"' },
+        ],
+        sources: [
+          { key: "a", tableName: "orders", alias: "a" },
+          { key: "b", tableName: "users", alias: "b" },
+        ],
+        multiSource: true,
+        allowInsertDelete: false,
+      },
+    });
+    executeMulti.mockResolvedValue([
+      {
+        columns: ["id", "ID", "Name"],
+        rows: [[1, 9, "Alice"]],
+        affected_rows: 0,
+        execution_time_ms: 1,
+      },
+    ]);
+
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("pg-1", "app", "Query");
+
+    await store.executeTabSql(tabId, 'SELECT a.id, a."ID", b."Name" FROM orders a JOIN users b ON a.user_id = b.id');
+
+    const tab = store.tabs.find((item) => item.id === tabId)!;
+    await vi.waitFor(() => expect(tab.resultColumnComments).toBeDefined());
+
+    // Quoted `"ID"` stays distinct from unquoted `id`; the global lower-casing
+    // of the previous map would have collapsed them.
+    expect(tab.resultColumnComments).toEqual(["订单ID", "大写ID", "大写Name"]);
+    expect(tab.queryDisplaySourceColumns).toEqual([
+      { sourceKey: "a", sourceColumn: "id" },
+      { sourceKey: "a", sourceColumn: "ID" },
+      { sourceKey: "b", sourceColumn: "Name" },
+    ]);
+  });
+
+  it("keeps duplicate result column names resolved in projection order", async () => {
+    analyzeEditableQueryEditability.mockResolvedValue({
+      editable: true,
+      analysis: {
+        schema: undefined,
+        tableName: "orders",
+        tableAlias: "a",
+        selectStar: false,
+        columns: [
+          { sourceName: "id", sourceKey: "a", resultName: "id", expression: "a.id" },
+          { sourceName: "id", sourceKey: "b", resultName: "id", expression: "b.id" },
+        ],
+        sources: [
+          { key: "a", tableName: "orders", alias: "a" },
+          { key: "b", tableName: "users", alias: "b" },
+        ],
+        multiSource: true,
+        allowInsertDelete: false,
+      },
+    });
+    executeMulti.mockResolvedValue([
+      {
+        columns: ["id", "id_1"],
+        rows: [[1, 7]],
+        affected_rows: 0,
+        execution_time_ms: 1,
+      },
+    ]);
+
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("mysql-1", "app", "Query");
+
+    // The driver renames the second `id` to `id_1`; ordinal mapping still
+    // resolves column #1 to users.id instead of failing to match by name.
+    await store.executeTabSql(tabId, "SELECT a.id, b.id FROM orders a JOIN users b ON a.user_id = b.id");
+
+    const tab = store.tabs.find((item) => item.id === tabId)!;
+    await vi.waitFor(() => expect(tab.resultColumnComments).toBeDefined());
+    expect(tab.resultColumnComments).toEqual(["订单ID", "用户ID"]);
+    expect(tab.queryDisplaySourceColumns).toEqual([
+      { sourceKey: "a", sourceColumn: "id" },
+      { sourceKey: "b", sourceColumn: "id" },
+    ]);
   });
 
   it("keeps single-source results free of multi-source comment fields", async () => {

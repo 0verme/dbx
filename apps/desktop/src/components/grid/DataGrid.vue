@@ -71,7 +71,7 @@ import DataGridTextFilterWorkbench from "@/components/grid/DataGridTextFilterWor
 import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import EnumCellEditor from "@/components/grid/EnumCellEditor.vue";
 import DataGridReadonlyTextSelection from "@/components/grid/DataGridReadonlyTextSelection.vue";
-import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo, TableInfoTab } from "@/types/database";
+import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo, TableInfoTab, QueryResultSourceColumnRef } from "@/types/database";
 import { isQueryExecutionErrorResult } from "@/lib/query/queryResultError";
 import { tableObjectSourceKind } from "@/lib/table/tableObjectSourceKind";
 import { tableColumnDefaultDisplayValue } from "@/lib/table/tableColumnDefaultPresentation";
@@ -336,18 +336,21 @@ interface DataGridProps {
   autoTransposeSingleRow?: boolean;
   sourceColumns?: Array<string | undefined>;
   /**
-   * Column comments merged from every source table of a multi-source query
-   * (e.g. JOIN). Populated even when the result is not editable, so joined
-   * results still show comments. Keyed by physical column name (and its
-   * lower-cased form), same keys as the `tableMeta`-derived map.
+   * Column comments for a multi-source query result (e.g. JOIN), indexed by
+   * result-column ordinal (projection order). Populated even when the result is
+   * not editable, so joined results still show comments. `undefined` for a
+   * column that cannot be resolved back to exactly one base column (ambiguous
+   * or computed) — the grid shows no comment instead of a wrong one.
    */
-  resultColumnComments?: Record<string, string>;
+  resultColumnComments?: Array<string | undefined>;
   /**
-   * Display-only result-column -> source-column mapping for multi-source
-   * results that are not editable. Used to resolve column comments precisely;
-   * never used for row identity or editing.
+   * Display-only result-column -> source mapping for multi-source results,
+   * indexed by result-column ordinal; each entry carries the source identity
+   * (sourceKey + canonical source column name). Used to resolve column
+   * comments per source instead of first-source-wins; never used for row
+   * identity or editing.
    */
-  queryDisplaySourceColumns?: Array<string | undefined>;
+  queryDisplaySourceColumns?: Array<QueryResultSourceColumnRef | undefined>;
   initialWhereInput?: string;
   initialOrderByInput?: string;
   sortColumn?: string;
@@ -552,11 +555,6 @@ const columnCommentMap = computed(() => {
       if (!map.has(normalizedName)) map.set(normalizedName, col.comment);
     }
   }
-  if (props.resultColumnComments) {
-    for (const [name, comment] of Object.entries(props.resultColumnComments)) {
-      if (comment && !map.has(name)) map.set(name, comment);
-    }
-  }
   return map;
 });
 const dataGridTopbarWidth = ref(0);
@@ -593,9 +591,12 @@ const readonlyTextCell = ref<{
 } | null>(null);
 
 function resolvedColumnComment(column: string, actualColIdx: number): string | undefined {
-  const displaySource = props.queryDisplaySourceColumns?.[actualColIdx];
-  const sourceName = displaySource ?? props.sourceColumns?.[actualColIdx];
-  return dataGridColumnCommentFor(columnCommentMap.value, column, sourceName);
+  // Multi-source results resolve comments per result ordinal; ambiguous or
+  // unresolved columns yield undefined instead of falling back to a
+  // first-source-wins name map.
+  const ordinalComments = props.resultColumnComments;
+  if (ordinalComments) return ordinalComments[actualColIdx];
+  return dataGridColumnCommentFor(columnCommentMap.value, column, props.sourceColumns?.[actualColIdx]);
 }
 
 function headerColumnComment(column: string, actualColIdx: number): string {
@@ -2053,8 +2054,9 @@ const allColumnTypeVisualKinds = computed(() => allColumnTypes.value.map((type) 
 const visibleColumnTypeVisualKinds = computed(() => visibleColumnIndexes.value.map((index) => allColumnTypeVisualKinds.value[index] ?? "unknown"));
 const visibleColumnComments = computed(() =>
   visibleColumnIndexes.value.map((index) => {
-    const displaySource = props.queryDisplaySourceColumns?.[index] ?? props.sourceColumns?.[index];
-    return dataGridColumnCommentFor(columnCommentMap.value, props.result.columns[index] ?? "", displaySource);
+    const ordinalComments = props.resultColumnComments;
+    if (ordinalComments) return ordinalComments[index];
+    return dataGridColumnCommentFor(columnCommentMap.value, props.result.columns[index] ?? "", props.sourceColumns?.[index]);
   }),
 );
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
