@@ -11,7 +11,7 @@ import PasswordInput from "@/components/ui/PasswordInput.vue";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { HelpTooltip, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import type { ConnectionConfig, ConnectionTestResult, DatabaseConnectionInfo, DatabaseType, HttpTunnelConfig, IdentifierCase, JdbcDriverInfo, JdbcLocalBundleInfo, JdbcMavenBundleInfo, ProxyTunnelConfig, SshConfigHostEntry, SshTunnelConfig, TransportLayerConfig } from "@/types/database";
@@ -5864,11 +5864,15 @@ function openExternalUrl(url: string) {
                   </div>
                   <div class="grid grid-cols-4 items-center gap-4">
                     <span />
-                    <label class="col-span-3 flex items-center gap-2 text-sm">
-                      <input v-model="form.save_password" type="checkbox" class="h-4 w-4 rounded border-border accent-primary" :aria-label="t('connection.savePassword')" />
-                      <span>{{ t("connection.savePassword") }}</span>
-                      <span class="text-xs text-muted-foreground">{{ t("connection.savePasswordHint") }}</span>
-                    </label>
+                    <div class="col-span-3 flex items-center gap-1.5 text-sm">
+                      <label class="flex items-center gap-2">
+                        <input v-model="form.save_password" type="checkbox" class="h-4 w-4 rounded border-border accent-primary" :aria-label="t('connection.savePassword')" />
+                        <span class="whitespace-nowrap">{{ t("connection.savePassword") }}</span>
+                      </label>
+                      <HelpTooltip :label="t('connection.savePassword')">
+                        {{ form.save_password ? t("connection.savePasswordHint") : t("connection.savePasswordSessionHint") }}
+                      </HelpTooltip>
+                    </div>
                   </div>
                   <div class="grid grid-cols-4 items-start gap-4">
                     <Label :class="connectionLabelTopClass">{{ t("connection.jdbcDriverPaths") }}</Label>
@@ -7041,11 +7045,15 @@ function openExternalUrl(url: string) {
 
                   <div class="grid grid-cols-4 items-center gap-4">
                     <span />
-                    <label class="col-span-3 flex items-center gap-2 text-sm">
-                      <input v-model="form.save_password" type="checkbox" class="h-4 w-4 rounded border-border accent-primary" :aria-label="t('connection.savePassword')" />
-                      <span>{{ t("connection.savePassword") }}</span>
-                      <span class="text-xs text-muted-foreground">{{ t("connection.savePasswordHint") }}</span>
-                    </label>
+                    <div class="col-span-3 flex items-center gap-1.5 text-sm">
+                      <label class="flex items-center gap-2">
+                        <input v-model="form.save_password" type="checkbox" class="h-4 w-4 rounded border-border accent-primary" :aria-label="t('connection.savePassword')" />
+                        <span class="whitespace-nowrap">{{ t("connection.savePassword") }}</span>
+                      </label>
+                      <HelpTooltip :label="t('connection.savePassword')">
+                        {{ form.save_password ? t("connection.savePasswordHint") : t("connection.savePasswordSessionHint") }}
+                      </HelpTooltip>
+                    </div>
                   </div>
 
                   <div v-if="form.db_type !== 'hbase' && form.db_type !== 'meilisearch'" class="grid grid-cols-4 items-center gap-4">
