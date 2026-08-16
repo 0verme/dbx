@@ -7,7 +7,7 @@ mod util;
 
 use std::{
   borrow::Cow, cell::RefCell, collections::HashSet, ffi::OsStr, fmt::Write, fs,
-  os::windows::ffi::OsStrExt, path::PathBuf, rc::Rc, sync::{atomic::{AtomicU32, AtomicU64, Ordering}, mpsc},
+  os::windows::ffi::OsStrExt, path::PathBuf, rc::Rc, sync::mpsc,
 };
 
 use dpi::{PhysicalPosition, PhysicalSize};
@@ -31,7 +31,7 @@ use super::Theme;
 use crate::{
   custom_protocol_workaround, proxy::ProxyConfig, Error, MemoryUsageLevel, NewWindowFeatures,
   NewWindowOpener, NewWindowResponse, PageLoadEvent, Rect, RequestAsyncResponder, Result,
-  WebViewAttributes, RGBA,
+  WebView2ProcessFailedInfo, WebView2ProcessFailedKind, WebViewAttributes, RGBA,
 };
 
 type EventRegistrationToken = i64;
@@ -497,61 +497,25 @@ impl InnerWebView {
       controller.add_AcceleratorKeyPressed(&accelerator_key_handler, &mut token)?;
     }
 
-    // Auto-recover the webview when a WebView2 child process fails while the
-    // host process stays alive: losing the renderer/GPU process turns the
-    // window black with nothing to repaint it (reproduced after an overnight
-    // idle session, see t8y2/dbx#6362). Recovery is layered by process kind
-    // (a browser exit is fatal and needs the environment recreated, GPU exits
-    // are self-healed by WebView2, subframe exits cannot be replayed per-frame
-    // with the current bindings) and bounded (cooldown + max reload budget).
-    // Every event is logged with full forensics so the real kind/reason on
-    // affected Windows devices can be collected — the issue only proves the
-    // process group disappeared, not which event actually fired.
+    // Detect WebView2 child-process failures while the host process stays
+    // alive: losing the renderer/GPU process group turns the window black
+    // with nothing to repaint it (reproduced after an overnight idle session,
+    // see t8y2/dbx#6362). wry only detects and constructs a structured
+    // [`WebView2ProcessFailedInfo`] signal here — the application layer
+    // (registered via [`crate::set_webview2_process_failed_callback`])
+    // decides recovery (reload / restart / log-only), so wry never learns
+    // about application state. Every event is also logged locally with full
+    // forensics so the real kind/reason on affected Windows devices can be
+    // collected — the issue only proves the process group disappeared, not
+    // which event actually fired.
     unsafe {
-      let reload_webview = webview.clone();
-      let rate_limiter = std::sync::Arc::new(ReloadRateLimiter::new());
       let process_failed_handler = ProcessFailedEventHandler::create(Box::new(
         move |_, args| {
           let Some(args) = args else { return Ok(()) };
-          // Always record the failure first; this doubles as the forensics
-          // channel for the affected Windows hardware.
-          let description = record_process_failure(&args);
-          let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
-          args.ProcessFailedKind(&mut kind)?;
-          if recovery_action_for(kind) != RecoveryAction::Reload {
-            // BROWSER_PROCESS_EXITED is fatal: every control is closed and the
-            // environment must be recreated, Reload() is ineffective and
-            // rebuilding the controller from inside this callback is unsafe.
-            // GPU exits are restarted by WebView2 on its own; subframe exits
-            // would need a per-frame recovery this layer cannot perform.
-            // Nothing to reload — the failure was logged above.
-            return Ok(());
-          }
-          let now = now_unix_millis();
-          match rate_limiter.try_reload(now) {
-            RateLimitDecision::Allow => {
-              // Reload on the main thread via the existing dispatcher.
-              let reload_webview = reload_webview.clone();
-              // The closure runs later on the window message loop, outside the
-              // `unsafe` block it is defined in; `unused_unsafe` cannot see the
-              // delayed execution and flags the required block as redundant.
-              Self::dispatch_handler(hwnd, #[allow(unused_unsafe)] move || unsafe {
-                let _ = reload_webview.Reload();
-              });
-            }
-            RateLimitDecision::Throttled => {
-              // A reload already happened inside the cooldown window; skip.
-            }
-            RateLimitDecision::Exhausted => {
-              let message = format!(
-                "webview2 auto-recovery stopped after {} reloads; reloading disabled for this session, please restart the app ({description})",
-                ReloadRateLimiter::MAX_AUTO_RELOADS
-              );
-              #[cfg(feature = "tracing")]
-              tracing::error!("{message}");
-              #[cfg(debug_assertions)]
-              eprintln!("{message}");
-            }
+          let info = process_failed_info(&args);
+          record_process_failure(&info);
+          if let Some(callback) = webview2_process_failed_callback() {
+            callback(&info);
           }
           Ok(())
         },
@@ -1952,118 +1916,83 @@ fn configured_browser_executable_folder() -> Option<HSTRING> {
   browser_executable_folder_from(folder.as_deref(), cfg!(target_vendor = "win7"))
 }
 
-/// Recovery strategy for a WebView2 child-process failure, layered by kind.
+/// Builds a structured [`WebView2ProcessFailedInfo`] from the WebView2 event
+/// args.
 ///
-/// Microsoft's guidance on process-related events
-/// (<https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/process-related-events>)
-/// is that only renderer failures can be recovered with a reload: a browser
-/// process exit is fatal (every control is closed and the environment must be
-/// recreated), while GPU process exits are restarted automatically by
-/// WebView2.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RecoveryAction {
-  /// Reload the webview, bounded by [`ReloadRateLimiter`].
-  Reload,
-  /// No automatic recovery: WebView2 self-heals (GPU), the failure needs a
-  /// finer-grained recovery this layer cannot perform (a subframe renderer —
-  /// the vendored webview2-com bindings expose no `GetFrameById` / frame
-  /// `Reload`, and reloading the whole SPA would discard unsaved SQL and
-  /// editor state), or the kind is not recoverable at all.
-  None,
-  /// The browser process exited: every WebView2 control was closed and the
-  /// environment is gone. A plain `Reload()` is ineffective in this state and
-  /// recreating the controller from inside this callback is not safe, so wry
-  /// does not pretend to recover: the failure is logged with full
-  /// kind/reason/exit-code forensics and left to the upper layer (app
-  /// restart / webview recreation).
-  Fatal,
+/// Kind is always present; reason / exit code / process description /
+/// affected frames only exist on the v2 event args (`ICoreWebView2ProcessFailedEventArgs2`).
+fn process_failed_info(args: &ICoreWebView2ProcessFailedEventArgs) -> WebView2ProcessFailedInfo {
+  let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+  let _ = unsafe { args.ProcessFailedKind(&mut kind) };
+  let mut info = WebView2ProcessFailedInfo {
+    kind: process_failed_kind(kind),
+    reason: None,
+    exit_code: None,
+    process_description: None,
+    affected_frames: 0,
+  };
+  if let Ok(args2) = args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
+    let mut reason = COREWEBVIEW2_PROCESS_FAILED_REASON::default();
+    let mut exit_code = 0i32;
+    let mut process = PWSTR::null();
+    let _ = unsafe { args2.Reason(&mut reason) };
+    let _ = unsafe { args2.ExitCode(&mut exit_code) };
+    let _ = unsafe { args2.ProcessDescription(&mut process) };
+    info.reason = Some(process_failed_reason_name(reason).to_string());
+    info.exit_code = Some(exit_code);
+    info.process_description = Some(take_pwstr(process));
+    if let Ok(collection) = unsafe { args2.FrameInfosForFailedProcess() } {
+      if let Ok(iterator) = unsafe { collection.GetIterator() } {
+        let mut has_current = BOOL::default();
+        while unsafe { iterator.HasCurrent(&mut has_current) }.is_ok() && has_current.as_bool() {
+          info.affected_frames += 1;
+          let _ = unsafe { iterator.MoveNext(&mut BOOL::default()) };
+        }
+      }
+    }
+  }
+  info
 }
 
-fn recovery_action_for(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> RecoveryAction {
+/// Maps a raw [`COREWEBVIEW2_PROCESS_FAILED_KIND`] to the public kind.
+fn process_failed_kind(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> WebView2ProcessFailedKind {
   match kind {
-    COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => RecoveryAction::Fatal,
-    COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
-    | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE => RecoveryAction::Reload,
-    // GPU_PROCESS_EXITED is restarted by WebView2 on its own; a subframe
-    // renderer exit cannot be recovered per-frame with the current bindings.
-    _ => RecoveryAction::None,
+    COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => WebView2ProcessFailedKind::Browser,
+    COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED => WebView2ProcessFailedKind::Renderer,
+    COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE => {
+      WebView2ProcessFailedKind::RendererUnresponsive
+    }
+    COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED => {
+      WebView2ProcessFailedKind::FrameRenderer
+    }
+    COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED => WebView2ProcessFailedKind::Gpu,
+    COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED => WebView2ProcessFailedKind::Utility,
+    COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED => {
+      WebView2ProcessFailedKind::SandboxHelper
+    }
+    COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED => {
+      WebView2ProcessFailedKind::PpapiPlugin
+    }
+    COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED => {
+      WebView2ProcessFailedKind::PpapiBroker
+    }
+    _ => WebView2ProcessFailedKind::Unknown,
   }
 }
 
-/// Bounded auto-recovery state for renderer process failures.
-///
-/// A cooldown window deduplicates the burst of events a crash loop produces
-/// and a maximum reload budget stops the automatic recovery for the rest of
-/// the session once it is spent, escalating to the user instead of reloading
-/// forever.
-struct ReloadRateLimiter {
-  /// Unix millis of the last automatic reload; `0` = never reloaded.
-  last_reload_at: AtomicU64,
-  /// Cumulative number of automatic reloads for this webview session.
-  reload_count: AtomicU32,
-}
-
-/// Decision returned by [`ReloadRateLimiter::try_reload`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RateLimitDecision {
-  /// Proceed with the reload.
-  Allow,
-  /// A reload already happened inside the cooldown window; skip this event.
-  Throttled,
-  /// The retry budget is spent; stop automatic recovery and escalate.
-  Exhausted,
-}
-
-impl ReloadRateLimiter {
-  /// Minimum gap between two automatic reloads.
-  const RELOAD_COOLDOWN_MS: u64 = 30_000;
-  /// Maximum number of automatic reloads per webview session. Once spent, the
-  /// webview stops reloading itself and the user is asked to restart.
-  const MAX_AUTO_RELOADS: u32 = 3;
-
-  fn new() -> Self {
-    Self {
-      last_reload_at: AtomicU64::new(0),
-      reload_count: AtomicU32::new(0),
-    }
-  }
-
-  fn try_reload(&self, now_ms: u64) -> RateLimitDecision {
-    let last = self.last_reload_at.load(Ordering::Relaxed);
-    if last != 0 && now_ms.saturating_sub(last) < Self::RELOAD_COOLDOWN_MS {
-      return RateLimitDecision::Throttled;
-    }
-    let count = self.reload_count.load(Ordering::Relaxed);
-    if count >= Self::MAX_AUTO_RELOADS {
-      return RateLimitDecision::Exhausted;
-    }
-    self.last_reload_at.store(now_ms, Ordering::Relaxed);
-    self.reload_count.store(count + 1, Ordering::Relaxed);
-    RateLimitDecision::Allow
-  }
-}
-
-fn now_unix_millis() -> u64 {
-  std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .map(|duration| duration.as_millis() as u64)
-    .unwrap_or(0)
-}
-
-/// Human-readable name for a [`COREWEBVIEW2_PROCESS_FAILED_KIND`].
-fn process_failed_kind_name(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> &'static str {
+/// Human-readable name for a [`WebView2ProcessFailedKind`].
+fn process_failed_kind_name(kind: WebView2ProcessFailedKind) -> &'static str {
   match kind {
-    COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => "browser",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED => "renderer",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE => "renderer_unresponsive",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED => "frame_renderer",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED => "utility",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED => "sandbox_helper",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED => "gpu",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED => "ppapi_plugin",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED => "ppapi_broker",
-    COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN_PROCESS_EXITED => "unknown",
-    _ => "unknown",
+    WebView2ProcessFailedKind::Browser => "browser",
+    WebView2ProcessFailedKind::Renderer => "renderer",
+    WebView2ProcessFailedKind::RendererUnresponsive => "renderer_unresponsive",
+    WebView2ProcessFailedKind::FrameRenderer => "frame_renderer",
+    WebView2ProcessFailedKind::Gpu => "gpu",
+    WebView2ProcessFailedKind::Utility => "utility",
+    WebView2ProcessFailedKind::SandboxHelper => "sandbox_helper",
+    WebView2ProcessFailedKind::PpapiPlugin => "ppapi_plugin",
+    WebView2ProcessFailedKind::PpapiBroker => "ppapi_broker",
+    WebView2ProcessFailedKind::Unknown => "unknown",
   }
 }
 
@@ -2081,6 +2010,15 @@ fn process_failed_reason_name(reason: COREWEBVIEW2_PROCESS_FAILED_REASON) -> &'s
   }
 }
 
+/// Returns the application-level ProcessFailed callback, if one was
+/// registered via [`crate::set_webview2_process_failed_callback`].
+fn webview2_process_failed_callback() -> Option<crate::WebView2ProcessFailedCallback> {
+  crate::WEBVIEW2_PROCESS_FAILED_CALLBACK
+    .read()
+    .ok()
+    .and_then(|callback| callback.clone())
+}
+
 /// Emits a diagnostic line for every ProcessFailed event.
 ///
 /// issue t8y2/dbx#6362 only proves the WebView2 process group disappeared,
@@ -2088,58 +2026,19 @@ fn process_failed_reason_name(reason: COREWEBVIEW2_PROCESS_FAILED_REASON) -> &'s
 /// recorded with its kind / reason / exit code / process description /
 /// affected-frame info. This is the forensics channel for confirming the real
 /// failure on Windows hardware.
-fn record_process_failure(args: &ICoreWebView2ProcessFailedEventArgs) -> String {
-  let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
-  let _ = unsafe { args.ProcessFailedKind(&mut kind) };
-  let mut description = format!(
-    "webview2 process failed kind={} (value {})",
-    process_failed_kind_name(kind),
-    kind.0
+fn record_process_failure(info: &WebView2ProcessFailedInfo) {
+  let description = format!(
+    "webview2 process failed kind={} reason={} exit_code={} process={} frames={}",
+    process_failed_kind_name(info.kind),
+    info.reason.as_deref().unwrap_or("-"),
+    info.exit_code.map(|code| code.to_string()).unwrap_or_else(|| "-".into()),
+    info.process_description.as_deref().unwrap_or("-"),
+    info.affected_frames,
   );
-  // Kind is always present; reason / exit code / process description /
-  // affected frames only exist on the v2 event args.
-  if let Ok(args2) = args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
-    let mut reason = COREWEBVIEW2_PROCESS_FAILED_REASON::default();
-    let mut exit_code = 0i32;
-    let mut process = PWSTR::null();
-    let _ = unsafe { args2.Reason(&mut reason) };
-    let _ = unsafe { args2.ExitCode(&mut exit_code) };
-    let _ = unsafe { args2.ProcessDescription(&mut process) };
-    let _ = write!(
-      description,
-      " reason={} (value {}) exit_code={} process={}",
-      process_failed_reason_name(reason),
-      reason.0,
-      exit_code,
-      take_pwstr(process)
-    );
-    let mut frames = 0usize;
-    let mut first_frame_name = String::from("-");
-    if let Ok(collection) = unsafe { args2.FrameInfosForFailedProcess() } {
-      if let Ok(iterator) = unsafe { collection.GetIterator() } {
-        let mut has_current = BOOL::default();
-        let mut first = true;
-        while unsafe { iterator.HasCurrent(&mut has_current) }.is_ok() && has_current.as_bool() {
-          frames += 1;
-          if first {
-            if let Ok(frame) = unsafe { iterator.GetCurrent() } {
-              let mut name = PWSTR::null();
-              let _ = unsafe { frame.Name(&mut name) };
-              first_frame_name = take_pwstr(name);
-            }
-            first = false;
-          }
-          let _ = unsafe { iterator.MoveNext(&mut BOOL::default()) };
-        }
-      }
-    }
-    let _ = write!(description, " frames={frames} first_frame={first_frame_name}");
-  }
   #[cfg(feature = "tracing")]
   tracing::error!("{description}");
   #[cfg(debug_assertions)]
   eprintln!("{description}");
-  description
 }
 
 fn browser_executable_folder_from(
@@ -2179,103 +2078,68 @@ mod tests {
   }
 
   #[test]
-  fn recovery_action_is_layered_by_process_kind() {
+  fn process_failed_kind_maps_all_raw_kinds() {
     assert_eq!(
-      recovery_action_for(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED),
-      RecoveryAction::Fatal
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED),
+      WebView2ProcessFailedKind::Browser
     );
     assert_eq!(
-      recovery_action_for(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED),
-      RecoveryAction::Reload
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED),
+      WebView2ProcessFailedKind::Renderer
     );
     assert_eq!(
-      recovery_action_for(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE),
-      RecoveryAction::Reload
-    );
-    // GPU exits are restarted by WebView2 itself; a subframe renderer exit
-    // cannot be recovered per-frame by this layer (no GetFrameById / frame
-    // Reload in the vendored bindings) without discarding unsaved state.
-    assert_eq!(
-      recovery_action_for(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED),
-      RecoveryAction::None
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE),
+      WebView2ProcessFailedKind::RendererUnresponsive
     );
     assert_eq!(
-      recovery_action_for(COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED),
-      RecoveryAction::None
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED),
+      WebView2ProcessFailedKind::FrameRenderer
     );
-    for kind in [
-      COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED,
-      COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED,
-      COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED,
-      COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED,
-      COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN_PROCESS_EXITED,
-    ] {
-      assert_eq!(recovery_action_for(kind), RecoveryAction::None);
-    }
-  }
-
-  #[test]
-  fn rate_limiter_allows_reload_outside_cooldown() {
-    let limiter = ReloadRateLimiter::new();
-    assert_eq!(limiter.try_reload(1_000), RateLimitDecision::Allow);
-    assert_eq!(limiter.try_reload(1_000), RateLimitDecision::Throttled);
-    // Cooldown elapsed -> a reload is allowed again; the budget is spent
-    // cumulatively across the session.
     assert_eq!(
-      limiter.try_reload(1_000 + ReloadRateLimiter::RELOAD_COOLDOWN_MS),
-      RateLimitDecision::Allow
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED),
+      WebView2ProcessFailedKind::Gpu
+    );
+    assert_eq!(
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED),
+      WebView2ProcessFailedKind::Utility
+    );
+    assert_eq!(
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED),
+      WebView2ProcessFailedKind::SandboxHelper
+    );
+    assert_eq!(
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED),
+      WebView2ProcessFailedKind::PpapiPlugin
+    );
+    assert_eq!(
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED),
+      WebView2ProcessFailedKind::PpapiBroker
+    );
+    assert_eq!(
+      process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN_PROCESS_EXITED),
+      WebView2ProcessFailedKind::Unknown
     );
   }
 
   #[test]
-  fn rate_limiter_throttles_event_bursts_inside_cooldown() {
-    let limiter = ReloadRateLimiter::new();
-    assert_eq!(limiter.try_reload(100), RateLimitDecision::Allow);
-    for now in [101, 5_000, 29_999] {
-      assert_eq!(limiter.try_reload(now), RateLimitDecision::Throttled);
-    }
-  }
-
-  #[test]
-  fn rate_limiter_stops_after_max_reloads() {
-    let limiter = ReloadRateLimiter::new();
-    let mut now = 0u64;
-    for _ in 1..=ReloadRateLimiter::MAX_AUTO_RELOADS {
-      assert_eq!(limiter.try_reload(now), RateLimitDecision::Allow);
-      // Each reload consumes the whole cooldown window.
-      now += ReloadRateLimiter::RELOAD_COOLDOWN_MS;
-    }
-    // Budget spent: even after another cooldown window the automatic recovery
-    // stays disabled for the session.
-    assert_eq!(limiter.try_reload(now), RateLimitDecision::Exhausted);
+  fn process_failed_kind_and_reason_names_are_stable() {
     assert_eq!(
-      limiter.try_reload(now + ReloadRateLimiter::RELOAD_COOLDOWN_MS),
-      RateLimitDecision::Exhausted
-    );
-  }
-
-  #[test]
-  fn process_failure_kind_and_reason_names_are_stable() {
-    assert_eq!(
-      process_failed_kind_name(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED),
+      process_failed_kind_name(WebView2ProcessFailedKind::Browser),
       "browser"
     );
     assert_eq!(
-      process_failed_kind_name(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED),
+      process_failed_kind_name(WebView2ProcessFailedKind::Renderer),
       "renderer"
     );
     assert_eq!(
-      process_failed_kind_name(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE),
+      process_failed_kind_name(WebView2ProcessFailedKind::RendererUnresponsive),
       "renderer_unresponsive"
     );
     assert_eq!(
-      process_failed_kind_name(COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED),
+      process_failed_kind_name(WebView2ProcessFailedKind::FrameRenderer),
       "frame_renderer"
     );
-    assert_eq!(
-      process_failed_kind_name(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED),
-      "gpu"
-    );
+    assert_eq!(process_failed_kind_name(WebView2ProcessFailedKind::Gpu), "gpu");
     assert_eq!(
       process_failed_reason_name(COREWEBVIEW2_PROCESS_FAILED_REASON_CRASHED),
       "crashed"
