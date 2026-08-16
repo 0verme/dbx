@@ -96,3 +96,8 @@ export function createSidebarTableSearchDebouncer(delayMs = 250): SidebarTableSe
     },
   };
 }
+
+export function scheduleExclusiveSidebarTableSearchDebounce(key: string, active: SidebarTableSearchDebouncer, inactive: SidebarTableSearchDebouncer, run: () => void): void {
+  inactive.cancel(key);
+  active.schedule(key, run);
+}

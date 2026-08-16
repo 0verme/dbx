@@ -12,7 +12,7 @@
 // and never for an empty (cleared) query.
 import { expect, test, vi } from "vitest";
 import assert from "node:assert/strict";
-import { createSidebarTableSearchDebouncer, loadOrBuildSidebarTableSearchIndex } from "../../apps/desktop/src/lib/sidebar/sidebarTableSearchIndex.ts";
+import { createSidebarTableSearchDebouncer, loadOrBuildSidebarTableSearchIndex, scheduleExclusiveSidebarTableSearchDebounce } from "../../apps/desktop/src/lib/sidebar/sidebarTableSearchIndex.ts";
 import type { TableInfo } from "../../apps/desktop/src/types/database.ts";
 
 const TARGET: TableInfo = { name: "T_Erp_Nc_SuPlan_List", table_type: "TABLE", comment: null };
@@ -173,6 +173,27 @@ test("cancelAll drops every pending schedule", () => {
     vi.advanceTimersByTime(1000);
     expect(run).not.toHaveBeenCalled();
     expect(debouncer.pendingCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("switching search modes cancels the pending debounce from the other mode", () => {
+  vi.useFakeTimers();
+  try {
+    const local = createSidebarTableSearchDebouncer(250);
+    const remote = createSidebarTableSearchDebouncer(250);
+    const localRun = vi.fn();
+    const remoteRun = vi.fn();
+
+    scheduleExclusiveSidebarTableSearchDebounce("parent-1", local, remote, localRun);
+    scheduleExclusiveSidebarTableSearchDebounce("parent-1", remote, local, remoteRun);
+    vi.advanceTimersByTime(250);
+
+    expect(localRun).not.toHaveBeenCalled();
+    expect(remoteRun).toHaveBeenCalledTimes(1);
+    expect(local.pendingCount()).toBe(0);
+    expect(remote.pendingCount()).toBe(0);
   } finally {
     vi.useRealTimers();
   }
