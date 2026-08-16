@@ -125,7 +125,7 @@ import ChangelogPanel from "@/components/settings/ChangelogPanel.vue";
 import McpConnectionScopePicker from "@/components/settings/McpConnectionScopePicker.vue";
 import ScheduledDatabaseBackupSettings from "@/components/backup/ScheduledDatabaseBackupSettings.vue";
 import SqlFormatterSettingsPanel from "./SqlFormatterSettingsPanel.vue";
-import { APP_THEME_PALETTES, type AppCornerStyle, type AppThemeAppearance, type AppThemeMode, type AppThemePalette } from "@/lib/app/appTheme";
+import { APP_CUSTOM_UI_COLOR_DEFS, APP_THEME_PALETTES, type AppCornerStyle, type AppCustomUiColors, type AppThemeAppearance, type AppThemeMode, type AppThemePalette } from "@/lib/app/appTheme";
 import { editorSettingsDraftChanged, editorSettingsDraftFromSettings, editorSettingsPatchFromDraft, normalizeQueryResultMaxRowsDraft, normalizeTableOpenPageSizeDraft, type EditorSettingsDraft } from "@/lib/settings/editorSettingsDraft";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
@@ -152,7 +152,11 @@ const connectionStore = useConnectionStore();
 const savedSqlStore = useSavedSqlStore();
 const promptTemplateStore = usePromptTemplateStore();
 const tunnelProfileStore = useTunnelProfileStore();
-const { isDark, themeMode, themePalette, cornerStyle, setThemeMode, setThemePalette, setCornerStyle } = useTheme();
+const { isDark, themeMode, themePalette, activeCustomUiColors, cornerStyle, setThemeMode, setThemePalette, setCustomUiColors, resetCustomUiColors, setCornerStyle } = useTheme();
+
+function updateCustomUiColor(key: keyof AppCustomUiColors, value: string) {
+  setCustomUiColors({ ...activeCustomUiColors.value, [key]: value });
+}
 
 const appThemePaletteOptions = computed(
   (): Array<{ value: AppThemePalette; label: string; previewColor: string }> =>
@@ -4157,29 +4161,36 @@ onUnmounted(() => {
                   <div class="flex h-9 items-end">
                     <Label class="whitespace-normal leading-tight">{{ t("settings.colorTheme") }}</Label>
                   </div>
-                  <Select :model-value="themePalette" @update:model-value="(value) => setThemePalette(value as AppThemePalette)">
-                    <SelectTrigger class="h-8 w-full gap-1">
-                      <SelectValue :placeholder="t('settings.selectColorTheme')">
-                        <span v-if="selectedThemePaletteOption" class="flex min-w-0 items-center gap-1">
-                          <span
-                            class="h-3 w-3 shrink-0 rounded-full border border-border shadow-xs"
-                            :style="{
-                              background: selectedThemePaletteOption.previewColor,
-                            }"
-                          />
-                          <span class="truncate">{{ selectedThemePaletteOption.label }}</span>
-                        </span>
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem v-for="option in appThemePaletteOptions" :key="option.value" :value="option.value">
-                        <div class="flex items-center gap-2">
-                          <span class="h-3 w-3 rounded-full border border-border shadow-xs" :style="{ background: option.previewColor }" />
-                          {{ option.label }}
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div class="flex items-center gap-2">
+                    <div class="min-w-0 flex-1">
+                      <Select :model-value="themePalette" @update:model-value="(value) => setThemePalette(value as AppThemePalette)">
+                        <SelectTrigger class="h-8 w-full gap-1">
+                          <SelectValue :placeholder="t('settings.selectColorTheme')">
+                            <span v-if="selectedThemePaletteOption" class="flex min-w-0 items-center gap-1">
+                              <span
+                                class="h-3 w-3 shrink-0 rounded-full border border-border shadow-xs"
+                                :style="{
+                                  background: selectedThemePaletteOption.previewColor,
+                                }"
+                              />
+                              <span class="truncate">{{ selectedThemePaletteOption.label }}</span>
+                            </span>
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem v-for="option in appThemePaletteOptions" :key="option.value" :value="option.value">
+                            <div class="flex items-center gap-2">
+                              <span class="h-3 w-3 rounded-full border border-border shadow-xs" :style="{ background: option.previewColor }" />
+                              {{ option.label }}
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button v-if="themePalette === 'custom'" type="button" variant="outline" size="sm" class="h-8 shrink-0" @click="resetCustomUiColors">
+                      {{ t("settings.customUiReset") }}
+                    </Button>
+                  </div>
                 </div>
 
                 <div class="settings-appearance-field min-w-0">
@@ -4208,6 +4219,20 @@ onUnmounted(() => {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <template v-if="themePalette === 'custom'">
+                  <div class="settings-appearance-field min-w-0">
+                    <div class="flex h-9 items-center gap-1">
+                      <Label class="truncate text-xs text-muted-foreground">{{ isDark ? t("settings.customUiEditingDark") : t("settings.customUiEditingLight") }}</Label>
+                    </div>
+                  </div>
+                  <div v-for="def in APP_CUSTOM_UI_COLOR_DEFS" :key="def.key" class="settings-appearance-field min-w-0">
+                    <div class="flex h-9 items-center justify-between gap-2">
+                      <Label :for="`custom-ui-${def.key}`" class="truncate text-xs text-muted-foreground">{{ t(def.labelKey) }}</Label>
+                      <input :id="`custom-ui-${def.key}`" type="color" class="h-6 w-10 shrink-0 cursor-pointer rounded border border-border bg-transparent p-0.5" :value="activeCustomUiColors[def.key]" @input="updateCustomUiColor(def.key, ($event.target as HTMLInputElement).value)" />
+                    </div>
+                  </div>
+                </template>
               </div>
 
               <div class="grid gap-3 md:grid-cols-2">
