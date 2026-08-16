@@ -4853,7 +4853,7 @@ fn postgres_partitioned_parent_plain_index_unchanged() {
 #[test]
 fn postgres_partitioned_option_defaults_to_false() {
     let json = serde_json::json!({
-        "databaseType": "Postgres",
+        "databaseType": "postgres",
         "schema": "public",
         "tableName": "users",
         "columns": [],

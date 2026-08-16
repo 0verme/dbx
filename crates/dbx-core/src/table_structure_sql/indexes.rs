@@ -199,7 +199,12 @@ pub(super) fn build_create_index_statements(
     // the caller's real database type advertises the capability, so a stale or
     // forged `concurrently: true` from another engine is ignored and the original
     // SQL is generated unchanged.
-    let requested_concurrently = index.concurrently && concurrently_supported && dialect == StructureDialect::Postgres;
+    // A concurrent rebuild of an existing index is only safe via `DROP INDEX
+    // CONCURRENTLY` + `CREATE INDEX CONCURRENTLY`, which this editor does not
+    // implement (see the Plan A scope guard in build_index_sql), so existing
+    // indexes are never rebuilt concurrently even if a stale/forged flag is set.
+    let requested_concurrently =
+        index.concurrently && concurrently_supported && dialect == StructureDialect::Postgres && index.original.is_none();
     // PostgreSQL rejects concurrent index builds on partitioned parent tables
     // (see https://www.postgresql.org/docs/current/ddl-partitioning.html); the
     // supported approach is to build child indexes concurrently and attach them,
