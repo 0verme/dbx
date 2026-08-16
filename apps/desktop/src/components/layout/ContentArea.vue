@@ -94,6 +94,7 @@ const ElasticsearchJsonResponsePanel = defineAsyncComponent(() => import("@/comp
 const MqAdminConsole = defineAsyncComponent(() => import("@/components/mq/MqAdminConsole.vue"));
 const MqttAdminConsole = defineAsyncComponent(() => import("@/components/mqtt/MqttAdminConsole.vue"));
 const NacosAdminConsole = defineAsyncComponent(() => import("@/components/nacos/NacosAdminConsole.vue"));
+const NacosAccessControlConsole = defineAsyncComponent(() => import("@/components/nacos/NacosAccessControlConsole.vue"));
 const NacosDashboard = defineAsyncComponent(() => import("@/components/nacos/NacosDashboard.vue"));
 const DatabaseBrowser = defineAsyncComponent(() => import("@/components/objects/DatabaseBrowser.vue"));
 const ObjectBrowser = defineAsyncComponent(() => import("@/components/objects/ObjectBrowser.vue"));
@@ -2029,6 +2030,12 @@ defineExpose({ focusSearch, refreshData, refreshQueryEditorCompletionCache, hand
     <template v-else-if="activeTab.mode === 'etcd-access-control'">
       <div class="flex-1 min-h-0">
         <EtcdAccessControl :key="activeTab.id" :connection-id="activeTab.connectionId" />
+      </div>
+    </template>
+
+    <template v-else-if="activeTab.mode === 'nacos-access-control'">
+      <div class="flex-1 min-h-0">
+        <NacosAccessControlConsole :key="activeTab.id" :connection-id="activeTab.connectionId" :read-only="activeConnection?.read_only ?? false" />
       </div>
     </template>
 

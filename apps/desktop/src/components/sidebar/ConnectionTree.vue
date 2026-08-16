@@ -626,7 +626,10 @@ const filteredNodes = computed(() => {
   nodes = filterGloballyIndexedRegexTables(nodes);
 
   const q = deferredSearchQuery.value;
-  nodes = filterSidebarTree(nodes, q, searchCollapsedIds.value, searchableNodeTypes.value, { regexMode: regexMode.value });
+  nodes = filterSidebarTree(nodes, q, searchCollapsedIds.value, searchableNodeTypes.value, {
+    regexMode: regexMode.value,
+    resolveLabel: (node) => (node.type === "nacos-access-control" ? t("nacos.accessControlSidebarLabel") : node.label),
+  });
   if (q && !regexMode.value) {
     nodes = filterSidebarSearchRootsByConnectionState(nodes, store.connectedIds);
   }
