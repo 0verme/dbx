@@ -253,6 +253,7 @@ impl WebView2Recovery {
     }
 }
 
+#[cfg(target_os = "windows")]
 fn now_unix_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

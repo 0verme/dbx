@@ -8,6 +8,7 @@ use std::time::Duration;
 use tauri::Manager;
 
 const STARTUP_LOG_FILE: &str = "startup.log";
+#[cfg(target_os = "windows")]
 const RUNTIME_RECOVERY_LOG_FILE: &str = "webview2-recovery.log";
 const STARTUP_LOG_DIR_ENV: &str = "DBX_STARTUP_LOG_DIR";
 const KEEP_STARTUP_LOG_ENV: &str = "DBX_KEEP_STARTUP_LOG";
@@ -176,6 +177,7 @@ fn write_line(path: &Path, line: &str) {
 /// Windows builds always record WebView2 process-failure recovery decisions
 /// on affected devices. The `log`/`eprintln` channels are still used on top
 /// of this in debug builds.
+#[cfg(target_os = "windows")]
 pub(crate) fn record_runtime_recovery_event(message: impl AsRef<str>) {
     let Some(dir) = startup_log_dir() else { return };
     write_line(&dir.join(RUNTIME_RECOVERY_LOG_FILE), &format_probe_line(message.as_ref()));
