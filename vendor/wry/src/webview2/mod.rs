@@ -497,6 +497,44 @@ impl InnerWebView {
       controller.add_AcceleratorKeyPressed(&accelerator_key_handler, &mut token)?;
     }
 
+    // Auto-recover the webview when a WebView2 child process exits while the
+    // host process stays alive: the renderer/GPU process loss turns the window
+    // black with nothing to repaint it (reproduced after an overnight idle
+    // session, see t8y2/dbx#6362). Reload the webview on renderer/GPU/frame
+    // process failure, rate-limited to avoid a crash loop hammering the UI.
+    unsafe {
+      let reload_webview = webview.clone();
+      let last_reload_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+      let process_failed_handler = ProcessFailedEventHandler::create(Box::new(
+        move |_, args| {
+          let Some(args) = args else { return Ok(()) };
+          let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+          args.ProcessFailedKind(&mut kind)?;
+          if !recoverable_process_failure(kind) {
+            return Ok(());
+          }
+          // Rate-limit reloads to once per 30s so a crash loop cannot spin.
+          const RELOAD_COOLDOWN_MS: u64 = 30_000;
+          let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+          let last = last_reload_ms.load(std::sync::atomic::Ordering::Relaxed);
+          if last != 0 && now.saturating_sub(last) < RELOAD_COOLDOWN_MS {
+            return Ok(());
+          }
+          last_reload_ms.store(now, std::sync::atomic::Ordering::Relaxed);
+          // Reload on the main thread via the existing dispatcher.
+          let reload_webview = reload_webview.clone();
+          Self::dispatch_handler(hwnd, move || {
+            let _ = unsafe { reload_webview.Reload() };
+          });
+          Ok(())
+        },
+      ));
+      webview.add_ProcessFailed(&process_failed_handler, &mut token)?;
+    }
+
     // IPC handler
     unsafe { Self::attach_ipc_handler(&webview, &mut attributes, &mut token)? };
 
@@ -1890,6 +1928,21 @@ fn configured_browser_executable_folder() -> Option<HSTRING> {
   browser_executable_folder_from(folder.as_deref(), cfg!(target_vendor = "win7"))
 }
 
+/// Returns `true` when a WebView2 child-process failure can be recovered from
+/// by reloading the webview: renderer / GPU / frame process loss leaves the
+/// window black while the host process keeps running (see t8y2/dbx#6362).
+/// Browser / utility / sandbox / plugin failures are not recoverable via a
+/// plain reload.
+fn recoverable_process_failure(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> bool {
+  matches!(
+    kind,
+    COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+      | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE
+      | COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED
+      | COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED
+  )
+}
+
 fn browser_executable_folder_from(
   folder: Option<&OsStr>,
   fixed_runtime_enabled: bool,
@@ -1924,6 +1977,38 @@ mod tests {
     let value = browser_executable_folder_from(Some(folder), true).unwrap();
 
     assert_eq!(value.to_string_lossy(), folder.to_string_lossy());
+  }
+
+  #[test]
+  fn renderer_and_gpu_process_failures_are_recoverable() {
+    assert!(recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+    ));
+    assert!(recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE
+    ));
+    assert!(recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED
+    ));
+    assert!(recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED
+    ));
+  }
+
+  #[test]
+  fn browser_and_plugin_process_failures_are_not_recoverable() {
+    assert!(!recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+    ));
+    assert!(!recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED
+    ));
+    assert!(!recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED
+    ));
+    assert!(!recoverable_process_failure(
+      COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN_PROCESS_EXITED
+    ));
   }
 }
 
