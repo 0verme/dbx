@@ -53,6 +53,7 @@ import {
   collapseAllGroups as collapseAllGroupsOp,
   moveConnectionToGroup as moveConnectionToGroupOp,
   remapSidebarLayoutConnectionIds,
+  mergeSidebarLayout,
   reorderEntry as reorderEntryOp,
   buildConnectionGroupPathMap,
   connectionSidebarSearchAliases,
@@ -7857,7 +7858,7 @@ export const useConnectionStore = defineStore("connection", () => {
   function applySidebarLayout(layout: SidebarLayout) {
     const reconciledLayout = reconcileLayout(
       connections.value.map((c) => c.id),
-      layout,
+      mergeSidebarLayout(sidebarLayout.value, layout),
     );
     updateLayoutAndRebuild(reconciledLayout);
   }
