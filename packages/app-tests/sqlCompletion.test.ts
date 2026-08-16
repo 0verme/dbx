@@ -522,6 +522,63 @@ test("leaves safe MySQL table identifiers unquoted when completion inserts them"
   assert.equal(table?.apply, "article");
 });
 
+test("leaves safe mixed-case MySQL identifiers unquoted when completion inserts them", () => {
+  const schemaSql = "select * from Sales";
+  const schemaItems = buildSqlCompletionItems(schemaSql, schemaSql.length, {
+    tables: [],
+    columnsByTable: new Map(),
+    schemas: ["SalesDB"],
+    dialect: "mysql",
+  });
+  assert.equal(schemaItems.find((item) => item.type === "schema" && item.label === "SalesDB")?.apply, "SalesDB.");
+
+  const tableSql = "select * from OrderI";
+  const tableItems = buildSqlCompletionItems(tableSql, tableSql.length, {
+    tables: [{ name: "OrderItems", schema: "SalesDB", type: "table" }],
+    columnsByTable: new Map(),
+    dialect: "mysql",
+  });
+  assert.equal(tableItems.find((item) => item.type === "table" && item.label === "OrderItems")?.apply, "OrderItems");
+
+  const columnSql = "select  from OrderItems";
+  const columnItems = buildSqlCompletionItems(columnSql, "select ".length, {
+    tables: [{ name: "OrderItems", schema: "SalesDB", type: "table" }],
+    columnsByTable: new Map([
+      [
+        "SalesDB.OrderItems",
+        [
+          { name: "MixedCase", table: "OrderItems", schema: "SalesDB", dataType: "int" },
+          { name: "UPPER_COL", table: "OrderItems", schema: "SalesDB", dataType: "int" },
+        ],
+      ],
+    ]),
+    dialect: "mysql",
+  });
+  assert.equal(columnItems.find((item) => item.type === "column" && item.label === "MixedCase")?.apply, "MixedCase");
+  assert.equal(columnItems.find((item) => item.type === "column" && item.label === "UPPER_COL")?.apply, "UPPER_COL");
+});
+
+test("does not reuse MySQL backticks for Caché JDBC completion identifiers", () => {
+  const schemaSql = "select top 100 * from SQL";
+  const schemaItems = buildSqlCompletionItems(schemaSql, schemaSql.length, {
+    tables: [],
+    columnsByTable: new Map(),
+    schemas: ["SQLUser"],
+    databaseType: "iris",
+    dialect: "mysql",
+  });
+  assert.equal(schemaItems.find((item) => item.type === "schema" && item.label === "SQLUser")?.apply, "SQLUser.");
+
+  const tableSql = "select top 100 * from SQLUser.PA";
+  const tableItems = buildSqlCompletionItems(tableSql, tableSql.length, {
+    tables: [{ name: "PA_Adm", schema: "SQLUser", type: "table" }],
+    columnsByTable: new Map(),
+    databaseType: "iris",
+    dialect: "mysql",
+  });
+  assert.equal(tableItems.find((item) => item.type === "table" && item.label === "PA_Adm")?.apply, "PA_Adm");
+});
+
 test("quotes MySQL reserved-word column identifiers with backticks when completion inserts them", () => {
   const reservedColumns = ["order", "do", "returning", "ilike", "window", "true"];
   const reservedColumnsByTable = new Map<string, SqlCompletionColumn[]>([["public.bookings", reservedColumns.map((name) => ({ name, table: "bookings", schema: "public", dataType: "text" }))]]);
@@ -536,6 +593,17 @@ test("quotes MySQL reserved-word column identifiers with backticks when completi
     const column = items.find((item) => item.type === "column" && item.label === name);
     assert.equal(column?.apply, `\`${name}\``, `expected reserved column "${name}" to be quoted`);
   }
+});
+
+test("quotes MySQL reserved identifiers case-insensitively", () => {
+  const sql = "select Ord from bookings";
+  const items = buildSqlCompletionItems(sql, "select Ord".length, {
+    tables: [{ name: "bookings", schema: "public", type: "table" }],
+    columnsByTable: new Map([["public.bookings", [{ name: "Order", table: "bookings", schema: "public", dataType: "text" }]]]),
+    dialect: "mysql",
+  });
+
+  assert.equal(items.find((item) => item.type === "column" && item.label === "Order")?.apply, "`Order`");
 });
 
 test("quotes MySQL-only reserved identifiers in schema, table, column, and join completions", () => {
