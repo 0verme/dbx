@@ -1,36 +1,52 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { detectPlatformId } from "./platformDetection";
+import { createInstallOptions } from "./downloadLinks";
+import { detectPlatformId, type NavigatorLike } from "./platformDetection";
 
 const macUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36";
 
-test("detects an Intel Mac from Chromium architecture hints", async () => {
-  const platformId = await detectPlatformId({
+function macNavigator(architecture?: string): NavigatorLike {
+  return {
     userAgent: macUserAgent,
     userAgentData: {
       platform: "macOS",
-      getHighEntropyValues: async () => ({ architecture: "x86" }),
+      getHighEntropyValues: async () => ({ architecture }),
     },
-  });
+  };
+}
+
+test("detects an Intel Mac from Chromium architecture hints", async () => {
+  const platformId = await detectPlatformId(macNavigator("x86"));
+  const download = createInstallOptions("cn", "0.5.85").find((option) => option.id === platformId);
 
   assert.equal(platformId, "macos-intel");
+  assert.match(download?.href ?? "", /_x64\.dmg/);
 });
 
 test("does not trust the Intel token in an Apple Silicon Mac user agent", async () => {
-  const platformId = await detectPlatformId({
-    userAgent: macUserAgent,
-    userAgentData: {
-      platform: "macOS",
-      getHighEntropyValues: async () => ({ architecture: "arm" }),
-    },
-  });
-
-  assert.equal(platformId, "macos-arm");
+  assert.equal(await detectPlatformId(macNavigator("arm")), "macos-arm");
 });
 
-test("keeps the Apple Silicon fallback when architecture hints are unavailable", async () => {
-  assert.equal(await detectPlatformId({ userAgent: macUserAgent }), "macos-arm");
+test("keeps server-side rendering platform-neutral", async () => {
+  assert.equal(await detectPlatformId(), "unknown");
+});
+
+test("does not infer CPU architecture from the legacy Intel Mac user-agent token", async () => {
+  assert.equal(await detectPlatformId({ userAgent: macUserAgent }), "macos-unknown");
+});
+
+test("keeps the macOS download neutral when architecture hints return no value", async () => {
+  assert.equal(await detectPlatformId(macNavigator()), "macos-unknown");
+});
+
+test("keeps the macOS download neutral when architecture hints fail", async () => {
+  const browserNavigator = macNavigator();
+  browserNavigator.userAgentData!.getHighEntropyValues = async () => {
+    throw new Error("blocked");
+  };
+
+  assert.equal(await detectPlatformId(browserNavigator), "macos-unknown");
 });
 
 test("keeps existing Windows and Linux detection", async () => {
