@@ -5291,6 +5291,7 @@ export default withEnglishFallback({
     duckDbWorkerProcessIsolationRestartRequired: "이 변경 사항을 적용하려면 DBX를 다시 시작하세요.",
     restartDbx: "DBX 다시 시작",
     restartDbxFailed: "DBX 다시 시작 실패: {error}",
+    applyFailed: "설정 적용 실패: {error}",
     unsavedChangesCloseTitle: "저장하지 않은 변경 사항",
     unsavedChangesCloseMessage: "저장하지 않은 설정 변경 사항이 있습니다. 지금 닫으면 사라집니다. 이 변경 사항을 취소하시겠습니까?",
     unsavedChangesCloseCancel: "계속 편집",
