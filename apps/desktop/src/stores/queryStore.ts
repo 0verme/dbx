@@ -7,7 +7,7 @@ import { orderPinnedFirst } from "@/lib/app/pinnedItems";
 import { canCancelQueryExecution } from "@/lib/sql/queryExecutionState";
 import { buildExplainSql, parseExplainResult, parseDamengExplainText, parseOracleExplainText, sqlServerExplainResult, type BuildExplainSqlResult } from "@/lib/diagram/explainPlan";
 import { mysqlExplainCompatibilityHint } from "@/lib/diagram/mysqlExplainCompatibility";
-import { allEditableColumnsWriteable, allPrimaryKeysPresent, analyzeEditableQueryEditability, resolveMetadataColumnName, resolveSourceColumnsByOrdinal, sourceColumnsForResult, type EditableQueryInfo, type EditableQuerySource } from "@/lib/sql/sqlAnalysis";
+import { allEditableColumnsWriteable, allPrimaryKeysPresent, analyzeEditableQueryEditability, analyzeSelectStructureForDisplay, resolveMetadataColumnName, resolveSourceColumnsByOrdinal, sourceColumnsForResult, type EditableQueryInfo, type EditableQuerySource } from "@/lib/sql/sqlAnalysis";
 import { buildQueryWithHiddenPrimaryKeys, hiddenResultColumnIndexes, type HiddenPrimaryKeyProjection } from "@/lib/sql/editableQueryHiddenKeys";
 import { ACTIVE_TAB_STORAGE_KEY, OPEN_TABS_STORAGE_KEY, restoreOpenTabsPayload, restoreOpenTabsState, serializeOpenTabs } from "@/lib/app/openTabsPersistence";
 import {
@@ -3664,6 +3664,35 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
+  /**
+   * Display-only result-column enrichment for aggregated (GROUP BY / HAVING)
+   * results: parse the SELECT structure, load every source table's metadata,
+   * resolve each result column back to exactly one base-table column by
+   * projection ordinal, and return the resolved comments + display mapping.
+   * Best-effort by design: returns `undefined` when the statement cannot be
+   * structurally parsed or source metadata cannot be loaded — the query result
+   * itself and editability are never affected.
+   */
+  async function resolveAggregationDisplayColumnInfo(tab: QueryTab, sql: string, executionDatabase: string, traceId: string | undefined, elapsed: (() => string) | undefined): Promise<{ comments: Array<string | undefined>; mapping: Array<QueryResultSourceColumnRef | undefined> } | undefined> {
+    if (tab.mode !== "query" || !tab.connectionId || !tab.result || !tab.result.columns.length) return undefined;
+    const conn = useConnectionStore().getConfig(tab.connectionId);
+    const dbType = conn?.db_type || "";
+    const analysis = analyzeSelectStructureForDisplay(sql);
+    if (!analysis) return undefined;
+    const sources = editableQuerySources(analysis);
+    if (!sources.length) return undefined;
+    try {
+      const loadedSources: LoadedEditableSource[] = [];
+      for (const source of sources) {
+        loadedSources.push(await loadEditableQuerySource(tab, analysis, source, conn, dbType, executionDatabase, traceId, elapsed));
+      }
+      return resolveMultiSourceColumnInfo(dbType, analysis, tab.result.columns, loadedSources);
+    } catch (err) {
+      console.error("[DBX] ERROR fetching columns for grouped query metadata:", err);
+      return undefined;
+    }
+  }
+
   async function buildQueryMetadataPatch(tab: QueryTab, sql: string, executionDatabase: string, traceId?: string, elapsed?: () => string, hiddenPrimaryKeys: HiddenPrimaryKeyProjection[] = []): Promise<QueryMetadataPatch | undefined> {
     if (tab.mode !== "query") return;
     if (!tab.result || !tab.result.columns.length) {
@@ -3684,11 +3713,18 @@ export const useQueryStore = defineStore("query", () => {
       elapsed: elapsed?.(),
     });
     if (!editability.editable) {
+      // Grouped (aggregation) results stay read-only, but their directly
+      // projected base-table columns can still be resolved for display metadata
+      // (column comments). This enrichment is display-only — it never enables
+      // row mutation for aggregated results (fixes #6463). Every other
+      // non-editable reason keeps the previous behavior.
+      const displayInfo = editability.reason === "aggregation" ? await resolveAggregationDisplayColumnInfo(tab, sql, executionDatabase, traceId, elapsed) : undefined;
       return {
         queryAnalysis: undefined,
         querySourceColumns: undefined,
         queryEditabilityReason: editability.reason,
         tableMeta: undefined,
+        ...(displayInfo ? { resultColumnComments: displayInfo.comments, queryDisplaySourceColumns: displayInfo.mapping } : {}),
       };
     }
     const analysis = editability.analysis;
