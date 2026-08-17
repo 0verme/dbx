@@ -8516,6 +8516,49 @@ mod ddl_tests {
     }
 
     #[test]
+    fn postgres_table_ddl_renders_owned_serial_markers_without_external_defaults() {
+        for (column_name, data_type, serial_type) in [
+            ("small\"id", "smallint", "smallserial"),
+            ("regular\"id", "integer", "serial"),
+            ("large\"id", "bigint", "bigserial"),
+        ] {
+            let mut id = column(column_name, data_type);
+            id.is_nullable = false;
+            let sequence_name = format!("{column_name}_seq").replace('"', "\"\"");
+            id.column_default = Some(format!("nextval('\"tenant\"\"schema\".\"{sequence_name}\"'::regclass)"));
+            id.extra = Some(serial_type.to_string());
+
+            let ddl = render_postgres_table_ddl("tenant\"schema", "order\"items", &[id], &[], &[], None);
+
+            assert!(ddl.contains(&format!("{} {serial_type} NOT NULL", pg_ident(column_name))), "ddl: {ddl}");
+            assert!(!ddl.contains("nextval("), "ddl: {ddl}");
+            assert!(ddl.starts_with("CREATE TABLE \"tenant\"\"schema\".\"order\"\"items\""), "ddl: {ddl}");
+        }
+    }
+
+    #[test]
+    fn postgres_table_ddl_preserves_unmarked_nextval_defaults() {
+        let mut id = column("id", "bigint");
+        id.column_default = Some("nextval('shared.custom_id_source'::regclass)".to_string());
+
+        let ddl = render_postgres_table_ddl("public", "orders", &[id], &[], &[], None);
+
+        assert!(ddl.contains("\"id\" bigint DEFAULT nextval('shared.custom_id_source'::regclass)"), "ddl: {ddl}");
+    }
+
+    #[test]
+    fn postgres_table_ddl_keeps_generated_columns_distinct_from_serial_markers() {
+        let mut generated = column("total", "numeric");
+        generated.column_default = Some("should_not_be_rendered".to_string());
+        generated.extra = Some("generated always as (price * quantity) stored".to_string());
+
+        let ddl = render_postgres_table_ddl("public", "orders", &[generated], &[], &[], None);
+
+        assert!(ddl.contains("\"total\" numeric generated always as (price * quantity) stored"), "ddl: {ddl}");
+        assert!(!ddl.contains("should_not_be_rendered"), "ddl: {ddl}");
+    }
+
+    #[test]
     fn postgres_table_ddl_includes_partition_key_for_parent_only() {
         for partition_key in [
             "RANGE (created_at)",
@@ -9559,7 +9602,13 @@ fn render_postgres_table_ddl_with_partition_info(
         columns
             .iter()
             .map(|c| {
-                let mut line = format!("  {} {}", pg_ident(&c.name), c.data_type);
+                let serial_type = match c.extra.as_deref().map(str::trim) {
+                    Some("smallserial") => Some("smallserial"),
+                    Some("serial") => Some("serial"),
+                    Some("bigserial") => Some("bigserial"),
+                    _ => None,
+                };
+                let mut line = format!("  {} {}", pg_ident(&c.name), serial_type.unwrap_or(&c.data_type));
                 let generated_clause = c
                     .extra
                     .as_deref()
@@ -9571,7 +9620,7 @@ fn render_postgres_table_ddl_with_partition_info(
                 if !c.is_nullable {
                     line.push_str(" NOT NULL");
                 }
-                if generated_clause.is_none() {
+                if generated_clause.is_none() && serial_type.is_none() {
                     if let Some(ref def) = c.column_default {
                         line.push_str(&format!(" DEFAULT {def}"));
                     }
