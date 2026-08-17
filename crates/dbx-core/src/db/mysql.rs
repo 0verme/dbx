@@ -5008,6 +5008,7 @@ pub(crate) fn is_result_set_query(sql: &str, dialect: MySqlQueryDialect) -> bool
         &["SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "WITH", "CALL"],
         DatabaseType::Mysql,
     ) || mysql_statement_returns_rows(sql)
+        || is_xa_recover_query(sql)
         || dialect.supports_admin_show_results && is_admin_show_query(sql)
 }
 
@@ -5036,6 +5037,11 @@ fn mysql_statement_returns_rows(sql: &str) -> bool {
         Statement::Delete(delete) => delete.returning.is_some(),
         _ => false,
     }
+}
+
+fn is_xa_recover_query(sql: &str) -> bool {
+    let tokens = leading_sql_word_tokens(sql, 2);
+    tokens.first().is_some_and(|token| token == "xa") && tokens.get(1).is_some_and(|token| token == "recover")
 }
 
 fn requires_text_protocol_query(sql: &str, dialect: MySqlQueryDialect) -> bool {
@@ -5689,6 +5695,32 @@ mod tests {
 
         assert!(is_result_set_query("CALL proc_test1()", dialect));
         assert!(prefers_text_protocol_query("CALL proc_test1()", dialect));
+    }
+
+    #[test]
+    fn mysql_xa_recover_queries_are_treated_as_text_result_sets() {
+        let dialect = MySqlQueryDialect::default();
+
+        for sql in [
+            "XA RECOVER",
+            "xa recover convert xid;",
+            "  -- inspect prepared transactions\nXa /* command */ ReCoVeR ;",
+            "# inspect prepared transactions\n/* before command */ XA\nRECOVER",
+        ] {
+            assert!(is_result_set_query(sql, dialect), "{sql}");
+            assert!(prefers_text_protocol_query(sql, dialect), "{sql}");
+        }
+
+        for sql in [
+            "XA START 'dbx_xid'",
+            "XA BEGIN 'dbx_xid'",
+            "XA END 'dbx_xid'",
+            "XA PREPARE 'dbx_xid'",
+            "XA COMMIT 'dbx_xid'",
+            "XA ROLLBACK 'dbx_xid'",
+        ] {
+            assert!(!is_result_set_query(sql, dialect), "{sql}");
+        }
     }
 
     #[test]
