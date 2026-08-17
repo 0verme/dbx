@@ -3447,6 +3447,8 @@ export default withEnglishFallback({
     concurrentPartitionedTooltip: "No disponible en tablas padre particionadas. PostgreSQL rechaza la creación concurrente de índices en tablas padre particionadas; cree los índices hijos de forma concurrente y adjúntelos.",
     invalidIndexBlocksSave: 'Guardado bloqueado: ya existe un índice INVALID con el mismo nombre (residuo de una construcción concurrente cancelada): {indexNames}. Elimínelo primero (p. ej. DROP INDEX "schema"."name") y vuelva a intentarlo.',
     concurrentUnavailableTooltip: "No disponible mientras no se pueda verificar el estado de partición de la tabla. La creación concurrente solo se ofrece en tablas no particionadas.",
+    concurrentUnavailableBlocksSave:
+      "La creación concurrente de índices ya no está disponible (no se pudo verificar el estado de partición de la tabla). Se canceló la opción Concurrente seleccionada y este cambio está bloqueado hasta que la tabla se vuelva a verificar. Actualice para reintentar o elimine el índice para continuar con otros cambios.",
     invalidIndexRetryHint: "Esto puede deberse a un índice INVALID con el mismo nombre que dejó una construcción concurrente cancelada anteriormente. Elimine ese índice primero y vuelva a intentarlo.",
     foreignKeyName: "Clave foránea",
     referencedSchema: "Esquema ref",

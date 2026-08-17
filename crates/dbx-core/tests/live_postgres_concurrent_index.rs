@@ -129,8 +129,10 @@ async fn live_postgres_invalid_index_leftover_is_detected() {
     let setup = vec![
         format!("CREATE SCHEMA \"{schema}\""),
         format!("CREATE TABLE \"{schema}\".users (id integer PRIMARY KEY, email text)"),
-        // Simulate the leftover of a cancelled concurrent build.
-        format!("CREATE INDEX \"{schema}\".idx_users_email ON \"{schema}\".users (email)"),
+        // Simulate the leftover of a cancelled concurrent build. PostgreSQL
+        // does not accept a schema-qualified index name in CREATE INDEX; the
+        // index inherits the table's schema, so only the table is qualified.
+        format!("CREATE INDEX \"idx_users_email\" ON \"{schema}\".\"users\" (\"email\")"),
     ];
     postgres::execute_batch(&pool, &setup).await.expect("create live test schema");
 

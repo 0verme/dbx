@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getConcurrentIndexAvailability, concurrentIndexNamesInStatements } from "@/lib/table/concurrentIndexAvailability";
+import { getConcurrentIndexAvailability, concurrentIndexNamesInStatements, normalizeUnsupportedConcurrentIndexes } from "@/lib/table/concurrentIndexAvailability";
 
 describe("getConcurrentIndexAvailability (Plan A scope guards)", () => {
   const base = {
@@ -75,5 +75,40 @@ describe("concurrentIndexNamesInStatements", () => {
   it("returns an empty list when no concurrent statements are present", () => {
     expect(concurrentIndexNamesInStatements([])).toEqual([]);
     expect(concurrentIndexNamesInStatements(['CREATE INDEX "idx" ON "public"."t" ("c");'])).toEqual([]);
+  });
+});
+
+describe("normalizeUnsupportedConcurrentIndexes", () => {
+  const enabled = () => ({ enabled: true });
+  const unavailable = (reason: string) => ({ enabled: false, reason });
+
+  it("keeps Concurrent on drafts whose availability is enabled", () => {
+    const indexes = [
+      { id: "a", concurrently: true },
+      { id: "b", concurrently: false },
+    ];
+    expect(normalizeUnsupportedConcurrentIndexes(indexes, enabled)).toEqual({ indexes, invalidatedIds: [] });
+  });
+
+  it("clears stale flags for every draft whose availability is not enabled and reports their ids", () => {
+    const indexes = [
+      { id: "a", concurrently: true },
+      { id: "b", concurrently: true },
+      { id: "c", concurrently: false },
+    ];
+    const result = normalizeUnsupportedConcurrentIndexes(indexes, (index) => (index.id === "a" ? unavailable("existing") : unavailable("unknown")));
+    expect(result.indexes).toEqual([
+      { id: "a", concurrently: false },
+      { id: "b", concurrently: false },
+      { id: "c", concurrently: false },
+    ]);
+    expect(result.invalidatedIds).toEqual(["a", "b"]);
+  });
+
+  it("keeps drafts untouched when the availability becomes partitioned", () => {
+    const indexes = [{ id: "a", concurrently: true }];
+    const result = normalizeUnsupportedConcurrentIndexes(indexes, () => unavailable("partitioned"));
+    expect(result.indexes).toEqual([{ id: "a", concurrently: false }]);
+    expect(result.invalidatedIds).toEqual(["a"]);
   });
 });

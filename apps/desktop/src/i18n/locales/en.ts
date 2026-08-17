@@ -3611,6 +3611,8 @@ export default {
     concurrentPartitionedTooltip: "Not available on partitioned parent tables. PostgreSQL rejects concurrent index creation on partitioned parents; build child indexes concurrently and attach them instead.",
     invalidIndexBlocksSave: 'Save blocked: an INVALID index (left behind by a cancelled concurrent build) already exists with the same name: {indexNames}. Drop it first (e.g. DROP INDEX "schema"."name"), then retry.',
     concurrentUnavailableTooltip: "Unavailable while the table\u2019s partition status cannot be verified. Concurrent creation is only offered on non-partitioned tables.",
+    concurrentUnavailableBlocksSave:
+      "Concurrent index creation is no longer available (the table's partition status could not be verified). The selected Concurrent option was cleared and this change is blocked until the table is re-verified. Refresh to retry, or remove the index to continue with other changes.",
     invalidIndexRetryHint: "This may be caused by a same-name INVALID index left behind by a previously cancelled concurrent build. Drop that index first, then retry.",
     foreignKeyName: "Foreign key",
     referencedSchema: "Ref schema",

@@ -3506,6 +3506,8 @@ export default withEnglishFallback({
     concurrentPartitionedTooltip: "パーティション親テーブルでは利用できません。PostgreSQL はパーティション親テーブルへの同時インデックス作成を拒否します。子インデックスを同時作成してアタッチしてください。",
     invalidIndexBlocksSave: '保存がブロックされました: 同じ名前の INVALID インデックス（キャンセルされた同時ビルドの残骸）がすでに存在します: {indexNames}。先に削除（例: DROP INDEX "schema"."name"）してから再試行してください。',
     concurrentUnavailableTooltip: "テーブルのパーティション状態を確認できない間は利用できません。並行作成は非パーティションのテーブルでのみ提供されます。",
+    concurrentUnavailableBlocksSave:
+      "インデックスの並行作成は利用できなくなりました（テーブルのパーティション状態を確認できません）。選択した「並行」オプションは解除され、テーブルが再確認されるまでこの変更はブロックされます。再試行するには更新、または他の変更を続けるにはインデックスを削除してください。",
     invalidIndexRetryHint: "以前にキャンセルされた同時ビルドが残した同名の INVALID インデックスが原因の可能性があります。そのインデックスを削除してから再試行してください。",
     foreignKeyName: "外部キー",
     referencedSchema: "参照スキーマ",

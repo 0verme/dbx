@@ -25,7 +25,7 @@ import { type SqlHighlighter, createShikiSqlHighlighter } from "@/lib/sql/sqlHig
 import { joinSqlStatementsForScript } from "@/lib/sql/sqlBatchScript";
 import { copyToClipboard } from "@/lib/common/clipboard";
 import { formatSqlForDisplay, sqlFormatDialectForDbType } from "@/lib/sql/sqlFormatter";
-import { CONCURRENT_INDEX_QUERY_TIMEOUT_SECS, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
+import { queryTimeoutSecsForConcurrentIndex, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 import { invalidateObjectDdl, loadObjectDdl } from "@/lib/metadata/objectDdlCache";
 import { loadObjectMetadataFacet, type ObjectMetadataFacet } from "@/lib/metadata/objectMetadataCache";
@@ -38,7 +38,7 @@ import { getSqliteDataTypeHelp } from "@/lib/table/sqliteDataTypeHelp";
 import { getTableMetadataCapabilities, firstStructureMetadataTab, isStructureMetadataTabSupported } from "@/lib/table/tableMetadataCapabilities";
 import { hasTableStructureRefreshWork, unloadedTableStructureRefreshScope, visibleTableStructureRefreshScope, type TableStructureRefreshScope } from "@/lib/table/tableStructureMetadataLoading";
 import { canAddTableStructureColumn, getTableStructureCapabilities, hasLocalTableColumnOrderChange, isPhysicalTableColumnOrderChange, sanitizeStructureIndexesForCapabilities, supportsLocalTableColumnReorder } from "@/lib/table/tableStructureCapabilities";
-import { getConcurrentIndexAvailability, concurrentIndexNamesInStatements, type ConcurrentIndexAvailability } from "@/lib/table/concurrentIndexAvailability";
+import { getConcurrentIndexAvailability, concurrentIndexNamesInStatements, normalizeUnsupportedConcurrentIndexes, type ConcurrentIndexAvailability } from "@/lib/table/concurrentIndexAvailability";
 import { orderedColumnIndexes, uniqueDataGridColumnOrderKeys } from "@/lib/dataGrid/dataGridColumnOrder";
 import { loadTableDataGridColumnOrder, notifyTableDataGridColumnOrderChanged, removeTableDataGridColumnOrder, saveTableDataGridColumnOrder, tableDataGridColumnOrderScopeKey } from "@/lib/dataGrid/dataGridColumnLayoutStorage";
 import { connectionObjectTreeQuerySchema, tableStructureDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
@@ -216,6 +216,13 @@ const isPartitionedParent = ref(false);
  * verified (probe failed), Concurrent is disabled — we must not assume a
  * non-partitioned table we could not check. */
 const partitionStatusKnown = ref(true);
+/** Set when a `concurrently: true` index draft had to be normalized away
+ * because Concurrent availability became unknown/unsupported (partition probe
+ * failure, partitioned parent, capability loss). While set, no SQL is
+ * generated and Save stays blocked until the user re-verifies (the next
+ * successful probe clears it) — a cleared flag must never silently degrade
+ * into a blocking `CREATE INDEX`. */
+const concurrentAvailabilityInvalidated = ref(false);
 const pendingStatements = ref<string[]>([]);
 const warnings = ref<string[]>([]);
 const sqliteSchemaRevision = ref<string>();
@@ -1113,6 +1120,11 @@ function restoreDraft(draft: TableStructureEditorDraft) {
   // the core builder rejects the request), so a stale `concurrently: true`
   // saved in a restored draft must not be submitted or deadlock the save.
   indexes.value = cloneDraftValue(draft.indexes || []).map((index) => (index.original ? { ...index, concurrently: false } : index));
+  // Re-run the availability normalization against the current inputs (e.g. a
+  // re-activated editor may already carry an unknown/unsupported partition
+  // status): restored new-index Concurrent choices that became illegal are
+  // normalized away with the same fail-closed invalidation as a probe failure.
+  normalizeConcurrentIndexDraftsForCurrentAvailability();
   foreignKeys.value = cloneDraftValue(draft.foreignKeys || []);
   constraints.value = cloneDraftValue(draft.constraints || []);
   // Drafts created before constraint loading existed have no saved facet.
@@ -1335,9 +1347,32 @@ function structureChangeOptions(): BuildTableStructureChangeSqlOptions {
 
 async function refreshSqlPreview() {
   const requestId = ++sqlPreviewRequestId;
+  if (concurrentAvailabilityInvalidated.value) {
+    // Availability gap in effect: never regenerate SQL here — doing so would
+    // turn a lost Concurrent request into a silent blocking CREATE INDEX. Keep
+    // the explicit error visible until a later probe re-verifies the table.
+    pendingStatements.value = [];
+    warnings.value = [t("structureEditor.concurrentUnavailableBlocksSave")];
+    sqliteSchemaRevision.value = undefined;
+    sqlPreviewLoading.value = false;
+    sqlPreviewPending.value = false;
+    return;
+  }
   if (!hasPendingStructureChanges()) {
     pendingStatements.value = [];
     warnings.value = [];
+    sqliteSchemaRevision.value = undefined;
+    sqlPreviewLoading.value = false;
+    sqlPreviewPending.value = false;
+    return;
+  }
+  // Layer B: a stale `concurrently: true` whose availability is no longer
+  // enabled must never reach the SQL builder, even if normalization was
+  // skipped (race, restored draft, non-UI caller).
+  const blockingConcurrentWarning = concurrentIndexBlockingWarning();
+  if (blockingConcurrentWarning) {
+    pendingStatements.value = [];
+    warnings.value = [blockingConcurrentWarning];
     sqliteSchemaRevision.value = undefined;
     sqlPreviewLoading.value = false;
     sqlPreviewPending.value = false;
@@ -1374,6 +1409,7 @@ const canApply = computed(
     !sqlPreviewPending.value &&
     pendingStatements.value.length > 0 &&
     warnings.value.length === 0 &&
+    !concurrentAvailabilityInvalidated.value &&
     (!hasSqliteTypeChange.value || !!sqliteSchemaRevision.value) &&
     !!props.connectionId &&
     (isCreateMode.value ? !!newTableName.value.trim() : !!props.tableName),
@@ -1397,6 +1433,7 @@ function resetState() {
   errorMessage.value = "";
   isPartitionedParent.value = false;
   partitionStatusKnown.value = true;
+  concurrentAvailabilityInvalidated.value = false;
   columns.value = [];
   indexes.value = [];
   pendingStatements.value = [];
@@ -1497,14 +1534,16 @@ async function loadStructure(
     const forceMetadata = options.forceMetadata === true;
     const partitionStatusPromise =
       databaseType.value === "postgres" && !isCreateMode.value
-        ? api.getTablePartitionStatus(connectionId, database, schema, tableName).catch(() => {
-            // Fail closed: without a verified partition status we cannot rule
-            // out a partitioned parent, so Concurrent stays disabled until a
-            // later reload re-runs the probe.
-            partitionStatusKnown.value = false;
-            return { isPartitionedParent: false, isPartition: false };
-          })
-        : Promise.resolve({ isPartitionedParent: false, isPartition: false });
+        ? api
+            .getTablePartitionStatus(connectionId, database, schema, tableName)
+            // No reactive mutation inside the catch: a stale request must not
+            // overwrite a newer probe's result (the structureLoadRequestId
+            // guard below decides). Fail closed — without a verified partition
+            // status we cannot rule out a partitioned parent, so Concurrent is
+            // treated as unavailable until a later reload re-runs the probe.
+            .then((status) => ({ known: true, status }))
+            .catch(() => ({ known: false, status: { isPartitionedParent: false, isPartition: false } }))
+        : Promise.resolve({ known: true, status: { isPartitionedParent: false, isPartition: false } });
     const columnsPromise = scope.columns ? loadObjectMetadataFacet(metadataRequest, "columns", () => api.getColumns(connectionId, database, schema, tableName, catalog), { force: forceMetadata }).then((result) => result.value) : Promise.resolve(undefined);
     const indexesPromise = scope.indexes
       ? tableMetadataCapabilities.value.indexes
@@ -1558,7 +1597,17 @@ async function loadStructure(
     }
     const partitionStatus = await partitionStatusPromise;
     if (requestId === structureLoadRequestId) {
-      isPartitionedParent.value = partitionStatus.isPartitionedParent;
+      partitionStatusKnown.value = partitionStatus.known;
+      isPartitionedParent.value = partitionStatus.status.isPartitionedParent;
+      // Availability inputs changed: normalize any stale `concurrently` flag
+      // (fail closed). Once a probe re-verifies a non-partitioned table with
+      // full capability support, lift the Save/preview block so the user can
+      // re-confirm; a partitioned parent or unknown status keeps the block.
+      normalizeConcurrentIndexDraftsForCurrentAvailability();
+      if (partitionStatus.known && !partitionStatus.status.isPartitionedParent && structureCapabilities.value.indexConcurrent && structureCapabilities.value.createIndex && concurrentAvailabilityInvalidated.value) {
+        concurrentAvailabilityInvalidated.value = false;
+        scheduleSqlPreviewRefresh();
+      }
     }
     const applySecondaryMetadata = async () => {
       const [nextIndexes, nextForeignKeys, nextConstraints, nextTriggers] = await Promise.all([indexesPromise, foreignKeysPromise, constraintsPromise, triggersPromise]);
@@ -2481,6 +2530,13 @@ function canEditIndexDraft(index: EditableStructureIndex): boolean {
  */
 function concurrentIndexAvailability(index: EditableStructureIndex): ConcurrentIndexAvailability {
   if (indexesLoading.value) return { enabled: false, reason: "unknown" };
+  return concurrentIndexAvailabilityState(index);
+}
+
+/** Same decision as [`concurrentIndexAvailability`], independent of the
+ * indexes-loading flag — state-normalization runs while metadata may still be
+ * in flight, and must decide on the availability inputs alone. */
+function concurrentIndexAvailabilityState(index: EditableStructureIndex): ConcurrentIndexAvailability {
   return getConcurrentIndexAvailability({
     hasOriginal: !!index.original,
     isPrimary: index.isPrimary,
@@ -2490,6 +2546,42 @@ function concurrentIndexAvailability(index: EditableStructureIndex): ConcurrentI
     supportsIndexConcurrent: structureCapabilities.value.indexConcurrent,
     supportsCreateIndex: structureCapabilities.value.createIndex,
   });
+}
+
+/**
+ * Layer A — normalize stale `concurrently: true` drafts whenever Concurrent
+ * availability became unknown/unsupported (partition probe failure, partitioned
+ * parent, capability loss, ...). Clearing the flag alone could silently turn a
+ * requested concurrent build into a blocking `CREATE INDEX`, so this also
+ * records the invalidation, empties the pending SQL and shows an explicit
+ * error; Save stays blocked until the user re-verifies.
+ */
+function normalizeConcurrentIndexDraftsForCurrentAvailability(): boolean {
+  // Engines that cannot express Concurrent (non-PostgreSQL dialects) ignore a
+  // stale flag in the core builder and render no checkbox; blocking the save
+  // there would only trap a draft carried over from a PostgreSQL session.
+  if (!structureCapabilities.value.indexConcurrent) return false;
+  const { indexes: normalized, invalidatedIds } = normalizeUnsupportedConcurrentIndexes(indexes.value, concurrentIndexAvailabilityState);
+  if (invalidatedIds.length === 0) return false;
+  indexes.value = normalized;
+  concurrentAvailabilityInvalidated.value = true;
+  pendingStatements.value = [];
+  warnings.value = [t("structureEditor.concurrentUnavailableBlocksSave")];
+  sqlPreviewLoading.value = false;
+  sqlPreviewPending.value = false;
+  errorMessage.value = t("structureEditor.concurrentUnavailableBlocksSave");
+  return true;
+}
+
+/** Layer B — a `concurrently: true` draft whose availability is no longer
+ * enabled must never reach the SQL builder or the execute path. Returns the
+ * blocking message, or null when the request stays legal. */
+function concurrentIndexBlockingWarning(): string | null {
+  // Non-concurrent-capable engines cannot express the request in SQL; the core
+  // builder ignores the flag, so there is no stale-concurrent hazard to block.
+  if (!structureCapabilities.value.indexConcurrent) return null;
+  const stale = indexes.value.find((index) => index.concurrently && !concurrentIndexAvailability(index).enabled);
+  return stale ? t("structureEditor.concurrentUnavailableBlocksSave") : null;
 }
 
 function canEditIndexConcurrent(index: EditableStructureIndex): boolean {
@@ -2653,6 +2745,14 @@ function toggleSqlPreviewCollapsed() {
 
 async function applyChanges() {
   if (!canApply.value || !props.connectionId || !props.database) return false;
+  // Layer B runtime guard: a stale `concurrently: true` whose availability is
+  // no longer enabled must never be executed — reject the save with an
+  // explicit error even if normalization was skipped (race / non-UI caller).
+  const blockingConcurrentWarning = concurrentIndexBlockingWarning() ?? (concurrentAvailabilityInvalidated.value ? t("structureEditor.concurrentUnavailableBlocksSave") : null);
+  if (blockingConcurrentWarning) {
+    errorMessage.value = blockingConcurrentWarning;
+    return false;
+  }
   const sql = previewSqlText.value;
   const connection = store.getConfig(props.connectionId);
   const productionContext = productionContextForDatabase(connection, props.database);
@@ -2669,9 +2769,9 @@ async function applyChanges() {
   saving.value = true;
   errorMessage.value = "";
   const refreshScope = captureStructureRefreshScope();
-  // Plan A guard: concurrent builds only run outside the default 30s query
-  // timeout (a cancelled build leaves an INVALID index behind), and are
-  // blocked up-front when a same-name INVALID index already exists.
+  // Plan A guard: concurrent builds only run with a long-enough query timeout
+  // (a cancelled build leaves an INVALID index behind), and are blocked
+  // up-front when a same-name INVALID index already exists.
   const hasConcurrentIndexBuild = pendingStatements.value.some((statement) => statement.includes("CONCURRENTLY"));
   if (hasConcurrentIndexBuild && !isCreateMode.value && databaseType.value === "postgres" && props.tableName) {
     const concurrentIndexNames = concurrentIndexNamesInStatements(pendingStatements.value);
@@ -2699,7 +2799,11 @@ async function applyChanges() {
     }
   }
   const startedAt = Date.now();
-  const executionTimeoutSecs = hasConcurrentIndexBuild ? CONCURRENT_INDEX_QUERY_TIMEOUT_SECS : queryTimeoutSecsForConnection(connection, settingsStore.editorSettings.globalQueryTimeoutSecs);
+  // Concurrent batches get at least the dedicated 30-minute floor while
+  // preserving an unlimited setting (0) and any larger configured timeout;
+  // non-concurrent batches keep the configured timeout unchanged.
+  const configuredTimeoutSecs = queryTimeoutSecsForConnection(connection, settingsStore.editorSettings.globalQueryTimeoutSecs);
+  const executionTimeoutSecs = queryTimeoutSecsForConcurrentIndex(configuredTimeoutSecs, hasConcurrentIndexBuild);
   try {
     const result = hasSqliteTypeChange.value
       ? await api.applySqliteTableStructureChange(props.connectionId, props.database, structureChangeOptions(), sqliteSchemaRevision.value!)
@@ -2922,6 +3026,14 @@ function applyInitialStructureTarget() {
 
 watch(tableMetadataCapabilities, (capabilities) => {
   if (!localIsStructureMetadataTabSupported(activeTab.value, capabilities)) activeTab.value = localFirstStructureMetadataTab(capabilities);
+});
+
+watch(structureCapabilities, () => {
+  // Capability loss (e.g. PostgreSQL < 11 without concurrent index support)
+  // invalidates any selected Concurrent flag the same way a probe failure
+  // does; the normalization is idempotent and no-ops while availability stays
+  // enabled.
+  normalizeConcurrentIndexDraftsForCurrentAvailability();
 });
 
 watch([() => props.initialTab, () => props.initialTabRequestId, () => props.initialTarget], () => {
