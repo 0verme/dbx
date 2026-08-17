@@ -739,6 +739,8 @@ export default withEnglishFallback({
     gaussdbTargetServerTypeSlave: "備節點（Standby）",
     gaussdbTargetServerTypeAny: "任意（不指定）",
     gaussdbTargetServerTypeHint: "控制 JDBC 驅動程式連線到 GaussDB 叢集中的哪個節點。僅適用於 M 模式（JDBC）。",
+    gaussdbCountQueryDop: "COUNT(*) 平行度",
+    gaussdbCountQueryDopHint: "設定大型資料表 COUNT(*) 查詢的 query_dop（平行度）。較高的值會使用更多資源。設定為 1（預設值）可停用最佳化器提示。",
     saveAndConnect: "儲存並連線",
     save: "儲存",
     editTitle: "編輯連線",
@@ -2055,6 +2057,7 @@ export default withEnglishFallback({
     noResults: "無結果",
     edit: "編輯",
     delete: "刪除",
+    disabled: "停用",
     back: "返回",
   },
   dateTimePicker: {
