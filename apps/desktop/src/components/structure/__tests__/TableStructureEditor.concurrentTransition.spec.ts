@@ -307,7 +307,7 @@ afterEach(() => {
 });
 
 describe("TableStructureEditor concurrent availability transition", () => {
-  it("normalizes a stale Concurrent flag and fails closed when the partition-status probe turns from success to failure", async () => {
+  it("preserves Concurrent intent across a failed partition probe and restores its SQL after recovery", async () => {
     const root = await mountIndexesEditor();
 
     // Enabled phase: new index can select Concurrent and the preview builds
@@ -342,14 +342,14 @@ describe("TableStructureEditor concurrent availability transition", () => {
     buttonWithText(root, "structureEditor.triggers").click();
     await vi.waitFor(() => expect(mocks.getTablePartitionStatus).toHaveBeenCalledTimes(2), { timeout: 3000 });
 
-    // Layer A + fail-closed: the stale flag is normalized, an explicit error
-    // is shown, the checkbox is disabled/cleared and Save stays blocked.
+    // Fail closed while preserving the user's transiently unavailable intent:
+    // no SQL reaches the builder, the checkbox is disabled, and Save stays blocked.
     await vi.waitFor(() => expect(root.textContent).toContain("structureEditor.concurrentUnavailableBlocksSave"), { timeout: 3000 });
-    const normalizedRow = root.querySelector<HTMLElement>('[data-new-index-row="true"]');
-    expect(normalizedRow).not.toBeNull();
-    const normalizedConcurrent = concurrentCheckboxInRow(normalizedRow!);
-    expect(normalizedConcurrent.checked).toBe(false);
-    expect(normalizedConcurrent.disabled).toBe(true);
+    const unavailableRow = root.querySelector<HTMLElement>('[data-new-index-row="true"]');
+    expect(unavailableRow).not.toBeNull();
+    const unavailableConcurrent = concurrentCheckboxInRow(unavailableRow!);
+    expect(unavailableConcurrent.checked).toBe(true);
+    expect(unavailableConcurrent.disabled).toBe(true);
 
     // Neither the stale concurrent request nor a silent blocking downgrade may
     // reach the SQL builder or the preview after the transition.
@@ -357,5 +357,22 @@ describe("TableStructureEditor concurrent availability transition", () => {
     await vi.waitFor(() => expect(mocks.buildTableStructureChangeSql.mock.calls.length).toBe(callsAtEnabledPhase), { timeout: 3000 });
     expect(root.textContent).not.toContain("CREATE INDEX CONCURRENTLY");
     expect(root.textContent).not.toContain('CREATE INDEX "idx_users_email"');
+
+    // Recovery: a later successful probe must lift the blocker and regenerate
+    // the preview with the original Concurrent intent, never a blocking CREATE.
+    mocks.getTablePartitionStatus.mockResolvedValue({ isPartitionedParent: false, isPartition: false });
+    buttonWithText(root, "structureEditor.refresh").click();
+    await vi.waitFor(() => expect(mocks.getTablePartitionStatus).toHaveBeenCalledTimes(3), { timeout: 3000 });
+    await vi.waitFor(() => expect(mocks.buildTableStructureChangeSql.mock.calls.length).toBeGreaterThan(callsAtEnabledPhase), { timeout: 3000 });
+
+    const recoveredRow = root.querySelector<HTMLElement>('[data-new-index-row="true"]');
+    expect(recoveredRow).not.toBeNull();
+    const recoveredConcurrent = concurrentCheckboxInRow(recoveredRow!);
+    expect(recoveredConcurrent.checked).toBe(true);
+    expect(recoveredConcurrent.disabled).toBe(false);
+    expect(mocks.buildTableStructureChangeSql.mock.calls.at(-1)?.[0]?.indexes?.[0]?.concurrently).toBe(true);
+    await vi.waitFor(() => expect(root.textContent).toContain('CREATE INDEX CONCURRENTLY "idx_users_email" ON "public"."users" ("email");'), { timeout: 3000 });
+    expect(root.textContent).not.toContain('CREATE INDEX "idx_users_email"');
+    expect(buttonWithText(root, "structureEditor.apply").disabled).toBe(false);
   });
 });

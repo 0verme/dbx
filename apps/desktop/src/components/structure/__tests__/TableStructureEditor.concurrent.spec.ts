@@ -90,7 +90,7 @@ describe("normalizeUnsupportedConcurrentIndexes", () => {
     expect(normalizeUnsupportedConcurrentIndexes(indexes, enabled)).toEqual({ indexes, invalidatedIds: [] });
   });
 
-  it("clears stale flags for every draft whose availability is not enabled and reports their ids", () => {
+  it("preserves transiently unavailable intent while clearing definitively unsupported flags", () => {
     const indexes = [
       { id: "a", concurrently: true },
       { id: "b", concurrently: true },
@@ -99,13 +99,13 @@ describe("normalizeUnsupportedConcurrentIndexes", () => {
     const result = normalizeUnsupportedConcurrentIndexes(indexes, (index) => (index.id === "a" ? unavailable("existing") : unavailable("unknown")));
     expect(result.indexes).toEqual([
       { id: "a", concurrently: false },
-      { id: "b", concurrently: false },
+      { id: "b", concurrently: true },
       { id: "c", concurrently: false },
     ]);
     expect(result.invalidatedIds).toEqual(["a", "b"]);
   });
 
-  it("keeps drafts untouched when the availability becomes partitioned", () => {
+  it("clears Concurrent when the table is confirmed partitioned", () => {
     const indexes = [{ id: "a", concurrently: true }];
     const result = normalizeUnsupportedConcurrentIndexes(indexes, () => unavailable("partitioned"));
     expect(result.indexes).toEqual([{ id: "a", concurrently: false }]);

@@ -58,18 +58,20 @@ export function concurrentIndexNamesInStatements(statements: string[]): string[]
 }
 
 /**
- * Normalize index drafts whose `concurrently` flag became stale because
- * Concurrent availability is no longer `enabled` (partition probe failed =
- * unknown, partitioned parent, existing index, capability loss, ...). This is
- * the UI layer of the fail-closed defense: callers must still gate save/SQL
- * generation on the returned invalidation so a cleared flag can never surface
- * as an unannounced blocking `CREATE INDEX`.
+ * Report index drafts whose Concurrent availability is no longer `enabled`.
+ * Definitive states (partitioned parent, existing index, capability loss, ...)
+ * clear the stale flag. A transiently unknown partition status preserves the
+ * user's intent so a later successful probe can restore the concurrent SQL.
+ * Callers must gate save/SQL generation on every reported invalidation.
  */
 export function normalizeUnsupportedConcurrentIndexes<IIndex extends { id: string; concurrently?: boolean }>(indexes: readonly IIndex[], availabilityResolver: (index: IIndex) => ConcurrentIndexAvailability): { indexes: IIndex[]; invalidatedIds: string[] } {
   const invalidatedIds: string[] = [];
   const normalized = indexes.map((index) => {
-    if (!index.concurrently || availabilityResolver(index).enabled) return index;
+    if (!index.concurrently) return index;
+    const availability = availabilityResolver(index);
+    if (availability.enabled) return index;
     invalidatedIds.push(index.id);
+    if (availability.reason === "unknown") return index;
     return { ...index, concurrently: false };
   });
   return { indexes: normalized, invalidatedIds };

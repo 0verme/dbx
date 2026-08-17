@@ -1599,10 +1599,10 @@ async function loadStructure(
     if (requestId === structureLoadRequestId) {
       partitionStatusKnown.value = partitionStatus.known;
       isPartitionedParent.value = partitionStatus.status.isPartitionedParent;
-      // Availability inputs changed: normalize any stale `concurrently` flag
-      // (fail closed). Once a probe re-verifies a non-partitioned table with
-      // full capability support, lift the Save/preview block so the user can
-      // re-confirm; a partitioned parent or unknown status keeps the block.
+      // Availability inputs changed: fail closed while the status is unknown,
+      // but preserve the user's Concurrent intent so a later successful probe
+      // can regenerate the same SQL. Definitive unsupported states still clear
+      // the flag. A partitioned parent or unknown status keeps Save blocked.
       normalizeConcurrentIndexDraftsForCurrentAvailability();
       if (partitionStatus.known && !partitionStatus.status.isPartitionedParent && structureCapabilities.value.indexConcurrent && structureCapabilities.value.createIndex && concurrentAvailabilityInvalidated.value) {
         concurrentAvailabilityInvalidated.value = false;
@@ -2549,12 +2549,11 @@ function concurrentIndexAvailabilityState(index: EditableStructureIndex): Concur
 }
 
 /**
- * Layer A — normalize stale `concurrently: true` drafts whenever Concurrent
- * availability became unknown/unsupported (partition probe failure, partitioned
- * parent, capability loss, ...). Clearing the flag alone could silently turn a
- * requested concurrent build into a blocking `CREATE INDEX`, so this also
- * records the invalidation, empties the pending SQL and shows an explicit
- * error; Save stays blocked until the user re-verifies.
+ * Layer A — invalidate `concurrently: true` drafts whenever Concurrent becomes
+ * unavailable. Transiently unknown partition status preserves the flag so a
+ * later successful probe can recover the user's intent; definitive unsupported
+ * states clear it. In both cases, empty pending SQL and keep Save blocked until
+ * availability is verified again.
  */
 function normalizeConcurrentIndexDraftsForCurrentAvailability(): boolean {
   // Engines that cannot express Concurrent (non-PostgreSQL dialects) ignore a
