@@ -93,6 +93,16 @@ function newScheduleDraft(connectionId = sqlConnections.value[0]?.id ?? ""): Dat
 const draft = ref<DatabaseBackupSchedule>(newScheduleDraft());
 const oneShotDraft = ref<DatabaseBackupExecutionConfig>(newBackupConfig());
 const activeDraft = computed<DatabaseBackupExecutionConfig>(() => (oneShotDialogOpen.value ? oneShotDraft.value : draft.value));
+const activeOneShotRun = computed(() => activeRuns.value.find((run) => run.source === "one-shot"));
+type BackupDialogKind = "schedule" | "one-shot";
+let databaseLoadGeneration = 0;
+
+function databaseLoadIsCurrent(generation: number, dialog: BackupDialogKind, targetDraft: DatabaseBackupExecutionConfig, connectionId: string): boolean {
+  if (generation !== databaseLoadGeneration) return false;
+  if (dialog === "one-shot") return oneShotDialogOpen.value && oneShotDraft.value === targetDraft && targetDraft.connectionId === connectionId;
+  return scheduleDialogOpen.value && draft.value === targetDraft && targetDraft.connectionId === connectionId;
+}
+
 const canSave = computed(() => {
   const hasContent = draft.value.includeStructure || draft.value.includeData || draft.value.includeObjects;
   const hasDatabaseScope = allDatabases.value || selectedDatabases.value.length > 0;
@@ -152,41 +162,49 @@ function activeRunForSchedule(scheduleId: string): DatabaseBackupRun | undefined
   return activeRuns.value.find((run) => run.scheduleId === scheduleId);
 }
 
-async function loadDatabases(connectionId: string, preserveSelection: boolean) {
+async function loadDatabases(dialog: BackupDialogKind, targetDraft: DatabaseBackupExecutionConfig, preserveSelection: boolean) {
+  const generation = ++databaseLoadGeneration;
+  const connectionId = targetDraft.connectionId;
   databaseOptions.value = [];
-  if (!connectionId) return;
+  if (!preserveSelection) {
+    selectedDatabases.value = [];
+    allDatabases.value = true;
+    targetDraft.tableFilterMode = "all";
+    targetDraft.tablePatterns = [];
+    tablePatternsInput.value = "";
+  }
+  if (!connectionId) {
+    loadingDatabases.value = false;
+    return;
+  }
   loadingDatabases.value = true;
   try {
     await connectionStore.ensureConnected(connectionId);
     const config = connectionStore.getConfig(connectionId);
     const names = config?.db_type === "dameng" ? await fetchNamespaceOptionsForConnection(connectionId, config) : (await api.listDatabases(connectionId)).map((database) => database.name);
+    if (!databaseLoadIsCurrent(generation, dialog, targetDraft, connectionId)) return;
     databaseOptions.value = names;
     if (preserveSelection) {
       const selected = new Set(selectedDatabases.value);
       selectedDatabases.value = names.filter((database) => selected.has(database));
-    } else {
-      selectedDatabases.value = [];
-      allDatabases.value = true;
-      activeDraft.value.tableFilterMode = "all";
-      activeDraft.value.tablePatterns = [];
-      tablePatternsInput.value = "";
     }
   } catch (error: any) {
-    toast(error?.message || String(error), 5000);
+    if (databaseLoadIsCurrent(generation, dialog, targetDraft, connectionId)) toast(error?.message || String(error), 5000);
   } finally {
-    loadingDatabases.value = false;
+    if (generation === databaseLoadGeneration) loadingDatabases.value = false;
   }
 }
 
 async function openCreateSchedule() {
   oneShotDialogOpen.value = false;
   editingScheduleId.value = "";
-  draft.value = newScheduleDraft();
+  const nextDraft = newScheduleDraft();
+  draft.value = nextDraft;
   allDatabases.value = true;
   selectedDatabases.value = [];
   tablePatternsInput.value = "";
   scheduleDialogOpen.value = true;
-  await loadDatabases(draft.value.connectionId, false);
+  await loadDatabases("schedule", draft.value, false);
 }
 
 async function openEditSchedule(schedule: DatabaseBackupSchedule) {
@@ -197,12 +215,14 @@ async function openEditSchedule(schedule: DatabaseBackupSchedule) {
   selectedDatabases.value = [...schedule.databases];
   tablePatternsInput.value = schedule.tablePatterns.join(", ");
   scheduleDialogOpen.value = true;
-  await loadDatabases(schedule.connectionId, true);
+  await loadDatabases("schedule", draft.value, true);
 }
 
 async function changeConnection(connectionId: string) {
-  activeDraft.value.connectionId = connectionId;
-  await loadDatabases(connectionId, false);
+  const dialog: BackupDialogKind = oneShotDialogOpen.value ? "one-shot" : "schedule";
+  const targetDraft = dialog === "one-shot" ? oneShotDraft.value : draft.value;
+  targetDraft.connectionId = connectionId;
+  await loadDatabases(dialog, targetDraft, false);
 }
 
 function toggleDatabase(database: string) {
@@ -239,12 +259,13 @@ async function submitSchedule() {
 
 async function openOneShotBackup() {
   scheduleDialogOpen.value = false;
-  oneShotDraft.value = newBackupConfig();
+  const nextDraft = newBackupConfig();
+  oneShotDraft.value = nextDraft;
   allDatabases.value = true;
   selectedDatabases.value = [];
   tablePatternsInput.value = "";
   oneShotDialogOpen.value = true;
-  await loadDatabases(oneShotDraft.value.connectionId, false);
+  await loadDatabases("one-shot", oneShotDraft.value, false);
 }
 
 async function startOneShotBackup() {
@@ -270,6 +291,11 @@ async function startOneShotBackup() {
   } finally {
     oneShotStarting.value = false;
   }
+}
+
+async function cancelActiveOneShotBackup() {
+  const run = activeOneShotRun.value;
+  if (run) await cancelRun(run.id);
 }
 
 async function runNow(schedule: DatabaseBackupSchedule) {
@@ -450,7 +476,10 @@ function restoreBackup(run: DatabaseBackupRun, file: DatabaseBackupFile) {
               </div>
             </div>
             <div class="flex items-center justify-end gap-1">
-              <Loader2 v-if="activeRunIds.has(run.id)" class="mr-2 h-4 w-4 animate-spin text-primary" />
+              <Button v-if="activeRunIds.has(run.id) && run.source === 'one-shot'" variant="ghost" size="icon" class="h-8 w-8" :title="t('databaseBackup.cancel')" @click="cancelRun(run.id)">
+                <Square class="h-4 w-4" />
+              </Button>
+              <Loader2 v-else-if="activeRunIds.has(run.id)" class="mr-2 h-4 w-4 animate-spin text-primary" />
               <Button variant="ghost" size="icon" class="h-8 w-8" :disabled="activeRunIds.has(run.id)" :title="t('databaseBackup.renameBackup')" @click="requestRenameRun(run)">
                 <Pencil class="h-4 w-4" />
               </Button>
@@ -589,9 +618,12 @@ function restoreBackup(run: DatabaseBackupRun, file: DatabaseBackupFile) {
       />
 
       <DialogFooter>
-        <Button variant="outline" :disabled="oneShotStarting" @click="oneShotDialogOpen = false">{{ t("common.cancel") }}</Button>
-        <Button :disabled="!canStartOneShot" @click="startOneShotBackup">
-          <Loader2 v-if="oneShotStarting" class="mr-2 h-4 w-4 animate-spin" />
+        <Button variant="outline" @click="oneShotDialogOpen = false">{{ oneShotStarting ? t("common.close") : t("common.cancel") }}</Button>
+        <Button v-if="oneShotStarting" variant="destructive" :disabled="!activeOneShotRun" :title="t('databaseBackup.cancel')" @click="cancelActiveOneShotBackup">
+          <Square class="mr-2 h-4 w-4" />
+          {{ t("databaseBackup.cancel") }}
+        </Button>
+        <Button v-else :disabled="!canStartOneShot" @click="startOneShotBackup">
           {{ t("databaseBackup.startBackup") }}
         </Button>
       </DialogFooter>

@@ -106,6 +106,8 @@ describe("useScheduledDatabaseBackups one-shot execution", () => {
   });
 
   it("cancels an active one-shot through the shared export cancellation path", async () => {
+    mocks.cancelExport.mockClear();
+    mocks.deleteFiles.mockClear();
     let resolveExport!: (progress: { status: "Cancelled"; objectIndex: number; totalObjects: number; currentObject: string }) => void;
     mocks.runDatabaseExport.mockImplementationOnce(
       (_request: unknown, onProgress: (progress: unknown) => void) =>
@@ -127,6 +129,9 @@ describe("useScheduledDatabaseBackups one-shot execution", () => {
     expect(mocks.cancelExport).toHaveBeenCalledWith(`${activeRunId}-1`);
     resolveExport({ status: "Cancelled", objectIndex: 0, totalObjects: 1, currentObject: "app" });
 
-    await expect(pendingRun).resolves.toEqual(expect.objectContaining({ status: "cancelled", source: "one-shot" }));
+    const finishedRun = await pendingRun;
+    expect(finishedRun).toEqual(expect.objectContaining({ status: "cancelled", source: "one-shot", files: [] }));
+    expect(mocks.deleteFiles).toHaveBeenCalledWith([expect.stringContaining(activeRunId!)]);
+    expect(backup.runs.value.find((run) => run.id === activeRunId)).toEqual(expect.objectContaining({ status: "cancelled", files: [] }));
   });
 });
