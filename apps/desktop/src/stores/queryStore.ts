@@ -78,6 +78,7 @@ import type { SavedSqlFile } from "@/types/database";
 import i18n from "@/i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
 import type { SqlExecutionTargetContext } from "@/lib/database/sqlExecutionTargetRegistry";
+import type { DriverProfileWorkspaceScope } from "@/lib/database/driverProfileExtensions";
 import type { MultiDbExecutionTarget, MultiDbResultRunExecution } from "@/types/sqlExecution";
 
 const ORACLE_LIKE_METADATA_TYPES = new Set<string>(["oracle", "dameng", "oceanbase-oracle"]);
@@ -1814,6 +1815,32 @@ export const useQueryStore = defineStore("query", () => {
       isCancelling: false,
       isExplaining: false,
       mode: "databases",
+    });
+    activeTabId.value = id;
+    return id;
+  }
+
+  function openDriverProfileWorkspace(connectionId: string, database: string, title: string, mode: QueryTab["mode"], tabScope: DriverProfileWorkspaceScope = "database", workspaceBranch?: string) {
+    const existing = tabs.value.find((tab) => tab.mode === mode && tab.connectionId === connectionId && (tabScope === "connection" || tab.database === database));
+    if (existing) {
+      if (existing.database !== database) updateDatabase(existing.id, database);
+      existing.workspaceBranch = workspaceBranch;
+      switchTab(existing.id);
+      return existing.id;
+    }
+
+    const id = uuid();
+    tabs.value.push({
+      id,
+      title,
+      connectionId,
+      database,
+      workspaceBranch,
+      sql: "",
+      isExecuting: false,
+      isCancelling: false,
+      isExplaining: false,
+      mode,
     });
     activeTabId.value = id;
     return id;
@@ -6176,6 +6203,7 @@ export const useQueryStore = defineStore("query", () => {
     rollbackTransaction,
     renameTab,
     openDatabaseBrowser,
+    openDriverProfileWorkspace,
     openObjectBrowser,
     openMongoGridFs,
     openMongoBucket,
