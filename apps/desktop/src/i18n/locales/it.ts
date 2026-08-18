@@ -7710,6 +7710,12 @@ export default withEnglishFallback({
       friday: "Venerdì",
       saturday: "Sabato",
     },
+    oneShotBackup: "Backup immediato",
+    oneShotDescription: "Esegui immediatamente un backup del database; al termine apparirà nella cronologia dei backup.",
+    startBackup: "Avvia backup",
+    oneShotName: "Backup una tantum",
+    noSchedulesHint: "Puoi creare pianificazioni di backup periodiche o eseguire subito un backup.",
+    oneShotTrigger: "Backup una tantum",
   },
   mqExchanges: {
     searchPlaceholder: "Cerca exchange",

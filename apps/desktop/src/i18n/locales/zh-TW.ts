@@ -7703,6 +7703,12 @@ export default withEnglishFallback({
       friday: "星期五",
       saturday: "星期六",
     },
+    oneShotBackup: "立即備份",
+    oneShotDescription: "立即執行一次資料庫備份，完成後將出現在備份歷史中。",
+    startBackup: "開始備份",
+    oneShotName: "一次性備份",
+    noSchedulesHint: "你可以建立定時備份計劃，或立即執行一次備份。",
+    oneShotTrigger: "一次性備份",
   },
   mqExchanges: {
     searchPlaceholder: "搜尋交換機",
