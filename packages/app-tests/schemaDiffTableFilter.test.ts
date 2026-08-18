@@ -122,3 +122,20 @@ test("undefined visual selection keeps legacy all-tables behavior", () => {
     ["user_a", "user_b"],
   );
 });
+
+test("explicit empty selection remains restricted after option normalization", () => {
+  const options = normalizeSchemaDiffCompareOptions({ selectedTables: [] });
+  assert.deepEqual(options.selectedTables, []);
+  const filter = compileSchemaDiffTableFilter(options);
+  const result = filterSchemaDiffTables([table("a")], [table("a")], filter, undefined, options.selectedTables);
+  assert.deepEqual(result.sourceTables, []);
+  assert.deepEqual(result.targetTables, []);
+});
+
+test("selected source tables remain available for create diffs when the target is missing", () => {
+  const options = normalizeSchemaDiffCompareOptions({});
+  const filter = compileSchemaDiffTableFilter(options);
+  const result = filterSchemaDiffTables([table("a"), table("b")], [table("a"), table("extra")], filter, undefined, ["a", "b"]);
+  assert.deepEqual(result.sourceTables.map((item) => item.name), ["a", "b"]);
+  assert.deepEqual(result.targetTables.map((item) => item.name), ["a"]);
+});

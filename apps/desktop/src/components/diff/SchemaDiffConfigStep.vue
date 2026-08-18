@@ -148,7 +148,8 @@ watch(
 );
 
 const canCompare = computed(() => {
-  return props.sourceConnectionId && props.targetConnectionId && props.sourceDatabase && props.targetDatabase && (!isSchemaAware(sourceConfig.value?.db_type) || props.sourceSchema) && (!isSchemaAware(targetConfig.value?.db_type) || props.targetSchema);
+  const hasSelectedTables = props.selectedTables === undefined || props.selectedTables.length > 0;
+  return props.sourceConnectionId && props.targetConnectionId && props.sourceDatabase && props.targetDatabase && hasSelectedTables && (!isSchemaAware(sourceConfig.value?.db_type) || props.sourceSchema) && (!isSchemaAware(targetConfig.value?.db_type) || props.targetSchema);
 });
 
 async function loadDatabases(connectionId: string, side: "source" | "target") {
@@ -252,6 +253,25 @@ watch(
     }
   },
   { immediate: true },
+);
+
+// A visual selection belongs to the current source connection/database/schema. Clear it
+// when that identity changes so a saved table name cannot silently restrict a different
+// source. If the source and selected tables change together, it is a saved-config load;
+// let the selectedTables watcher restore that config instead of clearing it again.
+watch(
+  () => ({
+    source: [props.sourceConnectionId, props.sourceDatabase, props.sourceSchema] as const,
+    selectedTables: props.selectedTables,
+  }),
+  (current, previous) => {
+    if (current.source.every((value, index) => value === previous.source[index])) return;
+    if (current.selectedTables !== previous.selectedTables) return;
+    if (current.selectedTables === undefined && !restrictTables.value) return;
+    restrictTables.value = false;
+    localSelectedTables.value = [];
+    emit("update:selectedTables", undefined);
+  },
 );
 
 watch(

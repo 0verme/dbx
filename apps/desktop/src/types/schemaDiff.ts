@@ -22,12 +22,12 @@ export interface SchemaDiffCompareOptions {
   tableFilterPriority: SchemaDiffTableFilterPriority;
   /**
    * Explicitly selected table names to compare (the source table set, applied BEFORE the
-   * existing include/exclude regex filters). `undefined`/empty means "no visual table
-   * restriction" — all tables still flow through the regex filters, keeping legacy
-   * behavior unchanged. A non-empty array restricts the comparison to exactly those names.
-   * (Explicitly enabled restriction with an empty selection is represented as `[]` and eats
-   * nothing, distinct from the unset `undefined` case.) Never initialized to the full table
-   * list so newly added tables keep entering the comparison and configs stay small.
+   * existing include/exclude regex filters). `undefined` means no visual restriction, so all
+   * tables still flow through the regex filters and legacy configs keep their
+   * behavior. `[]` means an explicitly enabled restriction with no selected tables and
+   * therefore compares nothing. A non-empty array restricts the comparison to exactly those
+   * names. Never initialize this to the full table
+   * list so newly added tables keep entering unrestricted comparisons and configs stay small.
    */
   selectedTables: string[] | undefined;
   detectRenames: boolean;
