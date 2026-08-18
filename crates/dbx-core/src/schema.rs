@@ -3563,6 +3563,7 @@ for line in sys.stdin:
             message_count: None,
             messages_ready: None,
             messages_unacked: None,
+            ..Default::default()
         }]);
 
         assert_eq!(tables.len(), 1);
