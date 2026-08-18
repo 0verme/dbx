@@ -320,15 +320,17 @@ export async function loadTableMetadata(request: TableMetadataRequest): Promise<
       scope,
       async () => {
         // Column discovery can be especially slow on Oracle. Start row-identity
-        // (index) discovery independently so query preflight can reuse either
-        // facet without waiting on the other.
-        const indexesPromise = loadTableIndexes(request).catch((): IndexInfo[] => []);
+        // discovery independently unless an unqualified Vastbase relation must
+        // first report its visible schema for the index lookup.
+        const resolveVastbaseSchema = request.databaseType === "vastbase" && !request.schema;
+        const indexesPromise = resolveVastbaseSchema ? undefined : loadTableIndexes(request).catch((): IndexInfo[] => []);
         const columnsResult = await columnsPromise;
         const columns = columnsResult.columns;
-        const indexes = columns.length > 0 ? await indexesPromise : [];
+        const resolvedSchema = resolveVastbaseSchema ? columns.find((column) => column.resolved_schema)?.resolved_schema : request.schema;
+        const indexes = columns.length > 0 ? await (indexesPromise ?? loadTableIndexes({ ...request, schema: resolvedSchema }).catch((): IndexInfo[] => [])) : [];
         const primaryKeys = editableRowIdentifierColumns(request.databaseType as DatabaseType, columns, indexes, request.tableType);
         return {
-          schema: request.schema || undefined,
+          schema: resolvedSchema || undefined,
           tableName: request.tableName,
           tableType: request.tableType,
           catalog: request.catalog,
