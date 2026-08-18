@@ -261,6 +261,13 @@ const AGENT_CATALOG: &[AgentCatalogEntry] = &[
         profiles: &[],
     },
     AgentCatalogEntry {
+        db_type: DatabaseType::Ignite,
+        key: "ignite",
+        label: "Apache Ignite",
+        store_visible: true,
+        profiles: &[],
+    },
+    AgentCatalogEntry {
         db_type: DatabaseType::Sundb,
         key: "sundb",
         label: "科蓝 SUNDB",

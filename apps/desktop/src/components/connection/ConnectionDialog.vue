@@ -1234,6 +1234,7 @@ const driverProfiles: Record<
     host: "https://www.googleapis.com/bigquery/v2",
   },
   kylin: { type: "kylin", port: 7070, user: "ADMIN", label: "Apache Kylin", icon: "kylin" },
+  ignite: { type: "ignite", port: 10800, user: "", label: "Apache Ignite", icon: "ignite" },
   sundb: { type: "sundb", port: 22000, user: "root", label: "科蓝 SUNDB", icon: "sundb" },
   oscar: { type: "oscar", port: 2003, user: "SYSDBA", label: "神通 OSCAR", icon: "oscar" },
   jdbc: { type: "jdbc", port: 0, user: "", label: "JDBC", icon: "jdbc" },
@@ -2973,6 +2974,7 @@ const iconTypeMap: Record<string, string> = {
   cassandra: "cassandra",
   bigquery: "bigquery",
   kylin: "kylin",
+  ignite: "ignite",
   sundb: "sundb",
   oscar: "oscar",
   influxdb: "influxdb",
@@ -3054,6 +3056,7 @@ const dbOptions: DbOption[] = [
   { value: "cassandra", label: "Cassandra" },
   { value: "bigquery", label: "BigQuery" },
   { value: "kylin", label: "Kylin" },
+  { value: "ignite", label: "Apache Ignite" },
   { value: "sundb", label: "科蓝 SUNDB" },
   { value: "oscar", label: "神通 OSCAR" },
   { value: "xugu", label: "虚谷 XuguDB" },
@@ -3092,7 +3095,7 @@ const dbCategoryDefinitions: Array<{
   {
     key: "analytics",
     titleKey: "connection.databaseCategoryAnalytics",
-    optionValues: ["cloudberry", "clickhouse", "doris", "starrocks", "databend", "selectdb", "databricks", "saphana", "teradata", "vertica", "exasol", "redshift", "snowflake", "trino", "prestosql", "hive", "kyuubi", "impala", "spark", "bigquery", "kylin", "dremio"],
+    optionValues: ["cloudberry", "clickhouse", "doris", "starrocks", "databend", "selectdb", "databricks", "saphana", "teradata", "vertica", "exasol", "redshift", "snowflake", "trino", "prestosql", "hive", "kyuubi", "impala", "spark", "bigquery", "kylin", "ignite", "dremio"],
   },
   {
     key: "domestic",

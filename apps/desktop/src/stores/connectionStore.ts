@@ -1132,6 +1132,7 @@ export const useConnectionStore = defineStore("connection", () => {
       cassandra: "Cassandra",
       bigquery: "BigQuery",
       kylin: "Kylin",
+      ignite: "Apache Ignite",
       sundb: "科蓝 SUNDB",
       oscar: "神通 OSCAR",
       influxdb: "InfluxDB",

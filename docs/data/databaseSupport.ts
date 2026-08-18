@@ -71,6 +71,7 @@ export const databaseSupport: DatabaseSupportItem[] = [
   { id: "neo4j", name: "Neo4j", icon: "/icons/database/neo4j.svg", tone: "#018bff" },
   { id: "cassandra", name: "Cassandra", icon: "/icons/database/cassandra.svg", tone: "#1287b1" },
   { id: "kylin", name: "Kylin", icon: "/icons/database/apache_kylin.svg", tone: "#fb8c00" },
+  { id: "ignite", name: "Ignite", icon: "/icons/database/apache_ignite.svg", tone: "#ef2c2c" },
   { id: "dremio", name: "Dremio", icon: "/icons/database/dremio.svg", tone: "#30bdbe" },
   { id: "oscar", name: "OSCAR", icon: "/icons/database/oscar.png", tone: "#1b8dff" },
   { id: "influxdb", name: "InfluxDB", icon: "/icons/database/influxdb.svg", tone: "#22adf6" },

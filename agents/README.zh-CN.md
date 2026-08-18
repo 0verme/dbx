@@ -37,6 +37,7 @@ DBX 的 Agent 驱动 —— 通过 JDBC 和原生数据库驱动支持各种数�
 | cassandra | Apache Cassandra 2.1+ | Apache cassandra-gocql-driver 原生 Agent |
 | bigquery | Google BigQuery | BigQuery JDBC |
 | kylin | Apache Kylin | Kylin JDBC |
+| ignite | Apache Ignite | Ignite JDBC thin（ignite-core） |
 | sundb | SunDB | SunDB JDBC |
 | tdengine | TDengine 2.4+ | taos-connector-rust 原生 WebSocket agent |
 | yashandb | 崖山 YashanDB | YashanDB JDBC |
