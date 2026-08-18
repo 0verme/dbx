@@ -3083,7 +3083,7 @@ fn postgres_columns_for_relations_sql() -> &'static str {
                  WHEN 's' THEN 'generated always as (' || pg_get_expr(ad.adbin, ad.adrelid) || ') stored' \
                  WHEN 'v' THEN 'generated always as (' || pg_get_expr(ad.adbin, ad.adrelid) || ') virtual' \
                  ELSE CASE WHEN a.atttypid IN (20, 21, 23) AND dep.deptype = 'a' \
-                   AND pseq.seqrelid IS NOT NULL AND default_dep.objid IS NOT NULL \
+                   AND pseq.seqrelid IS NOT NULL \
                    AND pg_get_expr(ad.adbin, ad.adrelid) = format('nextval(%L::regclass)', dep.objid::regclass::text) \
                  THEN CASE a.atttypid \
                    WHEN 21 THEN 'smallserial' \
@@ -3107,19 +3107,28 @@ fn postgres_columns_for_relations_sql() -> &'static str {
              JOIN pg_type t ON t.oid = a.atttypid \
              LEFT JOIN pg_type enum_t ON enum_t.oid = CASE WHEN t.typtype = 'd' THEN t.typbasetype WHEN t.typtype = 'e' THEN t.oid ELSE NULL END AND enum_t.typtype = 'e' \
              LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum \
-             LEFT JOIN pg_depend dep ON dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-               AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-               AND dep.refobjid = a.attrelid AND dep.refobjsubid = a.attnum AND dep.deptype IN ('a', 'i') \
-               AND dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
+             LEFT JOIN LATERAL ( \
+               SELECT sequence_dep.objid, sequence_dep.deptype \
+               FROM pg_catalog.pg_depend sequence_dep \
+               JOIN pg_catalog.pg_class sequence_class \
+                 ON sequence_class.oid = sequence_dep.objid AND sequence_class.relkind = 'S' \
+               WHERE sequence_dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.objsubid = 0 \
+                 AND sequence_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.refobjid = a.attrelid AND sequence_dep.refobjsubid = a.attnum \
+                 AND ((a.attidentity <> '' AND sequence_dep.deptype = 'i') OR (a.attidentity = '' \
+                   AND sequence_dep.deptype = 'a' AND EXISTS ( \
+                     SELECT 1 FROM pg_catalog.pg_depend serial_default_dep \
+                     WHERE serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
+                       AND serial_default_dep.objid = ad.oid AND serial_default_dep.objsubid = 0 \
+                       AND serial_default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                       AND serial_default_dep.refobjid = sequence_dep.objid \
+                       AND serial_default_dep.refobjsubid = 0 AND serial_default_dep.deptype = 'n' \
+                   ))) \
+               ORDER BY sequence_dep.objid \
+               LIMIT 1 \
+             ) dep ON TRUE \
              LEFT JOIN pg_sequence pseq ON pseq.seqrelid = dep.objid \
-             LEFT JOIN pg_catalog.pg_depend default_dep \
-               ON default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
-              AND default_dep.objid = ad.oid \
-              AND default_dep.objsubid = 0 \
-              AND default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND default_dep.refobjid = dep.objid \
-              AND default_dep.refobjsubid = 0 \
-              AND default_dep.deptype = 'n' \
              LEFT JOIN information_schema.columns ic \
                ON ic.table_schema = n.nspname AND ic.table_name = c.relname AND ic.column_name = a.attname \
              WHERE c.oid = ANY($1::bigint[]) \
@@ -3140,7 +3149,6 @@ fn postgres_columns_for_relations_compat_sql() -> &'static str {
              ) AS is_pk, \
              col_description(a.attrelid, a.attnum) AS column_comment, \
              CASE WHEN a.atttypid IN (20, 21, 23) AND serial_seq.oid IS NOT NULL \
-               AND serial_default_dep.objid IS NOT NULL \
                AND pg_get_expr(ad.adbin, ad.adrelid) = format('nextval(%L::regclass)', serial_seq.oid::regclass::text) \
              THEN CASE a.atttypid \
                WHEN 21 THEN 'smallserial' \
@@ -3159,21 +3167,26 @@ fn postgres_columns_for_relations_compat_sql() -> &'static str {
              JOIN pg_namespace n ON n.oid = c.relnamespace \
              JOIN pg_type t ON t.oid = a.atttypid \
              LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum \
-             LEFT JOIN pg_catalog.pg_depend serial_dep \
-               ON serial_dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND serial_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND serial_dep.refobjid = a.attrelid AND serial_dep.refobjsubid = a.attnum \
-              AND serial_dep.deptype = 'a' \
-              AND serial_dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
-             LEFT JOIN pg_catalog.pg_class serial_seq ON serial_seq.oid = serial_dep.objid AND serial_seq.relkind = 'S' \
-             LEFT JOIN pg_catalog.pg_depend serial_default_dep \
-               ON serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
-              AND serial_default_dep.objid = ad.oid \
-              AND serial_default_dep.objsubid = 0 \
-              AND serial_default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND serial_default_dep.refobjid = serial_seq.oid \
-              AND serial_default_dep.refobjsubid = 0 \
-              AND serial_default_dep.deptype = 'n' \
+             LEFT JOIN pg_catalog.pg_class serial_seq ON serial_seq.oid = ( \
+               SELECT sequence_dep.objid \
+               FROM pg_catalog.pg_depend sequence_dep \
+               JOIN pg_catalog.pg_class sequence_class \
+                 ON sequence_class.oid = sequence_dep.objid AND sequence_class.relkind = 'S' \
+               WHERE sequence_dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.objsubid = 0 \
+                 AND sequence_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.refobjid = a.attrelid AND sequence_dep.refobjsubid = a.attnum \
+                 AND sequence_dep.deptype = 'a' AND EXISTS ( \
+                   SELECT 1 FROM pg_catalog.pg_depend serial_default_dep \
+                   WHERE serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
+                     AND serial_default_dep.objid = ad.oid AND serial_default_dep.objsubid = 0 \
+                     AND serial_default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                     AND serial_default_dep.refobjid = sequence_dep.objid \
+                     AND serial_default_dep.refobjsubid = 0 AND serial_default_dep.deptype = 'n' \
+                 ) \
+               ORDER BY sequence_dep.objid \
+               LIMIT 1 \
+             ) AND serial_seq.relkind = 'S' \
              LEFT JOIN information_schema.columns ic \
                ON ic.table_schema = n.nspname AND ic.table_name = c.relname AND ic.column_name = a.attname \
              WHERE c.oid = ANY($1::bigint[]) \
@@ -4890,7 +4903,7 @@ const POSTGRES_COLUMNS_SQL: &str = "SELECT a.attname AS column_name, \
                  WHEN 's' THEN 'generated always as (' || pg_get_expr(ad.adbin, ad.adrelid) || ') stored' \
                  WHEN 'v' THEN 'generated always as (' || pg_get_expr(ad.adbin, ad.adrelid) || ') virtual' \
                  ELSE CASE WHEN a.atttypid IN (20, 21, 23) AND dep.deptype = 'a' \
-                   AND pseq.seqrelid IS NOT NULL AND default_dep.objid IS NOT NULL \
+                   AND pseq.seqrelid IS NOT NULL \
                    AND pg_get_expr(ad.adbin, ad.adrelid) = format('nextval(%L::regclass)', dep.objid::regclass::text) \
                  THEN CASE a.atttypid \
                    WHEN 21 THEN 'smallserial' \
@@ -4912,19 +4925,28 @@ const POSTGRES_COLUMNS_SQL: &str = "SELECT a.attname AS column_name, \
              JOIN pg_type t ON t.oid = a.atttypid \
              LEFT JOIN pg_type enum_t ON enum_t.oid = CASE WHEN t.typtype = 'd' THEN t.typbasetype WHEN t.typtype = 'e' THEN t.oid ELSE NULL END AND enum_t.typtype = 'e' \
              LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum \
-             LEFT JOIN pg_depend dep ON dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-               AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-               AND dep.refobjid = a.attrelid AND dep.refobjsubid = a.attnum AND dep.deptype IN ('a', 'i') \
-               AND dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
+             LEFT JOIN LATERAL ( \
+               SELECT sequence_dep.objid, sequence_dep.deptype \
+               FROM pg_catalog.pg_depend sequence_dep \
+               JOIN pg_catalog.pg_class sequence_class \
+                 ON sequence_class.oid = sequence_dep.objid AND sequence_class.relkind = 'S' \
+               WHERE sequence_dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.objsubid = 0 \
+                 AND sequence_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.refobjid = a.attrelid AND sequence_dep.refobjsubid = a.attnum \
+                 AND ((a.attidentity <> '' AND sequence_dep.deptype = 'i') OR (a.attidentity = '' \
+                   AND sequence_dep.deptype = 'a' AND EXISTS ( \
+                     SELECT 1 FROM pg_catalog.pg_depend serial_default_dep \
+                     WHERE serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
+                       AND serial_default_dep.objid = ad.oid AND serial_default_dep.objsubid = 0 \
+                       AND serial_default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                       AND serial_default_dep.refobjid = sequence_dep.objid \
+                       AND serial_default_dep.refobjsubid = 0 AND serial_default_dep.deptype = 'n' \
+                   ))) \
+               ORDER BY sequence_dep.objid \
+               LIMIT 1 \
+             ) dep ON TRUE \
              LEFT JOIN pg_sequence pseq ON pseq.seqrelid = dep.objid \
-             LEFT JOIN pg_catalog.pg_depend default_dep \
-               ON default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
-              AND default_dep.objid = ad.oid \
-              AND default_dep.objsubid = 0 \
-              AND default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND default_dep.refobjid = dep.objid \
-              AND default_dep.refobjsubid = 0 \
-              AND default_dep.deptype = 'n' \
              LEFT JOIN information_schema.columns c \
                ON c.table_schema = $1 AND c.table_name = $2 AND c.column_name = a.attname \
              WHERE a.attrelid = (quote_ident($1) || '.' || quote_ident($2))::regclass \
@@ -4943,7 +4965,6 @@ const POSTGRES_COLUMNS_COMPAT_SQL: &str = "SELECT a.attname AS column_name, \
              ) AS is_pk, \
              col_description(a.attrelid, a.attnum) AS column_comment, \
              CASE WHEN a.atttypid IN (20, 21, 23) AND serial_seq.oid IS NOT NULL \
-               AND serial_default_dep.objid IS NOT NULL \
                AND pg_get_expr(ad.adbin, ad.adrelid) = format('nextval(%L::regclass)', serial_seq.oid::regclass::text) \
              THEN CASE a.atttypid \
                WHEN 21 THEN 'smallserial' \
@@ -4960,21 +4981,26 @@ const POSTGRES_COLUMNS_COMPAT_SQL: &str = "SELECT a.attname AS column_name, \
              FROM pg_attribute a \
              JOIN pg_type t ON t.oid = a.atttypid \
              LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum \
-             LEFT JOIN pg_catalog.pg_depend serial_dep \
-               ON serial_dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND serial_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND serial_dep.refobjid = a.attrelid AND serial_dep.refobjsubid = a.attnum \
-              AND serial_dep.deptype = 'a' \
-              AND serial_dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
-             LEFT JOIN pg_catalog.pg_class serial_seq ON serial_seq.oid = serial_dep.objid AND serial_seq.relkind = 'S' \
-             LEFT JOIN pg_catalog.pg_depend serial_default_dep \
-               ON serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
-              AND serial_default_dep.objid = ad.oid \
-              AND serial_default_dep.objsubid = 0 \
-              AND serial_default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
-              AND serial_default_dep.refobjid = serial_seq.oid \
-              AND serial_default_dep.refobjsubid = 0 \
-              AND serial_default_dep.deptype = 'n' \
+             LEFT JOIN pg_catalog.pg_class serial_seq ON serial_seq.oid = ( \
+               SELECT sequence_dep.objid \
+               FROM pg_catalog.pg_depend sequence_dep \
+               JOIN pg_catalog.pg_class sequence_class \
+                 ON sequence_class.oid = sequence_dep.objid AND sequence_class.relkind = 'S' \
+               WHERE sequence_dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.objsubid = 0 \
+                 AND sequence_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                 AND sequence_dep.refobjid = a.attrelid AND sequence_dep.refobjsubid = a.attnum \
+                 AND sequence_dep.deptype = 'a' AND EXISTS ( \
+                   SELECT 1 FROM pg_catalog.pg_depend serial_default_dep \
+                   WHERE serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
+                     AND serial_default_dep.objid = ad.oid AND serial_default_dep.objsubid = 0 \
+                     AND serial_default_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
+                     AND serial_default_dep.refobjid = sequence_dep.objid \
+                     AND serial_default_dep.refobjsubid = 0 AND serial_default_dep.deptype = 'n' \
+                 ) \
+               ORDER BY sequence_dep.objid \
+               LIMIT 1 \
+             ) AND serial_seq.relkind = 'S' \
              LEFT JOIN information_schema.columns c \
                ON c.table_schema = $1 AND c.table_name = $2 AND c.column_name = a.attname \
              WHERE a.attrelid = (quote_ident($1) || '.' || quote_ident($2))::regclass \
@@ -8909,21 +8935,30 @@ mod tests {
             assert!(sql.contains("WHEN 20 THEN 'bigserial'"));
         }
         for sql in modern_sql {
-            assert!(sql.contains("dep.deptype IN ('a', 'i')"));
-            assert!(sql.contains("dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S')"));
+            assert!(sql.contains("LEFT JOIN LATERAL"));
+            assert!(sql.contains("a.attidentity <> '' AND sequence_dep.deptype = 'i'"));
+            assert!(sql.contains("a.attidentity = ''"));
+            assert!(sql.contains("sequence_dep.deptype = 'a' AND EXISTS"));
+            assert!(sql.contains("sequence_class.relkind = 'S'"));
+            assert!(sql.contains("ORDER BY sequence_dep.objid"));
+            assert!(sql.contains("LIMIT 1"));
             assert!(sql.contains("pseq.seqrelid IS NOT NULL"));
-            assert!(sql.contains("default_dep.objid = ad.oid"));
-            assert!(sql.contains("default_dep.refobjid = dep.objid"));
+            assert!(sql.contains("serial_default_dep.objid = ad.oid"));
+            assert!(sql.contains("serial_default_dep.refobjid = sequence_dep.objid"));
             assert!(sql.contains(
                 "pg_get_expr(ad.adbin, ad.adrelid) = format('nextval(%L::regclass)', dep.objid::regclass::text)"
             ));
         }
         for sql in compat_sql {
-            assert!(sql.contains("serial_dep.deptype = 'a'"));
-            assert!(sql.contains("serial_dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S')"));
+            assert!(!sql.contains("LEFT JOIN LATERAL"));
+            assert!(sql.contains("serial_seq.oid = ("));
+            assert!(sql.contains("sequence_dep.deptype = 'a' AND EXISTS"));
+            assert!(sql.contains("sequence_class.relkind = 'S'"));
+            assert!(sql.contains("ORDER BY sequence_dep.objid"));
+            assert!(sql.contains("LIMIT 1"));
             assert!(sql.contains("serial_seq.relkind = 'S'"));
             assert!(sql.contains("serial_default_dep.objid = ad.oid"));
-            assert!(sql.contains("serial_default_dep.refobjid = serial_seq.oid"));
+            assert!(sql.contains("serial_default_dep.refobjid = sequence_dep.objid"));
             assert!(sql.contains(
                 "pg_get_expr(ad.adbin, ad.adrelid) = format('nextval(%L::regclass)', serial_seq.oid::regclass::text)"
             ));
@@ -8951,7 +8986,8 @@ mod tests {
         assert!(column_tiers[0].contains("a.attgenerated"));
         assert!(!column_tiers[1].contains("a.attgenerated"));
         assert!(!column_tiers[1].contains("pg_sequence"));
-        assert!(column_tiers[1].contains("serial_dep.deptype = 'a'"));
+        assert!(column_tiers[1].contains("sequence_dep.deptype = 'a'"));
+        assert!(!column_tiers[1].contains("LEFT JOIN LATERAL"));
 
         let index_tiers = postgres_indexes_for_relations_query_tiers();
         assert_eq!(index_tiers.len(), 2);
@@ -9207,6 +9243,8 @@ mod tests {
                    num numeric(10, 2), \
                    ts timestamp\
                  ); \
+                 CREATE SEQUENCE {schema_ident}.serial_decoy OWNED BY {table}.id; \
+                 CREATE SEQUENCE {schema_ident}.identity_decoy OWNED BY {table}.ident_id; \
                  CREATE INDEX idx_issue6547_repro_id ON {table}(id); \
                  CREATE INDEX idx_issue6547_repro_big ON {table}(big_id); \
                  CREATE UNIQUE INDEX uniq_issue6547_repro_vc ON {table}(vc);"
@@ -9216,9 +9254,9 @@ mod tests {
 
         let columns = get_columns(&pool, &schema, table_name).await.expect("get columns");
         // One pg_attribute row must produce exactly one ColumnInfo even when
-        // the column has multiple pg_depend rows (an owned sequence plus
-        // several indexes all declare a dependency on the same column). See
-        // https://github.com/t8y2/dbx/issues/6547.
+        // the column has multiple sequence dependencies and several indexes.
+        // Only the sequence used by the default, or the internal identity
+        // sequence, is semantic metadata for the column.
         let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for column in &columns {
             assert!(seen.insert(column.name.as_str()), "duplicate column {:?} in {columns:?}", column.name);
@@ -9274,6 +9312,7 @@ mod tests {
             .batch_execute(&format!(
                 "CREATE SCHEMA {schema_ident}; \
                  CREATE TABLE {table} (id serial PRIMARY KEY, value text); \
+                 CREATE SEQUENCE {schema_ident}.serial_decoy OWNED BY {table}.id; \
                  CREATE INDEX idx_issue6547_repro_id ON {table}(id)"
             ))
             .await
@@ -9311,6 +9350,7 @@ mod tests {
             .batch_execute(&format!(
                 "CREATE SCHEMA {schema_ident}; \
                  CREATE TABLE {table} (id serial PRIMARY KEY, value text); \
+                 CREATE SEQUENCE {schema_ident}.serial_decoy OWNED BY {table}.id; \
                  CREATE INDEX idx_issue6547_repro_id ON {table}(id)"
             ))
             .await
