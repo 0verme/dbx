@@ -4975,10 +4975,6 @@ const contextColumn = computed(() => {
   if (!contextCell.value || contextCell.value.col < 0) return null;
   return props.result.columns[contextCell.value.col] ?? null;
 });
-const contextCellValue = computed<CellValue | null>(() => {
-  if (!contextCell.value || contextCell.value.col < 0) return null;
-  return contextRowItem.value?.data[contextCell.value.col] ?? null;
-});
 const contextCellDetail = computed(() => {
   const cell = contextCell.value;
   if (!cell || cell.col < 0) return null;
@@ -5561,18 +5557,31 @@ function applyContextSort(direction: "asc" | "desc" | null, mode: DataGridSortMo
 }
 
 async function contextFilterCondition(mode: FilterMode): Promise<string | null> {
-  if (!contextColumn.value) return null;
-  if (mode !== "is-null" && mode !== "is-not-null" && contextCell.value) {
-    if (!(await hydrateLargeValueCell(contextCell.value.rowId, contextCell.value.col))) return null;
+  const target = contextCell.value;
+  if (!target) return null;
+  const columnName = props.result.columns[target.col];
+  if (!columnName) return null;
+  const sourceResult = props.result;
+  const sourceItem = getRowItem(target.rowId);
+  if (!sourceItem) return null;
+  const sourceIndex = sourceItem.sourceIndex;
+  const requiresHydration = sourceIndex !== undefined && isLargeValuePreview(sourceItem, target.col);
+  const sourceValue = sourceItem.data[target.col] ?? null;
+  // CustomContextMenu closes before invoking its action. Keep the target
+  // stable across hydration after the close lifecycle clears contextCell.
+  if (mode !== "is-null" && mode !== "is-not-null") {
+    if (!(await hydrateLargeValueCell(target.rowId, target.col))) return null;
   }
+  if (props.result !== sourceResult) return null;
+  const value = requiresHydration && sourceIndex !== undefined ? (sourceResult.rows[sourceIndex]?.[target.col] ?? null) : sourceValue;
   return (
     (await buildDataGridContextFilterCondition({
       databaseType: resolvedDatabaseType.value,
       identifierQuote: connectionStore.connectionIdentifierQuote?.(props.connectionId),
-      columnName: contextColumn.value,
-      columnInfo: props.tableMeta?.columns.find((column) => column.name === contextColumn.value),
+      columnName,
+      columnInfo: props.tableMeta?.columns.find((column) => column.name === columnName),
       mode,
-      value: contextCellValue.value,
+      value,
     })) ?? null
   );
 }
@@ -10466,6 +10475,10 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     previewItems,
   );
 });
+
+function currentGridContextMenuItems(): ContextMenuItem[] {
+  return gridContextMenuItems.value;
+}
 </script>
 
 <template>
@@ -10485,7 +10498,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     @paste="onGridPaste"
     @focusin="onGridFocusIn"
   >
-    <CustomContextMenu :items="gridContextMenuItems" @open="onGridContextMenuOpen" @close="onGridContextMenuClose" v-slot="{ onContextMenu }">
+    <CustomContextMenu :items="currentGridContextMenuItems" @open="onGridContextMenuOpen" @close="onGridContextMenuClose" v-slot="{ onContextMenu }">
       <div v-if="hasData || canShowWhereSearch" class="flex-1 flex flex-col overflow-hidden" @contextmenu="onContextMenu">
         <!-- Search bar -->
         <!-- Leave real vertical space around the 28px controls instead of fitting them against the border. -->
