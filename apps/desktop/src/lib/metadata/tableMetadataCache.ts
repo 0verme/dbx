@@ -61,6 +61,7 @@ export interface TableColumnsLoadResult {
   tableType?: string;
   cacheStatus: MetadataLoadCacheStatus;
   ageMs: number;
+  cachedAt: number;
 }
 
 const tableMetadataCache = new MetadataResultCache<TableMetadata>({
@@ -174,7 +175,7 @@ export function getCachedTableMetadata(request: Pick<TableMetadataRequest, "conn
 export function getCachedTableColumns(request: Pick<TableMetadataRequest, "connectionId" | "database" | "schema" | "tableName" | "tableType" | "driverProfile" | "databaseType" | "catalog">): TableColumnsLoadResult | undefined {
   const hit = tableColumnsCache.get(tableMetadataScope(request));
   if (!hit) return undefined;
-  return { columns: hit.value.columns, tableType: hit.value.tableType, cacheStatus: hit.stale ? "stale" : "hit", ageMs: hit.ageMs };
+  return { columns: hit.value.columns, tableType: hit.value.tableType, cacheStatus: hit.stale ? "stale" : "hit", ageMs: hit.ageMs, cachedAt: hit.cachedAt };
 }
 
 /**
@@ -205,7 +206,7 @@ export async function loadTableColumns(request: TableMetadataRequest): Promise<T
         resultCount: full.value.columns.length,
         stale: full.stale,
       });
-      return { columns: full.value.columns, tableType: full.value.tableType, cacheStatus: full.stale ? "stale" : "hit", ageMs: full.ageMs };
+      return { columns: full.value.columns, tableType: full.value.tableType, cacheStatus: full.stale ? "stale" : "hit", ageMs: full.ageMs, cachedAt: full.cachedAt };
     }
     const cached = tableColumnsCache.get(scope);
     if (cached) {
@@ -214,7 +215,7 @@ export async function loadTableColumns(request: TableMetadataRequest): Promise<T
         resultCount: cached.value.columns.length,
         stale: cached.stale,
       });
-      return { columns: cached.value.columns, tableType: cached.value.tableType, cacheStatus: cached.stale ? "stale" : "hit", ageMs: cached.ageMs };
+      return { columns: cached.value.columns, tableType: cached.value.tableType, cacheStatus: cached.stale ? "stale" : "hit", ageMs: cached.ageMs, cachedAt: cached.cachedAt };
     }
   }
 
@@ -253,7 +254,7 @@ export async function loadTableColumns(request: TableMetadataRequest): Promise<T
     resultCount: metadata.columns.length,
     force: request.force === true,
   });
-  return { columns: metadata.columns, tableType: metadata.tableType, cacheStatus: request.force ? "refresh" : "miss", ageMs: 0 };
+  return { columns: metadata.columns, tableType: metadata.tableType, cacheStatus: request.force ? "refresh" : "miss", ageMs: 0, cachedAt: metadata.cachedAt };
 }
 
 export function tableMetadataToDataTabMeta(metadata: TableMetadata, overrides?: { schema?: string }): NonNullable<QueryTab["tableMeta"]> {
@@ -322,7 +323,8 @@ export async function loadTableMetadata(request: TableMetadataRequest): Promise<
         // (index) discovery independently so query preflight can reuse either
         // facet without waiting on the other.
         const indexesPromise = loadTableIndexes(request).catch((): IndexInfo[] => []);
-        const columns = (await columnsPromise).columns;
+        const columnsResult = await columnsPromise;
+        const columns = columnsResult.columns;
         const indexes = columns.length > 0 ? await indexesPromise : [];
         const primaryKeys = editableRowIdentifierColumns(request.databaseType as DatabaseType, columns, indexes, request.tableType);
         return {
@@ -334,7 +336,7 @@ export async function loadTableMetadata(request: TableMetadataRequest): Promise<
           columns,
           indexes,
           primaryKeys,
-          cachedAt: Date.now(),
+          cachedAt: columnsResult.cachedAt,
         };
       },
       { force: request.force, kind: scope.kind },
@@ -342,7 +344,7 @@ export async function loadTableMetadata(request: TableMetadataRequest): Promise<
 
     // 必须在 unregister 前比较：最后一个在途加载注销时会顺带清掉代数记录
     if (invalidationStampAtStart === (tableMetadataInvalidationStamps.get(scopeKey) ?? 0)) {
-      tableMetadataCache.set(scope, metadata);
+      tableMetadataCache.set(scope, metadata, { cachedAt: metadata.cachedAt });
     }
   } finally {
     unregisterInFlightTableMetadataScope(scopeKey);

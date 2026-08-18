@@ -25,7 +25,7 @@ vi.mock("@/lib/backend/api", () => ({
   listIndexes: mocks.listIndexes,
 }));
 
-import { clearTableMetadataCache, invalidateTableMetadataCache, loadTableColumns, loadTableMetadata } from "@/lib/metadata/tableMetadataCache";
+import { clearTableMetadataCache, getCachedTableMetadata, invalidateTableMetadataCache, loadTableColumns, loadTableMetadata, TABLE_METADATA_CACHE_TTL_MS } from "@/lib/metadata/tableMetadataCache";
 
 // The coordinator starts its loader on a microtask (Promise.resolve().then), so
 // flush before asserting remote call counts.
@@ -133,6 +133,28 @@ describe("tableMetadataCache columns facet request counts", () => {
     await loadTableMetadata({ ...usersRequest });
     expect(callCount(mocks.getColumns)).toBe(1);
     expect(callCount(mocks.listIndexes)).toBe(1);
+  });
+
+  it("R7b — promoting near-expiry columns does not reset the full metadata TTL", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-18T00:00:00Z"));
+      await loadTableColumns({ ...usersRequest });
+      vi.advanceTimersByTime(TABLE_METADATA_CACHE_TTL_MS - 100);
+
+      await loadTableMetadata({ ...usersRequest });
+      expect(callCount(mocks.getColumns)).toBe(1);
+      expect(callCount(mocks.listIndexes)).toBe(1);
+
+      vi.advanceTimersByTime(200);
+      expect(getCachedTableMetadata({ ...usersRequest })).toBeUndefined();
+
+      await loadTableMetadata({ ...usersRequest });
+      expect(callCount(mocks.getColumns)).toBe(2);
+      expect(callCount(mocks.listIndexes)).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("R8 — invalidating a table forces the next columns load to re-query", async () => {
