@@ -11408,11 +11408,8 @@ SELECT 1 FROM dual"#
     #[test]
     fn map_column_type_preserves_length_units_for_oracle_family_targets() {
         for target in [DatabaseType::Oracle, DatabaseType::OceanbaseOracle, DatabaseType::Dameng] {
-            let source = if target == DatabaseType::Oracle {
-                DatabaseType::OceanbaseOracle
-            } else {
-                DatabaseType::Oracle
-            };
+            let source =
+                if target == DatabaseType::Oracle { DatabaseType::OceanbaseOracle } else { DatabaseType::Oracle };
             assert_eq!(map_column_type("VARCHAR2(50 CHAR)", &source, &target), "VARCHAR(50 char)");
             assert_eq!(map_column_type("CHAR(20 BYTE)", &source, &target), "CHAR(20 byte)");
         }
