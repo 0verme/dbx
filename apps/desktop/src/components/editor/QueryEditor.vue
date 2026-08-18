@@ -22,6 +22,7 @@ import { canFormatSqlForDatabaseType, formatSqlForEditing, compressSqlText, type
 import { detectAndFormatStructured } from "@/lib/sql/autoFormat";
 import { enabledSqlParameterSyntaxes, resolveSqlVariableSyntaxToggles } from "@/lib/sql/sqlVariableSyntax";
 import { blankLineDeletionChanges, replaceSelectedEditorText } from "@/lib/editor/queryEditorTextEdits";
+import { createQueryEditorExecutionViewportOwnership } from "@/lib/editor/queryEditorExecutionViewport";
 import { joinQueryEditorLines } from "@/lib/editor/queryEditorJoinLines";
 import { insertQueryEditorNewline } from "@/lib/editor/queryEditorNewline";
 import { createSqlSignatureTooltipDom } from "@/lib/editor/sqlSignatureTooltip";
@@ -218,6 +219,7 @@ let viewportEmitFrame: number | null = null;
 let viewportRestoreFrame: number | null = null;
 let latestViewport: { scrollTop: number; scrollLeft: number } | undefined = props.initialViewport;
 let lastEmittedViewport: { scrollTop: number; scrollLeft: number } | undefined = props.initialViewport;
+const gutterExecutionViewport = createQueryEditorExecutionViewportOwnership();
 let latestSelection: { anchor: number; head: number } | undefined = props.initialSelection;
 const connectionStore = useConnectionStore();
 const settingsStore = useSettingsStore();
@@ -805,6 +807,9 @@ interface RequestExecuteOptions {
 }
 
 function emitExecutionRequest(source: SqlExecutionOverride, openInNewResultTab = false) {
+  if (typeof source === "string" || source.editorViewportRequestId === undefined) {
+    gutterExecutionViewport.cancelPendingRequest();
+  }
   if (openInNewResultTab) {
     emit("executeInNewResultTab", source);
   } else {
@@ -813,6 +818,7 @@ function emitExecutionRequest(source: SqlExecutionOverride, openInNewResultTab =
 }
 
 function requestExecute(options: RequestExecuteOptions = {}) {
+  gutterExecutionViewport.cancelPendingRequest();
   const currentView = view.value;
   if (!currentView) return false;
   currentView.focus();
@@ -1661,8 +1667,10 @@ function executeSqlStatementFromGutter(currentView: EditorViewType, line: { from
   event.stopPropagation();
   // Gutter play is always scoped to the statement/command for that line, even
   // when the main editor execute action would run the full document.
-  emitExecutionRequest(sqlExecutionSnapshotForRange(currentView, statementRange));
-  currentView.focus();
+  const editorViewportRequestId = gutterExecutionViewport.beginRequest();
+  emitExecutionRequest({ ...sqlExecutionSnapshotForRange(currentView, statementRange), editorViewportRequestId });
+  // 不主动聚焦编辑器，否则 CodeMirror 会把屏幕滚回之前的光标位置。
+  // currentView.focus();
   return true;
 }
 
@@ -5565,6 +5573,7 @@ function pauseQueryEditorBackgroundWork() {
   flushEditorSelection();
   clearTableNavigationHover();
   clearPendingCompletionTab();
+  gutterExecutionViewport.reset();
   editorIsActive = false;
   clearScheduledSemanticDiagnostics();
   completionEpoch++;
@@ -5723,7 +5732,8 @@ function openReplace(): boolean {
 }
 
 function scrollCursorIntoView() {
-  if (!view.value || !editorViewModule || !editorIsActive) return;
+  const preserveViewport = gutterExecutionViewport.consumeAcceptedRequest();
+  if (!view.value || !editorViewModule || !editorIsActive || preserveViewport) return;
   const pos = view.value.state.selection.main.head;
   // Use "center" rather than "nearest": by the time this runs, the results pane has already
   // opened/resized and shrunk the editor viewport, so the cursor's old position is often no
@@ -5741,10 +5751,15 @@ function dismissHoverTooltip() {
   view.value.dispatch({ effects: hoverCloseEffect });
 }
 
+function acceptGutterExecutionViewport(requestId: number) {
+  return gutterExecutionViewport.acceptRequest(requestId);
+}
+
 defineExpose({
   openSearch,
   openReplace,
   scrollCursorIntoView,
+  acceptGutterExecutionViewport,
   requestExecute,
   requestExecuteInNewResultTab,
   pasteClipboardAsSqlInCondition,
