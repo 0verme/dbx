@@ -356,7 +356,9 @@ impl WebView2Recovery {
         self.consecutive_reload_execution_failures >= RELOAD_EXECUTION_ESCALATION_THRESHOLD
     }
 
-    /// `(active_successful_reloads, max_reloads)` for diagnostics.
+    /// `(active_successful_reloads, max_reloads)` for the production-visible
+    /// execution diagnostics (recorded by the Windows `record_execution_outcome`).
+    #[cfg(target_os = "windows")]
     fn reload_budget_state(&self, now: Instant) -> (u32, u32) {
         let active = self
             .reload_timestamps
@@ -814,12 +816,14 @@ mod tests {
             settle_reload_execution(&recovery, at(t0, 120), Some(ReloadExecError::ReloadError)),
             ReloadDisposition::RetryNext
         );
-        let inner = recovery.lock().unwrap();
-        assert_eq!(inner.can_reload(at(t0, 120)), ReloadEligibility::Allowed);
-        // ... so a subsequent success still fits in the third slot.
+        // ... so it is still eligible here (the failure consumed no budget).
+        // Note: each `lock().method()` uses a temporary guard dropped at the
+        // end of its statement, so no guard is held across a re-lock (which
+        // would deadlock).
+        assert_eq!(recovery.lock().unwrap().can_reload(at(t0, 120)), ReloadEligibility::Allowed);
+        // ... and a subsequent success still fits in the third slot.
         recovery.lock().unwrap().record_reload_success(at(t0, 180));
-        let inner = recovery.lock().unwrap();
-        assert_eq!(inner.can_reload(at(t0, 240)), ReloadEligibility::BudgetExhausted);
+        assert_eq!(recovery.lock().unwrap().can_reload(at(t0, 240)), ReloadEligibility::BudgetExhausted);
     }
 
     #[test]
