@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import SearchableSelect from "@/components/ui/searchable-select/SearchableSelect.vue";
 import ConnectionGroupBadge from "@/components/connection/ConnectionGroupBadge.vue";
+import TableMultiSelect from "@/components/diff/TableMultiSelect.vue";
+import { buildSameNameTableMatches } from "@/lib/diff/sameNameTableMatch";
 import { useConnectionStore } from "@/stores/connectionStore";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/backend/api";
@@ -28,6 +30,7 @@ const props = defineProps<{
   targetSchema: string;
   ignoreComments: boolean;
   options: SchemaDiffCompareOptions;
+  selectedTables?: string[];
   loading: boolean;
   recentConfigs: SchemaDiffConfig[];
 }>();
@@ -49,6 +52,7 @@ const emit = defineEmits<{
   (e: "swap"): void;
   (e: "loadHistoryConfig", config: SchemaDiffConfig): void;
   (e: "deleteHistoryConfig", configId: string): void;
+  (e: "update:selectedTables", value?: string[]): void;
 }>();
 
 const sourceDatabases = ref<string[]>([]);
@@ -67,6 +71,81 @@ const sourceDbType = computed(() => sourceConfig.value?.db_type || "");
 const targetDbType = computed(() => targetConfig.value?.db_type || "");
 const showFieldMapping = computed(() => sourceDbType.value && targetDbType.value && sourceDbType.value !== targetDbType.value);
 const activeFieldMappings = computed(() => props.options?.fieldMappings ?? []);
+
+// ---- Visual (explicit) table selection ----
+const sourceTableList = ref<string[]>([]);
+const targetTableList = ref<string[]>([]);
+const restrictTables = ref(false);
+const localSelectedTables = ref<string[]>([]);
+
+const matchResult = computed(() => buildSameNameTableMatches(localSelectedTables.value, targetTableList.value));
+const missingTargetTables = computed(() => matchResult.value.missing);
+
+// Keep the visual restriction in sync with the (persisted) config options.
+// `undefined` = not restricted (compare all tables, then regex filter);
+// an array = explicitly restricted to exactly those tables.
+watch(
+  () => props.selectedTables,
+  (value) => {
+    restrictTables.value = Array.isArray(value);
+    localSelectedTables.value = value && Array.isArray(value) ? [...value] : [];
+  },
+  { immediate: true },
+);
+
+function handleToggleRestrict(enabled: boolean) {
+  restrictTables.value = enabled;
+  emit("update:selectedTables", enabled ? [...localSelectedTables.value] : undefined);
+}
+
+function handleUpdateSelectedTables(value: string[]) {
+  localSelectedTables.value = value;
+  if (restrictTables.value) emit("update:selectedTables", [...value]);
+}
+
+async function loadTablesList(side: "source" | "target") {
+  const connectionId = side === "source" ? props.sourceConnectionId : props.targetConnectionId;
+  const database = side === "source" ? props.sourceDatabase : props.targetDatabase;
+  const schema = side === "source" ? props.sourceSchema : props.targetSchema;
+  if (!connectionId || !database) {
+    if (side === "source") sourceTableList.value = [];
+    else targetTableList.value = [];
+    return;
+  }
+  try {
+    await store.ensureConnected(connectionId);
+    const config = store.getConfig(connectionId);
+    // Schema-aware DBs (e.g. PostgreSQL/Oracle) need a schema before listing tables.
+    if (isSchemaAware(config?.db_type) && !schema) {
+      if (side === "source") sourceTableList.value = [];
+      else targetTableList.value = [];
+      return;
+    }
+    const tables = await api.listTables(connectionId, database, schema);
+    const names: string[] = (Array.isArray(tables) ? tables : []).map((entry) => (typeof entry === "string" ? entry : ((entry as { name?: string }).name ?? ""))).filter(Boolean);
+    if (side === "source") sourceTableList.value = names;
+    else targetTableList.value = names;
+  } catch {
+    if (side === "source") sourceTableList.value = [];
+    else targetTableList.value = [];
+  }
+}
+
+watch(
+  () => [props.sourceConnectionId, props.sourceDatabase, props.sourceSchema],
+  () => {
+    loadTablesList("source").catch(() => {});
+  },
+  { immediate: true },
+);
+
+watch(
+  () => [props.targetConnectionId, props.targetDatabase, props.targetSchema],
+  () => {
+    loadTablesList("target").catch(() => {});
+  },
+  { immediate: true },
+);
 
 const canCompare = computed(() => {
   return props.sourceConnectionId && props.targetConnectionId && props.sourceDatabase && props.targetDatabase && (!isSchemaAware(sourceConfig.value?.db_type) || props.sourceSchema) && (!isSchemaAware(targetConfig.value?.db_type) || props.targetSchema);
@@ -324,6 +403,20 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
           />
         </div>
 
+        <!-- Source Table Selection -->
+        <div class="mt-3 space-y-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <Label class="text-xs font-medium">{{ t("diff.tableSelection") }}</Label>
+            <Button v-if="sourceTableList.length" variant="ghost" size="sm" class="h-6 px-2 text-xs" @click="handleToggleRestrict(!restrictTables)">
+              {{ restrictTables ? t("diff.compareAllTables") : t("diff.chooseTables") }}
+            </Button>
+          </div>
+          <div v-if="!restrictTables" class="text-[11px] text-muted-foreground">
+            {{ t("diff.tableSelectionUnrestricted") }}
+          </div>
+          <TableMultiSelect v-if="restrictTables" :key="`${sourceConnectionId}.${sourceDatabase}.${sourceSchema}`" :model-value="localSelectedTables" @update:model-value="handleUpdateSelectedTables" :tables="sourceTableList" :title="t('diff.sourceTables')" :empty-text="t('dataCompare.noTables')" />
+        </div>
+
         <!-- Source Info -->
         <div v-if="getConnectionInfo(sourceConnectionId)" class="mt-4 p-3 rounded-lg bg-muted/30 border space-y-1.5">
           <div class="text-xs font-medium text-blue-500">{{ t("diff.info") }}</div>
@@ -407,6 +500,17 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
             trigger-class="h-8 w-full justify-between text-xs"
             content-class="w-[var(--reka-popover-trigger-width)]"
           />
+        </div>
+
+        <!-- Target Same-Name Match -->
+        <div v-if="restrictTables && localSelectedTables.length" class="mt-3 space-y-1.5 rounded-lg border p-3 text-xs">
+          <div class="font-medium">{{ t("diff.autoMatchHint") }}</div>
+          <div class="text-muted-foreground">
+            {{ t("diff.matchedTables", { matched: matchResult.matched.length, total: localSelectedTables.length }) }}
+          </div>
+          <div v-if="missingTargetTables.length" class="text-destructive">
+            {{ t("diff.missingTargetTables", { tables: missingTargetTables.join(", ") }) }}
+          </div>
         </div>
 
         <!-- Target Info -->

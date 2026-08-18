@@ -20,6 +20,16 @@ export interface SchemaDiffCompareOptions {
   tableIncludePattern: string;
   tableExcludePattern: string;
   tableFilterPriority: SchemaDiffTableFilterPriority;
+  /**
+   * Explicitly selected table names to compare (the source table set, applied BEFORE the
+   * existing include/exclude regex filters). `undefined`/empty means "no visual table
+   * restriction" — all tables still flow through the regex filters, keeping legacy
+   * behavior unchanged. A non-empty array restricts the comparison to exactly those names.
+   * (Explicitly enabled restriction with an empty selection is represented as `[]` and eats
+   * nothing, distinct from the unset `undefined` case.) Never initialized to the full table
+   * list so newly added tables keep entering the comparison and configs stay small.
+   */
+  selectedTables: string[] | undefined;
   detectRenames: boolean;
   renameThreshold: number;
   detectTableRenames: boolean;
@@ -87,6 +97,7 @@ export const DEFAULT_POSTGRES_OPTIONS: SchemaDiffCompareOptions = {
   tableIncludePattern: "",
   tableExcludePattern: "",
   tableFilterPriority: "exclude",
+  selectedTables: undefined,
   detectRenames: false,
   renameThreshold: 0.5,
   detectTableRenames: false,
@@ -118,6 +129,7 @@ export const DEFAULT_MYSQL_OPTIONS: SchemaDiffCompareOptions = {
   tableIncludePattern: "",
   tableExcludePattern: "",
   tableFilterPriority: "exclude",
+  selectedTables: undefined,
   detectRenames: false,
   renameThreshold: 0.5,
   detectTableRenames: false,

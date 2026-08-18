@@ -63,3 +63,62 @@ test("rejects invalid schema diff table regex", () => {
     /Invalid include table name regex/,
   );
 });
+
+test("respects explicit visual table selection before loading details", () => {
+  const filter = compileSchemaDiffTableFilter(normalizeSchemaDiffCompareOptions({}));
+
+  const tables = [table("a"), table("b"), table("c"), table("d")];
+  const result = filterSchemaDiffTables(tables, tables, filter, undefined, ["a", "c"]);
+
+  assert.deepEqual(
+    result.sourceTables.map((item) => item.name),
+    ["a", "c"],
+  );
+});
+
+test("intersects visual selection with the include regex", () => {
+  const filter = compileSchemaDiffTableFilter(
+    normalizeSchemaDiffCompareOptions({
+      tableIncludePattern: "^user_",
+    }),
+  );
+
+  const tables = [table("user_a"), table("user_b"), table("order")];
+  const result = filterSchemaDiffTables(tables, tables, filter, undefined, ["user_a", "user_b", "order"]);
+
+  assert.deepEqual(
+    result.sourceTables.map((item) => item.name),
+    ["user_a", "user_b"],
+  );
+});
+
+test("intersects visual selection with the exclude regex", () => {
+  const filter = compileSchemaDiffTableFilter(
+    normalizeSchemaDiffCompareOptions({
+      tableExcludePattern: "_backup$",
+    }),
+  );
+
+  const tables = [table("user"), table("user_backup")];
+  const result = filterSchemaDiffTables(tables, tables, filter, undefined, ["user", "user_backup"]);
+
+  assert.deepEqual(
+    result.sourceTables.map((item) => item.name),
+    ["user"],
+  );
+});
+
+test("undefined visual selection keeps legacy all-tables behavior", () => {
+  const filter = compileSchemaDiffTableFilter(
+    normalizeSchemaDiffCompareOptions({
+      tableIncludePattern: "^user_",
+    }),
+  );
+  const tables = [table("user_a"), table("user_b"), table("order")];
+  const result = filterSchemaDiffTables(tables, tables, filter, undefined, undefined);
+
+  assert.deepEqual(
+    result.sourceTables.map((item) => item.name),
+    ["user_a", "user_b"],
+  );
+});
