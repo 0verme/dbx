@@ -5563,6 +5563,7 @@ export default withEnglishFallback({
     duckDbWorkerProcessIsolationRestartRequired: "Riavvia DBX affinché questa modifica abbia effetto.",
     restartDbx: "Riavvia DBX",
     restartDbxFailed: "Impossibile riavviare DBX: {error}",
+    applyFailed: "Impossibile applicare le impostazioni: {error}",
     unsavedChangesCloseTitle: "Modifiche non salvate",
     unsavedChangesCloseMessage: "Ci sono modifiche alle impostazioni non salvate che andranno perse se chiudi ora. Vuoi scartare queste modifiche?",
     unsavedChangesCloseCancel: "Continua a modificare",

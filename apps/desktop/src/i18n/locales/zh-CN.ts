@@ -5808,6 +5808,7 @@ export default withEnglishFallback({
     duckDbWorkerProcessIsolationRestartRequired: "重启 DBX 后生效。",
     restartDbx: "重启 DBX",
     restartDbxFailed: "重启 DBX 失败：{error}",
+    applyFailed: "应用设置失败：{error}",
     unsavedChangesCloseTitle: "未保存的更改",
     unsavedChangesCloseMessage: "当前设置有未保存的更改，关闭后将丢失。是否放弃这些更改？",
     unsavedChangesCloseCancel: "继续编辑",
