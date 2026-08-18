@@ -2711,6 +2711,17 @@ fn is_timezone_suffix(value: &str) -> bool {
     )
 }
 
+fn transfer_length_params(source_type: &str, target_db: &DatabaseType) -> String {
+    let params = &source_type[source_type.find('(').expect("caller checked length parameters")..];
+    if matches!(target_db, DatabaseType::Oracle | DatabaseType::OceanbaseOracle | DatabaseType::Dameng) {
+        params.to_string()
+    } else {
+        // Oracle length-unit qualifiers are invalid for non-Oracle-family
+        // targets, which only accept the numeric length.
+        normalize_len_params(params)
+    }
+}
+
 pub fn map_column_type(source_type: &str, _source_db: &DatabaseType, target_db: &DatabaseType) -> String {
     if _source_db == target_db {
         return source_type.to_string();
@@ -2794,10 +2805,7 @@ pub fn map_column_type(source_type: &str, _source_db: &DatabaseType, target_db: 
         }
         "varchar" | "nvarchar" | "character varying" | "varchar2" => {
             if t.contains('(') {
-                // Normalize Oracle length-unit qualifiers (`(50 CHAR)` → `(50)`)
-                // so targets receive a plain numeric length. MySQL/Postgres
-                // `VARCHAR(n)` is character-based and rejects `VARCHAR(50 char)`.
-                let len_part = normalize_len_params(&t[t.find('(').unwrap()..]);
+                let len_part = transfer_length_params(&t, target_db);
                 match target_db {
                     target_db if is_postgres_transfer_dialect(target_db) => format!("VARCHAR{len_part}"),
                     DatabaseType::Mysql => format!("VARCHAR{len_part}"),
@@ -2810,7 +2818,7 @@ pub fn map_column_type(source_type: &str, _source_db: &DatabaseType, target_db: 
         }
         "char" | "nchar" | "character" => {
             if t.contains('(') {
-                let len_part = normalize_len_params(&t[t.find('(').unwrap()..]);
+                let len_part = transfer_length_params(&t, target_db);
                 format!("CHAR{len_part}")
             } else {
                 "CHAR(1)".into()
@@ -11316,6 +11324,27 @@ SELECT 1 FROM dual"#
         // Plain VARCHAR2 without a length unit must keep working unchanged.
         assert_eq!(map_column_type("VARCHAR2(50)", &DatabaseType::Oracle, &DatabaseType::Mysql), "VARCHAR(50)");
         assert_eq!(map_column_type("VARCHAR2", &DatabaseType::Oracle, &DatabaseType::Mysql), "VARCHAR(255)");
+    }
+
+    #[test]
+    fn map_column_type_preserves_length_units_for_oracle_family_targets() {
+        for target in [DatabaseType::Oracle, DatabaseType::OceanbaseOracle, DatabaseType::Dameng] {
+            let source = if target == DatabaseType::Oracle {
+                DatabaseType::OceanbaseOracle
+            } else {
+                DatabaseType::Oracle
+            };
+            assert_eq!(map_column_type("VARCHAR2(50 CHAR)", &source, &target), "VARCHAR(50 char)");
+            assert_eq!(map_column_type("CHAR(20 BYTE)", &source, &target), "CHAR(20 byte)");
+        }
+    }
+
+    #[test]
+    fn map_column_type_strips_length_units_for_non_oracle_targets() {
+        for target in [DatabaseType::Mysql, DatabaseType::Postgres, DatabaseType::SqlServer] {
+            assert!(!map_column_type("VARCHAR2(50 CHAR)", &DatabaseType::Oracle, &target).contains("char"));
+            assert!(!map_column_type("CHAR(20 BYTE)", &DatabaseType::Oracle, &target).contains("byte"));
+        }
     }
 
     #[test]
