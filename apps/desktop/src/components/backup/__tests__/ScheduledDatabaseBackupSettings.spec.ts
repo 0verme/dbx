@@ -2,9 +2,9 @@
 
 import { createApp, nextTick, type App } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import i18n from "@/i18n";
-import ScheduledDatabaseBackupSettings from "@/components/backup/ScheduledDatabaseBackupSettings.vue";
-import type { DatabaseBackupSchedule } from "@/lib/backup/scheduledDatabaseBackup";
+import i18n from "../../../i18n";
+import ScheduledDatabaseBackupSettings from "../ScheduledDatabaseBackupSettings.vue";
+import type { DatabaseBackupSchedule } from "../../../lib/backup/scheduledDatabaseBackup";
 
 const mocks = vi.hoisted(() => ({
   connections: [] as Array<{ id: string; name: string; db_type: string }>,
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   deleteSchedule: vi.fn(),
   deleteRun: vi.fn(),
   runSchedule: vi.fn(),
+  runOneShot: vi.fn(),
   cancelRun: vi.fn(),
 }));
 
@@ -42,12 +43,17 @@ vi.mock("@/composables/useScheduledDatabaseBackups", () => ({
     deleteSchedule: mocks.deleteSchedule,
     deleteRun: mocks.deleteRun,
     runSchedule: mocks.runSchedule,
+    runOneShot: mocks.runOneShot,
     cancelRun: mocks.cancelRun,
   }),
 }));
 
 vi.mock("@/composables/useToast", () => ({
   useToast: () => ({ toast: mocks.toast }),
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(async () => "/backups"),
 }));
 
 vi.mock("@/lib/backend/api", () => ({
@@ -73,6 +79,12 @@ async function mountSettings() {
   app.use(i18n);
   app.mount(container);
   await flush();
+}
+
+function buttonWithText(text: string): HTMLButtonElement {
+  const button = Array.from(document.body.querySelectorAll("button")).find((item) => item.textContent?.includes(text));
+  if (!button) throw new Error(`Button not found: ${text}`);
+  return button;
 }
 
 function addScheduleButton(): HTMLButtonElement {
@@ -133,6 +145,8 @@ afterEach(() => {
   mocks.recordDatabaseExportDestination.mockResolvedValue(undefined);
   mocks.toast.mockClear();
   mocks.saveSchedule.mockClear();
+  mocks.runOneShot.mockReset();
+  mocks.runOneShot.mockResolvedValue(null);
 });
 
 describe("ScheduledDatabaseBackupSettings schedule dialog", () => {
@@ -151,6 +165,46 @@ describe("ScheduledDatabaseBackupSettings schedule dialog", () => {
     expect(dialog?.textContent).toContain(String(i18n.global.t("databaseBackup.scheduleName")));
     expect(mocks.ensureConnected).toHaveBeenCalledWith("mysql-1");
     expect(mocks.listDatabases).toHaveBeenCalledWith("mysql-1");
+  });
+
+  it("opens an independent one-shot dialog without schedule fields", async () => {
+    mocks.connections.push({ id: "mysql-1", name: "Local MySQL", db_type: "mysql" });
+    await mountSettings();
+
+    buttonWithText(String(i18n.global.t("databaseBackup.oneShotBackup"))).click();
+    await flush();
+
+    const dialog = document.body.querySelector('[data-slot="dialog-content"]');
+    expect(dialog?.textContent).toContain(String(i18n.global.t("databaseBackup.oneShotDescription")));
+    expect(dialog?.textContent).toContain(String(i18n.global.t("databaseBackup.connection")));
+    expect(dialog?.textContent).toContain(String(i18n.global.t("databaseBackup.contents")));
+    expect(dialog?.textContent).not.toContain(String(i18n.global.t("databaseBackup.scheduleName")));
+    expect(dialog?.textContent).not.toContain(String(i18n.global.t("databaseBackup.frequency")));
+    expect(dialog?.textContent).not.toContain(String(i18n.global.t("databaseBackup.retention")));
+    expect(dialog?.textContent).not.toContain(String(i18n.global.t("databaseBackup.enabled")));
+  });
+
+  it("validates one-shot fields and starts without creating a schedule", async () => {
+    mocks.connections.push({ id: "mysql-1", name: "Local MySQL", db_type: "mysql" });
+    mocks.runOneShot.mockResolvedValueOnce({ id: "run-1", status: "success", files: [], scheduleName: "One-time backup" });
+    await mountSettings();
+
+    buttonWithText(String(i18n.global.t("databaseBackup.oneShotBackup"))).click();
+    await flush();
+    const dialog = document.body.querySelector('[data-slot="dialog-content"]');
+    const startLabel = String(i18n.global.t("databaseBackup.startBackup"));
+    const startButton = Array.from(dialog?.querySelectorAll("button") ?? []).find((item) => item.textContent?.trim() === startLabel) as HTMLButtonElement | undefined;
+    expect(startButton?.disabled).toBe(true);
+
+    buttonWithTitle(String(i18n.global.t("databaseBackup.selectDestination"))).click();
+    await flush();
+    expect(startButton?.disabled).toBe(false);
+    startButton?.click();
+    await flush();
+
+    expect(mocks.schedules).toHaveLength(0);
+    expect(mocks.saveSchedule).not.toHaveBeenCalled();
+    expect(mocks.runOneShot).toHaveBeenCalledWith(expect.objectContaining({ connectionId: "mysql-1", destinationDirectory: "/backups", databases: [] }), String(i18n.global.t("databaseBackup.oneShotName")));
   });
 
   it("disables create schedule when there are no supported backup connections", async () => {
