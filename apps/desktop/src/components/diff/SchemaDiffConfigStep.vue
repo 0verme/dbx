@@ -8,6 +8,7 @@ import SearchableSelect from "@/components/ui/searchable-select/SearchableSelect
 import ConnectionGroupBadge from "@/components/connection/ConnectionGroupBadge.vue";
 import TableMultiSelect from "@/components/diff/TableMultiSelect.vue";
 import { buildSameNameTableMatches } from "@/lib/diff/sameNameTableMatch";
+import { createSchemaDiffTableListCoordinator, reconcileSchemaDiffSelectedTables, shouldLoadSchemaDiffTableList, type SchemaDiffTableIdentity, type SchemaDiffTableListLoader, type SchemaDiffTableSide } from "@/lib/schema/schemaDiffTableList";
 import { useConnectionStore } from "@/stores/connectionStore";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/backend/api";
@@ -31,6 +32,7 @@ const props = defineProps<{
   ignoreComments: boolean;
   options: SchemaDiffCompareOptions;
   selectedTables?: string[];
+  tableListLoader: SchemaDiffTableListLoader;
   loading: boolean;
   recentConfigs: SchemaDiffConfig[];
 }>();
@@ -103,49 +105,59 @@ function handleUpdateSelectedTables(value: string[]) {
   if (restrictTables.value) emit("update:selectedTables", [...value]);
 }
 
-async function loadTablesList(side: "source" | "target") {
-  const connectionId = side === "source" ? props.sourceConnectionId : props.targetConnectionId;
-  const database = side === "source" ? props.sourceDatabase : props.targetDatabase;
-  const schema = side === "source" ? props.sourceSchema : props.targetSchema;
-  if (!connectionId || !database) {
-    if (side === "source") sourceTableList.value = [];
-    else targetTableList.value = [];
-    return;
-  }
-  try {
-    await store.ensureConnected(connectionId);
-    const config = store.getConfig(connectionId);
-    // Schema-aware DBs (e.g. PostgreSQL/Oracle) need a schema before listing tables.
-    if (isSchemaAware(config?.db_type) && !schema) {
-      if (side === "source") sourceTableList.value = [];
-      else targetTableList.value = [];
-      return;
-    }
-    const tables = await api.listTables(connectionId, database, schema);
-    const names: string[] = (Array.isArray(tables) ? tables : []).map((entry) => (typeof entry === "string" ? entry : ((entry as { name?: string }).name ?? ""))).filter(Boolean);
-    if (side === "source") sourceTableList.value = names;
-    else targetTableList.value = names;
-  } catch {
-    if (side === "source") sourceTableList.value = [];
-    else targetTableList.value = [];
-  }
+function getTableIdentity(side: SchemaDiffTableSide): SchemaDiffTableIdentity {
+  return side === "source" ? { connectionId: props.sourceConnectionId, database: props.sourceDatabase, schema: props.sourceSchema } : { connectionId: props.targetConnectionId, database: props.targetDatabase, schema: props.targetSchema };
 }
 
+function isTableIdentityReady(side: SchemaDiffTableSide): boolean {
+  const identity = getTableIdentity(side);
+  const config = side === "source" ? sourceConfig.value : targetConfig.value;
+  return !!identity.connectionId && !!identity.database && (!isSchemaAware(config?.db_type) || !!identity.schema);
+}
+
+function setTableList(side: SchemaDiffTableSide, tables: Array<{ name?: string }>) {
+  const names = tables.map((entry) => entry.name ?? "").filter(Boolean);
+  if (side === "source") sourceTableList.value = names;
+  else targetTableList.value = names;
+}
+
+function reconcileSelectedTablesAfterSuccessfulLoad(tables: Array<{ name?: string }>) {
+  if (!restrictTables.value || !Array.isArray(props.selectedTables)) return;
+
+  const availableTables = tables.map((entry) => entry.name ?? "").filter(Boolean);
+  const nextSelectedTables = reconcileSchemaDiffSelectedTables(props.selectedTables, availableTables);
+  if (nextSelectedTables.length === props.selectedTables.length && nextSelectedTables.every((table, index) => table === props.selectedTables?.[index])) return;
+
+  localSelectedTables.value = nextSelectedTables;
+  emit("update:selectedTables", nextSelectedTables);
+}
+
+const tableListCoordinator = createSchemaDiffTableListCoordinator({
+  loader: props.tableListLoader,
+  getIdentity: getTableIdentity,
+  setTables: setTableList,
+  onSourceTablesLoaded: reconcileSelectedTablesAfterSuccessfulLoad,
+});
+
 watch(
-  () => [props.sourceConnectionId, props.sourceDatabase, props.sourceSchema],
+  () => [restrictTables.value, props.sourceConnectionId, props.sourceDatabase, props.sourceSchema, sourceDbType.value],
   () => {
-    loadTablesList("source").catch(() => {});
+    const shouldLoad = shouldLoadSchemaDiffTableList("source", restrictTables.value, localSelectedTables.value.length, isTableIdentityReady("source"));
+    tableListCoordinator.refresh("source", shouldLoad).catch(() => {});
   },
   { immediate: true },
 );
 
 watch(
-  () => [props.targetConnectionId, props.targetDatabase, props.targetSchema],
+  () => [restrictTables.value, localSelectedTables.value.length, props.targetConnectionId, props.targetDatabase, props.targetSchema, targetDbType.value],
   () => {
-    loadTablesList("target").catch(() => {});
+    const shouldLoad = shouldLoadSchemaDiffTableList("target", restrictTables.value, localSelectedTables.value.length, isTableIdentityReady("target"));
+    tableListCoordinator.refresh("target", shouldLoad).catch(() => {});
   },
   { immediate: true },
 );
+
+const canConfigureTableSelection = computed(() => isTableIdentityReady("source"));
 
 const canCompare = computed(() => {
   const hasSelectedTables = props.selectedTables === undefined || props.selectedTables.length > 0;
@@ -427,7 +439,7 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
         <div class="mt-3 space-y-1.5">
           <div class="flex items-center justify-between gap-2">
             <Label class="text-xs font-medium">{{ t("diff.tableSelection") }}</Label>
-            <Button v-if="sourceTableList.length" variant="ghost" size="sm" class="h-6 px-2 text-xs" @click="handleToggleRestrict(!restrictTables)">
+            <Button v-if="restrictTables || canConfigureTableSelection" variant="ghost" size="sm" class="h-6 px-2 text-xs" @click="handleToggleRestrict(!restrictTables)">
               {{ restrictTables ? t("diff.compareAllTables") : t("diff.chooseTables") }}
             </Button>
           </div>
