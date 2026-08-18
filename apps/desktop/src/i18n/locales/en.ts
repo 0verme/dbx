@@ -6117,6 +6117,7 @@ export default {
     shortcutReplace: "Replace",
     shortcutSaveSql: "Save SQL",
     shortcutAcceptCompletion: "Accept completion",
+    shortcutTriggerCompletion: "Trigger completion",
     shortcutFormatSql: "Format SQL",
     shortcutExpandSelectStar: "Expand * to columns",
     shortcutToggleLineComment: "Toggle line comment",

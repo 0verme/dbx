@@ -121,6 +121,7 @@ import { startsQueryEditorRectangularSelection, usesQueryEditorObjectNavigationM
 import { LARGE_PASTE_HISTORY_USER_EVENT, normalizeQueryEditorPasteText, recoverableNativePasteSuffix, shouldRecoverLargeTauriPaste } from "@/lib/editor/queryEditorLargePaste";
 import { computePasteCaretResyncTarget } from "@/lib/editor/queryEditorPasteCaretResync";
 import { extendQueryEditorSelection, runQueryEditorAltExtendSelection } from "@/lib/editor/queryEditorExtendSelection";
+import { createQueryEditorCompletionShortcutBindings } from "@/lib/editor/queryEditorCompletionShortcut";
 import type { StatementExecutionMarker } from "@/lib/tabs/tabPresentation";
 import { isSchemaAware, isSingleDatabase, supportsDatabaseNameCompletion, supportsDatabaseSchemaQualifier, supportsQueryEditorBlockComments, supportsSqlInListPaste } from "@/lib/database/databaseFeatureSupport";
 import { metadataSchemaForConnection, sqlSnippetDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
@@ -1930,6 +1931,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
           return true;
         }),
         ...binding(shortcuts.sqlIntentionActions, handleSqlIntentionActions),
+        ...createQueryEditorCompletionShortcutBindings(shortcuts.triggerCompletion, triggerSqlCompletion),
         ...createQueryEditorSearchKeymap({
           openSearch,
           openReplace,
@@ -3641,6 +3643,15 @@ async function provideSqlCompletions(context: CompletionContext) {
 
 function isEditorComposing(currentView: EditorViewType): boolean {
   return imeCompositionActive || currentView.compositionStarted || currentView.composing;
+}
+
+// Manual-trigger shortcut (default Alt+/). Opens the completion popup on the
+// explicit path so auto-trigger mode gating is bypassed. Unlike
+// scheduleSqlCompletionStart, it must NOT mark the activation as typed, or the
+// session would be misclassified as typing and gated for 500ms.
+function triggerSqlCompletion(currentView: EditorViewType): boolean {
+  if (!codeMirrorStartCompletion || isEditorComposing(currentView)) return false;
+  return codeMirrorStartCompletion(currentView);
 }
 
 function scheduleSqlCompletionStart(currentView: EditorViewType, delayMs = 0) {
