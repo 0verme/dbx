@@ -3110,6 +3110,7 @@ fn postgres_columns_for_relations_sql() -> &'static str {
              LEFT JOIN pg_depend dep ON dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
                AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
                AND dep.refobjid = a.attrelid AND dep.refobjsubid = a.attnum AND dep.deptype IN ('a', 'i') \
+               AND dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
              LEFT JOIN pg_sequence pseq ON pseq.seqrelid = dep.objid \
              LEFT JOIN pg_catalog.pg_depend default_dep \
                ON default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
@@ -3163,6 +3164,7 @@ fn postgres_columns_for_relations_compat_sql() -> &'static str {
               AND serial_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
               AND serial_dep.refobjid = a.attrelid AND serial_dep.refobjsubid = a.attnum \
               AND serial_dep.deptype = 'a' \
+              AND serial_dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
              LEFT JOIN pg_catalog.pg_class serial_seq ON serial_seq.oid = serial_dep.objid AND serial_seq.relkind = 'S' \
              LEFT JOIN pg_catalog.pg_depend serial_default_dep \
                ON serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
@@ -4913,6 +4915,7 @@ const POSTGRES_COLUMNS_SQL: &str = "SELECT a.attname AS column_name, \
              LEFT JOIN pg_depend dep ON dep.classid = 'pg_catalog.pg_class'::pg_catalog.regclass \
                AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
                AND dep.refobjid = a.attrelid AND dep.refobjsubid = a.attnum AND dep.deptype IN ('a', 'i') \
+               AND dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
              LEFT JOIN pg_sequence pseq ON pseq.seqrelid = dep.objid \
              LEFT JOIN pg_catalog.pg_depend default_dep \
                ON default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
@@ -4962,6 +4965,7 @@ const POSTGRES_COLUMNS_COMPAT_SQL: &str = "SELECT a.attname AS column_name, \
               AND serial_dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass \
               AND serial_dep.refobjid = a.attrelid AND serial_dep.refobjsubid = a.attnum \
               AND serial_dep.deptype = 'a' \
+              AND serial_dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S') \
              LEFT JOIN pg_catalog.pg_class serial_seq ON serial_seq.oid = serial_dep.objid AND serial_seq.relkind = 'S' \
              LEFT JOIN pg_catalog.pg_depend serial_default_dep \
                ON serial_default_dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass \
@@ -8906,6 +8910,7 @@ mod tests {
         }
         for sql in modern_sql {
             assert!(sql.contains("dep.deptype IN ('a', 'i')"));
+            assert!(sql.contains("dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S')"));
             assert!(sql.contains("pseq.seqrelid IS NOT NULL"));
             assert!(sql.contains("default_dep.objid = ad.oid"));
             assert!(sql.contains("default_dep.refobjid = dep.objid"));
@@ -8915,6 +8920,7 @@ mod tests {
         }
         for sql in compat_sql {
             assert!(sql.contains("serial_dep.deptype = 'a'"));
+            assert!(sql.contains("serial_dep.objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind = 'S')"));
             assert!(sql.contains("serial_seq.relkind = 'S'"));
             assert!(sql.contains("serial_default_dep.objid = ad.oid"));
             assert!(sql.contains("serial_default_dep.refobjid = serial_seq.oid"));
@@ -9173,6 +9179,185 @@ mod tests {
         assert_eq!(inserted.get::<_, i64>(4), 4);
 
         client.batch_execute(&format!("DROP SCHEMA {schema_ident} CASCADE")).await.expect("drop serial probe schema");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires DBX_TEST_POSTGRES_URL pointing at a writable PostgreSQL database"]
+    async fn postgres_column_metadata_dependency_joins_return_each_column_once() {
+        let url = std::env::var("DBX_TEST_POSTGRES_URL").expect("DBX_TEST_POSTGRES_URL");
+        let pool = connect(&url, Duration::from_secs(5)).await.expect("connect postgres");
+        let suffix = uuid::Uuid::new_v4().simple();
+        let schema = format!("dbx 6547 \"{suffix}");
+        let schema_ident = pg_quote_ident(&schema);
+        let table_name = "issue6547_repro";
+        let table_ident = pg_quote_ident(table_name);
+        let table = format!("{schema_ident}.{table_ident}");
+        let client = pool.get().await.expect("get postgres client");
+        client
+            .batch_execute(&format!(
+                "CREATE SCHEMA {schema_ident}; \
+                 CREATE TABLE {table} (\
+                   id serial PRIMARY KEY, \
+                   value text, \
+                   small_id smallserial, \
+                   big_id bigserial, \
+                   ident_id bigint GENERATED BY DEFAULT AS IDENTITY, \
+                   plain_int integer, \
+                   vc varchar(32), \
+                   num numeric(10, 2), \
+                   ts timestamp\
+                 ); \
+                 CREATE INDEX idx_issue6547_repro_id ON {table}(id); \
+                 CREATE INDEX idx_issue6547_repro_big ON {table}(big_id); \
+                 CREATE UNIQUE INDEX uniq_issue6547_repro_vc ON {table}(vc);"
+            ))
+            .await
+            .expect("create repro table");
+
+        let columns = get_columns(&pool, &schema, table_name).await.expect("get columns");
+        // One pg_attribute row must produce exactly one ColumnInfo even when
+        // the column has multiple pg_depend rows (an owned sequence plus
+        // several indexes all declare a dependency on the same column). See
+        // https://github.com/t8y2/dbx/issues/6547.
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for column in &columns {
+            assert!(seen.insert(column.name.as_str()), "duplicate column {:?} in {columns:?}", column.name);
+        }
+        assert_eq!(columns.len(), 9, "expected 9 columns, got {columns:?}");
+
+        for (name, expected_extra) in [("id", "serial"), ("small_id", "smallserial"), ("big_id", "bigserial")] {
+            let column = columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("missing {name}"));
+            assert_eq!(column.extra.as_deref(), Some(expected_extra), "{name} extra mismatch");
+        }
+        let ident = columns.iter().find(|c| c.name == "ident_id").expect("ident_id column");
+        assert!(
+            ident.extra.as_deref().is_some_and(|extra| extra.starts_with("generated by default as identity")),
+            "ident_id extra: {:?}",
+            ident.extra
+        );
+        // Ordinary columns keep their plain metadata.
+        let vc = columns.iter().find(|c| c.name == "vc").expect("vc column");
+        assert_eq!(vc.data_type, "character varying(32)");
+        let num = columns.iter().find(|c| c.name == "num").expect("num column");
+        assert_eq!(num.data_type, "numeric(10,2)");
+        assert_eq!(num.numeric_precision, Some(10));
+        assert_eq!(num.numeric_scale, Some(2));
+        let ts = columns.iter().find(|c| c.name == "ts").expect("ts column");
+        assert_eq!(ts.data_type, "timestamp without time zone");
+
+        // The rendered column section of the DDL must contain each column
+        // definition exactly once. Before the dependency-join fix these
+        // queries could return "id" (serial + PRIMARY KEY + secondary index
+        // = several pg_depend rows) any number of times.
+        let ddl = crate::schema::pg_ddl(&pool, &schema, table_name).await.expect("read repro table ddl");
+        for needle in [r#"  "id" serial NOT NULL"#, r#"  "value" text"#, r#"  "vc" character varying(32)"#] {
+            assert_eq!(ddl.matches(needle).count(), 1, "needle {needle:?} not unique in ddl:\n{ddl}");
+        }
+
+        drop(client);
+        execute_query(&pool, &format!("DROP SCHEMA {schema_ident} CASCADE")).await.expect("drop repro schema");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires DBX_TEST_POSTGRES_URL pointing at a writable PostgreSQL database"]
+    async fn postgres_column_metadata_compat_query_returns_each_column_once() {
+        let url = std::env::var("DBX_TEST_POSTGRES_URL").expect("DBX_TEST_POSTGRES_URL");
+        let pool = connect(&url, Duration::from_secs(5)).await.expect("connect postgres");
+        let suffix = uuid::Uuid::new_v4().simple();
+        let schema = format!("dbx 6547 compat \"{suffix}");
+        let schema_ident = pg_quote_ident(&schema);
+        let table_name = "issue6547_repro";
+        let table_ident = pg_quote_ident(table_name);
+        let table = format!("{schema_ident}.{table_ident}");
+        let client = pool.get().await.expect("get postgres client");
+        client
+            .batch_execute(&format!(
+                "CREATE SCHEMA {schema_ident}; \
+                 CREATE TABLE {table} (id serial PRIMARY KEY, value text); \
+                 CREATE INDEX idx_issue6547_repro_id ON {table}(id)"
+            ))
+            .await
+            .expect("create compat repro table");
+
+        let columns = get_columns_with_sql(&client, POSTGRES_COLUMNS_COMPAT_SQL, &schema, table_name)
+            .await
+            .expect("compat columns");
+        let names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for name in &names {
+            assert!(seen.insert(*name), "duplicate column {name:?} in {names:?}");
+        }
+        assert_eq!(names, vec!["id", "value"], "unexpected compat columns {names:?}");
+        let id = columns.iter().find(|c| c.name == "id").expect("id column");
+        assert_eq!(id.extra.as_deref(), Some("serial"), "compat id extra: {:?}", id.extra);
+
+        drop(client);
+        execute_query(&pool, &format!("DROP SCHEMA {schema_ident} CASCADE")).await.expect("drop compat repro schema");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires DBX_TEST_POSTGRES_URL pointing at a writable PostgreSQL database"]
+    async fn postgres_batched_column_metadata_returns_each_column_once() {
+        let url = std::env::var("DBX_TEST_POSTGRES_URL").expect("DBX_TEST_POSTGRES_URL");
+        let pool = connect(&url, Duration::from_secs(5)).await.expect("connect postgres");
+        let suffix = uuid::Uuid::new_v4().simple();
+        let schema = format!("dbx 6547 batch \"{suffix}");
+        let schema_ident = pg_quote_ident(&schema);
+        let table_name = "issue6547_repro";
+        let table_ident = pg_quote_ident(table_name);
+        let table = format!("{schema_ident}.{table_ident}");
+        let client = pool.get().await.expect("get postgres client");
+        client
+            .batch_execute(&format!(
+                "CREATE SCHEMA {schema_ident}; \
+                 CREATE TABLE {table} (id serial PRIMARY KEY, value text); \
+                 CREATE INDEX idx_issue6547_repro_id ON {table}(id)"
+            ))
+            .await
+            .expect("create batch repro table");
+        let oid = client
+            .query_one(
+                "SELECT c.oid::bigint FROM pg_catalog.pg_class c \
+                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relname = $2",
+                &[&schema, &table_name],
+            )
+            .await
+            .expect("lookup repro table oid")
+            .get::<_, i64>(0);
+        let relations = vec![(oid, schema.clone(), table_name.to_string())];
+
+        let columns_by_oid = get_columns_for_relations(&pool, &relations).await.expect("batched columns");
+        let columns = columns_by_oid.get(&oid).unwrap_or_else(|| panic!("no batched columns for {oid}"));
+        let names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for name in &names {
+            assert!(seen.insert(*name), "duplicate column {name:?} in {names:?}");
+        }
+        assert_eq!(names, vec!["id", "value"], "unexpected batched columns {names:?}");
+        let id = columns.iter().find(|c| c.name == "id").expect("id column");
+        assert_eq!(id.extra.as_deref(), Some("serial"), "batched id extra: {:?}", id.extra);
+
+        // The batched sibling must stay duplicate-free too: the partition DDL
+        // path (pg_ddl_with_partitions) consumes exactly these results.
+        let columns_by_oid_compat =
+            get_columns_for_relations_with_sql(&client, postgres_columns_for_relations_compat_sql(), &[oid])
+                .await
+                .expect("batched compat columns");
+        let names_compat: Vec<&str> = columns_by_oid_compat
+            .get(&oid)
+            .expect("no batched compat columns")
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        let mut seen_compat: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for name in &names_compat {
+            assert!(seen_compat.insert(*name), "duplicate column {name:?} in {names_compat:?}");
+        }
+        assert_eq!(names_compat, vec!["id", "value"], "unexpected batched compat columns {names_compat:?}");
+
+        drop(client);
+        execute_query(&pool, &format!("DROP SCHEMA {schema_ident} CASCADE")).await.expect("drop batch repro schema");
     }
 
     #[tokio::test]
