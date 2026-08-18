@@ -7692,6 +7692,12 @@ export default withEnglishFallback({
       friday: "Viernes",
       saturday: "Sábado",
     },
+    oneShotBackup: "Copia de seguridad inmediata",
+    oneShotDescription: "Ejecutar una copia de seguridad de la base de datos inmediatamente; después de completarse, aparecerá en el historial de copias de seguridad.",
+    startBackup: "Iniciar copia de seguridad",
+    oneShotName: "Copia de seguridad única",
+    noSchedulesHint: "Puede crear un plan de copia de seguridad programado o ejecutar una copia de seguridad inmediata.",
+    oneShotTrigger: "Copia de seguridad única",
   },
   mqExchanges: {
     searchPlaceholder: "Buscar exchanges",

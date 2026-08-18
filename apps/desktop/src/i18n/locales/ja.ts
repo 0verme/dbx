@@ -7745,6 +7745,12 @@ export default withEnglishFallback({
       friday: "金曜日",
       saturday: "土曜日",
     },
+    oneShotBackup: "今すぐバックアップ",
+    oneShotDescription: "データベースのバックアップを今すぐ実行します。完了すると、バックアップ履歴に表示されます。",
+    startBackup: "バックアップを開始",
+    oneShotName: "ワンタイムバックアップ",
+    noSchedulesHint: "定期的なバックアップスケジュールを作成するか、今すぐバックアップを実行できます。",
+    oneShotTrigger: "ワンタイムバックアップ",
   },
   mqExchanges: {
     searchPlaceholder: "エクスチェンジを検索",

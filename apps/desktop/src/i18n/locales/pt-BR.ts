@@ -7694,6 +7694,12 @@ export default withEnglishFallback({
       friday: "Sexta-feira",
       saturday: "Sábado",
     },
+    oneShotBackup: "Backup imediato",
+    oneShotDescription: "Execute um backup do banco de dados imediatamente; quando concluído, ele aparecerá no histórico de backups.",
+    startBackup: "Iniciar backup",
+    oneShotName: "Backup único",
+    noSchedulesHint: "Você pode criar um agendamento de backup recorrente ou executar um backup imediatamente.",
+    oneShotTrigger: "Backup único",
   },
   mqExchanges: {
     searchPlaceholder: "Buscar exchanges",
