@@ -6269,6 +6269,10 @@ export default withEnglishFallback({
     driverStoreDirMigrationFailed: "Falha na migração de drivers: {error}",
     driverStoreDirDialogTitle: "Selecionar {target}",
     driverStoreDirSuccess: "{target} alterado, reiniciando…",
+    driverInstallCancelled: "{label} instalação do driver cancelada",
+    upgradeAllCancelled: "Atualização em lote cancelada ({count} drivers interrompidos)",
+    cancelInstall: "Cancelar instalação",
+    cancelUpgradeAll: "Cancelar atualização em lote",
   },
   databaseExport: {
     title: "Exportar banco de dados",
