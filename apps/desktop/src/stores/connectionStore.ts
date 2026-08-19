@@ -8035,8 +8035,14 @@ export const useConnectionStore = defineStore("connection", () => {
         const [pinnedOrder, saved] = await Promise.all([loadPinnedTreeNodeOrder(), api.loadConnections(), tunnelProfileStore.init()]);
         setPinnedTreeNodeOrder(pinnedOrder);
         await migrateTimeoutInheritance(saved);
-        connections.value = saved.map(normalizeConnection);
-        if (connections.value.some((connection, index) => (connection.connect_timeout_inherit === true && connection.connect_timeout_secs !== saved[index]?.connect_timeout_secs) || (connection.query_timeout_inherit === true && connection.query_timeout_secs !== saved[index]?.query_timeout_secs))) {
+        const loadedConnections = saved.map(normalizeConnection);
+        const loadedIds = new Set(loadedConnections.map((connection) => connection.id));
+        // One-time deep-link connections are intentionally filtered from disk
+        // persistence. Keep them in the live list when an unrelated disk reload
+        // (for example, the scheduled-backup poll) completes while they are open.
+        const runtimeOneTimeConnections = connections.value.filter((connection) => connection.one_time === true && !loadedIds.has(connection.id));
+        connections.value = [...loadedConnections, ...runtimeOneTimeConnections];
+        if (loadedConnections.some((connection, index) => (connection.connect_timeout_inherit === true && connection.connect_timeout_secs !== saved[index]?.connect_timeout_secs) || (connection.query_timeout_inherit === true && connection.query_timeout_secs !== saved[index]?.query_timeout_secs))) {
           await persistConnections();
         }
         syncTimeoutInheritanceBackup();
