@@ -142,11 +142,13 @@ pub fn build_query_pagination_execution_plan(
         single_execution: false,
     };
 
+    let is_sqlserver_leading_cte =
+        options.database_type == Some(DatabaseType::SqlServer) && starts_with_cte(&options.query_base_sql);
     let counted = build_count_query_sql(CountQuerySqlOptions {
         original_sql: options.query_base_sql.clone(),
         database_type: options.database_type,
     });
-    if counted.ok {
+    if counted.ok && !is_sqlserver_leading_cte {
         plan.count_sql = counted.sql;
     }
 
@@ -157,7 +159,7 @@ pub fn build_query_pagination_execution_plan(
         return plan;
     }
 
-    if options.database_type == Some(DatabaseType::SqlServer) && starts_with_cte(&options.query_base_sql) {
+    if is_sqlserver_leading_cte {
         return plan;
     }
 
@@ -451,7 +453,13 @@ fn single_statement_matches_base_sql(statement: &str, base_sql: &str) -> bool {
 }
 
 fn starts_with_cte(sql: &str) -> bool {
-    sql.trim_start().trim_start_matches(';').trim_start().to_ascii_uppercase().starts_with("WITH")
+    let sql = sql.trim().trim_start_matches(';').trim_start();
+    // A leading comment (`--` line or `/* */` block, including optimizer hints
+    // and proxy/TDSQL-style directives) may sit between the start of the selected
+    // text and the actual statement. SQL Server has no `#` line comments, so
+    // temporary-table names like #Temp are never mistaken for comments here.
+    let sql = &sql[skip_leading_sql_comments(sql, 0)..];
+    sql.trim_start().to_ascii_uppercase().starts_with("WITH")
 }
 
 fn cte_main_statement_is_select(sql: &str) -> bool {
@@ -2631,6 +2639,207 @@ mod tests {
         assert!(plan.count_sql.is_none());
         assert_eq!(plan.page_limit, None);
         assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_comment_cte_pagination_plan_executes_original_sql() {
+        // Issue #6645: when the user manually selects a comment-prefixed CTE
+        // ("/* ... */\nWITH ..."), the selected text is passed to the backend
+        // verbatim. The pagination plan must still recognize the leading comment
+        // and execute the CTE as-is instead of wrapping it into a derived table
+        // (`SELECT TOP (n) * FROM (WITH ...) [dbx_page]`), which SQL Server
+        // rejects with error 156 "keyword 'with' nearby". The non-selected
+        // (current statement) path was immune because cursor resolution strips
+        // leading comments before the plan is built.
+        let sql = "/* 查询销售员-客户可控 */\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert!(plan.count_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_line_comment_cte_pagination_plan_executes_original_sql() {
+        let sql = "-- 查询销售员\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert!(plan.count_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_multi_line_comment_cte_pagination_plan_executes_original_sql() {
+        let sql =
+            "/* 查询销售员\n * 客户可控\n */\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_semicolon_then_comment_then_cte_pagination_plan_executes_original_sql() {
+        let sql = ";/* 查询 */\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert!(plan.count_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_comment_cte_with_inner_and_trailing_comments_executes_original_sql() {
+        let sql = "/* 查询销售员-客户可控 */\nWITH staff AS (/* inner */ SELECT id FROM dbo.users) SELECT * FROM staff -- trailing".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert!(plan.count_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_optimizer_hint_cte_pagination_plan_executes_original_sql() {
+        // The hint is a meaningful leading directive and must be preserved in
+        // the executed SQL, never stripped (see #3569 / PR #3697).
+        let sql = "/*+ MAXDOP(2) */\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert!(plan.count_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_proxy_directive_cte_pagination_plan_executes_original_sql() {
+        let sql = "/*proxy*/\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert!(plan.count_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_tdsql_directive_cte_pagination_plan_executes_original_sql() {
+        let sql = "/*sets:allsets */\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, sql);
+        assert!(plan.page_sql.is_none());
+        assert!(plan.count_sql.is_none());
+        assert_eq!(plan.page_limit, None);
+        assert_eq!(plan.page_offset, None);
+    }
+
+    #[test]
+    fn sqlserver_leading_comment_plain_select_still_paginates() {
+        // A leading comment before a plain SELECT must keep paginating (TOP
+        // wrap inside a derived table is legal for ordinary SELECTs); only
+        // CTE statements must execute untouched.
+        let sql = "/* 查询订单 */\nSELECT [id], [amount] FROM [sales].[orders_10k]".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, "SELECT TOP (100) [id], [amount] FROM [sales].[orders_10k]");
+        assert!(plan.page_limit.is_some());
+        assert_eq!(plan.page_offset, Some(0));
+    }
+
+    #[test]
+    fn sqlserver_hash_temp_table_select_is_not_mistaken_for_comment_or_cte() {
+        // #Temp / ##GlobalTemp are SQL Server temporary table names, not hash
+        // comments or CTEs; pagination must keep working on them (see #4689).
+        let sql = "SELECT [id] FROM #Temp".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql.clone(),
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert!(plan.page_sql.is_some());
+        assert_eq!(plan.page_limit, Some(100));
+        assert_eq!(plan.page_offset, Some(0));
     }
 
     #[test]

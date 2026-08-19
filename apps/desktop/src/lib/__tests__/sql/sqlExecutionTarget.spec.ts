@@ -25,6 +25,15 @@ describe("resolveExecutableSql", () => {
 
     expect(resolveExecutableSql("SELECT 1;", selectedSql, { mode: "current", cursorPos: 0 })).toBe(selectedSql);
   });
+
+  it("keeps a manually selected comment-prefixed SQL Server CTE unchanged", () => {
+    // Issue #6645: the selected region is passed verbatim to the backend so the
+    // pagination plan can recognize the leading comment and execute the CTE as-is
+    // instead of wrapping it into a derived table (SQL Server error 156).
+    const selectedSql = "/* \u67e5\u8be2\u9500\u552e\u5458-\u5ba2\u6237\u53ef\u63a7 */\nWITH staff AS (SELECT id FROM dbo.users) SELECT * FROM staff";
+
+    expect(resolveExecutableSql("SELECT 1;", selectedSql, { mode: "current", cursorPos: 0 })).toBe(selectedSql);
+  });
 });
 
 describe("executionCandidateForMode", () => {
