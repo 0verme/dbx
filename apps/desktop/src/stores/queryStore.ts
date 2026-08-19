@@ -39,6 +39,7 @@ import { supportsClearableQuerySchema } from "@/lib/database/databaseFeatureSupp
 import { canInsertTableRows, canUseKeylessRowPredicate, DBX_ROWID_COLUMN, editablePrimaryKeys, usesSyntheticRowIdKey } from "@/lib/table/tableEditing";
 import { TABLE_DATA_EXPORT_PAGE_SIZE } from "@/lib/table/tableDataExport";
 import { tableMetaForDataTab } from "@/lib/table/tableDataTabMeta";
+import { isDataTabMetadataLifecycleStale } from "@/lib/sidebar/dataTabOpenPolicy";
 import { dataTabExecutionDatabase } from "@/lib/table/dataTabExecutionDatabase";
 import { tableOpenPageLimit } from "@/lib/table/tableOpenPageLimit";
 import { getCachedTableMetadata, loadTableColumns, loadTableIndexes, loadTableMetadata, tableMetadataToDataTabMeta, type TableMetadataRequest } from "@/lib/metadata/tableMetadataCache";
@@ -2838,7 +2839,7 @@ export const useQueryStore = defineStore("query", () => {
       // PR #6640 review blocker 2）。reload 路径不读 tableMetaUpdatedAt 风干
       // 判定、只读 tableMeta 本身，因此在这里显式强制重建。
       const connectionGeneration = connStore.metadataGenerationFor(tab.connectionId, tab.database);
-      if (tab.tableMetaUpdatedAt === undefined || (tab.tableMetaGeneration ?? -1) !== connectionGeneration) {
+      if (isDataTabMetadataLifecycleStale(tab, connectionGeneration)) {
         const metadataGenerationAtStart = connectionGeneration;
         const reloadedMetadata = await loadTableMetadata({
           connectionId: tab.connectionId,

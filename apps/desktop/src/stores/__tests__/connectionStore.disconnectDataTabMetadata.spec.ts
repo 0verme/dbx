@@ -113,4 +113,78 @@ describe("connectionStore disconnect data-tab metadata freshness", () => {
     expect(queryStore.tabs.find((tab) => tab.id === tabOther)?.tableMetaUpdatedAt).toBeDefined();
     expect(closeDatabaseConnection).toHaveBeenCalledWith("conn-a", "app");
   }, 10_000);
+
+  it("treats markConnectionLost as a metadata lifecycle boundary for one connection only", async () => {
+    vi.doMock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => false }));
+    vi.doMock("@/lib/backend/api", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/backend/api")>();
+      return {
+        ...actual,
+        checkConnectionHealth: vi.fn().mockResolvedValue(undefined),
+        getColumns: vi.fn().mockResolvedValue([{ name: "id", data_type: "integer", is_nullable: false, column_default: null, is_primary_key: true, extra: null }]),
+        listIndexes: vi.fn().mockResolvedValue([]),
+        listInstalledAgents: vi.fn().mockResolvedValue([]),
+        listInstalledAgentsLocal: vi.fn().mockResolvedValue([]),
+        deleteSchemaCachePrefix: vi.fn().mockResolvedValue(undefined),
+        saveConnections: vi.fn().mockResolvedValue(undefined),
+        saveSidebarLayout: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const { useConnectionStore } = await import("@/stores/connectionStore");
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    const { loadTableMetadata, getCachedTableMetadata, clearTableMetadataCache } = await import("@/lib/metadata/tableMetadataCache");
+    clearTableMetadataCache();
+    const store = useConnectionStore();
+    useSettingsStore().editorSettings.disconnectTabHandlingMode = "keep-tabs-clear-results";
+
+    store.connections = [pgConnection("conn-a"), pgConnection("conn-b")];
+    const queryStore = useQueryStore();
+    const tabA = queryStore.createTab("conn-a", "app", "users", "data", "public", undefined, undefined, { forceNew: true });
+    const tabB = queryStore.createTab("conn-b", "app", "orders", "data", "public", undefined, undefined, { forceNew: true });
+    queryStore.setTableMeta(tabA, { schema: "public", database: "app", tableName: "users", tableType: "TABLE", columns: [], primaryKeys: [] });
+    queryStore.setTableMeta(tabB, { schema: "public", database: "app", tableName: "orders", tableType: "TABLE", columns: [], primaryKeys: [] });
+    const generationBeforeA = store.metadataGenerationFor("conn-a", "app");
+    const generationBeforeB = store.metadataGenerationFor("conn-b", "app");
+
+    await loadTableMetadata({
+      connectionId: "conn-a",
+      database: "app",
+      schema: "public",
+      tableName: "users",
+      tableType: "TABLE",
+      databaseType: "postgres",
+    });
+    expect(
+      getCachedTableMetadata({
+        connectionId: "conn-a",
+        database: "app",
+        schema: "public",
+        tableName: "users",
+        tableType: "TABLE",
+        databaseType: "postgres",
+      }),
+    ).toBeDefined();
+
+    store.connectedIds.add("conn-a");
+    store.markConnectionLost("conn-a", new Error("connection lost"));
+    await vi.waitFor(() => {
+      expect(queryStore.tabs.find((tab) => tab.id === tabA)?.tableMetaUpdatedAt).toBeUndefined();
+    });
+
+    expect(store.metadataGenerationFor("conn-a", "app")).toBeGreaterThan(generationBeforeA);
+    expect(store.metadataGenerationFor("conn-b", "app")).toBe(generationBeforeB);
+    expect(queryStore.tabs.find((tab) => tab.id === tabB)?.tableMetaUpdatedAt).toBeDefined();
+    expect(
+      getCachedTableMetadata({
+        connectionId: "conn-a",
+        database: "app",
+        schema: "public",
+        tableName: "users",
+        tableType: "TABLE",
+        databaseType: "postgres",
+      }),
+    ).toBeUndefined();
+  }, 10_000);
 });

@@ -682,4 +682,53 @@ describe("queryStore table data refresh", () => {
     expect(mocks.loadTableMetadata).not.toHaveBeenCalled();
     expect(mocks.buildTableSelectSql).toHaveBeenCalledWith(expect.objectContaining({ columns: ["id"] }));
   });
+
+  it("abandons a forced metadata rebuild when generation changes mid-flight", async () => {
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("pg-1", "app", "users", "data", "public");
+    store.setTableMeta(tabId, {
+      schema: "public",
+      tableName: "users",
+      tableType: "TABLE",
+      columns: [{ name: "id", data_type: "integer", is_nullable: false, column_default: null, is_primary_key: true, extra: null }],
+      primaryKeys: ["id"],
+    });
+    const tab = store.tabs.find((candidate) => candidate.id === tabId)!;
+    mocks.metadataGeneration = 1;
+    tab.tableMetaUpdatedAt = undefined;
+    let resolveMetadata!: (value: Awaited<ReturnType<typeof mocks.loadTableMetadata>>) => void;
+    mocks.loadTableMetadata.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveMetadata = resolve;
+      }),
+    );
+
+    const refresh = store.refreshDataTab(tabId);
+    await vi.waitFor(() => expect(mocks.loadTableMetadata).toHaveBeenCalledTimes(1));
+    mocks.metadataGeneration = 2;
+    resolveMetadata({
+      metadata: {
+        schema: "public",
+        tableName: "users",
+        tableType: "TABLE",
+        database: "app",
+        columns: [
+          { name: "id", data_type: "integer", is_nullable: false, column_default: null, is_primary_key: true, extra: null },
+          { name: "age", data_type: "integer", is_nullable: true, column_default: null, is_primary_key: false, extra: null },
+        ],
+        indexes: [],
+        primaryKeys: ["id"],
+        cachedAt: Date.now(),
+      },
+      cacheStatus: "miss",
+      ageMs: 0,
+    });
+    await expect(refresh).resolves.toBe(false);
+
+    expect(tab.tableMeta?.columns.map((column) => column.name)).toEqual(["id"]);
+    expect(tab.tableMetaUpdatedAt).toBeUndefined();
+    expect(mocks.buildTableSelectSql).not.toHaveBeenCalled();
+    expect(mocks.executeMulti).not.toHaveBeenCalled();
+  });
 });

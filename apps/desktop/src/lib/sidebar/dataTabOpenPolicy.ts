@@ -60,6 +60,16 @@ export function dataTabMetadataNeedsRefresh(tab: DataTabLike, maxAgeMs: number, 
   return now - tab.tableMetaUpdatedAt >= maxAgeMs;
 }
 
+/**
+ * Connection-lifetime freshness: a data tab is cold when it has no freshness
+ * stamp or its recorded generation no longer matches the current
+ * connection/database generation. TTL only applies inside the same generation.
+ * Missing columns remain a separate cold-cache case handled by callers.
+ */
+export function isDataTabMetadataLifecycleStale(tab: Pick<DataTabLike, "tableMetaUpdatedAt" | "tableMetaGeneration">, currentGeneration: number): boolean {
+  return tab.tableMetaUpdatedAt === undefined || (tab.tableMetaGeneration ?? -1) !== currentGeneration;
+}
+
 export function findExistingDataTabCandidate<T extends DataTabLike>(tabs: T[], target: DataTabTarget, options: { openMode: DataTabOpenMode; reuseMode: DataTabReuseMode; activeTabId?: string | null }): ExistingDataTabCandidate<T> | undefined {
   if (options.openMode === "new-tab" || options.reuseMode === "always-new") return undefined;
 

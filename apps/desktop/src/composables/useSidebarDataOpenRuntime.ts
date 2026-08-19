@@ -7,7 +7,7 @@ import { uuid } from "@/lib/common/utils";
 import { appendDebugLog, isDebugLoggingEnabled } from "@/lib/backend/debugLog";
 import { effectiveDatabaseTypeForConnection, connectionObjectTreeNodeSchema, connectionObjectTreeQuerySchema } from "@/lib/database/jdbcDialect";
 import { getCachedTableMetadata, loadTableMetadata, TABLE_METADATA_CACHE_TTL_MS, tableMetadataToDataTabMeta } from "@/lib/metadata/tableMetadataCache";
-import { canApplyDataTabMetadata, dataTabMetadataNeedsRefresh, findExistingDataTabCandidate, type DataTabOpenMode, type DataTabReuseMode } from "@/lib/sidebar/dataTabOpenPolicy";
+import { canApplyDataTabMetadata, dataTabMetadataNeedsRefresh, findExistingDataTabCandidate, isDataTabMetadataLifecycleStale, type DataTabOpenMode, type DataTabReuseMode } from "@/lib/sidebar/dataTabOpenPolicy";
 import type { SidebarDataOpenRequest } from "@/lib/sidebar/sidebarDataOpenCoordinator";
 import { hasTreeNodeDatabaseContext } from "@/lib/sidebar/treeNodeContext";
 import { buildTableSelectSql } from "@/lib/table/tableSelectSql";
@@ -178,8 +178,7 @@ export function useSidebarDataOpenRuntime() {
       // 代次失配视同冷缓存（即使位于 30s TTL 窗口内也要重建）：disconnect /
       // 关库 / 死池重连都可能不改变 timestamp 判定而改变连接生命周期
       const connectionGeneration = connectionStore.metadataGenerationFor(node.connectionId, node.database);
-      const staleByConnectionGeneration = (existingSameTableTab.tableMetaGeneration ?? -1) !== connectionGeneration;
-      if (staleByConnectionGeneration || dataTabMetadataNeedsRefresh(existingSameTableTab, DATA_TAB_METADATA_TTL_MS)) {
+      if (isDataTabMetadataLifecycleStale(existingSameTableTab, connectionGeneration) || dataTabMetadataNeedsRefresh(existingSameTableTab, DATA_TAB_METADATA_TTL_MS)) {
         // 真实列缺失时行标识未知：启动刷新的同时必须挂起编辑门控（所有
         // "真实列缺失且启动刷新"的入口统一置 pending）
         if (!existingSameTableTab.tableMeta?.columns.length) existingSameTableTab.tableMetaPending = true;
