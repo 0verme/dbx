@@ -2913,6 +2913,21 @@ export const useQueryStore = defineStore("query", () => {
     releaseTabsWhere((tab) => tab.connectionId === connectionId && tab.database === database);
   }
 
+  /**
+   * 连接生命周期边界（断开连接 / 关闭数据库连接 / 后端连接池失效重连）。
+   * 数据标签页的 tableMeta 为展示/编辑保留（不清除 UI、主键与编辑安全门控），
+   * 但清掉 freshness 戳：此后 openData 的 tab-local 暖缓存判定、激活路径的
+   * stale 判定、以及网格 reload 的 metadata age 判定全部按"冷缓存"处理，
+   * 即使位于 30s TTL 窗口内也会重新拉取结构（issue #6623）。
+   */
+  function staleConnectionDataTabMetadata(connectionId: string, database?: string) {
+    for (const tab of tabs.value) {
+      if (tab.mode !== "data" || tab.connectionId !== connectionId) continue;
+      if (database != null && tab.database !== database) continue;
+      tab.tableMetaUpdatedAt = undefined;
+    }
+  }
+
   function isDatabaseOpen(connectionId: string, database: string) {
     return openDatabaseKeys.value.has(`${connectionId}\x00${database}`);
   }
@@ -6190,6 +6205,7 @@ export const useQueryStore = defineStore("query", () => {
     refreshDataTabsForTable,
     releaseConnectionTabs,
     releaseDatabaseTabs,
+    staleConnectionDataTabMetadata,
     isDatabaseOpen,
     openDatabaseKeys,
     rollbackConnectionTransactions,

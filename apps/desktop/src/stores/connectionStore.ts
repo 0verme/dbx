@@ -3355,6 +3355,11 @@ export const useConnectionStore = defineStore("connection", () => {
     invalidateObjectBrowserRowsCache({ connectionId });
     const { useQueryStore } = await import("@/stores/queryStore");
     const queryStore = useQueryStore();
+    // 断开连接是明确的元数据新鲜度边界：数据标签页保留展示/编辑状态，但
+    // 其 tableMeta 不得再被视为 warm cache（issue #6623——reconnect 后重开
+    // 同表必须重新拉取结构）。shared cache 已由上面的
+    // invalidateCompletionCache→invalidateMetadataCaches 覆盖。
+    queryStore.staleConnectionDataTabMetadata(connectionId);
     switch (settingsStore.editorSettings.disconnectTabHandlingMode) {
       case "close-tabs":
         queryStore.closeConnectionTabs(connectionId);
@@ -3409,6 +3414,9 @@ export const useConnectionStore = defineStore("connection", () => {
     }
     invalidateCompletionCache(connectionId, database);
     invalidateObjectBrowserRowsCache({ connectionId, database });
+    // 数据库级生命周期边界：与连接级断开一致，数据标签页的元数据 freshness
+    // 戳必须作废，重开/刷新时重新拉取结构（issue #6623）。
+    queryStore.staleConnectionDataTabMetadata(connectionId, database);
   }
 
   async function ensureConnected(connectionId: string, options: { activate?: boolean; verifyHealth?: boolean } = {}) {
@@ -3424,11 +3432,17 @@ export const useConnectionStore = defineStore("connection", () => {
         markConnectionHealthChecked(connectionId);
         return;
       } catch {
-        // Backend pool is dead — remove from connectedIds and reconnect
+        // Backend pool is dead — remove from connectedIds and reconnect.
+        // 死池重连同样跨越了连接生命周期：shared 表元数据缓存与数据标签页的
+        // 元数据 freshness 都必须作废，否则自动重连后仍可能复用断链前的旧
+        // 字段结构（issue #6623）。
         connectedIds.value.delete(connectionId);
         clearPrimaryVisibleObjectNames(connectionId);
         clearConnectionHealthCheck(connectionId);
         if (activeConnectionId.value === connectionId) activeConnectionId.value = null;
+        invalidateMetadataCaches({ connectionId });
+        const { useQueryStore } = await import("@/stores/queryStore");
+        useQueryStore().staleConnectionDataTabMetadata(connectionId);
       }
     }
     let config = getConfig(connectionId);
