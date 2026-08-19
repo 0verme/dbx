@@ -1038,7 +1038,7 @@ fn topic_info_from_agent_value(topic: &serde_json::Value) -> TopicInfo {
         state: topic.get("state").and_then(|value| value.as_str()).map(String::from),
         queue_type,
         arguments: topic.get("arguments").cloned().filter(|value| !value.is_null()),
-        consumer_count: topic.get("consumerCount").and_then(|value| value.as_i64()),
+        consumer_count: topic.get("consumerCount").or_else(|| topic.get("consumers")).and_then(|value| value.as_i64()),
         publish_rate: topic.get("publishRate").and_then(|value| value.as_f64()),
         deliver_rate: topic.get("deliverRate").and_then(|value| value.as_f64()),
         ack_rate: topic.get("ackRate").and_then(|value| value.as_f64()),
@@ -1268,6 +1268,16 @@ mod tests {
         let arguments = topic.arguments.as_ref().expect("arguments");
         assert_eq!(arguments["x-message-ttl"], serde_json::json!(60000));
         assert_eq!(arguments["x-queue-type"], serde_json::json!("quorum"));
+    }
+
+    #[test]
+    fn topic_info_accepts_consumers_wire_field() {
+        let topic = topic_info_from_agent_value(&serde_json::json!({
+            "name": "orders",
+            "consumers": 3
+        }));
+
+        assert_eq!(topic.consumer_count, Some(3));
     }
 
     #[test]

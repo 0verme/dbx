@@ -175,9 +175,9 @@ describe("TopicsPanel RabbitMQ queue messages", () => {
     expect(typeCell?.textContent?.trim()).toBe("quorum");
     expect(alpha.querySelector<HTMLElement>(".queue-state")?.textContent?.trim()).toBe("running");
 
-    // Compact feature badges: AD (auto-delete) + TTL + DLX.
+    // Compact feature badges: D (durable) + AD (auto-delete) + TTL + DLX.
     const featureBadges = [...alpha.querySelectorAll<HTMLElement>('[data-testid="rabbitmq-features"] .feature-badge')].map((item) => item.textContent?.trim());
-    expect(featureBadges).toEqual(["AD", "TTL", "DLX"]);
+    expect(featureBadges).toEqual(["D", "AD", "TTL", "DLX"]);
 
     // Consumers column.
     expect(alpha.querySelector<HTMLElement>('[data-testid="rabbitmq-consumers"]')?.textContent?.trim()).toBe("2");
@@ -196,8 +196,8 @@ describe("TopicsPanel RabbitMQ queue messages", () => {
     // No type and no x-queue-type: the label must not guess "classic".
     expect(beta.querySelector<HTMLElement>(".badge")?.textContent?.trim()).toBe("mqTopics.rabbitmqQueueTypeUnknown");
 
-    // No features, no consumers, no rates sample.
-    expect(beta.querySelector<HTMLElement>('[data-testid="rabbitmq-features"]')?.textContent?.trim()).toBe("-");
+    // Durable remains visible; consumers and rates have no sample.
+    expect(beta.querySelector<HTMLElement>('[data-testid="rabbitmq-features"]')?.textContent?.trim()).toBe("D");
     expect(beta.querySelector<HTMLElement>('[data-testid="rabbitmq-consumers"]')?.textContent?.trim()).toBe("-");
     expect(beta.querySelector<HTMLElement>('[data-testid="rabbitmq-rates"]')?.textContent?.trim()).toBe("-/-/-");
   });

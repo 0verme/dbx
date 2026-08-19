@@ -20,7 +20,8 @@ describe("rabbitMqFeatureBadges", () => {
       }),
     );
 
-    expect(badges.map((badge) => badge.label)).toEqual(["AD", "EX", "TTL", "DLX"]);
+    expect(badges.map((badge) => badge.label)).toEqual(["D", "AD", "EX", "TTL", "DLX"]);
+    expect(badges.find((badge) => badge.label === "D")?.title).toBe("Durable");
     expect(badges.find((badge) => badge.label === "TTL")?.title).toBe("x-message-ttl: 60000");
   });
 
@@ -38,7 +39,7 @@ describe("rabbitMqFeatureBadges", () => {
   });
 
   it("returns no badges for a plain queue", () => {
-    expect(rabbitMqFeatureBadges(topic({}))).toEqual([]);
+    expect(rabbitMqFeatureBadges(topic({ persistent: false }))).toEqual([]);
   });
 
   it("preserves argument value types in tooltips", () => {

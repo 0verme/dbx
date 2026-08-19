@@ -52,8 +52,11 @@ export function rabbitMqArgumentText(value: unknown): string {
  * dropped — they fold into an "Args" count badge so new features keep
  * surfacing without hard-coding them into the UI.
  */
-export function rabbitMqFeatureBadges(topic: Pick<TopicInfo, "autoDelete" | "exclusive" | "arguments">): RabbitMqFeatureBadge[] {
+export function rabbitMqFeatureBadges(topic: Pick<TopicInfo, "persistent" | "autoDelete" | "exclusive" | "arguments">): RabbitMqFeatureBadge[] {
   const badges: RabbitMqFeatureBadge[] = [];
+  if (topic.persistent) {
+    badges.push({ key: "durable", kind: "feature", label: "D", title: "Durable" });
+  }
   if (topic.autoDelete) {
     badges.push({ key: "autoDelete", kind: "feature", label: "AD", title: "Auto-delete" });
   }

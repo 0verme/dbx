@@ -129,6 +129,9 @@ func TestTopicInfoMappingIncludesQueueMessageCounts(t *testing.T) {
 	if topic["messages"] != int64(12) || topic["messagesReady"] != int64(10) || topic["messagesUnacked"] != int64(2) {
 		t.Fatalf("unexpected topic counts %#v", topic)
 	}
+	if topic["consumers"] != int64(3) {
+		t.Fatalf("expected consumers wire field, got %#v", topic)
+	}
 
 	minimal := topicInfoFromJSON(mustObject(t, `{"name":"empty"}`))
 	if _, ok := minimal["messagesReady"]; ok {
