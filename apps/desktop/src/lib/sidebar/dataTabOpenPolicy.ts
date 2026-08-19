@@ -5,7 +5,10 @@ import type { QueryTab, TreeNodeType } from "@/types/database";
 export type DataTabOpenMode = "default" | "new-tab";
 export type { DataTabReuseMode };
 
-type DataTabLike = Pick<QueryTab, "id" | "mode" | "connectionId" | "database" | "catalog" | "schema" | "title" | "tableMeta" | "tableMetaUpdatedAt" | "pinned" | "isExecuting" | "isCancelling" | "isExplaining" | "txnSessionId" | "pendingDataChangeCount" | "hasPendingDataEditorDraft">;
+type DataTabLike = Pick<
+  QueryTab,
+  "id" | "mode" | "connectionId" | "database" | "catalog" | "schema" | "title" | "tableMeta" | "tableMetaUpdatedAt" | "tableMetaGeneration" | "pinned" | "isExecuting" | "isCancelling" | "isExplaining" | "txnSessionId" | "pendingDataChangeCount" | "hasPendingDataEditorDraft"
+>;
 
 export interface DataTabTarget {
   connectionId: string;
