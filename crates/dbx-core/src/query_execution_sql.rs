@@ -247,10 +247,25 @@ pub fn is_write_sql_for_database(sql: &str, database_type: DatabaseType) -> bool
     if database_type == DatabaseType::VictoriaMetrics {
         return false;
     }
+    if database_type == DatabaseType::DynamoDb {
+        if let Some(is_write) = classify_dynamodb_statement_write(sql) {
+            return is_write;
+        }
+    }
     if let Some(risk) = classify_search_engine_query_risk(sql, database_type) {
         return risk != SearchEngineQueryRisk::ReadOnly;
     }
     is_write_sql_with_database_type(sql, Some(database_type))
+}
+
+fn classify_dynamodb_statement_write(source: &str) -> Option<bool> {
+    let header = source.lines().find(|line| !line.trim().is_empty())?.trim().to_ascii_uppercase();
+    match header.as_str() {
+        "DBX DYNAMODB SCAN" | "DBX DYNAMODB QUERY / SCAN" => Some(false),
+        "DBX DYNAMODB INSERT ITEM" | "DBX DYNAMODB PUT ITEM" | "DBX DYNAMODB DELETE ITEM" => Some(true),
+        _ if header.starts_with("DBX DYNAMODB") => Some(true),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -345,9 +360,10 @@ fn is_write_sql_with_database_type(sql: &str, database_type: Option<DatabaseType
         None => crate::sql::split_sql_statements(sql),
     };
 
-    statements
-        .iter()
-        .any(|statement| is_write_sql_statement(statement, detect_mysql_executable_comments, detect_select_into))
+    let allow_mysql_checksum = database_type == Some(DatabaseType::Mysql);
+    statements.iter().any(|statement| {
+        is_write_sql_statement(statement, detect_mysql_executable_comments, detect_select_into, allow_mysql_checksum)
+    })
 }
 
 /// The explain flows toggle plan capture with a standalone SET statement:
@@ -433,7 +449,12 @@ fn contains_unquoted_keyword(sql: &str, dialect: &dyn sqlparser::dialect::Dialec
     })
 }
 
-fn is_write_sql_statement(sql: &str, detect_mysql_executable_comments: bool, detect_select_into: bool) -> bool {
+fn is_write_sql_statement(
+    sql: &str,
+    detect_mysql_executable_comments: bool,
+    detect_select_into: bool,
+    allow_mysql_checksum: bool,
+) -> bool {
     // 1. Strip comments and string literals
     let (cleaned, has_mysql_executable_comment) =
         strip_sql_comments_and_literals_with_metadata(sql, detect_mysql_executable_comments);
@@ -453,7 +474,7 @@ fn is_write_sql_statement(sql: &str, detect_mysql_executable_comments: bool, det
     // 2. Check if first keyword is a read keyword
     let starts_with_read = READ_SQL_KEYWORDS.iter().any(|kw| {
         upper.starts_with(kw) && (upper.len() == kw.len() || !upper.as_bytes()[kw.len()].is_ascii_alphanumeric())
-    });
+    }) || (allow_mysql_checksum && starts_with_keyword(&upper, "CHECKSUM TABLE"));
 
     // 3. Special handling for PRAGMA: only allow safe read-only forms
     if !starts_with_read && starts_with_keyword(&upper, "PRAGMA") {
@@ -1532,6 +1553,14 @@ mod tests {
     }
 
     #[test]
+    fn check_read_only_allows_mysql_checksum_only_for_mysql() {
+        assert_eq!(check_read_only("CHECKSUM TABLE `issue6693_repro`", "mysql", DatabaseType::Mysql), Ok(()));
+        assert!(check_read_only("CHECKSUM TABLE users", "postgres", DatabaseType::Postgres).is_err());
+        assert!(check_read_only("CHECKSUM TABLE users", "sqlite", DatabaseType::Sqlite).is_err());
+        assert!(check_read_only("CHECKSUM TABLE users; DROP TABLE users", "mysql", DatabaseType::Mysql).is_err());
+    }
+
+    #[test]
     fn check_read_only_allows_only_sqlserver_plan_capture_session_switches() {
         for sql in [
             "SET SHOWPLAN_XML ON;",
@@ -1596,6 +1625,24 @@ mod tests {
         // strip_sql_comments does NOT handle string delimiters, so it strips
         // comments even inside string literals
         assert_eq!(strip_sql_comments("SELECT 'hello /* not a comment */'"), "SELECT 'hello  '");
+    }
+
+    #[test]
+    fn classifies_dynamodb_generated_statements_for_read_only_protection() {
+        assert!(!is_write_sql_for_database(
+            "DBX DYNAMODB SCAN\ntable: \"orders\"\nlimit: 1000",
+            DatabaseType::DynamoDb
+        ));
+        assert!(!is_write_sql_for_database(
+            "DBX DYNAMODB QUERY / SCAN\ntable: \"orders\"\nfilter:\n{\"status\":\"SHIPPED\"}",
+            DatabaseType::DynamoDb
+        ));
+        for operation in ["INSERT ITEM", "PUT ITEM", "DELETE ITEM", "UNKNOWN"] {
+            assert!(is_write_sql_for_database(
+                &format!("DBX DYNAMODB {operation}\ntable: \"orders\""),
+                DatabaseType::DynamoDb
+            ));
+        }
     }
 
     #[test]

@@ -49,6 +49,10 @@ export type ActiveTabSidebarTarget =
       connectionId: string;
     }
   | {
+      type: "nacos-access-control";
+      connectionId: string;
+    }
+  | {
       type: "zookeeper-root";
       connectionId: string;
     }
@@ -112,6 +116,17 @@ export function activeTabSidebarTarget(tab: QueryTab | undefined | null): Active
     };
   }
 
+  if (tab.mode === "meilisearch") {
+    const collectionName = tab.sql || tab.title;
+    if (!collectionName) return null;
+    return {
+      type: "mongo-collection",
+      connectionId: tab.connectionId,
+      database: tab.database,
+      collectionName,
+    };
+  }
+
   if (tab.mode === "mongo-bucket") {
     return {
       type: "mongo-gridfs",
@@ -159,6 +174,10 @@ export function activeTabSidebarTarget(tab: QueryTab | undefined | null): Active
 
   if (tab.mode === "etcd-access-control") {
     return { type: "etcd-access-control", connectionId: tab.connectionId };
+  }
+
+  if (tab.mode === "nacos-access-control") {
+    return { type: "nacos-access-control", connectionId: tab.connectionId };
   }
 
   if (tab.mode === "zookeeper") {
@@ -250,6 +269,10 @@ export function matchesTarget(node: TreeNode, target: ActiveTabSidebarTarget): b
 
   if (target.type === "etcd-access-control") {
     return node.type === "etcd-access-control" && node.connectionId === target.connectionId;
+  }
+
+  if (target.type === "nacos-access-control") {
+    return node.type === "nacos-access-control" && node.connectionId === target.connectionId;
   }
 
   if (target.type === "zookeeper-root") {

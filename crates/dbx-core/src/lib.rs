@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 pub mod agent_catalog;
 pub mod agent_connection;
 pub mod agent_events;
@@ -47,6 +49,7 @@ pub mod hbase_ops;
 pub mod history;
 pub mod jdbc;
 pub mod models;
+pub mod mongo_oidc;
 pub mod mongo_ops;
 pub mod mongo_shell;
 #[cfg(feature = "mq-admin")]

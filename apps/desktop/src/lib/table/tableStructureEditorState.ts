@@ -1,8 +1,44 @@
-import type { ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo } from "@/types/database.ts";
+import type { ColumnInfo, DatabaseConnectionInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo } from "@/types/database.ts";
 import type { ColumnExtra, EditableStructureColumn, EditableStructureForeignKey, EditableStructureIndex, EditableStructureTrigger } from "@/lib/table/tableStructureEditorSql.ts";
 
 export function hasExistingColumnTypeChange(columns: readonly EditableStructureColumn[]): boolean {
   return columns.some((column) => !!column.original && !column.markedForDrop && column.dataType !== column.original.data_type);
+}
+
+type TableStructureIdentifierCaseInfo = Pick<DatabaseConnectionInfo, "unquotedIdentifierCase" | "quotedIdentifierCase">;
+
+const LOWER_UNQUOTED_MIXED_QUOTED_DATABASES = new Set<DatabaseType>(["postgres", "redshift", "opengauss", "gaussdb", "highgo", "uxdb"]);
+const UPPER_UNQUOTED_MIXED_QUOTED_DATABASES = new Set<DatabaseType>(["oracle", "oceanbase-oracle", "dameng", "kingbase", "vastbase", "goldendb", "yashandb"]);
+
+function defaultTableStructureIdentifierCaseInfo(databaseType?: DatabaseType): Required<TableStructureIdentifierCaseInfo> {
+  if (databaseType && LOWER_UNQUOTED_MIXED_QUOTED_DATABASES.has(databaseType)) {
+    return { unquotedIdentifierCase: "lower", quotedIdentifierCase: "mixed" };
+  }
+  if (databaseType && UPPER_UNQUOTED_MIXED_QUOTED_DATABASES.has(databaseType)) {
+    return { unquotedIdentifierCase: "upper", quotedIdentifierCase: "mixed" };
+  }
+  if (databaseType === "clickhouse") {
+    return { unquotedIdentifierCase: "mixed", quotedIdentifierCase: "mixed" };
+  }
+  return { unquotedIdentifierCase: "lower", quotedIdentifierCase: "lower" };
+}
+
+function applyIdentifierCase(value: string, identifierCase: NonNullable<DatabaseConnectionInfo["unquotedIdentifierCase"]>): string {
+  if (identifierCase === "lower") return value.toLowerCase();
+  if (identifierCase === "upper") return value.toUpperCase();
+  return value;
+}
+
+export function tableStructureIdentifierComparisonKey(name: string, databaseType?: DatabaseType, databaseInfo?: TableStructureIdentifierCaseInfo): string {
+  const value = name.trim();
+  const defaults = defaultTableStructureIdentifierCaseInfo(databaseType);
+  const unquotedIdentifierCase = databaseInfo?.unquotedIdentifierCase ?? defaults.unquotedIdentifierCase;
+  const quotedIdentifierCase = databaseInfo?.quotedIdentifierCase ?? defaults.quotedIdentifierCase;
+  const normalizedUnquoted = applyIdentifierCase(value, unquotedIdentifierCase);
+
+  if (unquotedIdentifierCase === "mixed") return `exact:${value}`;
+  if (quotedIdentifierCase === "mixed" && value !== normalizedUnquoted) return `quoted:${value}`;
+  return `unquoted:${normalizedUnquoted}`;
 }
 
 const POSTGRES_SERIAL_PSEUDO_TYPES = new Set(["smallserial", "serial", "bigserial"]);
@@ -335,7 +371,63 @@ export const DATA_TYPE_OPTIONS: Record<string, string[]> = {
     "interval day to second",
   ],
   questdb: ["boolean", "ipv4", "byte", "short", "char", "int", "float", "symbol", "varchar", "string", "long", "date", "timestamp", "timestamp_ns", "double", "uuid", "binary", "long256", "geohash", "array", "interval", "decimal"],
-  xugu: ["BOOLEAN", "INTEGER", "SMALLINT", "BIGINT", "FLOAT", "NUMERIC", "CHAR", "VARCHAR", "CLOB", "DATE", "TIME", "TIMESTAMP", "BINARY", "VARBINARY", "BLOB", "XML", "BOOL", "INT", "SHORT", "LONGINT", "LONG", "REAL", "DECIMAL", "TEXT", "NCHAR", "NVARCHAR", "NVARCHAR2"],
+  xugu: [
+    "BIGINT",
+    "BINARY",
+    "BIT",
+    "BLOB",
+    "BOOL",
+    "BOOLEAN",
+    "CHAR",
+    "CHAR[]",
+    "CLOB",
+    "CLOB[]",
+    "DATE",
+    "DATETIME",
+    "DATETIME WITH TIME ZONE",
+    "DECIMAL",
+    "DOUBLE",
+    "DOUBLE[]",
+    "FLOAT",
+    "GUID",
+    "INT",
+    "INTEGER",
+    "INTEGER[]",
+    "INTERVAL DAY",
+    "INTERVAL DAY TO HOUR",
+    "INTERVAL DAY TO MINUTE",
+    "INTERVAL DAY TO SECOND",
+    "INTERVAL HOUR",
+    "INTERVAL HOUR TO MINUTE",
+    "INTERVAL HOUR TO SECOND",
+    "INTERVAL MINUTE",
+    "INTERVAL MINUTE TO SECOND",
+    "INTERVAL MONTH",
+    "INTERVAL SECOND",
+    "INTERVAL YEAR",
+    "INTERVAL YEAR TO MONTH",
+    "JSON",
+    "LONG",
+    "LONGINT",
+    "NCHAR",
+    "NUMERIC",
+    "NVARCHAR",
+    "NVARCHAR2",
+    "REAL",
+    "ROWID",
+    "SHORT",
+    "SMALLINT",
+    "TEXT",
+    "TIME",
+    "TIME WITH TIME ZONE",
+    "TIMESTAMP",
+    "TIMESTAMP WITH TIME ZONE",
+    "TINYINT",
+    "VARBINARY",
+    "VARBIT",
+    "VARCHAR",
+    "XML",
+  ],
   duckdb: ["BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT", "FLOAT", "DOUBLE", "DECIMAL", "VARCHAR", "TEXT", "BLOB", "DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL", "UUID", "JSON"],
   h2: ["BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "IDENTITY", "DECIMAL", "NUMERIC", "REAL", "DOUBLE", "FLOAT", "CHAR", "CHARACTER", "VARCHAR", "VARCHAR_IGNORECASE", "CLOB", "BINARY", "VARBINARY", "BLOB", "DATE", "TIME", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "UUID", "ARRAY", "JSON"],
 };
@@ -522,6 +614,8 @@ export const POSTGRES_TYPE_LENGTH_DISABLES: string[] = [
 ];
 
 export const ORACLE_LIKE_TYPE_LENGTH_DISABLES: string[] = ["binary_double", "binary_float", "bigint", "boolean", "bool", "byte", "date", "double", "double precision", "float", "integer", "int", "long", "long raw", "nclob", "real", "smallint", "text", "tinyint"];
+
+const XUGU_TYPE_LENGTH_DISABLES = new Set([...ORACLE_LIKE_TYPE_LENGTH_DISABLES, "blob", "clob", "datetime", "datetime with time zone", "guid", "json", "longint", "rowid", "short", "xml"]);
 
 export const SQLSERVER_TYPE_LENGTH_DISABLES: string[] = ["bigint", "bit", "date", "datetime", "image", "int", "integer", "money", "ntext", "real", "smalldatetime", "smallint", "smallmoney", "sql_variant", "text", "timestamp", "tinyint", "uniqueidentifier", "xml"];
 
@@ -717,15 +811,21 @@ function columnDefaultForEditor(column: ColumnInfo, databaseType?: DatabaseType)
 
 const CHARACTER_LENGTH_METADATA_TYPES = new Set(["binary", "char", "character", "character varying", "nchar", "nvarchar", "nvarchar2", "varbinary", "varchar", "varchar2"]);
 const NUMERIC_PRECISION_METADATA_TYPES = new Set(["decimal", "number", "numeric"]);
+const XUGU_SINGLE_PRECISION_METADATA_TYPES = new Set(["bit", "time", "time with time zone", "timestamp", "timestamp with time zone", "varbit"]);
 
 function columnDataTypeForEditor(column: ColumnInfo, databaseType?: DatabaseType): string {
-  const parsed = splitDataType(column.data_type);
+  const parsed = splitDataTypeForDatabase(databaseType, column.data_type);
   if (parsed.params) return column.data_type;
 
   const baseType = parsed.baseType.trim().replace(/\s+/g, " ");
   const normalized = baseType.toLowerCase();
   if (CHARACTER_LENGTH_METADATA_TYPES.has(normalized) && Number.isInteger(column.character_maximum_length) && Number(column.character_maximum_length) > 0) {
     return combineDataTypeForDatabase(databaseType, baseType, String(column.character_maximum_length));
+  }
+  if (databaseType === "xugu" && XUGU_SINGLE_PRECISION_METADATA_TYPES.has(normalized) && Number.isInteger(column.numeric_precision)) {
+    const precision = Number(column.numeric_precision);
+    const minimum = normalized === "bit" || normalized === "varbit" ? 1 : 0;
+    if (precision >= minimum) return combineDataTypeForDatabase(databaseType, baseType, String(precision));
   }
   if (NUMERIC_PRECISION_METADATA_TYPES.has(normalized) && Number.isInteger(column.numeric_precision) && Number(column.numeric_precision) > 0) {
     const scale = Number.isInteger(column.numeric_scale) && Number(column.numeric_scale) >= 0 ? `,${column.numeric_scale}` : "";
@@ -756,6 +856,45 @@ export function createColumnDrafts(columns: ColumnInfo[], databaseType?: Databas
       markedForDrop: false,
     };
   });
+}
+
+/**
+ * Turns another table's metadata into columns that will be added to the table
+ * currently being edited. Unlike createColumnDrafts(), these must not retain
+ * original metadata: the SQL builder uses that metadata to identify existing
+ * columns that should be altered.
+ */
+export function createCopiedColumnDrafts(columns: ColumnInfo[], databaseType: DatabaseType | undefined, createId: () => string): EditableStructureColumn[] {
+  return createColumnDrafts(columns, databaseType).map(({ original: _original, originalPosition: _originalPosition, isPrimaryKey: _isPrimaryKey, extra, ...column }) => ({
+    ...column,
+    id: `new:${createId()}`,
+    isPrimaryKey: false,
+    extra: copyableColumnExtra(extra),
+  }));
+}
+
+/** Copy only field-local extras; keys and generated-value state are table-level concerns. */
+function copyableColumnExtra(extra: ColumnExtra): ColumnExtra {
+  const { autoIncrement: _autoIncrement, identity: _identity, ...copyableExtra } = extra;
+  return copyableExtra;
+}
+
+/** Clone an editable field as a new column, without linking it to persisted metadata or key state. */
+export function cloneColumnDraftAsNew(column: EditableStructureColumn, createId: () => string): EditableStructureColumn {
+  return {
+    id: `new:${createId()}`,
+    name: column.name,
+    dataType: column.dataType,
+    enumValues: column.enumValues ? [...column.enumValues] : undefined,
+    isNullable: column.isNullable,
+    defaultValue: column.defaultValue,
+    comment: column.comment,
+    isPrimaryKey: false,
+    characterSet: column.characterSet,
+    collation: column.collation,
+    extra: copyableColumnExtra(column.extra),
+    markedForDrop: false,
+  };
 }
 
 function existingColumnIdName(id: string): string | undefined {
@@ -972,6 +1111,23 @@ export function splitDataType(raw: string): { baseType: string; params: string }
   return { baseType, params };
 }
 
+function splitDataTypeForDatabase(dbType: DatabaseType | undefined, raw: string): { baseType: string; params: string } {
+  if (dbType === "xugu") {
+    const match = raw.trim().match(/^(TIME|TIMESTAMP)\s*\(([^()]*)\)\s+WITH\s+TIME\s+ZONE$/i);
+    if (match) {
+      return {
+        baseType: `${match[1]} WITH TIME ZONE`,
+        params: match[2]!.trim(),
+      };
+    }
+  }
+  return splitDataType(raw);
+}
+
+export function dataTypeBaseInputValue(dbType: DatabaseType | undefined, rawDataType: string): string {
+  return splitDataTypeForDatabase(dbType, rawDataType).baseType;
+}
+
 export type DataTypeLengthUnit = "BYTE" | "CHAR";
 
 const CHARACTER_LENGTH_UNIT_TYPES = new Set(["char", "varchar", "varchar2"]);
@@ -987,7 +1143,7 @@ export function getDataTypeLengthUnitOptions(dbType: DatabaseType | undefined, r
 }
 
 function splitDataTypeLengthParams(dbType: DatabaseType | undefined, rawDataType: string): { length: string; unit: DataTypeLengthUnit | "" } {
-  const { params } = splitDataType(rawDataType);
+  const { params } = splitDataTypeForDatabase(dbType, rawDataType);
   if (!params || getDataTypeLengthUnitOptions(dbType, rawDataType).length === 0) {
     return { length: params, unit: "" };
   }
@@ -1083,19 +1239,28 @@ export function combineDataTypeForDatabase(dbType: DatabaseType | undefined, bas
   const normalizedParams = normalizeDataTypeParams(dbType, baseType, params);
   const mysqlType = combineMysqlNumericAttributeType(dbType, baseType, normalizedParams);
   if (mysqlType) return mysqlType;
+  const xuguTemporalType = combineXuguTemporalType(baseType, normalizedParams, dbType);
+  if (xuguTemporalType) return xuguTemporalType;
   return combineDataType(baseType, normalizedParams);
 }
 
 export function dataTypeLengthInputValue(dbType: DatabaseType | undefined, rawDataType: string): string {
-  const parsed = splitDataType(rawDataType);
+  const parsed = splitDataTypeForDatabase(dbType, rawDataType);
   return isDataTypeLengthDisabled(dbType, parsed.baseType) ? "" : splitDataTypeLengthParams(dbType, rawDataType).length;
+}
+
+function combineXuguTemporalType(baseType: string, params: string, dbType: DatabaseType | undefined): string | null {
+  if (dbType !== "xugu") return null;
+  const match = baseType.trim().match(/^(TIME|TIMESTAMP)\s+WITH\s+TIME\s+ZONE$/i);
+  if (!match) return null;
+  return params ? `${match[1]}(${params}) WITH TIME ZONE` : baseType.trim();
 }
 
 export function normalizeDataTypeParams(dbType: DatabaseType | undefined, baseType: string, params: string): string {
   const p = params.trim();
   if (!p) return "";
   if (!isTemporalPrecisionType(dbType, baseType)) return p;
-  return isValidTemporalPrecision(dbType, p) ? p : "";
+  return isValidTemporalPrecision(dbType, baseType, p) ? p : "";
 }
 
 function isTemporalPrecisionType(dbType: DatabaseType | undefined, baseType: string): boolean {
@@ -1125,6 +1290,8 @@ function isTemporalPrecisionType(dbType: DatabaseType | undefined, baseType: str
       return ["timestamp", "timestamp with time zone", "timestamp with local time zone"].includes(normalized);
     case "questdb":
       return ["timestamp"].includes(normalized);
+    case "xugu":
+      return ["time", "time with time zone", "timestamp", "timestamp with time zone"].includes(normalized);
     default:
       return false;
   }
@@ -1149,10 +1316,11 @@ function isOracleLikeStructureType(dbType: DatabaseType | undefined): boolean {
   return dbType === "oracle" || dbType === "dameng" || dbType === "oceanbase-oracle" || dbType === "iris" || dbType === "yashandb" || dbType === "xugu";
 }
 
-function isValidTemporalPrecision(dbType: DatabaseType | undefined, params: string): boolean {
+function isValidTemporalPrecision(dbType: DatabaseType | undefined, baseType: string, params: string): boolean {
   if (!/^\d+$/.test(params)) return false;
   const value = Number(params);
-  const max = dbType === "oracle" || dbType === "dameng" || dbType === "oceanbase-oracle" ? 9 : 6;
+  const normalizedBaseType = baseType.trim().replace(/\s+/g, " ").toLowerCase();
+  const max = dbType === "xugu" && ["time", "time with time zone"].includes(normalizedBaseType) ? 3 : dbType === "oracle" || dbType === "dameng" || dbType === "oceanbase-oracle" ? 9 : 6;
   return Number.isInteger(value) && value >= 0 && value <= max && String(value) === params;
 }
 
@@ -1228,6 +1396,10 @@ export function isDataTypeLengthDisabled(_dbType: DatabaseType | undefined, base
     return key !== "bit" && key !== "float_vector";
   } else if (_dbType === "postgres" || _dbType === "gaussdb" || _dbType === "kwdb" || _dbType === "opengauss" || _dbType === "highgo" || _dbType === "uxdb" || _dbType === "vastbase" || _dbType === "kingbase") {
     return key.endsWith("[]") || POSTGRES_TYPE_LENGTH_DISABLES.includes(key);
+  } else if (_dbType === "xugu") {
+    // Xugu array suffixes and interval qualifiers require grammar-aware
+    // placement; a generic TYPE(length) editor would emit invalid DDL for them.
+    return key.endsWith("[]") || key.startsWith("interval ") || XUGU_TYPE_LENGTH_DISABLES.has(key);
   } else if (isOracleLikeStructureType(_dbType)) {
     // Dameng/Oracle integer aliases have fixed precision; MySQL-style display widths generate invalid DDL.
     return ORACLE_LIKE_TYPE_LENGTH_DISABLES.includes(key);

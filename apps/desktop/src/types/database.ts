@@ -14,6 +14,7 @@ export type DatabaseType =
   | "clickhouse"
   | "sqlserver"
   | "mongodb"
+  | "dynamodb"
   | "oracle"
   | "elasticsearch"
   | "easysearch"
@@ -62,6 +63,8 @@ export type DatabaseType =
   | "cassandra"
   | "bigquery"
   | "kylin"
+  | "ignite"
+  | "ignite3"
   | "sundb"
   | "oscar"
   | "tdengine"
@@ -468,7 +471,7 @@ export interface ObjectStatistics {
   total_bytes?: number | null;
 }
 
-export type ObjectSourceKind = "VIEW" | "MATERIALIZED_VIEW" | "PROCEDURE" | "FUNCTION" | "TRIGGER" | "SEQUENCE" | "SYNONYM" | "PACKAGE" | "PACKAGE_BODY" | "TYPE" | "TYPE_BODY";
+export type ObjectSourceKind = "VIEW" | "MATERIALIZED_VIEW" | "PROCEDURE" | "FUNCTION" | "TRIGGER" | "EVENT" | "SEQUENCE" | "SYNONYM" | "PACKAGE" | "PACKAGE_BODY" | "TYPE" | "TYPE_BODY";
 
 export interface ObjectSource {
   name: string;
@@ -536,6 +539,7 @@ export interface CustomTypeDetails {
 export interface ColumnInfo {
   name: string;
   data_type: string;
+  resolved_schema?: string;
   is_nullable: boolean;
   column_default: string | null;
   is_primary_key: boolean;
@@ -566,6 +570,8 @@ export interface IndexInfo {
   index_type?: string | null;
   included_columns?: string[] | null;
   comment?: string | null;
+  /** Parallel to `columns`: true at index i means columns[i] is a raw expression, not a plain column name. */
+  key_is_expression?: boolean[] | null;
 }
 
 export interface ForeignKeyInfo {
@@ -773,6 +779,11 @@ export interface SpatialColumn {
   srid: number | null;
 }
 
+export interface QueryResultSourceColumnRef {
+  sourceKey: string;
+  sourceColumn: string;
+}
+
 export interface QueryResultRun {
   id: string;
   title: string;
@@ -813,6 +824,8 @@ export interface QueryResultRun {
   resultEvicted?: boolean;
   queryAnalysis?: QueryTab["queryAnalysis"];
   querySourceColumns?: QueryTab["querySourceColumns"];
+  resultColumnComments?: QueryTab["resultColumnComments"];
+  queryDisplaySourceColumns?: QueryTab["queryDisplaySourceColumns"];
   queryEditabilityReason?: QueryTab["queryEditabilityReason"];
   mongoEditTarget?: QueryTab["mongoEditTarget"];
   tableMeta?: QueryTab["tableMeta"];
@@ -899,6 +912,7 @@ export type TreeNodeType =
   | "group-indexes"
   | "group-fkeys"
   | "group-triggers"
+  | "group-events"
   | "group-constraints"
   | "group-table-partitions"
   | "group-table-subpartitions"
@@ -933,12 +947,14 @@ export type TreeNodeType =
   | "index"
   | "fkey"
   | "trigger"
+  | "event"
   | "constraint"
   | "partition"
   | "subpartition"
   | "redis-db"
   | "mq-tenant"
   | "nacos-namespace"
+  | "nacos-access-control"
   | "etcd-root"
   | "etcd-dashboard"
   | "etcd-access-control"
@@ -950,6 +966,7 @@ export type TreeNodeType =
   | "mongo-buckets"
   | "mongo-bucket"
   | "mongo-collection"
+  | "dynamodb-table"
   | "vector-database"
   | "vector-collection"
   | "elasticsearch-index"
@@ -1088,6 +1105,8 @@ export interface QueryTab {
   forceWordWrap?: boolean;
   connectionId: string;
   database: string;
+  /** Optional branch context for a driver-profile database workspace. */
+  workspaceBranch?: string;
   schema?: string;
   /** Doris / StarRocks multi-catalog: the external catalog this tab's
    * database belongs to (undefined for internal/default catalog). */
@@ -1168,6 +1187,7 @@ export interface QueryTab {
     | "redis"
     | "redis-dashboard"
     | "mongo"
+    | "meilisearch"
     | "mongo-gridfs"
     | "mongo-bucket"
     | "vector"
@@ -1182,6 +1202,7 @@ export interface QueryTab {
     | "mqtt"
     | "nacos"
     | "nacos-dashboard"
+    | "nacos-access-control"
     | "databases"
     | "objects"
     | "structure"
@@ -1192,7 +1213,8 @@ export interface QueryTab {
     | "processlist"
     | "sqlserver-trace"
     | "mysql-dashboard"
-    | "postgres-dashboard";
+    | "postgres-dashboard"
+    | "dolt-version-control";
   /** Ephemeral navigation intent; it is consumed by HBaseBrowser and is not persisted. */
   hbaseCreateTableOnOpen?: boolean;
   mqTenant?: string;
@@ -1231,6 +1253,9 @@ export interface QueryTab {
     primaryKeys: string[];
   };
   tableMetaUpdatedAt?: number;
+  /** 该 tab 的 tableMeta 是哪个连接元数据代次下写入的：disconnect / 关闭数据库 /
+   * 死池重连等生命周期边界会让该代次递增，代次失配视同冷缓存（issue #6623 / PR #6640）。 */
+  tableMetaGeneration?: number;
   pendingDataChangeCount?: number;
   /** Ephemeral editor draft that has not yet been applied to the data grid. */
   hasPendingDataEditorDraft?: boolean;
@@ -1273,8 +1298,36 @@ export interface QueryTab {
       resultName: string;
       expression: string;
     }[];
+    groupByColumns?: {
+      sourceName?: string;
+      sourceNameQuoted?: boolean;
+      sourceQualifier?: string;
+      sourceKey?: string;
+      star?: boolean;
+      resultName: string;
+      expression: string;
+    }[];
   };
   querySourceColumns?: Array<string | undefined>;
+  /**
+   * Column comments for a multi-source query result (e.g. JOIN), indexed by
+   * result-column ordinal (projection order). Each entry is the comment of the
+   * single base column that result column resolves to; `undefined` when the
+   * column is ambiguous (e.g. an unqualified name present in several sources)
+   * or cannot be resolved back to a base column, so the grid shows no comment
+   * instead of a wrong one. Populated even when the result is not editable
+   * (e.g. multi-table JOIN), so joined results still show column comments.
+   */
+  resultColumnComments?: Array<string | undefined>;
+  /**
+   * Display-only result-column to source mapping for multi-source results,
+   * indexed by result-column ordinal. Each entry carries the source identity
+   * (sourceKey + canonical source column name), so comments resolve per source
+   * instead of first-source-wins on name clashes. Unlike querySourceColumns it
+   * is also populated for multi-source results that are not editable, and must
+   * never be used for row identity or editing.
+   */
+  queryDisplaySourceColumns?: Array<QueryResultSourceColumnRef | undefined>;
   queryEditabilityReason?: "not-select" | "cte" | "set-operation" | "aggregation" | "external-source" | "complex-source" | "computed-columns" | "no-table" | "no-primary-key" | "primary-key-not-returned" | "aliased-columns" | "metadata-unavailable";
   mongoEditTarget?: {
     collection: string;

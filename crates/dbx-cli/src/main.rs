@@ -66,6 +66,8 @@ const BRIDGE_REQUIRED_TYPES: &[&str] = &[
     "cassandra",
     "bigquery",
     "kylin",
+    "ignite",
+    "ignite3",
     "sundb",
     "oscar",
     "xugu",

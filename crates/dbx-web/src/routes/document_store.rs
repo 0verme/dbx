@@ -67,7 +67,24 @@ pub struct DocumentFindRequest {
     pub projection: Option<String>,
     pub sort: Option<String>,
     pub collation: Option<String>,
+    pub cursor: Option<String>,
     pub execution_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentCountRequest {
+    pub connection_id: String,
+    pub collection: String,
+    pub filter: Option<String>,
+    pub execution_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DynamoDbDescribeTableRequest {
+    pub connection_id: String,
+    pub table: String,
 }
 
 #[derive(Deserialize)]
@@ -120,6 +137,56 @@ pub struct MeilisearchBatchSaveRequest {
     pub updates: Vec<dbx_core::db::meilisearch_driver::MeilisearchDocumentUpdate>,
     pub delete_ids: Vec<String>,
     pub inserts: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeilisearchSearchRequest {
+    pub connection_id: String,
+    pub index: String,
+    pub q: Option<String>,
+    pub filter: Option<String>,
+    pub sort: Option<String>,
+    pub limit: u64,
+    pub offset: u64,
+    pub hybrid_embedder: Option<String>,
+    pub hybrid_semantic_ratio: Option<f64>,
+    pub show_ranking_score: Option<bool>,
+    pub ranking_score_threshold: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeilisearchDocumentPageRequest {
+    pub connection_id: String,
+    pub index: String,
+    pub filter: Option<String>,
+    pub sort: Option<String>,
+    pub limit: u64,
+    pub offset: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeilisearchIndexRequest {
+    pub connection_id: String,
+    pub index: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeilisearchDocumentGetRequest {
+    pub connection_id: String,
+    pub index: String,
+    pub id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeilisearchSettingsUpdateRequest {
+    pub connection_id: String,
+    pub index: String,
+    pub settings: serde_json::Value,
 }
 
 #[derive(Deserialize)]
@@ -204,9 +271,38 @@ pub async fn find_documents(
             req.projection.as_deref(),
             req.sort.as_deref(),
             req.collation.as_deref(),
+            req.cursor.as_deref(),
         ),
     )
     .await?;
+    Ok(Json(result))
+}
+
+pub async fn count_documents(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<DocumentCountRequest>,
+) -> Result<Json<u64>, AppError> {
+    let result = run_cancellable(
+        &state,
+        req.execution_id,
+        dbx_core::document_ops::count_document_store_documents_core(
+            &state.app,
+            &req.connection_id,
+            &req.collection,
+            req.filter.as_deref(),
+        ),
+    )
+    .await?;
+    Ok(Json(result))
+}
+
+pub async fn describe_dynamodb_table(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<DynamoDbDescribeTableRequest>,
+) -> Result<Json<dbx_core::db::dynamodb_driver::DynamoDbTableDescription>, AppError> {
+    let result = dbx_core::document_ops::describe_dynamodb_table_core(&state.app, &req.connection_id, &req.table)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -312,6 +408,128 @@ pub async fn save_meilisearch_batch(
     .await
     .map_err(AppError::from)?;
     Ok(Json(result))
+}
+
+pub async fn meilisearch_search(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchSearchRequest>,
+) -> Result<Json<dbx_core::db::meilisearch_driver::MeilisearchSearchResult>, AppError> {
+    let result = dbx_core::document_ops::meilisearch_search_documents_core(
+        &state.app,
+        &req.connection_id,
+        &req.index,
+        req.q.as_deref(),
+        req.filter.as_deref(),
+        req.sort.as_deref(),
+        req.limit,
+        req.offset,
+        req.hybrid_embedder.as_deref(),
+        req.hybrid_semantic_ratio,
+        req.show_ranking_score.unwrap_or(false),
+        req.ranking_score_threshold,
+    )
+    .await
+    .map_err(AppError::from)?;
+    Ok(Json(result))
+}
+
+pub async fn meilisearch_fetch_documents(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchDocumentPageRequest>,
+) -> Result<Json<dbx_core::db::meilisearch_driver::MeilisearchDocumentPage>, AppError> {
+    let result = dbx_core::document_ops::meilisearch_fetch_document_page_core(
+        &state.app,
+        &req.connection_id,
+        &req.index,
+        req.filter.as_deref(),
+        req.sort.as_deref(),
+        req.limit,
+        req.offset,
+    )
+    .await
+    .map_err(AppError::from)?;
+    Ok(Json(result))
+}
+
+pub async fn meilisearch_get_document(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchDocumentGetRequest>,
+) -> Result<Json<String>, AppError> {
+    let result =
+        dbx_core::document_ops::meilisearch_get_document_core(&state.app, &req.connection_id, &req.index, &req.id)
+            .await
+            .map_err(AppError::from)?;
+    Ok(Json(result))
+}
+
+pub async fn meilisearch_get_settings(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchIndexRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let result =
+        dbx_core::document_ops::meilisearch_get_index_settings_core(&state.app, &req.connection_id, &req.index)
+            .await
+            .map_err(AppError::from)?;
+    Ok(Json(result))
+}
+
+pub async fn meilisearch_update_settings(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchSettingsUpdateRequest>,
+) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "Update settings").await?;
+    dbx_core::document_ops::meilisearch_update_index_settings_core(
+        &state.app,
+        &req.connection_id,
+        &req.index,
+        &req.settings,
+    )
+    .await
+    .map_err(AppError::from)?;
+    Ok(Json(()))
+}
+
+pub async fn meilisearch_get_stats(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchIndexRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let result = dbx_core::document_ops::meilisearch_get_index_stats_core(&state.app, &req.connection_id, &req.index)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(result))
+}
+
+pub async fn meilisearch_get_overview(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchIndexRequest>,
+) -> Result<Json<dbx_core::db::meilisearch_driver::MeilisearchIndexOverview>, AppError> {
+    let result =
+        dbx_core::document_ops::meilisearch_get_index_overview_core(&state.app, &req.connection_id, &req.index)
+            .await
+            .map_err(AppError::from)?;
+    Ok(Json(result))
+}
+
+pub async fn meilisearch_delete_index(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchIndexRequest>,
+) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "Delete index").await?;
+    dbx_core::document_ops::meilisearch_delete_index_core(&state.app, &req.connection_id, &req.index)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(()))
+}
+
+pub async fn meilisearch_delete_all_documents(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<MeilisearchIndexRequest>,
+) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "Delete all documents").await?;
+    dbx_core::document_ops::meilisearch_delete_all_documents_core(&state.app, &req.connection_id, &req.index)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(()))
 }
 
 pub async fn list_gridfs_files(

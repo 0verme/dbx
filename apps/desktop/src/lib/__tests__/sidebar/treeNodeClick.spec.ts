@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { isDirectNavigationTreeNode, objectSourceKindForTreeNode, objectSourceTargetForTreeNode, shouldActivateTreeNodeOnSingleClick, shouldOpenObjectBrowserOnSingleClick, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/sidebar/treeNodeClick";
+import {
+  isDirectNavigationTreeNode,
+  isRepeatableNavigationTreeNode,
+  objectSourceKindForTreeNode,
+  objectSourceTargetForTreeNode,
+  shouldActivateTreeNodeOnSingleClick,
+  shouldOpenObjectBrowserOnSingleClick,
+  shouldRunTreeNodeRowAction,
+  treeNodeRowAction,
+  treeNodeRowDoubleClickAction,
+} from "@/lib/sidebar/treeNodeClick";
 
 describe("treeNodeClick", () => {
+  it("opens DynamoDB tables in the document browser on single or double activation", () => {
+    expect(treeNodeRowAction("dynamodb-table", false, "single", "dynamodb")).toBe("toggle");
+    expect(treeNodeRowDoubleClickAction("dynamodb-table", false, "double", false, "dynamodb")).toBe("toggle");
+  });
+
   it("opens synonym nodes as synonym source", () => {
     expect(objectSourceKindForTreeNode("synonym")).toBe("SYNONYM");
     expect(treeNodeRowAction("synonym", false)).toBe("open-source");
@@ -44,9 +59,29 @@ describe("treeNodeClick", () => {
     expect(treeNodeRowAction("consul-overview", false, "double")).toBe("toggle");
   });
 
+  it("keeps Nacos namespace and access-control navigation responsive during rapid row switching", () => {
+    for (const type of ["nacos-namespace", "nacos-access-control"] as const) {
+      expect(isDirectNavigationTreeNode(type), type).toBe(true);
+      expect(shouldActivateTreeNodeOnSingleClick(type, "double"), type).toBe(true);
+      const action = treeNodeRowAction(type, false, "double");
+      expect(action, type).toBe("toggle");
+      expect(isRepeatableNavigationTreeNode(type), type).toBe(true);
+      expect(shouldRunTreeNodeRowAction(action, 2, isRepeatableNavigationTreeNode(type)), type).toBe(true);
+    }
+
+    expect(isRepeatableNavigationTreeNode("database")).toBe(false);
+    expect(shouldRunTreeNodeRowAction("toggle", 2, false)).toBe(false);
+  });
+
   it("opens the connection database browser only when the capability is enabled", () => {
     expect(treeNodeRowDoubleClickAction("connection", false, "single", true, "postgres", true)).toBe("open-database-browser");
     expect(treeNodeRowDoubleClickAction("connection", false, "double", true, "postgres", false)).toBe("toggle");
+  });
+
+  it("expands the connection node on double-click activation even when the database browser is available", () => {
+    expect(treeNodeRowDoubleClickAction("connection", false, "double", true, "postgres", true)).toBe("toggle");
+    expect(treeNodeRowDoubleClickAction("connection", false, "double", true, "mysql", true)).toBe("toggle");
+    expect(treeNodeRowDoubleClickAction("connection", false, "double", false, "postgres", true)).toBe("none");
   });
 
   it("opens the object browser on single click when the database single-click switch is on", () => {

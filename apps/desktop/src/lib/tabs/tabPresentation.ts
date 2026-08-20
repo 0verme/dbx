@@ -115,6 +115,10 @@ export function tabDisplayTitle(tab: QueryTab, t: Translate): string {
     if (compact) return connectionDisplayName(tab.connectionId);
     return `${connectionDisplayName(tab.connectionId)}@${t("tabs.etcdAccessControl")}`;
   }
+  if (tab.mode === "nacos-access-control") {
+    if (compact) return connectionDisplayName(tab.connectionId);
+    return `${connectionDisplayName(tab.connectionId)}@${t("tabs.nacosAccessControl")}`;
+  }
   if (tab.mode === "zookeeper") {
     if (compact) return connectionDisplayName(tab.connectionId);
     return `${connectionDisplayName(tab.connectionId)}@keys`;
@@ -129,6 +133,10 @@ export function tabDisplayTitle(tab: QueryTab, t: Translate): string {
   }
   if (tab.mode === "mqtt") {
     return `${connectionDisplayName(tab.connectionId)} - ${t("connection.mqttConsoleTitle")}`;
+  }
+  if (tab.mode === "dolt-version-control") {
+    const branch = tab.workspaceBranch?.trim();
+    return `${connectionDisplayName(tab.connectionId)} VCS@${database}${branch ? `.${branch}` : ""}`;
   }
   if (tab.mode === "databases") {
     if (compact) return t("tabs.databases");
@@ -440,6 +448,7 @@ export function tabModeLabel(tab: QueryTab, t: Translate): string {
   if (tab.mode === "etcd") return t("tabs.etcd");
   if (tab.mode === "etcd-dashboard") return t("tabs.etcdDashboard");
   if (tab.mode === "etcd-access-control") return t("tabs.etcdAccessControl");
+  if (tab.mode === "nacos-access-control") return t("tabs.nacosAccessControl");
   if (tab.mode === "zookeeper") return t("tabs.zookeeper");
   if (tab.mode === "consul") return t("tabs.consul");
   if (tab.mode === "consul-overview") return t("consul.ui.overview");
@@ -447,5 +456,6 @@ export function tabModeLabel(tab: QueryTab, t: Translate): string {
   if (tab.mode === "databases") return t("tabs.databases");
   if (tab.mode === "objects") return t("tabs.objects");
   if (tab.mode === "users") return t("tabs.users");
+  if (tab.mode === "dolt-version-control") return t("doltVersionControl.title");
   return tab.mode;
 }

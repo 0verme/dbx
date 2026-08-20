@@ -32,6 +32,16 @@ pub const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_ROWS: usize = 10000;
 pub const AGENT_PROTOCOL_MAX_ROWS: usize = i32::MAX as usize;
 pub const QUERY_CANCELED: &str = "Query canceled";
+pub const METADATA_POOL_BUSY_ERROR: &str = "DBX metadata pool is busy; please retry";
+
+/// Returns true when a metadata request failed because all pool/client slots
+/// were temporarily occupied. This is deliberately separate from
+/// `is_connection_error`: a saturated pool is healthy and must not trigger a
+/// shared-pool reconnect.
+pub fn is_pool_saturation_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("connection pool checkout timed out [stage=wait") || lower.contains("dbx metadata pool is busy")
+}
 /// Fallback when a Mongo connection hits the generic SQL executor instead of the shell path.
 /// Wording must match packages/mongo-shell `MONGO_SHELL_COMMAND_HINT`
 /// (desktop/CLI diagnose first; this is only the Rust SQL-executor backstop).
@@ -1070,7 +1080,7 @@ pub fn agent_close_query_session_params(session_id: &str) -> serde_json::Value {
 
 pub fn is_connection_error(err: &str) -> bool {
     let lower = err.to_lowercase();
-    if is_dbx_query_timeout_error(&lower) || is_agent_rpc_timeout_error(&lower) {
+    if is_dbx_query_timeout_error(&lower) || is_agent_rpc_timeout_error(&lower) || is_pool_saturation_error(err) {
         return false;
     }
     lower.contains("connection")
@@ -2067,6 +2077,15 @@ async fn do_execute_typed(
             .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
         PoolKind::HBase(_) => Err("SQL execution is not supported for HBase connections".to_string()),
+        PoolKind::DynamoDb(client) => {
+            let client = client.clone();
+            let sql = sql.to_string();
+            let max_rows = options.max_rows.unwrap_or(MAX_ROWS);
+            drop(connections);
+            // Keep the AWS SDK cold-path future off this already-large query dispatcher stack.
+            let execution = Box::pin(db::dynamodb_driver::execute_statement(&client, &sql, max_rows));
+            wait_for_query_opt(cancel_token, query_timeout, execution).await
+        }
         PoolKind::Consul(_) => Err("SQL execution is not supported for Consul connections".to_string()),
     };
     result
@@ -3498,6 +3517,7 @@ fn pool_kind_has_transactional_path(pool: &PoolKind) -> bool {
         | PoolKind::DuckDbWorker(_)
         | PoolKind::Redis(_)
         | PoolKind::MongoDb(_)
+        | PoolKind::DynamoDb(_)
         | PoolKind::Elasticsearch(_)
         | PoolKind::Easysearch(_)
         | PoolKind::Meilisearch(_)
@@ -3766,6 +3786,7 @@ pub async fn execute_statements_in_transaction_on_pool_typed(
             PoolKind::DuckDbWorker(_)
             | PoolKind::Redis(_)
             | PoolKind::MongoDb(_)
+            | PoolKind::DynamoDb(_)
             | PoolKind::Elasticsearch(_)
             | PoolKind::Easysearch(_)
             | PoolKind::Meilisearch(_)
@@ -3838,7 +3859,7 @@ pub async fn execute_statements_in_transaction_on_pool_typed(
 /// Owned pool variants for safe dispatch across async boundaries.
 enum TxPath {
     Pg(deadpool_postgres::Pool),
-    Mysql(mysql_async::Pool, bool),
+    Mysql(db::mysql::MySqlPool, bool),
     Sqlite(db::sqlite::SqliteHandle),
     CloudflareD1(db::cloudflare_d1_driver::CloudflareD1Client),
     Agent(Arc<crate::db::agent_driver::PooledAgentClient>),
@@ -3951,7 +3972,7 @@ async fn exec_tx_pg_statements(
 async fn exec_tx_mysql_inner(
     state: &AppState,
     pool_key: &str,
-    pool: mysql_async::Pool,
+    pool: db::mysql::MySqlPool,
     statements: &[String],
     start: std::time::Instant,
     budget: DbOperationBudget,
@@ -4288,7 +4309,7 @@ async fn begin_transaction_session(
         TxnPoolHandle::Postgres(pg_pool) => {
             let conn = pg_pool.get().await.map_err(|e| format!("Failed to get Postgres connection: {e}"))?;
             let begin_sql = postgres_transaction_begin_sql(consistent_snapshot);
-            conn.execute(begin_sql, &[]).await.map_err(|e| format!("BEGIN failed: {e}"))?;
+            conn.execute_typed(begin_sql, &[]).await.map_err(|e| format!("BEGIN failed: {e}"))?;
             if let Some(schema) = schema {
                 db::postgres::set_postgres_search_path(
                     &conn,
@@ -4574,7 +4595,7 @@ where
         TxnConnection::Postgres(conn) => {
             let mut batch = Vec::with_capacity(batch_size);
             let mut total_rows = 0_u64;
-            let result = db::postgres::stream_select_query_inner(conn, sql, None, &mut |item| {
+            let result = db::postgres::stream_select_query_inner_unnamed(conn, sql, None, &mut |item| {
                 if let db::postgres::PostgresQueryStreamItem::Row(row) = item {
                     batch.push(row);
                     total_rows += 1;
@@ -4661,7 +4682,7 @@ where
 async fn rollback_manual_txn_connection(conn: &mut TxnConnection) -> Result<(), String> {
     match conn {
         TxnConnection::Postgres(conn) => {
-            conn.execute("ROLLBACK", &[]).await.map_err(|e| format!("ROLLBACK failed: {e}"))?;
+            conn.execute_typed("ROLLBACK", &[]).await.map_err(|e| format!("ROLLBACK failed: {e}"))?;
         }
         TxnConnection::Mysql(conn) => {
             conn.query_drop("ROLLBACK").await.map_err(|e| format!("ROLLBACK failed: {e}"))?;
@@ -4719,9 +4740,9 @@ async fn execute_manual_txn_postgres_statement(
     row_limit: usize,
 ) -> Result<db::QueryResult, String> {
     if db::postgres::postgres_statement_returns_rows(sql) {
-        db::postgres::execute_select_query(conn, sql, std::time::Instant::now(), row_limit).await
+        db::postgres::execute_select_query_unnamed(conn, sql, std::time::Instant::now(), row_limit).await
     } else {
-        let affected = conn.execute(sql, &[]).await.map_err(|e| format!("Query failed: {e}"))?;
+        let affected = conn.execute_typed(sql, &[]).await.map_err(|e| format!("Query failed: {e}"))?;
         Ok(db::QueryResult {
             columns: vec![],
             column_types: Vec::new(),
@@ -4812,7 +4833,7 @@ pub async fn commit_manual_transaction(state: &AppState, txn_session_id: &str) -
     let mut conn = session.connection.lock().await;
     match &mut *conn {
         TxnConnection::Postgres(conn) => {
-            conn.execute("COMMIT", &[]).await.map_err(|e| format!("COMMIT failed: {e}"))?;
+            conn.execute_typed("COMMIT", &[]).await.map_err(|e| format!("COMMIT failed: {e}"))?;
         }
         TxnConnection::Mysql(conn) => {
             conn.query_drop("COMMIT").await.map_err(|e| format!("COMMIT failed: {e}"))?;
@@ -5229,6 +5250,55 @@ for line in sys.stdin:
             production_databases: vec![],
             database_info: None,
         }
+    }
+
+    #[cfg(feature = "dynamodb")]
+    #[tokio::test]
+    #[ignore = "requires DBX_DYNAMODB_ENDPOINT and an orders table"]
+    async fn live_dynamodb_editor_scan_serializes_one_thousand_rows() {
+        let endpoint = std::env::var("DBX_DYNAMODB_ENDPOINT").expect("DBX_DYNAMODB_ENDPOINT is required");
+        let (ssl, address) = endpoint
+            .strip_prefix("https://")
+            .map(|address| (true, address))
+            .or_else(|| endpoint.strip_prefix("http://").map(|address| (false, address)))
+            .expect("DynamoDB endpoint must start with http:// or https://");
+        let (host, port) = address.rsplit_once(':').expect("DynamoDB endpoint must include a port");
+        let dir = std::env::temp_dir().join(format!("dbx-query-dynamodb-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let state = AppState::new(storage);
+        let mut config = test_connection_config(DatabaseType::DynamoDb);
+        config.host = host.to_string();
+        config.port = port.parse().expect("valid DynamoDB port");
+        config.username = "dummy".to_string();
+        config.password = "dummy".to_string();
+        config.database = Some("us-east-1".to_string());
+        config.ssl = ssl;
+        let client = db::dynamodb_driver::connect(&config, host, config.port).unwrap();
+        db::dynamodb_driver::test_connection(&client, Duration::from_secs(5)).await.unwrap();
+        state.configs.write().await.insert(config.id.clone(), config.clone());
+        state.connections.write().await.insert(config.id.clone(), PoolKind::DynamoDb(client));
+
+        let results = execute_multi_core_with_options_for_client_and_progress_typed(
+            &state,
+            &config.id,
+            "us-east-1",
+            "DBX DYNAMODB SCAN\ntable: \"orders\"\nlimit: 1000",
+            None,
+            None,
+            QueryExecutionOptions { max_rows: Some(1000), ..Default::default() },
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].result.rows.len(), 1000);
+        let serialized = serde_json::to_string(&results).unwrap();
+        assert!(!serialized.is_empty());
+
+        drop(state);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     async fn agent_error_state(
@@ -6845,17 +6915,43 @@ for line in sys.stdin:
     }
 
     #[test]
-    fn is_connection_error_detects_deadpool_pool_timeouts() {
+    fn is_connection_error_distinguishes_checkout_saturation_from_connection_timeouts() {
         // deadpool-postgres PoolError::Timeout messages (contain "pool" + "timeout" but not "timed out")
         assert!(is_connection_error("pool wait timeout"));
         assert!(is_connection_error("pool create timeout"));
         assert!(is_connection_error("pool recycle timeout"));
         // checkout helper timeout messages
-        assert!(is_connection_error("PostgreSQL connection pool checkout timed out (5s)"));
-        assert!(is_connection_error("MySQL get connection timed out"));
+        assert!(!is_connection_error("PostgreSQL connection pool checkout timed out [stage=wait, timeout_ms=5000]"));
+        assert!(is_connection_error("PostgreSQL connection pool checkout timed out [stage=create, timeout_ms=5000]"));
+        assert!(is_connection_error("PostgreSQL connection pool checkout timed out [stage=recycle, timeout_ms=5000]"));
+        assert!(!is_connection_error("MySQL connection pool checkout timed out [stage=wait, timeout_ms=5000]"));
+        assert!(!is_connection_error(METADATA_POOL_BUSY_ERROR));
         assert!(is_connection_error("MySQL ping timed out"));
         assert!(is_connection_error("MySQL kill connection checkout timed out"));
         assert!(is_connection_error("MySQL KILL QUERY timed out"));
+
+        assert!(is_pool_saturation_error(
+            "PostgreSQL connection pool checkout timed out [stage=wait, timeout_ms=5000]"
+        ));
+        assert!(is_pool_saturation_error("MySQL connection pool checkout timed out [stage=wait, timeout_ms=5000]"));
+        assert!(!is_pool_saturation_error(
+            "PostgreSQL connection pool checkout timed out [stage=create, timeout_ms=5000]"
+        ));
+        assert!(is_pool_saturation_error(METADATA_POOL_BUSY_ERROR));
+        assert_eq!(
+            pool_error_action(
+                Some(DatabaseType::Mysql),
+                "MySQL connection pool checkout timed out [stage=wait, timeout_ms=5000]"
+            ),
+            PoolErrorAction::Keep
+        );
+        assert_eq!(
+            pool_error_action(
+                Some(DatabaseType::Postgres),
+                "PostgreSQL connection pool checkout timed out [stage=wait, timeout_ms=5000]"
+            ),
+            PoolErrorAction::Keep
+        );
     }
 
     #[test]

@@ -56,6 +56,7 @@ import {
   Info,
   X,
   Settings2,
+  GitBranch,
 } from "@lucide/vue";
 import type { ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { CONNECTION_ATTEMPT_CANCELLED_MESSAGE, useConnectionStore } from "@/stores/connectionStore";
@@ -101,7 +102,7 @@ import {
   usesTreeSchemaMode,
   isSingleDatabase,
 } from "@/lib/database/databaseCapabilities";
-import { copyDisplayPathForTreeNode, copyNameForTreeNode, isDirectNavigationTreeNode, isDocumentBrowserTreeNode, objectSourceTargetForTreeNode, shouldRunTreeNodeRowAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/sidebar/treeNodeClick";
+import { copyDisplayPathForTreeNode, copyNameForTreeNode, isDirectNavigationTreeNode, isDocumentBrowserTreeNode, isRepeatableNavigationTreeNode, objectSourceTargetForTreeNode, shouldRunTreeNodeRowAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/sidebar/treeNodeClick";
 import { customTypeCapabilities, supportsTypeObjectSource } from "@/lib/database/databaseObjectCapabilities";
 import { mongoCollectionTableTypeFromNode, mongoDropIndexFailureCount } from "@/lib/sidebar/mongoCollectionMutation";
 import { dataTabOpenModeFromTreeClick, type DataTabOpenMode } from "@/lib/sidebar/dataTabOpenPolicy";
@@ -168,6 +169,7 @@ import { buildXuguCompileSql } from "@/lib/database/xuguCompileSql";
 import type { SidebarDataOpenRequest } from "@/lib/sidebar/sidebarDataOpenCoordinator";
 import { createSidebarActionTarget, findSidebarActionTarget, releaseRemovedSidebarActionTarget, type SidebarActionTarget } from "@/lib/sidebar/sidebarActionTarget";
 import { createSidebarMenuContext, normalizeSidebarMenuDescriptors } from "@/lib/sidebar/sidebarTreeMenuDescriptors";
+import { driverProfileDatabaseWorkspace } from "@/lib/database/driverProfileExtensions";
 import type { SidebarDangerDialogRequest } from "@/lib/sidebar/sidebarDangerDialog";
 import {
   fallbackCreateDatabaseCharset,
@@ -280,6 +282,7 @@ import {
   schemaCommentLoading,
   schemaCommentPreviewSql,
   showDeleteGroupConfirm,
+  deleteConnectionsWithGroup,
   showMoveToNewGroupDialog,
   moveToNewGroupName,
   type DuplicateStructureSource,
@@ -313,6 +316,16 @@ const props = defineProps<{
 
 const activeNode = shallowRef<TreeNode>(props.node);
 let acceptedSelectionIds: readonly string[] | null = null;
+let latestNavigationRequestId = 0;
+
+function beginNavigationRequest(): number {
+  latestNavigationRequestId += 1;
+  return latestNavigationRequestId;
+}
+
+function isCurrentNavigationRequest(requestId: number): boolean {
+  return requestId === latestNavigationRequestId;
+}
 
 function releaseActiveNodeReference(nodeIds: readonly string[]) {
   activeNode.value = releaseRemovedSidebarActionTarget(activeNode.value, nodeIds);
@@ -344,7 +357,6 @@ const { openAllDatabasesExport, openDataCompare, openDatabaseExport, openDatabas
 
 const emit = defineEmits<{
   "rename-started": [];
-  "group-created": [groupId: string];
   "request-group-rename": [groupId: string];
   "request-saved-sql-rename": [nodeId: string];
   "node-toggled": [node: TreeNode, expanded: boolean];
@@ -402,10 +414,13 @@ const {
   openVisibleDatabasesDialog,
   openVisibleSchemasDialog,
   startRenameGroup,
+  connectionGroupDeleteMenuLabel,
+  connectionGroupDeleteConfirmMessage,
   deleteConnectionGroup,
   newConnectionInGroup,
   newSubgroup,
   confirmDeleteGroup,
+  deletingConnectionGroups,
   moveToGroup,
   createGroupAndMoveConnection,
 } = useSidebarConnectionMutationRuntime({
@@ -415,7 +430,6 @@ const {
   connectionStore,
   queryStore,
   requestGroupRename: (groupId) => emit("request-group-rename", groupId),
-  groupCreated: (groupId) => emit("group-created", groupId),
   openVisibleDatabases: (node) => emit("open-visible-databases", node),
   openVisibleSchemas: (node) => emit("open-visible-schemas", node),
 });
@@ -579,6 +593,7 @@ const groupTypes: Set<TreeNodeType> = new Set([
   "group-indexes",
   "group-fkeys",
   "group-triggers",
+  "group-events",
   "group-constraints",
   "group-table-partitions",
   "group-table-subpartitions",
@@ -599,25 +614,32 @@ function isGroupLabel(node: TreeNode): boolean {
   return groupTypes.has(node.type);
 }
 
-async function openDirectNavigationNode(node: TreeNode) {
+async function openDirectNavigationNode(node: TreeNode, requestId: number) {
   if (!node.connectionId) return;
-  await connectionStore.ensureConnected(node.connectionId);
-  const connectionName = connectionStore.getConfig(node.connectionId)?.name || "Consul";
+  const isNacosNavigation = node.type === "nacos-namespace" || node.type === "nacos-access-control";
+  await connectionStore.ensureConnected(node.connectionId, isNacosNavigation ? { verifyHealth: false } : undefined);
+  if (!isCurrentNavigationRequest(requestId)) return;
+  const connectionName = connectionStore.getConfig(node.connectionId)?.name || (isNacosNavigation ? "Nacos" : "Consul");
   if (node.type === "consul-root") {
     queryStore.createTab(node.connectionId, "", `${connectionName}:keys`, "consul");
     refreshActiveKvBrowserAfterOpen("consul", node.connectionId);
   } else if (node.type === "consul-overview") {
     queryStore.createTab(node.connectionId, "", `${connectionName}:${t("consul.ui.overview")}`, "consul-overview");
+  } else if (node.type === "nacos-namespace") {
+    queryStore.openNacosAdmin(node.connectionId, { namespace: node.nacosNamespace || "", namespaceName: node.nacosNamespaceName || node.label });
+  } else if (node.type === "nacos-access-control") {
+    queryStore.createTab(node.connectionId, "", `${connectionName}:access-control`, "nacos-access-control");
   }
 }
 
-async function toggle() {
+async function toggle(requestId = beginNavigationRequest()) {
   const node = activeNode.value;
   const treeLoadSearchOptions = sidebarTreeContext?.getTreeLoadSearchOptions?.(node);
   if (isDirectNavigationTreeNode(node.type)) {
     try {
-      await openDirectNavigationNode(node);
+      await openDirectNavigationNode(node, requestId);
     } catch (e: any) {
+      if (!isCurrentNavigationRequest(requestId)) return;
       const errMsg = e?.message || String(e);
       if (errMsg.includes(CONNECTION_ATTEMPT_CANCELLED_MESSAGE)) return;
       toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
@@ -735,6 +757,8 @@ async function toggle() {
         await connectionStore.loadConsulRoot(node.connectionId);
       } else if (config?.db_type === "mongodb") {
         await connectionStore.loadMongoDatabases(node.connectionId);
+      } else if (config?.db_type === "dynamodb") {
+        await connectionStore.loadDynamoDbTables(node.connectionId);
       } else if (config?.db_type === "elasticsearch" || config?.db_type === "easysearch" || config?.db_type === "meilisearch") {
         // Expand: list indices (like other db types list databases).
         await connectionStore.loadElasticsearchIndices(node.connectionId);
@@ -764,9 +788,6 @@ async function toggle() {
       await connectionStore.ensureConnected(node.connectionId);
       const topicFromId = node.id.endsWith(":mqtt-topic:__console__") ? undefined : node.id.split(":mqtt-topic:")[1] || node.label;
       queryStore.openMqttAdmin(node.connectionId, topicFromId ? { initialTopic: topicFromId } : undefined);
-    } else if (node.type === "nacos-namespace" && node.connectionId) {
-      await connectionStore.ensureConnected(node.connectionId);
-      queryStore.openNacosAdmin(node.connectionId, { namespace: node.nacosNamespace || "", namespaceName: node.nacosNamespaceName || node.label });
     } else if (node.type === "etcd-root" && node.connectionId) {
       await connectionStore.ensureConnected(node.connectionId);
       const tabTitle = `${connectionStore.getConfig(node.connectionId)?.name || "etcd"}:keys`;
@@ -805,8 +826,13 @@ async function toggle() {
       await connectionStore.loadTableGroups(node.connectionId, node.database, node.label, node.schema, node.id);
     } else if (node.type === "elasticsearch-index" && node.connectionId) {
       await connectionStore.ensureConnected(node.connectionId);
-      const tab = queryStore.createTab(node.connectionId, node.database || "default", node.label, "mongo");
-      queryStore.updateSql(tab, node.label);
+      if (connectionStore.getConfig(node.connectionId)?.db_type === "meilisearch") {
+        const tab = queryStore.createTab(node.connectionId, node.database || "default", node.label, "meilisearch");
+        queryStore.updateSql(tab, node.label);
+      } else {
+        const tab = queryStore.createTab(node.connectionId, node.database || "default", node.label, "mongo");
+        queryStore.updateSql(tab, node.label);
+      }
     } else if (node.type === "vector-collection" && node.connectionId) {
       await connectionStore.ensureConnected(node.connectionId);
       const collectionRef = (node.meta as { collectionId?: string } | undefined)?.collectionId ?? node.label;
@@ -872,6 +898,7 @@ async function toggle() {
     }
     emitNodeToggled(node, wasExpanded);
   } catch (e: any) {
+    if (!isCurrentNavigationRequest(requestId)) return;
     if (!wasExpanded) node.isExpanded = false;
     const errMsg = e?.message || String(e);
     if (errMsg.includes(CONNECTION_ATTEMPT_CANCELLED_MESSAGE)) return;
@@ -880,7 +907,7 @@ async function toggle() {
   }
 }
 
-function runRowClickAction(clickDetail: number) {
+function runRowClickAction(clickDetail: number, requestId: number) {
   const node = activeNode.value;
   if (node.type === "load-more") {
     if (clickDetail > 1) return;
@@ -897,7 +924,10 @@ function runRowClickAction(clickDetail: number) {
     return;
   }
   const action = treeNodeRowAction(node.type, canExpand.value, settingsStore.editorSettings.sidebarActivation, currentDatabaseType(), settingsStore.editorSettings.sidebarOpenDatabaseOnSingleClick, canOpenObjectBrowser.value);
-  if (!shouldRunTreeNodeRowAction(action, clickDetail, isGroupLabel(node))) return;
+  // WebKit can keep incrementing click.detail while the pointer moves quickly
+  // between adjacent rows. Nacos entries are idempotent navigation targets, so
+  // do not mistake that rapid one-click switching for a double-click toggle.
+  if (!shouldRunTreeNodeRowAction(action, clickDetail, isGroupLabel(node) || isRepeatableNavigationTreeNode(node.type))) return;
   if (action === "open-data") {
     scheduleOpenData(node);
   } else if (action === "open-object-browser") {
@@ -914,7 +944,7 @@ function runRowClickAction(clickDetail: number) {
   } else if (isDocumentBrowserTreeNode(node.type)) {
     openMongoTreeData(node);
   } else if (action === "toggle") {
-    toggle();
+    void toggle(requestId);
   }
 }
 
@@ -1299,6 +1329,18 @@ function openMongoTreeData(node: TreeNode) {
     queryStore.openMongoBucket(node.connectionId, node.database, node.label);
     return;
   }
+  if (node.type === "dynamodb-table") {
+    const tab = queryStore.createTab(node.connectionId, node.database, `${node.database}.${node.label}`, "mongo");
+    queryStore.updateSql(tab, node.label);
+    queryStore.setTableMeta(tab, {
+      database: node.database,
+      tableName: node.label,
+      tableType: "DYNAMODB TABLE",
+      columns: [],
+      primaryKeys: [],
+    });
+    return;
+  }
   if (node.type !== "mongo-collection") return;
   const tab = queryStore.createTab(node.connectionId, node.database, tabTitle, "mongo");
   queryStore.updateSql(tab, node.label);
@@ -1414,6 +1456,41 @@ async function openDatabaseBrowser() {
   }
 }
 
+async function openProfileDatabaseWorkspace() {
+  const node = activeNode.value;
+  if (!node.connectionId) return;
+  const config = connectionStore.getConfig(node.connectionId);
+  const workspace = driverProfileDatabaseWorkspace(config?.driver_profile);
+  if (!workspace?.entryScopes.includes("database") || node.type !== "database" || !node.database) return;
+  try {
+    await connectionStore.ensureConnected(node.connectionId);
+    connectionStore.activeConnectionId = node.connectionId;
+    const target = workspace.resolveTarget?.(node.database, "database") ?? { database: node.database };
+    queryStore.openDriverProfileWorkspace(node.connectionId, target.database, t(workspace.tabTitleKey), workspace.mode, workspace.tabScope, target.branch);
+  } catch (e: any) {
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
+  }
+}
+
+async function openProfileConnectionWorkspace() {
+  const node = activeNode.value;
+  if (node.type !== "connection" || !node.connectionId) return;
+  const config = connectionStore.getConfig(node.connectionId);
+  const workspace = driverProfileDatabaseWorkspace(config?.driver_profile);
+  if (!workspace?.entryScopes.includes("connection")) return;
+  try {
+    await connectionStore.ensureConnected(node.connectionId);
+    connectionStore.activeConnectionId = node.connectionId;
+    const options = await getDatabaseOptions(node.connectionId);
+    const database = resolveDefaultDatabase(config!, options);
+    if (!database) return;
+    const target = workspace.resolveTarget?.(database, "connection") ?? { database };
+    queryStore.openDriverProfileWorkspace(node.connectionId, target.database, t(workspace.tabTitleKey), workspace.mode, workspace.tabScope, target.branch);
+  } catch (e: any) {
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e) }), 5000);
+  }
+}
+
 async function openUserAdmin() {
   const node = activeNode.value;
   if (!node.connectionId) return;
@@ -1524,7 +1601,19 @@ async function newQuery() {
     connectionStore.activeConnectionId = node.connectionId;
     if (hasTreeNodeDatabaseContext(node)) {
       if (node.type === "table" || node.type === "view" || node.type === "materialized_view") {
-        await newSelectTemplate();
+        const config = connectionStore.getConfig(node.connectionId);
+        const dbType = config ? effectiveDatabaseTypeForConnection(config) : undefined;
+        const identifierQuote = connectionStore.connectionIdentifierQuote(node.connectionId);
+        const sql = buildTableSelectTemplate({
+          databaseType: dbType,
+          identifierQuote,
+          catalog: node.catalog,
+          database: node.database,
+          schema: node.schema,
+          tableName: node.label,
+          columns: [],
+        });
+        openSqlTemplateTab(node.connectionId, node.database, node.schema, node.catalog, sql);
         return;
       }
       queryStore.createTab(node.connectionId, node.database, undefined, "query", node.schema, undefined, node.catalog);
@@ -3747,7 +3836,7 @@ const canOpenSqlFileExecution = computed(() => {
 const canExportAllDatabases = computed(() => {
   if (activeNode.value.type !== "connection" || !activeNode.value.connectionId) return false;
   const dbType = connectionStore.getConfig(activeNode.value.connectionId)?.db_type;
-  return !["redis", "mongodb", "elasticsearch", "easysearch", "meilisearch", "qdrant", "milvus", "weaviate", "chromadb", "etcd", "zookeeper", "consul", "mq", "nacos"].includes(dbType || "");
+  return !["redis", "mongodb", "dynamodb", "elasticsearch", "easysearch", "meilisearch", "qdrant", "milvus", "weaviate", "chromadb", "etcd", "zookeeper", "consul", "mq", "nacos"].includes(dbType || "");
 });
 
 const canOpenDiagram = computed(() => {
@@ -4132,6 +4221,10 @@ function connectionDialogCapabilities() {
     moveToNewGroupName,
     confirmMoveToNewGroup,
     showDeleteGroupConfirm,
+    deleteConnectionsWithGroup,
+    connectionGroupDeleteConfirmMessage,
+    connectionGroupDeleteMenuLabel,
+    deletingConnectionGroups,
     confirmDeleteGroup,
   };
 }
@@ -4454,6 +4547,10 @@ function buildConnectionSidebarMenu(context: SidebarMenuFactoryContext): boolean
     if (supportsQueryActions) {
       items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
     }
+    const connectionWorkspace = node.connectionId ? driverProfileDatabaseWorkspace(connectionStore.getConfig(node.connectionId)?.driver_profile) : undefined;
+    if (connectionWorkspace?.entryScopes.includes("connection")) {
+      items.push({ label: t(connectionWorkspace.menuLabelKey), action: openProfileConnectionWorkspace, icon: GitBranch });
+    }
     if (canOpenConnectionDatabaseBrowser.value) {
       items.push({ label: t("contextMenu.openDatabaseBrowser"), action: openDatabaseBrowser, icon: TableProperties });
     }
@@ -4592,7 +4689,7 @@ function buildConnectionSidebarMenu(context: SidebarMenuFactoryContext): boolean
     });
     items.push({ label: "", separator: true });
     items.push({
-      label: t("connectionGroup.deleteGroup"),
+      label: connectionGroupDeleteMenuLabel(),
       action: deleteConnectionGroup,
       icon: Trash2,
       shortcut: shortcutDelete,
@@ -4633,8 +4730,8 @@ function buildDatabaseSidebarMenu(context: SidebarMenuFactoryContext): boolean {
       return true;
     }
     if (canCloseDatabaseConnection.value) {
-      items.push({ label: t("contextMenu.closeDatabaseConnection"), action: closeDatabaseConnection, icon: Unplug });
-      items.push({ label: "", separator: true });
+      items.unshift({ label: "", separator: true });
+      items.unshift({ label: t("contextMenu.closeDatabaseConnection"), action: closeDatabaseConnection, icon: Unplug });
     }
     items.push(copyNameMenuItem());
     items.push({ label: "", separator: true });
@@ -4645,6 +4742,10 @@ function buildDatabaseSidebarMenu(context: SidebarMenuFactoryContext): boolean {
       items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
       const sqlHistoryMenu = savedSqlHistorySubmenu();
       if (sqlHistoryMenu) items.push(sqlHistoryMenu);
+    }
+    const profileWorkspace = node.type === "database" && node.connectionId ? driverProfileDatabaseWorkspace(connectionStore.getConfig(node.connectionId)?.driver_profile) : undefined;
+    if (profileWorkspace?.entryScopes.includes("database")) {
+      items.push({ label: t(profileWorkspace.menuLabelKey), action: openProfileDatabaseWorkspace, icon: GitBranch });
     }
     if (node.type === "database" && currentDatabaseType() !== "cloudflare-d1") {
       if (!isNodeDefaultDatabase.value) {
@@ -4811,7 +4912,7 @@ function buildSpecialSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     return true;
   }
 
-  if (node.type === "etcd-root" || node.type === "etcd-dashboard" || node.type === "etcd-access-control" || node.type === "zookeeper-root" || node.type === "consul-root" || node.type === "consul-overview") {
+  if (node.type === "nacos-access-control" || node.type === "etcd-root" || node.type === "etcd-dashboard" || node.type === "etcd-access-control" || node.type === "zookeeper-root" || node.type === "consul-root" || node.type === "consul-overview") {
     items.push({ label: t("contextMenu.openConnection"), action: toggle, icon: Database });
     return true;
   }
@@ -4868,6 +4969,13 @@ function buildSpecialSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     });
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
+    return true;
+  }
+
+  if (node.type === "dynamodb-table") {
+    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
+    items.push({ label: "", separator: true });
+    items.push({ label: t("contextMenu.viewData"), action: toggle, icon: TableProperties });
     return true;
   }
 
@@ -4934,6 +5042,7 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     }
     const destructiveActions: ContextMenuItem[] = [];
     items.push(copyNameMenuItem());
+    items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.viewData"), action: openDataImmediately, icon: TableProperties });
     items.push({
@@ -5149,7 +5258,7 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     return true;
   }
 
-  if (node.type === "sequence") {
+  if (node.type === "sequence" || node.type === "event") {
     items.push({ label: t("contextMenu.viewSource"), action: () => openObjectSourceDialog(false), icon: Code2 });
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     items.push({ label: t("contextMenu.changeOpenMode"), action: () => emit("open-settings", "navigation"), icon: Settings2 });
@@ -5398,16 +5507,19 @@ function buildContextMenu(node: TreeNode): ContextMenuItem[] {
 }
 
 function handleRowClick(node: TreeNode, clickDetail: number) {
+  const requestId = beginNavigationRequest();
   activateRuntimeNode(node);
-  runRowClickAction(clickDetail);
+  runRowClickAction(clickDetail, requestId);
 }
 
 function handleRowDoubleClick(node: TreeNode, event: MouseEvent) {
+  beginNavigationRequest();
   activateRuntimeNode(node);
   onDoubleClick(event);
 }
 
 function handleRowKeydown(node: TreeNode, event: KeyboardEvent) {
+  beginNavigationRequest();
   activateRuntimeNode(node);
   onKeydown(event);
 }
@@ -5439,7 +5551,7 @@ function requestPaste(node: TreeNode): boolean {
 
 function toggleNode(node: TreeNode) {
   activateRuntimeNode(node);
-  void toggle();
+  void toggle(beginNavigationRequest());
 }
 
 defineExpose({

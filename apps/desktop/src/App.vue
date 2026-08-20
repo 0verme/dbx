@@ -72,6 +72,7 @@ import {
   isExecuteSqlShortcut,
   isFocusSearchShortcut,
   isModRShortcut,
+  handleTabHistoryNavigationShortcut,
   isNewQueryShortcut,
   isObjectSourceSaveShortcutTarget,
   isOpenSettingsShortcut,
@@ -88,6 +89,7 @@ import {
   switchToTabIndexFromShortcut,
 } from "@/lib/editor/keyboardShortcuts";
 import { isPreviewTab } from "@/lib/tabs/tabPresentation";
+import { createTabNavigationHistory, moveInTabNavigationHistory, recordTabVisit } from "@/lib/tabs/tabNavigationHistory";
 import { supportsSqlFileExecution } from "@/lib/database/databaseCapabilities";
 import { classifyAiSqlExecution } from "@/lib/ai/aiSqlExecutionPolicy";
 import { buildAppendedEditorSql } from "@/lib/ai/aiSqlAppend";
@@ -101,6 +103,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStor
 import { apiUrl, webPath } from "@/lib/common/webPath";
 import { shouldBlockAppNativeSelectAll } from "@/lib/common/clipboard";
 import { APP_FONT_SANS_CSS_VAR, DATA_GRID_FONT_FAMILY_CSS_VAR, DEFAULT_DATA_GRID_FONT_FAMILY, DEFAULT_UI_FONT_FAMILY } from "@/lib/app/appFonts";
+import { DATA_GRID_TYPE_COLOR_KEYS, dataGridTypeColorCssVar, resolveActiveDataGridTypeColors } from "@/lib/dataGrid/dataGridTypeColorScheme";
 import { rankSavedSqlHistory } from "@/lib/savedSql/savedSqlHistory";
 import { savedSqlErrorMessage } from "@/lib/savedSql/savedSqlErrors";
 import { savedSqlDefaultTargetForWrite } from "@/lib/savedSql/savedSqlExecutionTarget";
@@ -286,6 +289,8 @@ const pendingAppCloseAction = ref<AppCloseAction | null>(null);
 const pendingCloseActionChoice = ref(false);
 
 const activeTab = computed(() => queryStore.tabs.find((t) => t.id === queryStore.activeTabId));
+const tabNavigationHistory = ref(createTabNavigationHistory());
+let pendingTabHistoryNavigationId: string | null = null;
 
 const externalSqlFileChanges = useExternalSqlFileChanges({
   activeTab,
@@ -406,6 +411,7 @@ const {
   blockDangerousRedisCommands,
   onMissingDatabase: promptActiveDatabaseSelection,
   requestDangerConfirmation: (request) => sqlExecutionDangerStore.requestConfirmation(request),
+  onExecutionStarted: (editorViewportRequestId) => contentAreaRef.value?.acceptQueryEditorExecutionViewport(editorViewportRequestId),
 });
 
 function requestActiveEditorExecute() {
@@ -680,6 +686,20 @@ function applyDataGridFontFamily(fontFamily: string) {
   document.documentElement.style.setProperty(DATA_GRID_FONT_FAMILY_CSS_VAR, fontFamily || DEFAULT_DATA_GRID_FONT_FAMILY);
 }
 
+// Both grid renderers read these variables, so overriding them here recolors the
+// DOM classes and the canvas paint theme at once. Clearing them hands control
+// back to the light/dark blocks in globals.css.
+function applyDataGridTypeColors() {
+  if (typeof document === "undefined") return;
+  const style = document.documentElement.style;
+  const colors = resolveActiveDataGridTypeColors(settingsStore.editorSettings.dataGridTypeColorSchemes, settingsStore.editorSettings.activeDataGridTypeColorSchemeId);
+  for (const key of DATA_GRID_TYPE_COLOR_KEYS) {
+    const varName = dataGridTypeColorCssVar(key);
+    if (colors) style.setProperty(varName, colors[key]);
+    else style.removeProperty(varName);
+  }
+}
+
 const appUiFontFamilyStyle = computed<Record<string, string>>(() => {
   const fontFamily = settingsStore.editorSettings.uiFontFamily || DEFAULT_UI_FONT_FAMILY;
   return {
@@ -708,6 +728,15 @@ watch(
           detail: { tabId: id, fromTabId: previousId },
         }),
       );
+    }
+    if (id) {
+      if (pendingTabHistoryNavigationId === id) pendingTabHistoryNavigationId = null;
+      else {
+        pendingTabHistoryNavigationId = null;
+        tabNavigationHistory.value = recordTabVisit(tabNavigationHistory.value, id);
+      }
+    } else {
+      pendingTabHistoryNavigationId = null;
     }
     if (id) newQueryContextSource.value = "tab";
     if (id && driverStoreActive.value) driverStoreActive.value = false;
@@ -747,6 +776,14 @@ watch(
     applyDataGridFontFamily(fontFamily);
   },
   { immediate: true },
+);
+
+watch(
+  [() => settingsStore.editorSettings.activeDataGridTypeColorSchemeId, () => settingsStore.editorSettings.dataGridTypeColorSchemes],
+  () => {
+    applyDataGridTypeColors();
+  },
+  { immediate: true, deep: true },
 );
 
 watch(
@@ -2137,12 +2174,13 @@ async function handleQuickOpenSelect(item: any) {
       tableName: item.objectName || item.tableName,
       tableType: item.type === "view" ? "VIEW" : item.type === "materialized_view" ? "MATERIALIZED_VIEW" : "TABLE",
     });
-  } else if (item.type === "procedure" || item.type === "function" || item.type === "trigger" || item.type === "sequence" || item.type === "package" || item.type === "package-body" || item.type === "type" || item.type === "type-body") {
+  } else if (item.type === "procedure" || item.type === "function" || item.type === "trigger" || item.type === "event" || item.type === "sequence" || item.type === "package" || item.type === "package-body" || item.type === "type" || item.type === "type-body") {
     // Open the object source in a source tab
     const objectTypeMap: Record<string, ObjectSourceKind> = {
       procedure: "PROCEDURE",
       function: "FUNCTION",
       trigger: "TRIGGER",
+      event: "EVENT",
       sequence: "SEQUENCE",
       package: "PACKAGE",
       "package-body": "PACKAGE_BODY",
@@ -2169,7 +2207,7 @@ async function handleQuickOpenSelect(item: any) {
       });
       const tabId = queryStore.createTab(item.connectionId, item.database, `Source - ${objectName}`);
       queryStore.updateSql(tabId, editableSource);
-      if (item.type !== "sequence" && item.type !== "trigger" && item.type !== "type" && item.type !== "type-body") {
+      if (item.type !== "sequence" && item.type !== "trigger" && item.type !== "event" && item.type !== "type" && item.type !== "type-body") {
         queryStore.setObjectSource(tabId, {
           schema,
           name: objectName,
@@ -2209,6 +2247,20 @@ function activateAdjacentTab(direction: -1 | 1): boolean {
   const currentIndex = queryStore.tabs.findIndex((tab) => tab.id === queryStore.activeTabId);
   const nextIndex = currentIndex < 0 ? (direction > 0 ? 0 : count - 1) : (currentIndex + direction + count) % count;
   return activateTabByIndex(nextIndex);
+}
+
+function activateTabFromHistory(direction: -1 | 1): boolean {
+  const move = moveInTabNavigationHistory(tabNavigationHistory.value, direction, new Set(queryStore.tabs.map((tab) => tab.id)), queryStore.activeTabId);
+  if (!move) return false;
+
+  const previousHistory = tabNavigationHistory.value;
+  tabNavigationHistory.value = move.history;
+  pendingTabHistoryNavigationId = move.tabId;
+  if (activateQueryTab(move.tabId)) return true;
+
+  tabNavigationHistory.value = previousHistory;
+  pendingTabHistoryNavigationId = null;
+  return false;
 }
 
 function handleNativeSelectAll(e: KeyboardEvent) {
@@ -2264,6 +2316,11 @@ async function handleKeydown(e: KeyboardEvent) {
       e.preventDefault();
       e.stopPropagation();
     }
+    return;
+  }
+  if (handleTabHistoryNavigationShortcut(e, shortcuts, activateTabFromHistory)) {
+    e.preventDefault();
+    e.stopPropagation();
     return;
   }
   if (isSwitchToPreviousTabShortcut(e, shortcuts)) {

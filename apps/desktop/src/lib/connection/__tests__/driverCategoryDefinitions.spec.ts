@@ -88,6 +88,8 @@ describe("AGENT_DRIVER_CATEGORY_MAP integrity", () => {
       "databricks",
       "exasol",
       "hive",
+      "ignite",
+      "ignite3",
       "kylin",
       "phoenix",
       "prestosql",

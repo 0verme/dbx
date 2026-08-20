@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, shallowRef, computed, nextTick } from "vue";
-import { AlignLeft, CaseLower, CaseUpper, ClipboardPaste, Code2, Download, FileCode, MessageSquareText, Minimize2, Pencil, PencilRuler, Play, Copy, List, Scissors, Search, Sparkles, Table2, TextSelect, Trash2 } from "@lucide/vue";
+import { AlignLeft, Camera, CaseLower, CaseUpper, ClipboardPaste, Code2, Download, FileCode, MessageSquareText, Minimize2, Pencil, PencilRuler, Play, Copy, List, Scissors, Search, Sparkles, Table2, TextSelect, Trash2 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import type { CompletionContext } from "@codemirror/autocomplete";
 import { Transaction, StateEffect } from "@codemirror/state";
@@ -9,7 +9,9 @@ import { search as cmSearch } from "@codemirror/search";
 import EditorSearchPanel from "./EditorSearchPanel.vue";
 import SqlExecutionTargetPicker from "./SqlExecutionTargetPicker.vue";
 import DelimitedListDialog from "./DelimitedListDialog.vue";
+import CodeSnapshotDialog from "@/components/codeSnapshot/CodeSnapshotDialog.vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
+import type { CodeSnapshotSource } from "@/lib/codeSnapshot/codeSnapshot";
 import { copyToClipboard, readTextFromClipboard } from "@/lib/common/clipboard";
 import { completionMatchRanges } from "@/lib/common/completionMatch";
 import { executionCandidateForMode, resolveExecutableSql, type SqlExecutionSnapshot, type SqlExecutionOverride, type SqlExecutionCandidate } from "@/lib/sql/sqlExecutionTarget";
@@ -22,7 +24,9 @@ import { canFormatSqlForDatabaseType, formatSqlForEditing, compressSqlText, type
 import { detectAndFormatStructured } from "@/lib/sql/autoFormat";
 import { enabledSqlParameterSyntaxes, resolveSqlVariableSyntaxToggles } from "@/lib/sql/sqlVariableSyntax";
 import { blankLineDeletionChanges, replaceSelectedEditorText } from "@/lib/editor/queryEditorTextEdits";
+import { createQueryEditorExecutionViewportOwnership } from "@/lib/editor/queryEditorExecutionViewport";
 import { joinQueryEditorLines } from "@/lib/editor/queryEditorJoinLines";
+import { insertQueryEditorNewline } from "@/lib/editor/queryEditorNewline";
 import { createSqlSignatureTooltipDom } from "@/lib/editor/sqlSignatureTooltip";
 import { buildSqlInConditionFromPasteSource, insertTextForSqlInCondition } from "@/lib/sql/sqlInListPaste";
 import { resolveSqlSingleQuoteKeyAction } from "@/lib/sql/sqlQuoteCaret";
@@ -100,9 +104,11 @@ import {
   type QueryEditorTableReferencePayload,
 } from "@/lib/editor/queryEditorTableDrop";
 import type { SqlHighlighter } from "@/lib/sql/sqlHighlighter";
-import { EDITOR_FONT_FAMILY_CSS_VAR, EDITOR_FONT_SIZE_CSS_VAR, loadEditorTheme, editorFontTheme, sqlCompletionTheme, sqlSemanticHighlightTheme } from "@/lib/editor/editorThemes";
+import { EDITOR_FONT_FAMILY_CSS_VAR, EDITOR_FONT_SIZE_CSS_VAR, editorDiagnosticColors, editorThemeAppearanceFor, loadEditorTheme, editorFontTheme, shellLineCommentTheme, sqlCompletionTheme, sqlSemanticHighlightTheme } from "@/lib/editor/editorThemes";
 import { createStatementGutterMarkerDom, shouldShowStatementGutter } from "@/lib/editor/codemirrorStatementGutter";
 import { createQueryEditorSearchKeymap } from "@/lib/editor/queryEditorSearchKeymap";
+import { searchKeymapWithoutModD } from "@/lib/editor/codemirrorSearchKeymap";
+import { defaultKeymapForGlobalShortcuts } from "@/lib/editor/codemirrorDefaultKeymap";
 import { appendSqlCompletionSpace } from "@/lib/editor/sqlCompletionInsertion";
 import { compareSqlCompletions, completionLabelPresentation } from "@/lib/editor/sqlCompletionPresentation";
 import { clampEditorFontSize, createEditorZoomCommitScheduler, fontSizeFromGestureScale, fontSizeFromWheelDelta } from "@/lib/editor/editorZoom";
@@ -111,15 +117,19 @@ import { trimmedSelectionLayer } from "@/lib/editor/codemirrorTrimmedSelectionLa
 import { currentStatementFrameLayer } from "@/lib/editor/codemirrorCurrentStatementFrameLayer";
 import { selectionMatchOccurrences } from "@/lib/editor/codemirrorSelectionMatches";
 import { createInsertValueHintsExtension, requestInsertValueHintsRefresh } from "@/lib/editor/codemirrorInsertValueHints";
+import { sqlBlockFoldService } from "@/lib/editor/codemirrorSqlBlockFolding";
 import { focusEditorView } from "@/lib/editor/queryEditorFocus";
 import { createDbxCodeMirrorSqlDialect, type CodeMirrorSqlDialectName } from "@/lib/editor/codemirrorSqlDialect";
 import { sqlSemanticTableNameSpansForSyntaxTree } from "@/lib/editor/codemirrorSqlSemanticHighlight";
 import { startsQueryEditorRectangularSelection, usesQueryEditorObjectNavigationModifier } from "@/lib/editor/queryEditorPointerSelection";
 import { LARGE_PASTE_HISTORY_USER_EVENT, normalizeQueryEditorPasteText, recoverableNativePasteSuffix, shouldRecoverLargeTauriPaste } from "@/lib/editor/queryEditorLargePaste";
 import { computePasteCaretResyncTarget } from "@/lib/editor/queryEditorPasteCaretResync";
+import { queryEditorCommentTokens, queryEditorLineCommentToken } from "@/lib/editor/queryEditorLineComment";
+import { createShellLineCommentHighlight } from "@/lib/editor/codemirrorShellLineCommentHighlight";
 import { extendQueryEditorSelection, runQueryEditorAltExtendSelection } from "@/lib/editor/queryEditorExtendSelection";
+import { createQueryEditorCompletionShortcutBindings } from "@/lib/editor/queryEditorCompletionShortcut";
 import type { StatementExecutionMarker } from "@/lib/tabs/tabPresentation";
-import { isSchemaAware, isSingleDatabase, supportsDatabaseNameCompletion, supportsDatabaseSchemaQualifier, supportsSqlInListPaste } from "@/lib/database/databaseFeatureSupport";
+import { isSchemaAware, isSingleDatabase, supportsDatabaseNameCompletion, supportsDatabaseSchemaQualifier, supportsQueryEditorBlockComments, supportsSqlInListPaste } from "@/lib/database/databaseFeatureSupport";
 import { metadataSchemaForConnection, sqlSnippetDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { usesLocalOnlyEditorCompletionMetadata, usesOnDemandOnlyEditorColumnMetadata } from "@/lib/metadata/completionMetadataPolicy";
 import { loadTableMetadata } from "@/lib/metadata/tableMetadataCache";
@@ -141,7 +151,7 @@ import {
   tableReferenceKey,
   type SqlSemanticDiagnostic,
 } from "@/lib/sql/semantic/diagnostics";
-import { sqlReferenceAnalysisDialectFor } from "@/lib/sql/semantic/dialect";
+import { resolveSqlDialectId, sqlReferenceAnalysisDialectFor } from "@/lib/sql/semantic/dialect";
 import { buildRedisSyntaxDiagnostics, shouldRunRedisDiagnostics } from "@/lib/redis/redisSyntaxDiagnostics";
 import { buildRedisCompletionItemsFromContext, getRedisCompletionContext, getRedisCompletionResultValidFor, shouldAutoOpenRedisCompletion, takesKeyArgument, type RedisCompletionItem } from "@/lib/redis/redisCompletion";
 import type { SqlCompletionColumn, SqlCompletionContext, SqlCompletionForeignKey, SqlCompletionItem, SqlCompletionObject, SqlCompletionReferencedTable, SqlCompletionTable } from "@/lib/sql/sqlCompletion";
@@ -216,6 +226,7 @@ let viewportEmitFrame: number | null = null;
 let viewportRestoreFrame: number | null = null;
 let latestViewport: { scrollTop: number; scrollLeft: number } | undefined = props.initialViewport;
 let lastEmittedViewport: { scrollTop: number; scrollLeft: number } | undefined = props.initialViewport;
+const gutterExecutionViewport = createQueryEditorExecutionViewportOwnership();
 let latestSelection: { anchor: number; head: number } | undefined = props.initialSelection;
 const connectionStore = useConnectionStore();
 const settingsStore = useSettingsStore();
@@ -224,7 +235,7 @@ function sqlStatementParameterOptions() {
   const toggles = resolveSqlVariableSyntaxToggles(settingsStore.editorSettings.sqlVariableSyntaxOverrides, props.databaseType, settingsStore.editorSettings.sqlVariableSubstitutionEnabled);
   return { databaseType: props.databaseType, enabledSyntaxes: enabledSqlParameterSyntaxes(toggles) };
 }
-const { isDark, themePalette } = useTheme();
+const { isDark, themePalette, activeCustomUiColors } = useTheme();
 const { t } = useI18n();
 const { toast } = useToast();
 const snippetDatabaseType = computed(() => {
@@ -359,6 +370,8 @@ const pickerAnchor = ref<{ left: number; top: number }>();
 // Delimited list dialog state
 const delimitedListOpen = ref(false);
 const delimitedListSelectedText = ref("");
+const codeSnapshotOpen = ref(false);
+const codeSnapshotSource = ref<CodeSnapshotSource | null>(null);
 
 function openDelimitedListDialog() {
   if (props.readOnly) return;
@@ -516,6 +529,7 @@ let codeMirrorCloseBracketsKeymap: readonly import("@codemirror/view").KeyBindin
 let readOnlyComp: import("@codemirror/state").Compartment | null = null;
 let runGutterComp: import("@codemirror/state").Compartment | null = null;
 let runKeymapComp: import("@codemirror/state").Compartment | null = null;
+let defaultKeymapComp: import("@codemirror/state").Compartment | null = null;
 let completionComp: import("@codemirror/state").Compartment | null = null;
 let diagnosticComp: import("@codemirror/state").Compartment | null = null;
 let codeMirrorVim: typeof import("@replit/codemirror-vim").vim | null = null;
@@ -547,6 +561,8 @@ let codeMirrorRedo: typeof import("@codemirror/commands").redo | null = null;
 let codeMirrorSelectAll: typeof import("@codemirror/commands").selectAll | null = null;
 let codeMirrorInsertNewlineKeepIndent: typeof import("@codemirror/commands").insertNewlineKeepIndent | null = null;
 let codeMirrorToggleLineComment: typeof import("@codemirror/commands").toggleLineComment | null = null;
+let codeMirrorToggleBlockComment: typeof import("@codemirror/commands").toggleBlockComment | null = null;
+let codeMirrorDefaultKeymap: readonly import("@codemirror/view").KeyBinding[] | null = null;
 let codeMirrorToggleFold: typeof import("@codemirror/language").toggleFold | null = null;
 let pendingCompletionTabTimer: ReturnType<typeof setTimeout> | null = null;
 let setSqlDiagnosticsEffect: import("@codemirror/state").StateEffectType<SqlSemanticDiagnostic[]> | null = null;
@@ -593,7 +609,7 @@ const tableNavigationHoverClass = "query-editor--table-navigation-hover";
 const DBX_VIM_SAVE_EVENT = "dbx-vim-save";
 
 function editorThemeAppearance() {
-  return isDark.value ? "dark" : "light";
+  return editorThemeAppearanceFor(isDark.value ? "dark" : "light", themePalette.value, themePalette.value === "custom" ? activeCustomUiColors.value : undefined);
 }
 
 // Completion cache
@@ -612,6 +628,7 @@ function sqlCompletionDialectOptions() {
   return {
     databaseType: props.databaseType,
     dialect: sqlBehaviorDialect(),
+    editorState: view.value?.state,
   };
 }
 
@@ -677,6 +694,16 @@ function syncEditorFontCssVars(fontSize = liveFontSize.value, fontFamily = setti
   if (!editorRef.value) return;
   editorRef.value.style.setProperty(EDITOR_FONT_SIZE_CSS_VAR, `${clampEditorFontSize(fontSize)}px`);
   editorRef.value.style.setProperty(EDITOR_FONT_FAMILY_CSS_VAR, fontFamily);
+}
+
+// Diagnostics render on the editor surface, so their marker colors follow the
+// resolved editor appearance (which already adapts to custom backgrounds) via
+// editor-scoped variables instead of the app-level warning/destructive tokens.
+function syncEditorDiagnosticCssVars() {
+  if (!editorRef.value) return;
+  const colors = editorDiagnosticColors(editorThemeAppearance());
+  editorRef.value.style.setProperty("--dbx-editor-diagnostic-error", colors.error);
+  editorRef.value.style.setProperty("--dbx-editor-diagnostic-warning", colors.warning);
 }
 
 let pendingFontReconfig: { size: number; family: string } | null = null;
@@ -749,6 +776,7 @@ function editorIndentUnit(): string {
 }
 
 function handleTab(view: EditorViewType): boolean {
+  if (view.state.selection.ranges.some((range) => !range.empty)) return codeMirrorIndentMore?.(view) ?? false;
   if (tabKeyAcceptsCompletion()) {
     return acceptCompletionOrNextSnippetField(view) || performNormalTab(view);
   }
@@ -772,8 +800,8 @@ function handleTabWithoutAcceptingCompletion(view: EditorViewType): boolean {
 
 function performNormalTab(view: EditorViewType): boolean {
   const { state, dispatch } = view;
+  if (state.selection.ranges.some((range) => !range.empty)) return codeMirrorIndentMore?.(view) ?? false;
   const sel = state.selection.main;
-  if (!sel.empty) return codeMirrorIndentMore?.(view) ?? false;
   const line = state.doc.lineAt(sel.from);
   const before = line.text.slice(0, sel.from - line.from);
   if (/^\s*$/.test(before)) return codeMirrorIndentMore?.(view) ?? false;
@@ -792,6 +820,9 @@ interface RequestExecuteOptions {
 }
 
 function emitExecutionRequest(source: SqlExecutionOverride, openInNewResultTab = false) {
+  if (typeof source === "string" || source.editorViewportRequestId === undefined) {
+    gutterExecutionViewport.cancelPendingRequest();
+  }
   if (openInNewResultTab) {
     emit("executeInNewResultTab", source);
   } else {
@@ -800,6 +831,7 @@ function emitExecutionRequest(source: SqlExecutionOverride, openInNewResultTab =
 }
 
 function requestExecute(options: RequestExecuteOptions = {}) {
+  gutterExecutionViewport.cancelPendingRequest();
   const currentView = view.value;
   if (!currentView) return false;
   currentView.focus();
@@ -1400,6 +1432,13 @@ function toggleCommentFromContextMenu() {
   focusEditor();
 }
 
+function toggleBlockCommentFromContextMenu() {
+  const currentView = view.value;
+  if (!currentView || props.readOnly || !supportsQueryEditorBlockComments(props.databaseType)) return;
+  codeMirrorToggleBlockComment?.(currentView);
+  focusEditor();
+}
+
 function selectAllSqlFromContextMenu() {
   const currentView = view.value;
   if (!currentView) return;
@@ -1641,8 +1680,10 @@ function executeSqlStatementFromGutter(currentView: EditorViewType, line: { from
   event.stopPropagation();
   // Gutter play is always scoped to the statement/command for that line, even
   // when the main editor execute action would run the full document.
-  emitExecutionRequest(sqlExecutionSnapshotForRange(currentView, statementRange));
-  currentView.focus();
+  const editorViewportRequestId = gutterExecutionViewport.beginRequest();
+  emitExecutionRequest({ ...sqlExecutionSnapshotForRange(currentView, statementRange), editorViewportRequestId });
+  // 不主动聚焦编辑器，否则 CodeMirror 会把屏幕滚回之前的光标位置。
+  // currentView.focus();
   return true;
 }
 
@@ -1709,6 +1750,13 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
       shortcut: shortcuts.toggleLineComment,
     },
     {
+      label: t("editor.contextMenu.blockCommentSelection"),
+      action: toggleBlockCommentFromContextMenu,
+      disabled: props.readOnly || !canCopySelectedSql.value || !supportsQueryEditorBlockComments(props.databaseType),
+      icon: MessageSquareText,
+      shortcut: shortcuts.toggleBlockComment,
+    },
+    {
       label: t("editor.contextMenu.formatSelectionSql"),
       action: () => void formatCurrentSql(),
       disabled: props.readOnly || !canCopySelectedSql.value || !canFormatSqlForDatabaseType(props.databaseType),
@@ -1727,6 +1775,17 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
       disabled: !canCopySelectedSql.value,
       icon: Copy,
       shortcut: "Mod+C",
+    },
+    {
+      label: t("editor.contextMenu.screenshotSelection"),
+      action: () => {
+        if (selectedSql.value.trim()) {
+          codeSnapshotSource.value = { code: selectedSql.value, lang: "sql" };
+          codeSnapshotOpen.value = true;
+        }
+      },
+      disabled: !canCopySelectedSql.value,
+      icon: Camera,
     },
     {
       label: t("editor.contextMenu.cutSelection"),
@@ -1879,6 +1938,10 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
         ...binding(shortcuts.uppercaseSelection, () => convertSelectedSqlCase("upper")),
         ...binding(shortcuts.lowercaseSelection, () => convertSelectedSqlCase("lower")),
         ...binding(shortcuts.toggleLineComment, (view) => codeMirrorToggleLineComment?.(view) ?? false),
+        ...binding(shortcuts.toggleBlockComment, (view) => {
+          if (!supportsQueryEditorBlockComments(props.databaseType)) return false;
+          return codeMirrorToggleBlockComment?.(view) ?? false;
+        }),
         ...binding(shortcuts.toggleFold, (view) => codeMirrorToggleFold?.(view) ?? false),
         ...binding(shortcuts.exPasteSqlInCondition, () => {
           if (!supportsSqlInListPaste(props.databaseType)) return false;
@@ -1891,6 +1954,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
           return true;
         }),
         ...binding(shortcuts.sqlIntentionActions, handleSqlIntentionActions),
+        ...createQueryEditorCompletionShortcutBindings(shortcuts.triggerCompletion, triggerSqlCompletion),
         ...createQueryEditorSearchKeymap({
           openSearch,
           openReplace,
@@ -1910,7 +1974,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
 function insertNewlineWithoutCompletion(view: EditorViewType): boolean {
   codeMirrorCloseCompletion?.(view);
   suppressNextSqlCompletionAutoStartUntil = Date.now() + 750;
-  const handled = codeMirrorInsertNewlineKeepIndent?.(view) ?? false;
+  const handled = insertQueryEditorNewline(view, codeMirrorInsertNewlineKeepIndent, props.databaseType);
   if (!handled) suppressNextSqlCompletionAutoStartUntil = 0;
   return handled;
 }
@@ -1926,9 +1990,14 @@ function extendQueryEditorSelectionForView(currentView: EditorViewType): boolean
 }
 
 function acceptCompletionOrNextSnippetField(view: EditorViewType): boolean {
-  const completionStatus = codeMirrorCompletionStatus?.(view.state) ?? null;
-  if (completionStatus === "active" && (codeMirrorAcceptCompletion?.(view) ?? false)) return true;
-  if (completionStatus) return waitForCompletionTab(view);
+  // Any non-empty selection range means Tab is being used for block indent,
+  // not word completion. A completion popup can still appear as a side effect
+  // of the indent edit itself, so it must never hijack this or a following Tab.
+  if (view.state.selection.ranges.every((range) => range.empty)) {
+    const completionStatus = codeMirrorCompletionStatus?.(view.state) ?? null;
+    if (completionStatus === "active" && (codeMirrorAcceptCompletion?.(view) ?? false)) return true;
+    if (completionStatus) return waitForCompletionTab(view);
+  }
   return codeMirrorNextSnippetField?.(view) ?? false;
 }
 
@@ -1941,13 +2010,13 @@ function clearPendingCompletionTab() {
 function waitForCompletionTab(view: EditorViewType): boolean {
   clearPendingCompletionTab();
   const initialDoc = view.state.doc;
-  const initialSelection = view.state.selection.main;
+  const initialSelectionRanges = view.state.selection.ranges.map((range) => ({ anchor: range.anchor, head: range.head }));
   const startedAt = Date.now();
 
   const retry = () => {
     pendingCompletionTabTimer = null;
-    const selection = view.state.selection.main;
-    if (view.state.doc !== initialDoc || selection.anchor !== initialSelection.anchor || selection.head !== initialSelection.head) return;
+    const selectionRanges = view.state.selection.ranges;
+    if (view.state.doc !== initialDoc || selectionRanges.length !== initialSelectionRanges.length || selectionRanges.some((range, index) => !range.empty || range.anchor !== initialSelectionRanges[index]?.anchor || range.head !== initialSelectionRanges[index]?.head)) return;
 
     const completionStatus = codeMirrorCompletionStatus?.(view.state) ?? null;
     if (completionStatus === "active" && (codeMirrorAcceptCompletion?.(view) ?? false)) return;
@@ -2565,7 +2634,7 @@ async function resolveSqlHoverTooltip(currentView: EditorViewType, pos: number) 
         try {
           const [columnsResult, indexesResult] = await Promise.all([
             loadObjectMetadataFacet(objectMetadataRequest, "columns", () => api.getColumns(props.connectionId!, hoverDatabase, hoverSchema, table.name, hoverScope.catalog)),
-            loadObjectMetadataFacet(objectMetadataRequest, "indexes", () => api.listIndexes(props.connectionId!, hoverDatabase, hoverSchema, table.name, hoverScope.catalog).catch(() => [])),
+            loadObjectMetadataFacet(objectMetadataRequest, "indexes", () => api.listIndexes(props.connectionId!, hoverDatabase, hoverSchema, table.name, hoverScope.catalog)).catch(() => ({ value: [] as IndexInfo[], cacheStatus: "remote" as const })),
           ]);
           fullColumns = columnsResult.value;
           fullIndexes = indexesResult.value;
@@ -3353,7 +3422,7 @@ async function provideMongoCompletions(currentState: import("@codemirror/state")
   return {
     from: completionContext.from,
     options: items.map((item) => completionOptionForItem(item)),
-    validFor: getMongoCompletionResultValidFor(),
+    validFor: getMongoCompletionResultValidFor(completionContext),
   };
 }
 
@@ -3385,7 +3454,7 @@ async function provideSqlCompletions(context: CompletionContext) {
 
   try {
     // 1. Suppressed context (comment / string literal) rejects everything, including explicit.
-    if (isSqlCompletionSuppressedContext(fullDoc, position) && !sequenceLiteralContext) return null;
+    if (isSqlCompletionSuppressedContext(fullDoc, position, { databaseType: props.databaseType, editorState: currentState }) && !sequenceLiteralContext) return null;
 
     // 2. Determine completion origin (session-level marker).
     activeCompletionOrigin = originForSqlCompletionProvider(activeCompletionOrigin, context.explicit);
@@ -3604,6 +3673,15 @@ function isEditorComposing(currentView: EditorViewType): boolean {
   return imeCompositionActive || currentView.compositionStarted || currentView.composing;
 }
 
+// Manual-trigger shortcut (default Alt+/). Opens the completion popup on the
+// explicit path so auto-trigger mode gating is bypassed. Unlike
+// scheduleSqlCompletionStart, it must NOT mark the activation as typed, or the
+// session would be misclassified as typing and gated for 500ms.
+function triggerSqlCompletion(currentView: EditorViewType): boolean {
+  if (!codeMirrorStartCompletion || isEditorComposing(currentView)) return false;
+  return codeMirrorStartCompletion(currentView);
+}
+
 function scheduleSqlCompletionStart(currentView: EditorViewType, delayMs = 0) {
   window.setTimeout(() => {
     if (!codeMirrorStartCompletion || isEditorComposing(currentView)) return;
@@ -3638,7 +3716,7 @@ function flushImeComposition() {
  */
 function shouldTriggerSqlCompletionForPosition(fullDoc: string, position: number): boolean {
   const sequenceLiteralContext = getPostgresSequenceLiteralCompletionContext(fullDoc, position, props.databaseType);
-  if (isSqlCompletionSuppressedContext(fullDoc, position) && !sequenceLiteralContext) return false;
+  if (isSqlCompletionSuppressedContext(fullDoc, position, { databaseType: props.databaseType, editorState: view.value?.state }) && !sequenceLiteralContext) return false;
   const mode = settingsStore.editorSettings.completionTriggerMode;
   if (mode === "manual") return false;
 
@@ -4369,6 +4447,11 @@ function refreshCompletionCache() {
   cachedForeignKeysByTable.clear();
 }
 
+function defaultKeymapExtension() {
+  if (!editorViewModule || !codeMirrorDefaultKeymap || !codeMirrorToggleBlockComment) return [];
+  return editorViewModule.keymap.of(defaultKeymapForGlobalShortcuts(codeMirrorDefaultKeymap, settingsStore.editorSettings.shortcuts).filter((item) => item.run !== codeMirrorToggleBlockComment));
+}
+
 onMounted(async () => {
   if (!editorRef.value) return;
 
@@ -4411,8 +4494,8 @@ onMounted(async () => {
     { EditorState, EditorSelection, Compartment, Prec, RangeSet, StateEffect, StateField },
     langSql,
     { autocompletion, startCompletion, acceptCompletion, closeBrackets, closeBracketsKeymap, snippetCompletion, completionStatus, completionKeymap, insertCompletionText, nextSnippetField, closeCompletion },
-    { copyLineDown, copyLineUp, deleteLine, indentLess, indentMore, insertNewlineKeepIndent, moveLineDown, moveLineUp, redo, selectAll, undo, toggleLineComment, history, defaultKeymap, historyKeymap },
-    { bracketMatching, foldGutter, indentOnInput, indentUnit, syntaxHighlighting, defaultHighlightStyle, foldKeymap, toggleFold, ensureSyntaxTree },
+    { copyLineDown, copyLineUp, deleteLine, indentLess, indentMore, insertNewlineKeepIndent, moveLineDown, moveLineUp, redo, selectAll, undo, toggleLineComment, toggleBlockComment, history, defaultKeymap, historyKeymap },
+    { bracketMatching, foldGutter, indentOnInput, indentUnit, syntaxHighlighting, defaultHighlightStyle, foldKeymap, toggleFold, ensureSyntaxTree, highlightingFor, syntaxTree },
     { searchKeymap },
   ] = await Promise.all([import("@codemirror/view"), import("@codemirror/state"), import("@codemirror/lang-sql"), import("@codemirror/autocomplete"), import("@codemirror/commands"), import("@codemirror/language"), import("@codemirror/search")]);
   editorViewModule = {
@@ -4437,6 +4520,7 @@ onMounted(async () => {
   readOnlyComp = new Compartment();
   runGutterComp = new Compartment();
   runKeymapComp = new Compartment();
+  defaultKeymapComp = new Compartment();
   completionComp = new Compartment();
   diagnosticComp = new Compartment();
   previewRangeComp = new Compartment();
@@ -4460,6 +4544,8 @@ onMounted(async () => {
   codeMirrorSelectAll = selectAll;
   codeMirrorInsertNewlineKeepIndent = insertNewlineKeepIndent;
   codeMirrorToggleLineComment = toggleLineComment;
+  codeMirrorToggleBlockComment = toggleBlockComment;
+  codeMirrorDefaultKeymap = defaultKeymap;
   codeMirrorToggleFold = toggleFold;
   codeMirrorIndentUnit = indentUnit;
   window.addEventListener("keyup", clearTableNavigationHoverOnModifierRelease);
@@ -4467,11 +4553,11 @@ onMounted(async () => {
 
   const diagnosticTheme = EditorView.baseTheme({
     ".cm-sql-error": {
-      textDecoration: "underline wavy var(--destructive)",
+      textDecoration: "underline wavy var(--dbx-editor-diagnostic-error, var(--destructive))",
       textUnderlineOffset: "3px",
     },
     ".cm-sql-semantic-warning": {
-      textDecoration: "underline wavy var(--warning)",
+      textDecoration: "underline wavy var(--dbx-editor-diagnostic-warning, var(--warning))",
       textUnderlineOffset: "3px",
     },
   });
@@ -4679,10 +4765,17 @@ onMounted(async () => {
       override: [async (context: CompletionContext) => provideSqlCompletions(context)],
     });
 
-  buildSqlLanguageExtension = () =>
+  const shellLineCommentHighlightPlugin = createShellLineCommentHighlight({ ViewPlugin, Decoration, highlightingFor, syntaxTree });
+  buildSqlLanguageExtension = () => [
     langSql.sql({
       dialect: createDbxCodeMirrorSqlDialect(langSql, props.syntaxDialect ?? props.dialect, props.databaseType, sqlDriverProfile.value),
-    });
+    }),
+    // Non-SQL editors (MongoDB shell) keep the SQL grammar for highlighting, so override the
+    // comment marker that toggleLineComment reads from language data.
+    Prec.highest(EditorState.languageData.of(() => [{ commentTokens: queryEditorCommentTokens(props.databaseType) }])),
+    // The SQL grammar does not tokenize `//`, so those comments are highlighted by hand.
+    queryEditorLineCommentToken(props.databaseType) === "//" ? shellLineCommentHighlightPlugin : [],
+  ];
   buildSqlSemanticHighlightExtension = () => [
     ViewPlugin.fromClass(
       class {
@@ -4695,9 +4788,10 @@ onMounted(async () => {
         }
         buildDecorations(currentView: import("@codemirror/view").EditorView) {
           const sql = currentView.state.doc.toString();
+          const dialectId = resolveSqlDialectId({ databaseType: props.databaseType, dialect: sqlBehaviorDialect() });
           const windows: Array<{ from: number; to: number }> = [];
           for (const visibleRange of currentView.visibleRanges) {
-            const next = expandToSqlStatementWindow(sql, visibleRange.from, visibleRange.to);
+            const next = expandToSqlStatementWindow(sql, visibleRange.from, visibleRange.to, dialectId);
             const previous = windows[windows.length - 1];
             if (previous && next.from <= previous.to) previous.to = Math.max(previous.to, next.to);
             else windows.push(next);
@@ -4726,6 +4820,7 @@ onMounted(async () => {
       { decorations: (value) => value.decorations },
     ),
     sqlSemanticHighlightTheme(EditorView),
+    shellLineCommentTheme(EditorView),
   ];
 
   const initialSettings = settingsStore.editorSettings;
@@ -4842,6 +4937,7 @@ onMounted(async () => {
           return span;
         },
       }),
+      sqlBlockFoldService,
       drawSelection(),
       trimmedSelectionLayer(),
       selectionMatchOccurrences(),
@@ -4855,7 +4951,8 @@ onMounted(async () => {
       activeLineHighlighter,
       // Vim must be mounted before DBX/default keymaps so normal-mode keys are handled first.
       vimModeComp.of(vimModeExtension(initialSettings.vimModeEnabled)),
-      keymap.of([...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]),
+      defaultKeymapComp.of(defaultKeymapExtension()),
+      keymap.of([...searchKeymapWithoutModD(searchKeymap), ...historyKeymap, ...foldKeymap, ...completionKeymap]),
       sqlLanguageComp.of(buildSqlLanguageExtension()),
       sqlSemanticHighlightComp.of(buildSqlSemanticHighlightExtension()),
       tooltips({ parent: tooltipParent }),
@@ -4892,6 +4989,7 @@ onMounted(async () => {
           settingsStore.editorSettings.showInsertValueHints && props.databaseType !== "redis" && props.databaseType !== "mongodb" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "meilisearch" && props.databaseType !== "victoriametrics",
         getTableColumns: getInsertValueHintTableColumns,
         requestTableColumns: requestInsertValueHintTableColumns,
+        getDialectId: () => resolveSqlDialectId({ databaseType: props.databaseType, dialect: sqlBehaviorDialect() }),
       }),
       previewRangeComp.of(buildPreviewRangeExtension()),
       buildResultSourceRangeExtension(),
@@ -5288,6 +5386,7 @@ onMounted(async () => {
   restoreEditorViewport();
   syncContextMenuState(view.value);
   syncEditorFontCssVars(liveFontSize.value, initialSettings.fontFamily);
+  syncEditorDiagnosticCssVars();
   registerTableReferenceDropListener();
 
   cachedTables = [];
@@ -5455,7 +5554,7 @@ function getCurrentCustomThemeColors() {
 
 // Reactively apply editor settings changes
 watch(
-  [queryEditorAppearanceSettings, () => isDark.value, () => themePalette.value],
+  [queryEditorAppearanceSettings, () => isDark.value, () => themePalette.value, editorThemeAppearance],
   async ([ss]) => {
     if (!view.value || !codeMirrorTheme || !fontThemeComp || !wordWrapComp || !vimModeComp || !closeBracketsComp || !runGutterComp || !runKeymapComp || !editorViewModule) {
       return;
@@ -5464,6 +5563,7 @@ watch(
       liveFontSize.value = ss.fontSize;
     }
     syncEditorFontCssVars(liveFontSize.value, ss.fontFamily);
+    syncEditorDiagnosticCssVars();
     const themeColors = getCurrentCustomThemeColors();
     const [themeExt] = await Promise.all([loadEditorTheme(ss.theme, editorThemeAppearance(), themeColors, themePalette.value), ss.vimModeEnabled ? ensureCodeMirrorVim() : Promise.resolve(false)]);
     if (!view.value || !codeMirrorTheme || !wordWrapComp || !vimModeComp || !closeBracketsComp || !runGutterComp || !runKeymapComp || !editorViewModule) {
@@ -5479,6 +5579,15 @@ watch(
         runKeymapComp.reconfigure(runKeymapExtension(editorViewModule.keymap)),
       ],
     });
+  },
+  { deep: true },
+);
+
+watch(
+  () => settingsStore.editorSettings.shortcuts,
+  () => {
+    if (!view.value || !defaultKeymapComp) return;
+    view.value.dispatch({ effects: defaultKeymapComp.reconfigure(defaultKeymapExtension()) });
   },
   { deep: true },
 );
@@ -5531,6 +5640,7 @@ function pauseQueryEditorBackgroundWork() {
   flushEditorSelection();
   clearTableNavigationHover();
   clearPendingCompletionTab();
+  gutterExecutionViewport.reset();
   editorIsActive = false;
   clearScheduledSemanticDiagnostics();
   completionEpoch++;
@@ -5689,7 +5799,8 @@ function openReplace(): boolean {
 }
 
 function scrollCursorIntoView() {
-  if (!view.value || !editorViewModule || !editorIsActive) return;
+  const preserveViewport = gutterExecutionViewport.consumeAcceptedRequest();
+  if (!view.value || !editorViewModule || !editorIsActive || preserveViewport) return;
   const pos = view.value.state.selection.main.head;
   // Use "center" rather than "nearest": by the time this runs, the results pane has already
   // opened/resized and shrunk the editor viewport, so the cursor's old position is often no
@@ -5707,10 +5818,15 @@ function dismissHoverTooltip() {
   view.value.dispatch({ effects: hoverCloseEffect });
 }
 
+function acceptGutterExecutionViewport(requestId: number) {
+  return gutterExecutionViewport.acceptRequest(requestId);
+}
+
 defineExpose({
   openSearch,
   openReplace,
   scrollCursorIntoView,
+  acceptGutterExecutionViewport,
   requestExecute,
   requestExecuteInNewResultTab,
   pasteClipboardAsSqlInCondition,
@@ -5742,6 +5858,7 @@ defineExpose({
     <EditorSearchPanel ref="searchPanelRef" :view="view" />
     <SqlExecutionTargetPicker v-if="pickerVisible" :candidates="pickerCandidates" :active-index="pickerActiveIndex" :anchor="pickerAnchor" @update:active-index="onPickerActiveIndexChange" @confirm="onPickerConfirm" @cancel="closePicker" />
     <DelimitedListDialog v-model:open="delimitedListOpen" :selected-text="delimitedListSelectedText" @confirm="applyDelimitedListResult" />
+    <CodeSnapshotDialog v-model:open="codeSnapshotOpen" :source="codeSnapshotSource" />
     <!-- SQL 意图操作弹出菜单（参考 DataGrip Alt+Enter） -->
     <Teleport to="body">
       <div v-if="intentionPopup?.visible" class="intention-popup-overlay" @click.self="closeIntentionPopup">
