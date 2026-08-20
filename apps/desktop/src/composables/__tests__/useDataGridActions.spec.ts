@@ -435,6 +435,32 @@ describe("useDataGridActions", () => {
     expect(mocks.executeTabSql).toHaveBeenCalledTimes(1);
   });
 
+  it("rebuilds table metadata on the first toolbar reload after a dead-pool reconnect", async () => {
+    const tab = tableDataTab({
+      tableMetaGeneration: 0,
+      tableMeta: {
+        schema: "public",
+        tableName: "users",
+        tableType: "TABLE",
+        columns: [{ name: "old_name", data_type: "text", is_nullable: true, column_default: null, is_primary_key: false, extra: null }],
+        primaryKeys: [],
+      },
+    });
+    mocks.tabs.push(tab);
+    mocks.ensureConnected.mockImplementationOnce(async () => {
+      mocks.metadataGeneration = 1;
+    });
+    mocks.getColumns.mockResolvedValueOnce([{ name: "new_name", data_type: "text", is_nullable: true, column_default: null, is_primary_key: false, extra: null }]);
+    const actions = useDataGridActions(computed(() => tab));
+
+    await actions.onReloadData(tab.sql, "", "", "", undefined, undefined, "refresh");
+
+    expect(mocks.ensureConnected).toHaveBeenCalled();
+    expect(mocks.getColumns).toHaveBeenCalledTimes(1);
+    expect(mocks.buildTableSelectSql).toHaveBeenCalledWith(expect.objectContaining({ columns: ["new_name"] }));
+    expect(mocks.executeTabSql).toHaveBeenCalledTimes(1);
+  });
+
   it("does not refetch metadata on a warm toolbar reload in the same generation", async () => {
     const tab = tableDataTab();
     mocks.tabs.push(tab);

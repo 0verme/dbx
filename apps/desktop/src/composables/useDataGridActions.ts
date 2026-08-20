@@ -185,6 +185,18 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
       // 真实列缺失时用查询结果列合成 columns（包括失败结果的 ["Error"] 列），
       // 不能据此跳过刷新，否则恢复/失败后的重试会被 TTL 卡住
       const hasRealTableMetaColumns = !!tab.tableMeta?.columns.length;
+      if (hasRealTableMetaColumns) {
+        try {
+          console.info("[DBX][reloadData:ensure-connected:start]", { traceId, elapsed: elapsed() });
+          await connectionStore.ensureConnected(tab.connectionId);
+          console.info("[DBX][reloadData:ensure-connected:done]", { traceId, elapsed: elapsed() });
+        } catch (e: any) {
+          console.warn("[DBX][reloadData:ensure-connected:error]", { traceId, elapsed: elapsed(), error: e });
+          queryStore.setExecuting(tab.id, false);
+          toast(e?.message || String(e), 5000);
+          throw e;
+        }
+      }
       const connectionGeneration = connectionStore.metadataGenerationFor(tab.connectionId, tab.database);
       const lifecycleStale = isDataTabMetadataLifecycleStale(tab, connectionGeneration);
       const shouldRefreshMetadata = lifecycleStale || !hasRealTableMetaColumns || metadataAgeMs > DATA_TAB_METADATA_TTL_MS;
