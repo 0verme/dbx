@@ -117,4 +117,25 @@ describe("ConfigConnectionSelectDialog", () => {
     const confirm = [...document.body.querySelectorAll("button")].find((button) => button.textContent?.includes("Import"));
     expect(confirm?.disabled).toBe(true);
   });
+
+  it("disables selection controls while an import is being applied", async () => {
+    i18n.global.locale.value = "en";
+    const { onConfirm } = await mountDialog({
+      open: true,
+      mode: "import",
+      busy: true,
+      connections: [conn("a", "Alpha")],
+    });
+
+    const buttons = [...document.body.querySelectorAll("button")];
+    const selectAll = buttons.find((button) => button.textContent?.includes("Select all"));
+    const deselectAll = buttons.find((button) => button.textContent?.includes("Deselect all"));
+    const confirm = buttons.find((button) => button.textContent?.includes("Import"));
+    expect(selectAll?.disabled).toBe(true);
+    expect(deselectAll?.disabled).toBe(true);
+    expect(confirm?.disabled).toBe(true);
+    expect(document.body.querySelector("input[type='checkbox']")?.hasAttribute("disabled")).toBe(true);
+    confirm?.click();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });

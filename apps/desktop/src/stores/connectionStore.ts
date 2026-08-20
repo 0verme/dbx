@@ -62,7 +62,7 @@ import {
   type DropPosition,
   type ReorderEntriesOptions,
 } from "@/lib/sidebar/sidebarLayout";
-import { buildConnectionConfigBundle, filterSidebarLayoutByConnectionIds, parseConnectionConfigObject, selectConnectionConfigBundle, snapshotConnectionsForExport, type ConnectionConfigBundle } from "@/lib/connection/connectionConfigTransfer";
+import { buildConnectionConfigBundle, filterSidebarLayoutByConnectionIds, filterTunnelProfilesByIds, parseConnectionConfigObject, referencedTunnelProfileIds, selectConnectionConfigBundle, snapshotConnectionsForExport, type ConnectionConfigBundle } from "@/lib/connection/connectionConfigTransfer";
 import type { SqlCompletionColumn, SqlCompletionForeignKey, SqlCompletionObject, SqlCompletionTable } from "@/lib/sql/sqlCompletion";
 import { mergeSqlObjectNavigationType, sqlObjectNavigationTypeFromTableType } from "@/lib/sql/sqlNavigation";
 import * as api from "@/lib/backend/api";
@@ -7998,11 +7998,21 @@ export const useConnectionStore = defineStore("connection", () => {
     const selected = selectConnectionConfigBundle(preview, selectedConnectionIds);
     const imported = selected.connections.map((connection) => ({ ...connection }));
     let importedLayout = selected.layout;
-    const importedTunnelProfiles = selected.tunnelProfiles ?? [];
-
-    // Profiles keep their original ids: imported connections reference them
-    // via transport_layers[].profile_id, so regenerating ids would break the
-    // links. Same-id profiles are overwritten with the imported copy.
+    const importedConnections: ConnectionConfig[] = [];
+    const importedConnectionIdMap = new Map<string, string>();
+    for (const config of imported) {
+      const duplicate = [...connections.value, ...importedConnections].find((connection) => connection.name === config.name && connection.host === config.host && connection.port === config.port);
+      if (duplicate) {
+        if (typeof config.id === "string") importedConnectionIdMap.set(config.id, duplicate.id);
+        continue;
+      }
+      const importedId = config.id;
+      config.id = uuid();
+      if (typeof importedId === "string") importedConnectionIdMap.set(importedId, config.id);
+      importedConnections.push(normalizeConnection(config));
+    }
+    const importedTunnelProfileIds = referencedTunnelProfileIds(importedConnections);
+    const importedTunnelProfiles = filterTunnelProfilesByIds(selected.tunnelProfiles ?? [], importedTunnelProfileIds);
     if (importedTunnelProfiles.length) {
       const importedTunnelProfileStore = useTunnelProfileStore();
       await importedTunnelProfileStore.init();
@@ -8015,26 +8025,11 @@ export const useConnectionStore = defineStore("connection", () => {
       }
       await importedTunnelProfileStore.saveProfiles(merged);
     }
-
-    let count = 0;
-    const importedConnectionIdMap = new Map<string, string>();
-    for (const config of imported) {
-      const duplicate = connections.value.find((c) => c.name === config.name && c.host === config.host && c.port === config.port);
-      if (!duplicate) {
-        const importedId = config.id;
-        config.id = uuid();
-        if (typeof importedId === "string") importedConnectionIdMap.set(importedId, config.id);
-        const normalized = normalizeConnection(config);
-        await addConnection(normalized);
-        count++;
-      } else if (typeof config.id === "string") {
-        importedConnectionIdMap.set(config.id, duplicate.id);
-      }
-    }
+    for (const connection of importedConnections) await addConnection(connection);
     if (importedLayout) {
       importedLayout = filterSidebarLayoutByConnectionIds(remapSidebarLayoutConnectionIds(importedLayout, importedConnectionIdMap), importedConnectionIdMap.values());
     }
-    return { count, layout: importedLayout };
+    return { count: importedConnections.length, layout: importedLayout };
   }
 
   async function importConnectionsFromFile(content: string, passphrase: string | null, selectedConnectionIds?: Iterable<string>): Promise<{ count: number; layout?: SidebarLayout }> {

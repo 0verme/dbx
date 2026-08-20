@@ -29,7 +29,7 @@ const configConnectionSelectList = ref<ConnectionConfig[]>([]);
 const pendingExportConnectionIds = ref<string[]>([]);
 const pendingImportPreview = ref<ConnectionConfigBundle | null>(null);
 const pendingImportSource = ref<"dbx" | "navicat" | "dbeaver" | "datagrip">("dbx");
-let applyingImportSelection = false;
+const applyingImportSelection = ref(false);
 
 const transferPrefillConnectionId = ref("");
 const transferPrefillDatabase = ref("");
@@ -382,7 +382,8 @@ export function useDialogSources() {
   async function onImportConnectionsSelected(connectionIds: string[]) {
     const preview = pendingImportPreview.value;
     if (!preview) return;
-    applyingImportSelection = true;
+    if (applyingImportSelection.value) return;
+    applyingImportSelection.value = true;
     try {
       const { count, layout } = await connectionStore.applyConnectionsImport(preview, connectionIds);
       showConfigConnectionSelectDialog.value = false;
@@ -390,7 +391,7 @@ export function useDialogSources() {
     } catch (e: any) {
       toast(e?.message || String(e), 4000);
     } finally {
-      applyingImportSelection = false;
+      applyingImportSelection.value = false;
     }
   }
 
@@ -403,10 +404,11 @@ export function useDialogSources() {
   }
 
   function onConfigConnectionSelectOpenChange(open: boolean) {
+    if (!open && configConnectionSelectMode.value === "import" && applyingImportSelection.value) return;
     showConfigConnectionSelectDialog.value = open;
     // Export selection closing to open the passphrase dialog must keep the
     // chosen ids. Only import preview is discarded when the user cancels.
-    if (!open && configConnectionSelectMode.value === "import" && !applyingImportSelection) clearPendingImportState();
+    if (!open && configConnectionSelectMode.value === "import") clearPendingImportState();
   }
 
   function onConfigPassphraseOpenChange(open: boolean) {
@@ -435,6 +437,7 @@ export function useDialogSources() {
     configPassphraseError,
     pendingImportContent,
     showConfigConnectionSelectDialog,
+    applyingImportSelection,
     configConnectionSelectMode,
     configConnectionSelectList,
     transferPrefillConnectionId,

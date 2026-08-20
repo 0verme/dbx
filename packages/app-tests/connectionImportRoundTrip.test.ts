@@ -296,6 +296,40 @@ test("selective encrypted import applies only chosen connections and later remai
   }
 });
 
+test("duplicate imports do not overwrite tunnel profiles before connection deduplication", async () => {
+  const existingProfile = { type: "ssh", id: "tunnel-duplicate", host: "local-bastion", port: 22, user: "root" } as TunnelProfile;
+  const backend = installBackend([conn("local-duplicate", "Duplicate", 3306)], null, [existingProfile]);
+  const storage = installMemoryStorage();
+  try {
+    setActivePinia(createPinia());
+    const store = useConnectionStore();
+    await store.initFromDisk();
+
+    const preview = {
+      connections: [
+        { ...conn("import-duplicate", "Duplicate", 3306), transport_layers: [tunnelLayer("duplicate-layer", "tunnel-duplicate")] },
+        { ...conn("import-new", "New", 3307), transport_layers: [tunnelLayer("new-layer", "tunnel-new")] },
+      ],
+      tunnelProfiles: [{ ...existingProfile, host: "imported-bastion" }, { type: "ssh", id: "tunnel-new", host: "new-bastion", port: 22, user: "root" } as TunnelProfile],
+    };
+
+    const result = await store.applyConnectionsImport(preview);
+
+    assert.equal(result.count, 1);
+    assert.deepEqual(
+      backend.state.profiles.map((profile) => ({ id: profile.id, host: profile.host })),
+      [
+        { id: "tunnel-duplicate", host: "local-bastion" },
+        { id: "tunnel-new", host: "new-bastion" },
+      ],
+    );
+    assert.deepEqual(store.connections.map((connection) => connection.name).sort(), ["Duplicate", "New"]);
+  } finally {
+    storage.restore();
+    backend.restore();
+  }
+});
+
 test("wrong passphrase and preview-only parse do not mutate local connections", async () => {
   const exported = await exportFromMachineA();
   const backend = installBackend([], null);

@@ -280,6 +280,7 @@ watch(
     v-if="dialogs.showConfigConnectionSelectDialog.value"
     :open="dialogs.showConfigConnectionSelectDialog.value"
     :mode="dialogs.configConnectionSelectMode.value"
+    :busy="dialogs.applyingImportSelection.value"
     :connections="dialogs.configConnectionSelectList.value"
     @update:open="dialogs.onConfigConnectionSelectOpenChange"
     @confirm="dialogs.onConfigConnectionSelectConfirm"
