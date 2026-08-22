@@ -204,8 +204,12 @@ test("parses OceanBase native JDBC URLs", () => {
   assert.equal(parsed.urlParams, "");
 });
 
-test("uses the OceanBase profile default port for URLs without an explicit port", () => {
+test("uses the OceanBase profile default port for non-JDBC URLs without an explicit port", () => {
   assert.equal(parseConnectionUrl("oceanbase://127.0.0.1/test").port, 2883);
+});
+
+test("uses the OceanBase JDBC driver default port when the URL omits it", () => {
+  assert.equal(parseConnectionUrl("jdbc:oceanbase://127.0.0.1/test").port, 3306);
 });
 
 test("parses OceanBase JDBC user and password URL params as credentials", () => {
@@ -235,8 +239,22 @@ test("preserves the selected OceanBase Oracle profile for native JDBC URLs", () 
   assert.equal(parsed.urlParams, "useSSL=false");
 });
 
+test("parses explicit OceanBase Oracle-mode JDBC URLs", () => {
+  const parsed = parseConnectionUrl("jdbc:oceanbase:oracle://ob.example.com/sys?user=SYS&password=secret&useSSL=false");
+
+  assert.equal(parsed.dbType, "oceanbase-oracle");
+  assert.equal(parsed.driverProfile, "oceanbase-oracle");
+  assert.equal(parsed.host, "ob.example.com");
+  assert.equal(parsed.port, 3306);
+  assert.equal(parsed.database, "sys");
+  assert.equal(parsed.username, "SYS");
+  assert.equal(parsed.password, "secret");
+  assert.equal(parsed.urlParams, "useSSL=false");
+});
+
 test("does not parse OceanBase load-balance JDBC URLs as single-host connections", () => {
   assert.throws(() => parseConnectionUrl("jdbc:oceanbase:loadbalance://host1:2881,host2:2881/test"), /loadbalance/);
+  assert.throws(() => parseConnectionUrl("jdbc:oceanbase:oracle:loadbalance://host1:2881,host2:2881/sys"), /loadbalance/);
 });
 
 test("parses MySQL JDBC URL params with ProxySQL multi-at usernames", () => {

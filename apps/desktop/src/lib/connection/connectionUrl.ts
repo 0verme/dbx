@@ -668,7 +668,7 @@ export function parseConnectionUrl(value: string, preferredProfile?: string): Pa
   if (!input) {
     throw new Error("Connection URL is empty");
   }
-  if (/^(?:jdbc:)?oceanbase:loadbalance:\/\//i.test(input)) {
+  if (/^jdbc:oceanbase:(?:oracle:)?loadbalance:\/\//i.test(input)) {
     throw new Error("Unsupported OceanBase JDBC URL variant: loadbalance");
   }
   const jdbcHive = parseJdbcHiveUrl(input);
@@ -690,7 +690,8 @@ export function parseConnectionUrl(value: string, preferredProfile?: string): Pa
   const jdbcSqlServer = parseJdbcSqlServerUrl(input);
   if (jdbcSqlServer) return jdbcSqlServer;
   const isJdbcUrl = /^jdbc:/i.test(input);
-  const source = isJdbcUrl ? input.replace(/^jdbc:/i, "") : input;
+  const isOceanBaseOracleJdbc = /^jdbc:oceanbase:oracle:\/\//i.test(input);
+  const source = isOceanBaseOracleJdbc ? input.replace(/^jdbc:oceanbase:oracle:/i, "oceanbase:") : isJdbcUrl ? input.replace(/^jdbc:/i, "") : input;
 
   const mongoResult = parseMongoUrl(source);
   if (mongoResult) return mongoResult;
@@ -706,7 +707,7 @@ export function parseConnectionUrl(value: string, preferredProfile?: string): Pa
   }
 
   const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
-  const profile = connectionProfileForScheme(scheme, preferredProfile);
+  const profile = connectionProfileForScheme(scheme, isOceanBaseOracleJdbc ? "oceanbase-oracle" : preferredProfile);
   if (!profile) {
     throw new Error(`Unsupported connection URL scheme: ${scheme}`);
   }
@@ -752,7 +753,7 @@ export function parseConnectionUrl(value: string, preferredProfile?: string): Pa
   }
 
   const isMeilisearch = profile.type === "meilisearch";
-  const defaultPort = isMeilisearch && scheme === "http" ? 80 : isMeilisearch && scheme === "https" ? 443 : profile.defaultPort;
+  const defaultPort = isJdbcUrl && scheme === "oceanbase" ? 3306 : isMeilisearch && scheme === "http" ? 80 : isMeilisearch && scheme === "https" ? 443 : profile.defaultPort;
 
   return {
     ...(name ? { name } : {}),
