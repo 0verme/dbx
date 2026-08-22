@@ -163,7 +163,7 @@ describe("extractSqlParameters", () => {
       expect(extractSqlParameters(`SELECT ${arrayExpression}, ${dateSql};`, { databaseType: "postgres" })).toEqual([]);
     }
 
-    expect(extractSqlParameters("SELECT ARRAY['x'][:array_index], values[:subscript_index];", { databaseType: "postgres" })).toEqual(["array_index", "subscript_index"]);
+    expect(extractSqlParameters("SELECT ARRAY['x'][:array_index], values[:subscript_index];", { databaseType: "postgres" })).toEqual([]);
   });
 
   it("does not treat a standalone PostgreSQL date format as a parameter", () => {
@@ -175,6 +175,19 @@ describe("extractSqlParameters", () => {
     expect(extractSqlParameters(sql, { databaseType: "postgres" })).toEqual(["first_value", "second_value"]);
     expect(substituteSqlParameters(sql, { first_value: { kind: "number", value: "1" }, second_value: { kind: "number", value: "2" } }, { databaseType: "postgres" })).toBe("SELECT ARRAY[1, 2];");
     expect(extractSqlParameters("SELECT :id;", { databaseType: "postgres" })).toEqual(["id"]);
+  });
+
+  it("does not treat PostgreSQL slice bounds as named parameters", () => {
+    const sql = "SELECT arr[lower:upper], arr[:upper], ARRAY[arr[:nested_upper], :constructor_value];";
+
+    expect(extractSqlParameters(sql, { databaseType: "postgres" })).toEqual(["constructor_value"]);
+    expect(substituteSqlParameters(sql, { constructor_value: { kind: "number", value: "7" } }, { databaseType: "postgres" })).toBe("SELECT arr[lower:upper], arr[:upper], ARRAY[arr[:nested_upper], 7];");
+  });
+
+  it("keeps named parameters inside nested PostgreSQL ARRAY constructors and parenthesized subscripts", () => {
+    const sql = "SELECT ARRAY[[:first_value, :second_value], ARRAY[:third_value]], values[(:subscript_index)];";
+
+    expect(extractSqlParameters(sql, { databaseType: "postgres" })).toEqual(["first_value", "second_value", "third_value", "subscript_index"]);
   });
 
   it("preserves SQL Server bracketed identifiers while scanning parameters", () => {

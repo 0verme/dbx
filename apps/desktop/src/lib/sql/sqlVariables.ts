@@ -149,6 +149,7 @@ function readDeclaration(sql: string, start: number, databaseType?: DatabaseType
 function readValueEnd(sql: string, start: number, databaseType?: DatabaseType): number {
   let i = start;
   let depth = 0;
+  let bracketDepth = 0;
   while (i < sql.length) {
     const ch = sql[i];
     const next = sql[i + 1];
@@ -157,9 +158,15 @@ function readValueEnd(sql: string, start: number, databaseType?: DatabaseType): 
       continue;
     }
     if (ch === "[") {
+      if (databaseType === "postgres") {
+        bracketDepth += 1;
+        i += 1;
+        continue;
+      }
       i = skipBracketIdentifier(sql, i, databaseType);
       continue;
     }
+    if (databaseType === "postgres" && ch === "]") bracketDepth = Math.max(0, bracketDepth - 1);
     if (ch === "-" && next === "-") return i;
     if (ch === "/" && next === "*") return i;
     if (ch === "$") {
@@ -172,7 +179,7 @@ function readValueEnd(sql: string, start: number, databaseType?: DatabaseType): 
     }
     if (ch === "(") depth += 1;
     else if (ch === ")") depth = Math.max(0, depth - 1);
-    else if ((ch === ";" || ch === "\n") && depth === 0) return i;
+    else if ((ch === ";" || ch === "\n") && depth === 0 && bracketDepth === 0) return i;
     i += 1;
   }
   return sql.length;

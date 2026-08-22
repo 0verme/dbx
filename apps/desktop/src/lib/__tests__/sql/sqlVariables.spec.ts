@@ -65,6 +65,12 @@ describe("expandSqlVariables", () => {
     expect(expandSqlVariables(sql, { databaseType: "postgres" }).sql).toBe("select ARRAY[']']::varchar[], 7, ${missing}");
   });
 
+  it("keeps multiline PostgreSQL ARRAY values in @set declarations", () => {
+    const sql = ["@set values = ARRAY[", "  'first',", "  'second'", "];", "select @values;"].join("\n");
+
+    expect(expandSqlVariables(sql, { databaseType: "postgres" }).sql).toBe("select ARRAY[\n  'first',\n  'second'\n];");
+  });
+
   it.each(["sqlserver", "sqlite", "jdbc"] as const)("preserves %s bracket identifiers during variable expansion", (databaseType) => {
     const sql = ["@set selected = 7;", "select [column:@ignored], @selected"].join("\n");
     expect(expandSqlVariables(sql, { databaseType }).sql).toBe("select [column:@ignored], 7");

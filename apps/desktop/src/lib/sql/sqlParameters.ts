@@ -378,6 +378,8 @@ function findSqlParameterOccurrences(sql: string, options?: SqlParameterOptions)
   let i = 0;
   let dollarQuoteEnd = "";
   let positionalIndex = 0;
+  let parenthesisDepth = 0;
+  const postgresBracketStack: Array<{ constructor: boolean; parenthesisDepth: number }> = [];
 
   while (i < sql.length) {
     if (dollarQuoteEnd) {
@@ -447,8 +449,31 @@ function findSqlParameterOccurrences(sql: string, options?: SqlParameterOptions)
       i = skipQuoted(sql, i, ch);
       continue;
     }
+    if (databaseType === "postgres" && ch === "(") {
+      parenthesisDepth += 1;
+      i += 1;
+      continue;
+    }
+    if (databaseType === "postgres" && ch === ")") {
+      parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+      i += 1;
+      continue;
+    }
     if (ch === "[") {
+      if (databaseType === "postgres") {
+        postgresBracketStack.push({
+          constructor: isPostgresArrayConstructorBracket(sql, i, postgresBracketStack[postgresBracketStack.length - 1]?.constructor ?? false),
+          parenthesisDepth,
+        });
+        i += 1;
+        continue;
+      }
       i = skipBracketIdentifier(sql, i, databaseType);
+      continue;
+    }
+    if (databaseType === "postgres" && ch === "]") {
+      postgresBracketStack.pop();
+      i += 1;
       continue;
     }
     if (ch === "-" && next === "-") {
@@ -478,6 +503,7 @@ function findSqlParameterOccurrences(sql: string, options?: SqlParameterOptions)
         sql[i + 1] !== "=" &&
         !complexTypeFieldSeparators.has(i) &&
         !duckDbStructFieldSeparators.has(i) &&
+        !isPostgresSliceSeparator(postgresBracketStack, parenthesisDepth) &&
         !isDuckDbCompactPrefixAliasSeparator(sql, i, options?.databaseType) &&
         !triggerPseudoRecordFieldStarts.has(i) &&
         !isMysqlRoutineLabelSeparator(sql, i, name, options?.databaseType)
@@ -1680,6 +1706,20 @@ function isSqlServerTempTableReference(sql: string, start: number): boolean {
 
   const previous = previousKeyword(sql, start);
   return !!previous && SQL_SERVER_TEMP_TABLE_CONTEXT_KEYWORDS.has(previous);
+}
+
+function isPostgresArrayConstructorBracket(sql: string, start: number, parentIsConstructor: boolean): boolean {
+  if (previousKeyword(sql, start) === "array") return true;
+  if (!parentIsConstructor) return false;
+
+  let previous = start - 1;
+  while (previous >= 0 && /\s/.test(sql[previous])) previous -= 1;
+  return sql[previous] === "[" || sql[previous] === ",";
+}
+
+function isPostgresSliceSeparator(stack: Array<{ constructor: boolean; parenthesisDepth: number }>, parenthesisDepth: number): boolean {
+  const context = stack[stack.length - 1];
+  return !!context && !context.constructor && context.parenthesisDepth === parenthesisDepth;
 }
 
 function previousKeyword(sql: string, start: number): string {
