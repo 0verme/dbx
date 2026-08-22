@@ -7897,7 +7897,7 @@ export const useConnectionStore = defineStore("connection", () => {
         filters: [{ name: "JSON", extensions: ["json"] }],
         defaultPath: "dbx-connections.json",
       });
-      if (!path) return;
+      if (!path) return "cancelled" as const;
       await writeTextFile(path, content);
     } else {
       const blob = new Blob([content], { type: "application/json" });
@@ -7908,6 +7908,7 @@ export const useConnectionStore = defineStore("connection", () => {
       a.click();
       URL.revokeObjectURL(url);
     }
+    return "saved" as const;
   }
 
   function bytesToBase64(bytes: Uint8Array) {

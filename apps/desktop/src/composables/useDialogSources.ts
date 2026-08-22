@@ -335,7 +335,8 @@ export function useDialogSources() {
     if (configExportBusy.value) return;
     configExportBusy.value = true;
     try {
-      await connectionStore.exportConnectionsToFile({ mode: "encrypted", passphrase }, pendingExportConnectionIds.value);
+      const result = await connectionStore.exportConnectionsToFile({ mode: "encrypted", passphrase }, pendingExportConnectionIds.value);
+      if (result === "cancelled") return;
       showConfigPassphraseDialog.value = false;
       clearPendingExportState();
       toast(t("configExport.exportSuccess"), 2000);
@@ -356,7 +357,8 @@ export function useDialogSources() {
     if (configExportBusy.value) return;
     configExportBusy.value = true;
     try {
-      await connectionStore.exportConnectionsToFile({ mode: "plaintext" }, pendingExportConnectionIds.value);
+      const result = await connectionStore.exportConnectionsToFile({ mode: "plaintext" }, pendingExportConnectionIds.value);
+      if (result === "cancelled") return;
       showConfigUnencryptedExportConfirm.value = false;
       clearPendingExportState();
       toast(t("configExport.exportSuccess"), 2000);
