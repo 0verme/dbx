@@ -344,7 +344,7 @@ describe("connectionStore timeout recovery", () => {
     const { useConnectionStore } = await import("@/stores/connectionStore");
     const store = useConnectionStore();
     await store.initFromDisk();
-    await store.exportConnectionsToFile("test-passphrase");
+    await store.exportConnectionsToFile({ mode: "encrypted", passphrase: "test-passphrase" });
 
     const exported = JSON.parse(encryptConfig.mock.calls[0]?.[0] as string);
     expect(exported.connections[0]).toMatchObject({

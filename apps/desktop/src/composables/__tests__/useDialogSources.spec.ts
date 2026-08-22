@@ -84,4 +84,50 @@ describe("useDialogSources", () => {
     await applyPromise;
     await nextTick();
   });
+
+  it("requires confirmation before an unencrypted export and preserves the flow when cancelled", async () => {
+    mocks.store.connections = [conn("selected")];
+    const dialogs = await mountDialogs();
+
+    dialogs.onExportClick();
+    dialogs.onConfigConnectionSelectConfirm(["selected"]);
+    expect(dialogs.showConfigPassphraseDialog.value).toBe(true);
+
+    dialogs.onRequestUnencryptedExport();
+    expect(dialogs.showConfigPassphraseDialog.value).toBe(false);
+    expect(dialogs.showConfigUnencryptedExportConfirm.value).toBe(true);
+    expect(mocks.store.exportConnectionsToFile).not.toHaveBeenCalled();
+
+    dialogs.onConfigUnencryptedExportOpenChange(false);
+    expect(dialogs.showConfigUnencryptedExportConfirm.value).toBe(false);
+    expect(dialogs.showConfigPassphraseDialog.value).toBe(true);
+    expect(mocks.store.exportConnectionsToFile).not.toHaveBeenCalled();
+
+    dialogs.onRequestUnencryptedExport();
+    await dialogs.onConfigUnencryptedExportConfirm();
+    expect(mocks.store.exportConnectionsToFile).toHaveBeenCalledWith({ mode: "plaintext" }, ["selected"]);
+  });
+
+  it("prevents duplicate unencrypted exports while the file is being written", async () => {
+    let resolveExport!: () => void;
+    const exportPromise = new Promise<void>((resolve) => {
+      resolveExport = resolve;
+    });
+    mocks.store.connections = [conn("selected")];
+    mocks.store.exportConnectionsToFile.mockReturnValue(exportPromise);
+    const dialogs = await mountDialogs();
+
+    dialogs.onExportClick();
+    dialogs.onConfigConnectionSelectConfirm(["selected"]);
+    dialogs.onRequestUnencryptedExport();
+    const first = dialogs.onConfigUnencryptedExportConfirm();
+    const second = dialogs.onConfigUnencryptedExportConfirm();
+
+    expect(dialogs.configExportBusy.value).toBe(true);
+    expect(mocks.store.exportConnectionsToFile).toHaveBeenCalledTimes(1);
+    resolveExport();
+    await first;
+    await second;
+    expect(dialogs.configExportBusy.value).toBe(false);
+  });
 });
