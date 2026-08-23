@@ -16,6 +16,7 @@ export const EDITOR_SETTINGS_DRAFT_KEYS = [
   "executeAllOnBlankLine",
   "showExecutionTargetPicker",
   "showStatementRunButtons",
+  "showLineNumbers",
   "showCurrentStatementFrame",
   "showInsertValueHints",
   "autoAliasTables",
@@ -94,7 +95,11 @@ export type EditorSettingsDraft = Pick<EditorSettings, EditorSettingsDraftKey>;
 
 function cloneDraftValue<T>(value: T): T {
   if (value === null || typeof value !== "object") return value;
-  return JSON.parse(JSON.stringify(value)) as T;
+  try {
+    return structuredClone(value);
+  } catch {
+    return value;
+  }
 }
 
 export function normalizeTableOpenPageSizeDraft(value: unknown): number {
