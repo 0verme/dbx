@@ -2250,6 +2250,7 @@ export default withEnglishFallback({
     createGroup: "Novo Grupo",
     groupNamePlaceholder: "Nome do grupo",
     renameGroup: "Renomear Grupo",
+    closeConnections: "Fechar conexões do grupo ({count})",
     deleteGroup: "Excluir Grupo",
     deleteSelectedGroups: "Excluir {count} grupos selecionados",
     moveToGroup: "Mover para Grupo",
