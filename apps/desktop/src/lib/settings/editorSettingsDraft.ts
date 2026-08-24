@@ -95,11 +95,7 @@ export type EditorSettingsDraft = Pick<EditorSettings, EditorSettingsDraftKey>;
 
 function cloneDraftValue<T>(value: T): T {
   if (value === null || typeof value !== "object") return value;
-  try {
-    return structuredClone(value);
-  } catch {
-    return value;
-  }
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 export function normalizeTableOpenPageSizeDraft(value: unknown): number {
