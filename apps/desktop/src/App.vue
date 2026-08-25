@@ -2621,16 +2621,18 @@ async function handleKeydown(e: KeyboardEvent) {
     void openSaveSqlDialog();
     return;
   }
+  // CodeMirror ignores keydown events after an IME composition changes the
+  // document, so this app-level fallback must not execute during composition.
   if (activeTab.value?.mode === "query" && isExecuteSqlInNewResultTabShortcut(e, shortcuts) && e.target instanceof Element && e.target.closest("[data-query-editor-root]")) {
     e.preventDefault();
     e.stopPropagation();
-    requestActiveEditorExecuteInNewResultTab();
+    if (!contentAreaRef.value?.isQueryEditorComposing?.()) requestActiveEditorExecuteInNewResultTab();
     return;
   }
   if (activeTab.value?.mode === "query" && isExecuteSqlShortcut(e, shortcuts) && e.target instanceof Element && e.target.closest("[data-query-editor-root]")) {
     e.preventDefault();
     e.stopPropagation();
-    requestActiveEditorExecute();
+    if (!contentAreaRef.value?.isQueryEditorComposing?.()) requestActiveEditorExecute();
     return;
   }
   if (activeTab.value?.mode === "query" && isSendSelectionToAiShortcut(e, shortcuts) && e.target instanceof Element && e.target.closest("[data-query-editor-root]")) {

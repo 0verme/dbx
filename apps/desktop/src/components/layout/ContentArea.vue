@@ -1120,6 +1120,10 @@ function requestQueryEditorExecuteInNewResultTab() {
   return queryEditorRef.value?.requestExecuteInNewResultTab();
 }
 
+function isQueryEditorComposing() {
+  return queryEditorRef.value?.isQueryEditorComposing?.() ?? false;
+}
+
 function acceptQueryEditorExecutionViewport(requestId: number) {
   return queryEditorRef.value?.acceptGutterExecutionViewport(requestId) ?? false;
 }
@@ -1164,6 +1168,7 @@ defineExpose({
   handleModRTarget,
   requestQueryEditorExecute,
   requestQueryEditorExecuteInNewResultTab,
+  isQueryEditorComposing,
   acceptQueryEditorExecutionViewport,
   pasteClipboardAsSqlInCondition,
   applyTableStructureChanges,
