@@ -18,11 +18,12 @@ describe("QueryEditor execution routing", () => {
     expect(queryEditorSource).toContain("createQueryEditorExecutionShortcutBindings(shortcuts.executeSql");
     expect(queryEditorSource).toContain("createQueryEditorExecutionShortcutBindings(shortcuts.executeSqlInNewResultTab");
     expect(queryEditorSource).toContain("isEditorComposing");
-    expect(queryEditorSource).toContain("function isQueryEditorComposing()");
-    expect(contentAreaSource).toContain("function isQueryEditorComposing()");
-    expect(contentAreaSource).toContain("queryEditorRef.value?.isQueryEditorComposing?.()");
-    expect(appSource).toContain("if (!contentAreaRef.value?.isQueryEditorComposing?.()) requestActiveEditorExecuteInNewResultTab();");
-    expect(appSource).toContain("if (!contentAreaRef.value?.isQueryEditorComposing?.()) requestActiveEditorExecute();");
+    expect(queryEditorSource).toContain("function shouldBlockExecutionShortcut(event?: KeyboardEvent");
+    expect(queryEditorSource).toContain("postCompositionKeyGuard.blocks(event)");
+    expect(contentAreaSource).toContain("function shouldBlockQueryEditorExecutionShortcut(event: KeyboardEvent)");
+    expect(contentAreaSource).toContain("queryEditorRef.value?.shouldBlockExecutionShortcut?.(event)");
+    expect(appSource).toContain("if (!contentAreaRef.value?.shouldBlockQueryEditorExecutionShortcut?.(e)) requestActiveEditorExecuteInNewResultTab();");
+    expect(appSource).toContain("if (!contentAreaRef.value?.shouldBlockQueryEditorExecutionShortcut?.(e)) requestActiveEditorExecute();");
   });
 
   it("keeps toolbar, context-menu, and gutter execution outside the shortcut guard", () => {
