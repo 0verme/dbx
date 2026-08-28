@@ -89,6 +89,7 @@ export const EDITOR_SETTINGS_DRAFT_KEYS = [
   "updateDownloadSource",
   "toolbarItems",
   "snippets",
+  "sqlShortcuts",
   "sqlVariableSubstitutionEnabled",
   "sqlVariableSyntaxOverrides",
   "continueOnErrorOnBatch",

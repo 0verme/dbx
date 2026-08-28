@@ -112,6 +112,7 @@ import { isPointOverElementRoot } from "@/lib/editor/tableReferenceDragFeedback"
 import type { SqlHighlighter } from "@/lib/sql/sqlHighlighter";
 import { EDITOR_FONT_FAMILY_CSS_VAR, EDITOR_FONT_SIZE_CSS_VAR, editorDiagnosticColors, editorThemeAppearanceFor, loadEditorTheme, editorFontTheme, shellLineCommentTheme, sqlCompletionTheme, sqlSemanticHighlightTheme } from "@/lib/editor/editorThemes";
 import { createStatementGutterMarkerDom, shouldShowStatementGutter } from "@/lib/editor/codemirrorStatementGutter";
+import { createQueryEditorSqlShortcutDomHandler, isCharacterProducingShortcut } from "@/lib/editor/queryEditorSqlShortcut";
 import { createQueryEditorReplaceShortcutBindings, createQueryEditorReplaceShortcutHandler, createQueryEditorSearchKeymap } from "@/lib/editor/queryEditorSearchKeymap";
 import { buildQueryEditorLineNumbersExtension } from "@/lib/editor/queryEditorLineNumbers";
 import { searchKeymapWithoutModD } from "@/lib/editor/codemirrorSearchKeymap";
@@ -119,6 +120,7 @@ import { defaultKeymapForGlobalShortcuts } from "@/lib/editor/codemirrorDefaultK
 import { appendSqlCompletionSpace } from "@/lib/editor/sqlCompletionInsertion";
 import { compareSqlCompletions, completionLabelPresentation } from "@/lib/editor/sqlCompletionPresentation";
 import { clampEditorFontSize, createEditorWheelZoomGestureGuard, createEditorZoomCommitScheduler, fontSizeFromGestureScale, fontSizeFromWheelDelta } from "@/lib/editor/editorZoom";
+import { enabledSqlShortcutActions, resolveSqlShortcutTemplate } from "@/lib/sql/sqlShortcutActions";
 import { normalizeShortcutSettings, shortcutToCodeMirrorKey } from "@/lib/editor/shortcutRegistry";
 import { trimmedSelectionLayer } from "@/lib/editor/codemirrorTrimmedSelectionLayer";
 import { currentStatementFrameLayer } from "@/lib/editor/codemirrorCurrentStatementFrameLayer";
@@ -1927,6 +1929,18 @@ function handleSqlIntentionActions(currentView: EditorViewType): boolean {
   }
 }
 
+function runSqlShortcutAction(action: ReturnType<typeof enabledSqlShortcutActions>[number], currentView: EditorViewType, event?: KeyboardEvent): boolean {
+  if (shouldBlockExecutionShortcut(event, currentView)) return true;
+  if (props.readOnly) return true;
+  const { from, to, empty } = currentView.state.selection.main;
+  if (empty) return false;
+  const selected = currentView.state.sliceDoc(from, to).trim();
+  if (!selected) return false;
+  const sql = resolveSqlShortcutTemplate(action.sql, selected);
+  emitExecutionRequest(sql);
+  return true;
+}
+
 function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view"))["keymap"]) {
   const shortcuts = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
   const Prec = codeMirrorPrec;
@@ -1947,11 +1961,22 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
     openReplace,
     isReadOnly: () => !!props.readOnly,
   });
+  const sqlShortcutActions = enabledSqlShortcutActions(settingsStore.editorSettings.sqlShortcuts);
+  const sqlShortcutKeymapActions = sqlShortcutActions.filter((action) => !isCharacterProducingShortcut(action.shortcut));
+  const sqlShortcutBindings = sqlShortcutKeymapActions.flatMap((action) => binding(action.shortcut, (currentView) => runSqlShortcutAction(action, currentView)));
+  const sqlShortcutDomHandler = createQueryEditorSqlShortcutDomHandler(
+    () => settingsStore.editorSettings.sqlShortcuts,
+    (action, currentView, event) => runSqlShortcutAction(action, currentView, event),
+  );
+  const combinedDomKeydownHandler = (event: KeyboardEvent, view: EditorViewType) => {
+    if (replaceShortcutHandler(event)) return true;
+    return sqlShortcutDomHandler(event, view);
+  };
   return [
     editorViewModule
       ? (Prec?.high(
           editorViewModule.EditorView.domEventHandlers({
-            keydown: replaceShortcutHandler,
+            keydown: combinedDomKeydownHandler,
           }),
         ) ?? [])
       : [],
@@ -2018,6 +2043,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
           openReplace,
           isReadOnly: () => !!props.readOnly,
         }),
+        ...sqlShortcutBindings,
       ]),
     ) ?? [],
     codeMirrorKeymap.of(
@@ -5967,10 +5993,19 @@ watch(
 );
 
 watch(
-  () => settingsStore.editorSettings.shortcuts,
+  () => [settingsStore.editorSettings.shortcuts, settingsStore.editorSettings.sqlShortcuts],
   () => {
-    if (!view.value || !defaultKeymapComp) return;
-    view.value.dispatch({ effects: defaultKeymapComp.reconfigure(defaultKeymapExtension()) });
+    if (!view.value || !editorViewModule) return;
+    const effects = [];
+    if (defaultKeymapComp) {
+      effects.push(defaultKeymapComp.reconfigure(defaultKeymapExtension()));
+    }
+    if (runKeymapComp) {
+      effects.push(runKeymapComp.reconfigure(runKeymapExtension(editorViewModule.keymap)));
+    }
+    if (effects.length > 0) {
+      view.value.dispatch({ effects });
+    }
   },
   { deep: true },
 );

@@ -26,7 +26,7 @@ import { type DataTabReuseMode, DEFAULT_DATA_TAB_REUSE_MODE, normalizeDataTabReu
 import { normalizeCompletionTriggerMode, type SqlCompletionTriggerMode } from "@/lib/sql/sqlCompletionTriggerPolicy";
 import { configureMetadataRuntimeCache, METADATA_CACHE_DEFAULT_MEMORY_MB, normalizeMetadataCacheMemoryMb } from "@/lib/metadata/metadataRuntimeCache";
 import type { AiApiStyle, AiAssistantMode, AiAuthMethod, AiChatSelectionState, AiConfig, AiConfigItem, AiConfiguredModel, AiEffortLevel, AiEffortSelection, AiModelEffortPreference, AiProvider, AiReasoningLevel, AiTestConnectionResult } from "@/types/ai";
-import type { SqlSnippet, TableInfoTab } from "@/types/database";
+import type { SqlShortcutAction, SqlSnippet, TableInfoTab } from "@/types/database";
 
 export type { AiApiStyle, AiAuthMethod, AiChatSelectionState, AiConfig, AiConfigItem, AiConfiguredModel, AiEffortLevel, AiEffortSelection, AiProvider, AiReasoningLevel, AiTestConnectionResult, DataTabReuseMode, SavedSqlOpenTargetMode, SqlCompletionTriggerMode };
 
@@ -628,6 +628,7 @@ export interface EditorSettings {
   globalDateTimeExportFormat: string;
   globalDateTimeImportFormat: string;
   snippets: SqlSnippet[];
+  sqlShortcuts: SqlShortcutAction[];
   tableColumnTemplateFields: string[];
   exportBatchSize: number;
   /** Global Redis key-search templates; overridden by non-empty connection templates. */
@@ -843,6 +844,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   globalDateTimeExportFormat: "",
   globalDateTimeImportFormat: "",
   snippets: DEFAULT_SQL_SNIPPETS,
+  sqlShortcuts: [],
   tableColumnTemplateFields: [...DEFAULT_TABLE_COLUMN_TEMPLATE_FIELDS],
   exportBatchSize: 2000,
   redisKeyTemplates: [],
@@ -1040,6 +1042,24 @@ function normalizeSqlSnippets(value: unknown, existing?: SqlSnippet[]): SqlSnipp
     });
   }
   if (valid.length === 0) return existing ?? DEFAULT_SQL_SNIPPETS;
+  return valid;
+}
+
+function normalizeSqlShortcuts(value: unknown, existing?: SqlShortcutAction[]): SqlShortcutAction[] {
+  if (!Array.isArray(value)) return existing ?? DEFAULT_EDITOR_SETTINGS.sqlShortcuts;
+  const valid: SqlShortcutAction[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id || typeof item.label !== "string" || !item.label || typeof item.shortcut !== "string" || typeof item.sql !== "string") {
+      continue;
+    }
+    valid.push({
+      id: item.id,
+      label: item.label,
+      shortcut: item.shortcut.trim(),
+      sql: item.sql,
+      enabled: item.enabled !== false,
+    });
+  }
   return valid;
 }
 
@@ -1264,6 +1284,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     globalDateTimeExportFormat: normalizeGlobalDateTimePattern(settings.globalDateTimeExportFormat),
     globalDateTimeImportFormat: normalizeGlobalDateTimePattern(settings.globalDateTimeImportFormat),
     snippets: normalizeSqlSnippets(settings.snippets, existing?.snippets),
+    sqlShortcuts: normalizeSqlShortcuts(settings.sqlShortcuts, existing?.sqlShortcuts),
     tableColumnTemplateFields: normalizeTableColumnTemplateFields(settings.tableColumnTemplateFields),
     exportBatchSize: typeof settings.exportBatchSize === "number" && settings.exportBatchSize >= 100 && settings.exportBatchSize <= 100000 ? Math.round(settings.exportBatchSize) : DEFAULT_EDITOR_SETTINGS.exportBatchSize,
     redisKeyTemplates: normalizeRedisKeyTemplates(settings.redisKeyTemplates),
@@ -1844,6 +1865,7 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.globalDateTimeExportFormat !== undefined) editorSettings.value.globalDateTimeExportFormat = normalizeGlobalDateTimePattern(partial.globalDateTimeExportFormat);
     if (partial.globalDateTimeImportFormat !== undefined) editorSettings.value.globalDateTimeImportFormat = normalizeGlobalDateTimePattern(partial.globalDateTimeImportFormat);
     if (partial.snippets !== undefined) editorSettings.value.snippets = normalizeSqlSnippets(partial.snippets);
+    if (partial.sqlShortcuts !== undefined) editorSettings.value.sqlShortcuts = normalizeSqlShortcuts(partial.sqlShortcuts);
     if (partial.tableColumnTemplateFields !== undefined) editorSettings.value.tableColumnTemplateFields = normalizeTableColumnTemplateFields(partial.tableColumnTemplateFields);
     if (partial.exportBatchSize !== undefined) editorSettings.value.exportBatchSize = Math.min(100000, Math.max(100, Math.round(partial.exportBatchSize)));
     if (partial.redisKeyTemplates !== undefined) editorSettings.value.redisKeyTemplates = normalizeRedisKeyTemplates(partial.redisKeyTemplates);

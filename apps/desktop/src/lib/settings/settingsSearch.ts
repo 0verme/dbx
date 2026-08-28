@@ -215,6 +215,7 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
   { id: "backups", category: "backups", titleKey: "databaseBackup.title", targetId: "backups", visible: desktopOnly },
   { id: "tunnels", category: "tunnels", titleKey: "settings.tunnelsTab", targetId: "tunnels" },
   { id: "shortcuts", category: "shortcuts", titleKey: "settings.shortcutsTab", targetId: "shortcuts" },
+  { id: "sql-shortcuts", category: "shortcuts", titleKey: "settings.sqlShortcutsTitle", descriptionKey: "settings.sqlShortcutsDescription", targetId: "sql-shortcuts" },
   { id: "snippets", category: "snippets", titleKey: "settings.snippetsTab", descriptionKey: "settings.snippetsDescription", targetId: "snippets" },
   { id: "sync-webdav", category: "sync", titleKey: "settings.syncWebDavTitle", descriptionKey: "settings.syncWebDavDescription", targetId: "sync-webdav", route: { syncMethodTab: "webdav" } },
   { id: "sync-webdav-endpoint", category: "sync", titleKey: "settings.syncEndpoint", targetId: "sync-webdav", route: { syncMethodTab: "webdav" } },
