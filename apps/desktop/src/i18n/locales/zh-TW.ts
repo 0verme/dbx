@@ -4275,6 +4275,7 @@ export default withEnglishFallback({
     collectionValuePlaceholder: "輸入 JSON 陣列或逗號分隔值",
     preview: "SQL 預覽",
     execute: "執行",
+    clearValues: "清空參數值",
     useRawForAll: "全部使用原始 SQL",
     kind: {
       string: "字串",
