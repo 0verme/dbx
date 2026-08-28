@@ -825,6 +825,7 @@ fn schema_for_execution_context(db_type: Option<DatabaseType>, schema: Option<&s
     }
 }
 
+#[cfg(test)]
 fn sql_for_execution_context(db_type: Option<DatabaseType>, sql: &str, schema: Option<&str>) -> String {
     sql_for_execution_context_with_identifier_quote(db_type, sql, schema, None)
 }
