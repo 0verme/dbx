@@ -3040,6 +3040,7 @@ fn escape_presto_like_pattern(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::agent_postgres_extension_fallback_config;
     use super::db;
     use super::{
         clickhouse_metadata_database, dameng_object_statistics_dba_segments_sql,
@@ -4057,6 +4058,20 @@ for line in sys.stdin:
     }
 
     #[test]
+    fn detects_opengauss_constraint_profiles_without_gaussdb() {
+        assert!(super::is_opengauss_constraint_config(&test_connection_config(DatabaseType::OpenGauss)));
+        assert!(!super::is_opengauss_constraint_config(&test_connection_config(DatabaseType::Gaussdb)));
+        assert!(!super::is_opengauss_constraint_config(&test_connection_config(DatabaseType::Postgres)));
+
+        let mut profiled_postgres = test_connection_config(DatabaseType::Postgres);
+        profiled_postgres.driver_profile = Some("opengauss".to_string());
+        assert!(super::is_opengauss_constraint_config(&profiled_postgres));
+
+        profiled_postgres.driver_profile = Some("gaussdb".to_string());
+        assert!(!super::is_opengauss_constraint_config(&profiled_postgres));
+    }
+
+    #[test]
     fn detects_opengauss_sequence_compatibility_profiles() {
         assert!(super::is_opengauss_family_config(&test_connection_config(DatabaseType::OpenGauss)));
         assert!(super::is_opengauss_family_config(&test_connection_config(DatabaseType::Gaussdb)));
@@ -4694,6 +4709,17 @@ for line in sys.stdin:
         assert!(!is_agent_postgres_metadata_fallback_config(&test_connection_config(DatabaseType::Uxdb)));
         assert!(!is_agent_postgres_metadata_fallback_config(&test_connection_config(DatabaseType::Postgres)));
         assert!(!is_agent_postgres_metadata_fallback_config(&test_connection_config(DatabaseType::Mysql)));
+    }
+
+    #[test]
+    fn postgres_extension_metadata_fallback_targets_pg_compatible_agents() {
+        for db_type in [DatabaseType::Highgo, DatabaseType::Vastbase] {
+            assert!(agent_postgres_extension_fallback_config(Some(&test_connection_config(db_type))).is_some());
+        }
+        for db_type in [DatabaseType::Kingbase, DatabaseType::Uxdb, DatabaseType::Postgres, DatabaseType::Mysql] {
+            assert!(agent_postgres_extension_fallback_config(Some(&test_connection_config(db_type))).is_none());
+        }
+        assert!(agent_postgres_extension_fallback_config(None).is_none());
     }
 
     #[test]
@@ -6127,6 +6153,10 @@ fn is_agent_postgres_metadata_fallback_config(config: &ConnectionConfig) -> bool
     matches!(config.db_type, DatabaseType::Highgo | DatabaseType::Vastbase)
 }
 
+fn agent_postgres_extension_fallback_config(config: Option<&ConnectionConfig>) -> Option<&ConnectionConfig> {
+    config.filter(|config| is_agent_postgres_metadata_fallback_config(config))
+}
+
 async fn native_postgres_metadata_pool(
     state: &AppState,
     connection_id: &str,
@@ -7053,9 +7083,9 @@ pub async fn list_triggers_core(
     .await
 }
 
-// These object kinds are currently exposed by the Xugu agent only. Keeping
-// the core route generic makes the protocol reusable without altering the
-// metadata behavior of any built-in database driver.
+/// Lists structured constraints for a relation. Exposed generically so the
+/// agent protocol and native drivers share one route; the built-in drivers
+/// that implement it today are PostgreSQL, OpenGauss, and the Xugu agent.
 pub async fn list_constraints_core(
     state: &AppState,
     connection_id: &str,
@@ -7066,13 +7096,36 @@ pub async fn list_constraints_core(
     retry_metadata_connection(state, connection_id, Some(database), || async {
         let pool_key = state.get_or_create_metadata_pool_for_session(connection_id, Some(database), None).await?;
         let db_config = connection_config(state, connection_id).await;
-        let connections = state.connections.read().await;
-        if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.list_constraints(database, schema, table, agent_metadata_timeout(db_config.as_ref())).await;
+
+        {
+            let connections = state.connections.read().await;
+            if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
+                drop(connections);
+                let mut client = client.lock().await;
+                return client
+                    .list_constraints(database, schema, table, agent_metadata_timeout(db_config.as_ref()))
+                    .await;
+            }
         }
-        Ok(vec![])
+
+        let pool = clone_metadata_pool(state, &pool_key).await.ok_or("Pool not found")?;
+
+        match &pool {
+            // QuestDB speaks the PostgreSQL wire protocol but has no
+            // constraint metadata, and Redshift does not enforce or expose
+            // constraint definitions, so neither reports any.
+            PoolKind::Postgres(p) if db_config.as_ref().is_some_and(is_questdb_config) => Ok(vec![]),
+            PoolKind::Postgres(_)
+                if db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::Redshift) =>
+            {
+                Ok(vec![])
+            }
+            PoolKind::Postgres(p) if db_config.as_ref().is_some_and(is_opengauss_constraint_config) => {
+                db::postgres::list_opengauss_constraints(p, schema, table).await
+            }
+            PoolKind::Postgres(p) => db::postgres::list_constraints(p, schema, table).await,
+            _ => Ok(vec![]),
+        }
     })
     .await
 }
@@ -7255,6 +7308,15 @@ pub async fn list_extensions_core(
             }
         }
 
+        // HighGo and Vastbase use Agent pools but expose PostgreSQL's extension
+        // catalogs. Reuse the native metadata fallback so their installed
+        // extensions are not silently reported as an empty list.
+        if let Some(config) = agent_postgres_extension_fallback_config(db_config.as_ref()) {
+            if let Some(pool) = native_postgres_metadata_pool(state, connection_id, database, config).await? {
+                return db::postgres::list_extensions(&pool, schema).await;
+            }
+        }
+
         let pool = clone_metadata_pool(state, &pool_key).await.ok_or("Pool not found")?;
 
         match &pool {
@@ -7283,6 +7345,12 @@ pub async fn list_available_extensions_core(
                     agent_metadata_timeout(db_config.as_ref()),
                 )
                 .await;
+            }
+        }
+
+        if let Some(config) = agent_postgres_extension_fallback_config(db_config.as_ref()) {
+            if let Some(pool) = native_postgres_metadata_pool(state, connection_id, database, config).await? {
+                return db::postgres::list_available_extensions(&pool).await;
             }
         }
 
@@ -7647,6 +7715,10 @@ async fn get_table_ddl_once(
 
 async fn connection_config(state: &AppState, connection_id: &str) -> Option<ConnectionConfig> {
     state.configs.read().await.get(connection_id).cloned()
+}
+
+fn is_opengauss_constraint_config(config: &ConnectionConfig) -> bool {
+    config.db_type == DatabaseType::OpenGauss || config.driver_profile.as_deref() == Some("opengauss")
 }
 
 fn is_opengauss_family_config(config: &ConnectionConfig) -> bool {

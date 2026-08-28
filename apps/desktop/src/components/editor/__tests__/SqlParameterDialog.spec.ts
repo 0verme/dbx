@@ -36,7 +36,7 @@ const MIXED_VALUES: Record<string, SqlParameterInput> = {
   empty_value: { kind: "boolean", value: "" },
 };
 const RAW_VALUES = Object.fromEntries(Object.entries(MIXED_VALUES).map(([key, input]) => [key, { ...input, kind: "raw" as const }]));
-const RAW_SQL = "SELECT alpha beta, 42, NULL, current_date, NULL, alpha beta";
+const RAW_SQL = "SELECT alpha beta, 42, NULL, current_date, ${empty_value}, alpha beta";
 const CLEARED_VALUES: Record<string, SqlParameterInput> = {
   text_value: { kind: "string", value: "" },
   numeric_value: { kind: "number", value: "" },
@@ -44,7 +44,7 @@ const CLEARED_VALUES: Record<string, SqlParameterInput> = {
   raw_value: { kind: "raw", value: "" },
   empty_value: { kind: "boolean", value: "" },
 };
-const CLEARED_SQL = "SELECT '', NULL, NULL, NULL, '', ''";
+const CLEARED_SQL = "SELECT '', NULL, NULL, ${raw_value}, '', ''";
 
 const mountedApps: App[] = [];
 
