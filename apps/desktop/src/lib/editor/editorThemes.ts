@@ -818,6 +818,9 @@ export function buildEditorFontThemeRules(opts?: { fixedHeight?: boolean; scroll
       paddingRight: "8px",
       userSelect: "none",
     },
+    ".cm-lineNumbers .cm-gutterElement.cm-db-wrapped-line-number": {
+      alignItems: "flex-start",
+    },
     ".cm-run-statement-gutter": {
       minWidth: "28px",
     },
