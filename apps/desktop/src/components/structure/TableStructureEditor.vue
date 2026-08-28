@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { uuid } from "@/lib/common/utils";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
+import EditorSearchPanel from "@/components/editor/EditorSearchPanel.vue";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useProductionSafetyStore } from "@/stores/productionSafetyStore";
@@ -21,6 +22,8 @@ import { useQueryStore } from "@/stores/queryStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useSettingsStore, type StructureEditorDensity } from "@/stores/settingsStore";
 import { useTheme } from "@/composables/useTheme";
+import { editorFontTheme, loadEditorTheme } from "@/lib/editor/editorThemes";
+import { createDbxCodeMirrorSqlDialect } from "@/lib/editor/codemirrorSqlDialect";
 import { useToast } from "@/composables/useToast";
 import { type SqlHighlighter, createShikiSqlHighlighter } from "@/lib/sql/sqlHighlighter";
 import { joinSqlStatementsForScript } from "@/lib/sql/sqlBatchScript";
@@ -45,7 +48,7 @@ import { canAddTableStructureColumn, getTableStructureCapabilities, hasLocalTabl
 import { getConcurrentIndexAvailability, concurrentIndexNamesInStatements, normalizeUnsupportedConcurrentIndexes, type ConcurrentIndexAvailability } from "@/lib/table/concurrentIndexAvailability";
 import { orderedColumnIndexes, uniqueDataGridColumnOrderKeys } from "@/lib/dataGrid/dataGridColumnOrder";
 import { loadTableDataGridColumnOrder, notifyTableDataGridColumnOrderChanged, removeTableDataGridColumnOrder, saveTableDataGridColumnOrder, tableDataGridColumnOrderScopeKey } from "@/lib/dataGrid/dataGridColumnLayoutStorage";
-import { connectionObjectTreeQuerySchema, tableStructureDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
+import { codeMirrorSqlDialectForConnection, connectionObjectTreeQuerySchema, tableStructureDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { postgresListRolesSql, usersFromPostgresRolesResult } from "@/lib/database/databaseUserAdmin";
 import type { ColumnInfo, ConstraintInfo, TableInfo, TableInfoTab, TableStructureEditorDraft, TableStructureEditorTarget, TableStructureEditorViewport } from "@/types/database";
 import {
@@ -94,9 +97,10 @@ import {
 import { CREATE_DATABASE_CHARSET_OPTIONS, createDatabaseCollationOptionsForCharset, fallbackCreateDatabaseCharsetMetadata, normalizeCreateDatabaseCharsetKey, parseCreateDatabaseCharsetMetadata } from "@/lib/database/createDatabaseCharsetOptions";
 import type { CreateDatabaseCharsetMetadata } from "@/lib/database/createDatabaseCharsetOptions";
 import * as api from "@/lib/backend/api";
+import type { EditorView } from "@codemirror/view";
 
 const { t } = useI18n();
-const { isDark } = useTheme();
+const { isDark, themePalette } = useTheme();
 const store = useConnectionStore();
 const productionSafetyStore = useProductionSafetyStore();
 const queryStore = useQueryStore();
@@ -162,22 +166,120 @@ const constraintsLoading = ref(false);
 const triggersLoading = ref(false);
 const ddlContent = ref("");
 const ddlLoading = ref(false);
+const ddlEditorContainer = ref<HTMLDivElement>();
+const ddlSearchPanelRef = ref<InstanceType<typeof EditorSearchPanel>>();
+const ddlSearchOpen = ref(false);
+const ddlEditorView = shallowRef<EditorView | null>(null);
+let ddlEditorInitRequestId = 0;
+let ddlEditorScrollCleanup: (() => void) | null = null;
 const loadedMetadataFacets = new Set<ObjectMetadataFacet>();
 let structureEditorReady = false;
-const ddlPreRef = ref<HTMLPreElement | null>(null);
-function onDdlKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key === "a") {
-    e.preventDefault();
-    const el = ddlPreRef.value;
-    if (!el) return;
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-  }
-}
 const ddlFetched = ref(false);
+
+function ddlEditorDocument(): string {
+  return ddlContent.value || t("structureEditor.emptyReadonly");
+}
+
+function destroyDdlEditor() {
+  ddlEditorInitRequestId += 1;
+  ddlEditorScrollCleanup?.();
+  ddlEditorScrollCleanup = null;
+  ddlEditorView.value?.destroy();
+  ddlEditorView.value = null;
+}
+
+function updateDdlEditorContent(content: string): boolean {
+  const view = ddlEditorView.value;
+  if (!view) return false;
+  if (view.state.doc.toString() !== content) {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: content },
+    });
+  }
+  return true;
+}
+
+function observeDdlEditorScroll(view: EditorView) {
+  ddlEditorScrollCleanup?.();
+  const scrollDOM = view.scrollDOM;
+  const onScroll = (event: Event) => onStructureContentScroll("ddl", event);
+  scrollDOM.addEventListener("scroll", onScroll, { passive: true });
+  ddlEditorScrollCleanup = () => scrollDOM.removeEventListener("scroll", onScroll);
+}
+
+async function initDdlEditor(content: string) {
+  const container = ddlEditorContainer.value;
+  if (!container) return;
+
+  const existingView = ddlEditorView.value;
+  if (existingView?.dom.parentElement === container) {
+    updateDdlEditorContent(content);
+    existingView.focus();
+    return;
+  }
+  if (existingView) destroyDdlEditor();
+
+  const requestId = ++ddlEditorInitRequestId;
+  const [{ EditorView, keymap }, { EditorState, Prec }, langSql, { basicSetup }, { search: cmSearch }] = await Promise.all([import("@codemirror/view"), import("@codemirror/state"), import("@codemirror/lang-sql"), import("codemirror"), import("@codemirror/search")]);
+  if (requestId !== ddlEditorInitRequestId || activeTab.value !== "ddl" || loading.value || ddlLoading.value || ddlEditorContainer.value !== container) return;
+
+  const editorSettings = settingsStore.editorSettings;
+  const themeExt = await loadEditorTheme(editorSettings.theme, isDark.value ? "dark" : "light", undefined, themePalette.value);
+  if (requestId !== ddlEditorInitRequestId || activeTab.value !== "ddl" || loading.value || ddlLoading.value || ddlEditorContainer.value !== container) return;
+
+  const fontExt = editorFontTheme(EditorView, editorSettings.fontSize, editorSettings.fontFamily, { fixedHeight: true, scrollable: true });
+  const dialect = createDbxCodeMirrorSqlDialect(langSql, codeMirrorSqlDialectForConnection(connection.value), databaseType.value, connection.value?.driver_profile);
+  const state = EditorState.create({
+    doc: content,
+    extensions: [
+      cmSearch({
+        top: true,
+        createPanel: () => {
+          const dom = document.createElement("span");
+          dom.style.display = "none";
+          return { dom };
+        },
+        scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: "center" }),
+      }),
+      basicSetup,
+      EditorState.allowMultipleSelections.of(true),
+      langSql.sql({ dialect }),
+      themeExt,
+      fontExt,
+      Prec.highest(keymap.of([{ key: "Mod-f", run: () => ddlSearchPanelRef.value?.openSearch() ?? false, preventDefault: true }])),
+      EditorView.theme({
+        "&.cm-focused": { outline: "none" },
+        ".cm-content": {
+          cursor: "text",
+          padding: "0.75rem",
+          userSelect: "text",
+          WebkitUserSelect: "text",
+        },
+        ".cm-line": {
+          userSelect: "text",
+          WebkitUserSelect: "text",
+        },
+      }),
+      EditorState.readOnly.of(true),
+    ],
+  });
+  const editorView = new EditorView({ state, parent: container });
+  if (requestId !== ddlEditorInitRequestId || activeTab.value !== "ddl" || loading.value || ddlLoading.value || ddlEditorContainer.value !== container) {
+    editorView.destroy();
+    return;
+  }
+  ddlEditorView.value = editorView;
+  observeDdlEditorScroll(editorView);
+  editorView.focus();
+  restoreStructureScrollPosition("ddl");
+}
+
+function scheduleDdlEditorInit() {
+  void nextTick(() => {
+    if (activeTab.value !== "ddl" || loading.value || ddlLoading.value) return;
+    void initDdlEditor(ddlEditorDocument());
+  });
+}
 
 function ddlRequest() {
   return {
@@ -191,6 +293,7 @@ function ddlRequest() {
 
 async function fetchDdl(force = false) {
   if (!props.connectionId || !props.database || !props.tableName || (!force && ddlFetched.value) || !tableMetadataCapabilities.value.ddl) return;
+  if (force) destroyDdlEditor();
   ddlLoading.value = true;
   try {
     const { ddl } = await loadObjectDdl(ddlRequest(), { force });
@@ -1141,6 +1244,11 @@ function restoreStructureScrollPosition(tab = activeTab.value) {
   const position = structureScrollPositions.value[tab];
   if (!position) return;
   nextTick(() => {
+    if (tab === "ddl" && ddlEditorView.value) {
+      ddlEditorView.value.scrollDOM.scrollTop = Math.max(0, position.scrollTop);
+      ddlEditorView.value.scrollDOM.scrollLeft = Math.max(0, position.scrollLeft);
+      return;
+    }
     const scroller = structureScrollerForTab(tab);
     if (!scroller) return;
     scroller.scrollTop = Math.max(0, position.scrollTop);
@@ -3441,6 +3549,7 @@ function isPlainModDeleteShortcut(event: KeyboardEvent): boolean {
 }
 
 function onStructureEditorKeydown(event: KeyboardEvent) {
+  if (event.defaultPrevented) return;
   const focusedColumn = activeTab.value === "columns" ? focusedEditableColumn(event.target) : undefined;
   if (focusedColumn && isShiftEnterShortcut(event) && canAddColumn.value) {
     event.preventDefault();
@@ -3465,6 +3574,7 @@ function onStructureEditorKeydown(event: KeyboardEvent) {
     event.preventDefault();
     event.stopPropagation();
     if (activeTab.value === "columns") focusColumnSearch();
+    else if (activeTab.value === "ddl") ddlSearchPanelRef.value?.openSearch();
     return;
   }
   if (isPlainModShortcut(event, "s")) {
@@ -3547,6 +3657,7 @@ onActivated(() => {
     });
   }
   restoreStructureScrollPosition();
+  if (activeTab.value === "ddl") scheduleDdlEditorInit();
 });
 onDeactivated(() => {
   unregisterStructureEditorShortcuts();
@@ -3554,6 +3665,7 @@ onDeactivated(() => {
   structureHorizontalScrollbarResizeObserver?.disconnect();
   structureHorizontalScrollbarResizeObserver = null;
   stopStructureHorizontalScrollbarDrag();
+  destroyDdlEditor();
 });
 onBeforeUnmount(() => {
   clearCopySourceTableSearchTimer();
@@ -3562,6 +3674,7 @@ onBeforeUnmount(() => {
   structureHorizontalScrollbarObserverGeneration += 1;
   structureHorizontalScrollbarResizeObserver?.disconnect();
   unregisterStructureEditorShortcuts();
+  destroyDdlEditor();
   clearSqlPreviewState();
   if (columnHighlightTimer) window.clearTimeout(columnHighlightTimer);
   if (indexHighlightTimer) window.clearTimeout(indexHighlightTimer);
@@ -3684,6 +3797,7 @@ watch(
 
 watch(activeTab, () => {
   stopStructureHorizontalScrollbarDrag();
+  if (activeTab.value !== "ddl") destroyDdlEditor();
   clearColumnSelection();
   highlightedColumnId.value = null;
   highlightedIndexId.value = null;
@@ -3754,12 +3868,8 @@ async function loadActiveTableStructureMetadataIfNeeded() {
 
 watch([activeTab, loading, secondaryMetadataLoading], () => void loadActiveTableStructureMetadataIfNeeded(), { flush: "sync" });
 
-watch([activeTab, ddlLoading], ([tab, loading]) => {
-  if (tab === "ddl" && !loading) {
-    void nextTick(() => {
-      ddlPreRef.value?.focus();
-    });
-  }
+watch([activeTab, loading, ddlLoading, ddlContent], ([tab, structureIsLoading, ddlIsLoading]) => {
+  if (tab === "ddl" && !structureIsLoading && !ddlIsLoading) scheduleDdlEditorInit();
 });
 </script>
 
@@ -4651,11 +4761,12 @@ watch([activeTab, ddlLoading], ([tab, loading]) => {
               {{ t("common.loading") }}
             </div>
             <template v-else>
-              <Button v-if="ddlContent" variant="outline" size="sm" class="absolute right-3 top-3 z-10 h-7 gap-1 px-2" :title="t('grid.copyDdl')" @click="copyDdlContent">
+              <Button v-if="ddlContent && !ddlSearchOpen" variant="outline" size="sm" class="absolute right-3 top-3 z-10 h-7 gap-1 px-2" :title="t('grid.copyDdl')" @click="copyDdlContent">
                 <Copy class="h-3.5 w-3.5" />
                 {{ t("grid.copyDdl") }}
               </Button>
-              <pre ref="ddlPreRef" tabindex="0" class="m-0 min-h-0 flex-1 whitespace-pre p-3 font-mono text-xs leading-5 select-text outline-none" v-html="ddlContent ? (sqlHighlighter?.(ddlContent) ?? ddlContent) : t('structureEditor.emptyReadonly')" @keydown="onDdlKeydown"></pre>
+              <div ref="ddlEditorContainer" class="structure-ddl-editor h-full min-h-full min-w-0 w-full"></div>
+              <EditorSearchPanel v-if="ddlEditorView" ref="ddlSearchPanelRef" :view="ddlEditorView" @open="ddlSearchOpen = true" @close="ddlSearchOpen = false" />
             </template>
           </TabsContent>
         </Tabs>
@@ -4826,6 +4937,27 @@ watch([activeTab, ddlLoading], ([tab, loading]) => {
 </template>
 
 <style scoped>
+.structure-ddl-editor :deep(.cm-editor) {
+  min-height: 100%;
+  background: transparent;
+}
+
+.structure-ddl-editor :deep(.cm-content),
+.structure-ddl-editor :deep(.cm-line) {
+  cursor: text;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.structure-ddl-editor :deep(.cm-selectionBackground),
+.structure-ddl-editor :deep(.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground) {
+  background: var(--dbx-editor-selection-background, rgba(59, 130, 246, 0.35)) !important;
+}
+
+.structure-ddl-editor :deep(.cm-content ::selection) {
+  background: var(--dbx-editor-selection-background, rgba(59, 130, 246, 0.35)) !important;
+}
+
 .structure-table-scroller::-webkit-scrollbar {
   width: 8px;
   height: 0;
