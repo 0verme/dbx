@@ -19,6 +19,7 @@ import SchemaDiffOptionsPanel from "@/components/diff/SchemaDiffOptionsPanel.vue
 import { getSchemaDiffOptionsForDbType } from "@/lib/schema/schemaDiffOptions";
 import { buildDeployTxResult } from "@/lib/schema/deployTxResult";
 import { loadSchemaDetails } from "@/lib/schema/schemaDiffMetadataLoad";
+import { getSchemaDiffNextProgressStep, isSchemaDiffPostgresLike, shouldLoadSchemaDiffExtraObjects, type SchemaDiffProgressPhase } from "@/lib/schema/schemaDiffProgress";
 import { createSchemaDiffTableListLoader, type SchemaDiffTableIdentity } from "@/lib/schema/schemaDiffTableList";
 import { normalizeSchemaDiffCompareOptions } from "@/types/schemaDiff";
 import type { SchemaDiffCompareOptions, SchemaDiffConfig, FieldMappingEntry } from "@/types/schemaDiff";
@@ -103,7 +104,6 @@ const optionTree = computed(() => {
 });
 
 // Compare state
-type SchemaDiffProgressPhase = "loading-table-lists" | "loading-source-details" | "loading-target-details" | "loading-extra-objects" | "comparing" | "generating" | "complete";
 interface SchemaDiffProgress {
   phase: SchemaDiffProgressPhase;
   current?: number;
@@ -113,6 +113,7 @@ interface SchemaDiffProgress {
 
 const loading = ref(false);
 const schemaDiffProgress = ref<SchemaDiffProgress | null>(null);
+const schemaDiffHasExtraObjectPhase = ref(false);
 let comparisonRequestId = 0;
 const diffObjects = ref<SchemaDiffObject[]>([]);
 const diffGroups = ref<OperationGroup[]>([]);
@@ -311,11 +312,17 @@ const schemaDiffProgressLabel = computed(() => {
   }
 });
 
+const schemaDiffNextProgressLabel = computed(() => {
+  const nextStep = getSchemaDiffNextProgressStep(schemaDiffProgress.value?.phase, schemaDiffHasExtraObjectPhase.value);
+  return nextStep ? t("diff.progress.next", { step: t(`diff.progress.${nextStep}`) }) : "";
+});
+
 function resetComparisonResultState() {
   comparisonRequestId++;
   deploySqlGeneration++;
   loading.value = false;
   schemaDiffProgress.value = null;
+  schemaDiffHasExtraObjectPhase.value = false;
   step.value = "config";
   diffObjects.value = [];
   diffGroups.value = [];
@@ -356,6 +363,7 @@ watch(
       comparisonRequestId++;
       loading.value = false;
       schemaDiffProgress.value = null;
+      schemaDiffHasExtraObjectPhase.value = false;
     }
   },
   { immediate: true },
@@ -428,6 +436,7 @@ async function handleCompare() {
   loading.value = true;
   step.value = "compare";
   schemaDiffProgress.value = { phase: "loading-table-lists" };
+  schemaDiffHasExtraObjectPhase.value = false;
 
   // Reset Phase 4 state to prevent stale data from previous compares
   rollbackSql.value = "";
@@ -444,6 +453,9 @@ async function handleCompare() {
     const dbType = targetConfig?.db_type || "mysql";
     const sourceDbType = sourceConfig?.db_type || dbType;
     const opts = normalizeSchemaDiffCompareOptions(activeConfig.value?.options, dbType);
+    const isPostgresLike = isSchemaDiffPostgresLike(dbType);
+    const hasExtraObjectPhase = shouldLoadSchemaDiffExtraObjects(dbType, opts);
+    schemaDiffHasExtraObjectPhase.value = hasExtraObjectPhase;
     const tableFilter = compileSchemaDiffTableFilter(opts);
 
     const sourceTableIdentity: SchemaDiffTableIdentity = { connectionId: sourceConnectionId.value, database: sourceDatabase.value, schema: sourceSchema.value };
@@ -491,8 +503,6 @@ async function handleCompare() {
     );
     if (!isCurrentRequest()) return;
 
-    const isPostgresLike = dbType === "postgres" || dbType === "opengauss";
-
     // Fetch new object types for PostgreSQL-like databases
     const promises: Promise<any>[] = [];
     if (isPostgresLike && opts?.functions) {
@@ -512,7 +522,7 @@ async function handleCompare() {
       promises.push(api.listOwners(targetConnectionId.value, targetDatabase.value, targetSchema.value));
     }
 
-    if (promises.length > 0) schemaDiffProgress.value = { phase: "loading-extra-objects" };
+    if (hasExtraObjectPhase) schemaDiffProgress.value = { phase: "loading-extra-objects" };
     const results = await Promise.all(promises);
     if (!isCurrentRequest()) return;
     let idx = 0;
@@ -601,6 +611,7 @@ async function handleCompare() {
   } catch (e: any) {
     if (!isCurrentRequest()) return;
     schemaDiffProgress.value = null;
+    schemaDiffHasExtraObjectPhase.value = false;
     toast(e?.message || String(e), 5000);
     step.value = "config";
   } finally {
@@ -1035,6 +1046,7 @@ const targetConnectionInfo = computed(() => {
               </div>
             </div>
             <div v-if="schemaDiffProgress?.objectName" class="truncate text-center text-xs text-muted-foreground" :title="schemaDiffProgress.objectName">{{ schemaDiffProgress.objectName }}</div>
+            <div v-if="schemaDiffNextProgressLabel" class="text-center text-xs text-muted-foreground">{{ schemaDiffNextProgressLabel }}</div>
           </div>
         </div>
 
