@@ -13,6 +13,15 @@ const mocks = vi.hoisted(() => ({
   getColumns: vi.fn().mockResolvedValue([{ name: "ID", data_type: "NUMBER", is_primary_key: true }]),
 }));
 
+function passthrough(tag: string) {
+  return defineComponent({
+    inheritAttrs: false,
+    setup(_, { attrs, slots }) {
+      return () => h(tag, attrs, slots.default?.());
+    },
+  });
+}
+
 vi.mock("@/stores/connectionStore", () => {
   const connections = [
     { id: "oracle-11g", name: "Oracle XE 11g", db_type: "oracle", driver_profile: "oracle", database: "XE" },
@@ -33,6 +42,10 @@ vi.mock("@/stores/connectionStore", () => {
     }),
   };
 });
+
+vi.mock("@/components/connection/ConnectionGroupBadge.vue", () => ({
+  default: passthrough("span"),
+}));
 
 vi.mock("@/lib/backend/api", () => ({
   listDatabases: mocks.listDatabases,
