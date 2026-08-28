@@ -811,7 +811,10 @@ export function buildEditorFontThemeRules(opts?: { fixedHeight?: boolean; scroll
       zIndex: "10",
     },
     ".cm-lineNumbers .cm-gutterElement": {
+      alignItems: "center",
       cursor: "pointer",
+      display: "flex",
+      justifyContent: "flex-end",
       paddingRight: "8px",
       userSelect: "none",
     },
