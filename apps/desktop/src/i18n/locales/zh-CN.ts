@@ -6282,6 +6282,8 @@ export default withEnglishFallback({
     tableOpenPageSizeDescription: "新打开数据表时每页加载的行数。在表数据页修改每页行数后，也会更新后续新建表标签页的默认值。",
     queryPageSize: "查询结果默认每页行数",
     queryPageSizeDescription: "每个查询结果分页加载的行数，最大支持 {max} 行。",
+    multiStatementDefaultView: "多语句执行默认视图",
+    multiStatementDefaultViewDescription: "选择多条 SQL 语句批量执行后默认打开数据表或执行摘要。",
     queryResultMaxRows: "查询结果最大行数",
     queryResultMaxRowsEnabled: "限制查询结果行数",
     queryResultMaxRowsDescription: "限制查询、表数据、存储过程及连续滚动累计保留的总行数。",

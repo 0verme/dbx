@@ -5319,6 +5319,8 @@ export default withEnglishFallback({
     tableOpenPageSizeDescription: "新開啟資料表時每頁載入的列數。在資料表頁面調整每頁列數後，也會更新後續新建資料表分頁的預設值。",
     queryPageSize: "查詢結果預設每頁列數",
     queryPageSizeDescription: "每個查詢結果分頁載入的列數，最多支援 {max} 列。",
+    multiStatementDefaultView: "多語句執行預設檢視",
+    multiStatementDefaultViewDescription: "選擇多條 SQL 語句批次執行後預設開啟資料表或執行摘要。",
     queryResultMaxRows: "查詢結果最大列數",
     queryResultMaxRowsEnabled: "限制查詢結果列數",
     queryResultMaxRowsDescription: "限制查詢、資料表資料、預存程序及連續捲動累計保留的總列數。",

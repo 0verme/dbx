@@ -6002,6 +6002,8 @@ export default withEnglishFallback({
     tableOpenPageSizeDescription: "Linhas carregadas por página ao abrir uma nova tabela. Alterar as linhas por página atualiza esse padrão para futuras abas de tabelas.",
     queryPageSize: "Linhas padrão por página de consulta",
     queryPageSizeDescription: "Linhas carregadas por página de resultados. São suportadas até {max} linhas.",
+    multiStatementDefaultView: "Visualização padrão para várias instruções",
+    multiStatementDefaultViewDescription: "Escolha se lotes com várias instruções SQL abrem na tabela de resultados ou no resumo da execução.",
     queryResultMaxRows: "Máximo de linhas do resultado",
     queryResultMaxRowsEnabled: "Limitar linhas do resultado",
     queryResultMaxRowsDescription: "Limita as linhas mantidas por consultas, dados de tabelas, procedimentos armazenados e carregamento contínuo.",

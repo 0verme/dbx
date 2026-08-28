@@ -6000,6 +6000,8 @@ export default withEnglishFallback({
     tableOpenPageSizeDescription: "Righe caricate per pagina quando si apre una nuova tabella. La modifica delle righe per pagina aggiorna questo valore per le future schede tabella.",
     queryPageSize: "Righe predefinite per pagina di query",
     queryPageSizeDescription: "Righe caricate per pagina dei risultati. Sono supportate fino a {max} righe.",
+    multiStatementDefaultView: "Vista predefinita per istruzioni multiple",
+    multiStatementDefaultViewDescription: "Scegli se i batch con più istruzioni SQL si aprono nella tabella dei risultati o nel riepilogo dell'esecuzione.",
     queryResultMaxRows: "Numero massimo di righe del risultato",
     queryResultMaxRowsEnabled: "Limita le righe del risultato",
     queryResultMaxRowsDescription: "Limita le righe conservate da query, dati tabella, stored procedure e caricamento continuo.",
