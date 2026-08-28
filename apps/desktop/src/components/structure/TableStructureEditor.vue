@@ -99,7 +99,7 @@ import * as api from "@/lib/backend/api";
 import type { EditorView } from "@codemirror/view";
 
 const { t } = useI18n();
-const { isDark } = useTheme();
+const { isDark, themePalette } = useTheme();
 const store = useConnectionStore();
 const productionSafetyStore = useProductionSafetyStore();
 const queryStore = useQueryStore();
@@ -167,6 +167,7 @@ const ddlContent = ref("");
 const ddlLoading = ref(false);
 const ddlEditorContainer = ref<HTMLDivElement>();
 const ddlSearchPanelRef = ref<InstanceType<typeof EditorSearchPanel>>();
+const ddlSearchOpen = ref(false);
 const ddlEditorView = shallowRef<EditorView | null>(null);
 let ddlEditorInitRequestId = 0;
 let ddlEditorScrollCleanup: (() => void) | null = null;
@@ -222,7 +223,7 @@ async function initDdlEditor(content: string) {
   if (requestId !== ddlEditorInitRequestId || activeTab.value !== "ddl" || loading.value || ddlLoading.value || ddlEditorContainer.value !== container) return;
 
   const editorSettings = settingsStore.editorSettings;
-  const themeExt = await loadEditorTheme(editorSettings.theme, isDark.value ? "dark" : "light");
+  const themeExt = await loadEditorTheme(editorSettings.theme, isDark.value ? "dark" : "light", undefined, themePalette.value);
   if (requestId !== ddlEditorInitRequestId || activeTab.value !== "ddl" || loading.value || ddlLoading.value || ddlEditorContainer.value !== container) return;
 
   const fontExt = editorFontTheme(EditorView, editorSettings.fontSize, editorSettings.fontFamily, { fixedHeight: true, scrollable: true });
@@ -4720,12 +4721,12 @@ watch([activeTab, loading, ddlLoading, ddlContent], ([tab, structureIsLoading, d
               {{ t("common.loading") }}
             </div>
             <template v-else>
-              <Button v-if="ddlContent" variant="outline" size="sm" class="absolute right-3 top-3 z-10 h-7 gap-1 px-2" :title="t('grid.copyDdl')" @click="copyDdlContent">
+              <Button v-if="ddlContent && !ddlSearchOpen" variant="outline" size="sm" class="absolute right-3 top-3 z-10 h-7 gap-1 px-2" :title="t('grid.copyDdl')" @click="copyDdlContent">
                 <Copy class="h-3.5 w-3.5" />
                 {{ t("grid.copyDdl") }}
               </Button>
               <div ref="ddlEditorContainer" class="structure-ddl-editor h-full min-h-full min-w-0 w-full"></div>
-              <EditorSearchPanel v-if="ddlEditorView" ref="ddlSearchPanelRef" :view="ddlEditorView" />
+              <EditorSearchPanel v-if="ddlEditorView" ref="ddlSearchPanelRef" :view="ddlEditorView" @open="ddlSearchOpen = true" @close="ddlSearchOpen = false" />
             </template>
           </TabsContent>
         </Tabs>
