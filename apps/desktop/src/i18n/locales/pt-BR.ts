@@ -4948,6 +4948,7 @@ export default withEnglishFallback({
     collectionValuePlaceholder: "Insira um array JSON ou valores separados por vírgula",
     preview: "Prévia SQL",
     execute: "Executar",
+    clearValues: "Limpar valores",
     useRawForAll: "Usar SQL bruto para todos",
     kind: {
       string: "Texto",

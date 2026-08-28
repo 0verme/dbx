@@ -4975,6 +4975,7 @@ export default withEnglishFallback({
     collectionValuePlaceholder: "JSON 配列またはカンマ区切りの値を入力",
     preview: "SQLプレビュー",
     execute: "実行",
+    clearValues: "値をクリア",
     useRawForAll: "すべてを生の SQL に設定",
     kind: {
       string: "文字列",
