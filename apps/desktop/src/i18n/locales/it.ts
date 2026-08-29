@@ -1473,6 +1473,7 @@ export default withEnglishFallback({
     totalRows: "Totale {count} righe",
     loadedRows: "{count} righe caricate",
     totalRowCount: "({count} in totale)",
+    totalRowCountWithAction: "({button}{count} in totale)",
     totalRowCountAtLeast: "(almeno {count} in totale)",
     totalRowCountEstimated: "(circa {count})",
     totalRowCountLoading: "(conteggio...)",

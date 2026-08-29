@@ -1534,6 +1534,7 @@ export default {
     totalRows: "Total {count} rows",
     loadedRows: "Loaded {count} rows",
     totalRowCount: "({count} total)",
+    totalRowCountWithAction: "({button}{count} total)",
     totalRowCountAtLeast: "(at least {count} total)",
     totalRowCountEstimated: "(~{count})",
     totalRowCountLoading: "(counting...)",
