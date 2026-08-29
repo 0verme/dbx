@@ -13,4 +13,9 @@ describe("SchemaDiffDdlPanel diff highlighting", () => {
   it("never applies the focused-row outline to empty padding lines", () => {
     expect(panelSource).toContain('if (line.isPadding || focusedLineNumber === null) return "";');
   });
+
+  it("keeps rollback comparison based on the selected forward SQL", () => {
+    expect(panelSource).toContain("rollbackForwardSql?: string;");
+    expect(panelSource).toContain("props.rollbackForwardSql ?? props.deploySql");
+  });
 });

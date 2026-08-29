@@ -71,4 +71,19 @@ describe("SchemaDiffDialog fullscreen layout", () => {
     expect(targetMatch).toBeGreaterThan(comparisonScope);
     expect(targetMatch).toBeLessThan(options);
   });
+
+  it("keeps focused and selected deployment SQL projections separate", () => {
+    expect(dialogSource).toContain('const focusedDeploySql = ref("");');
+    expect(dialogSource).toContain('const selectedDeploySql = ref("");');
+    expect(dialogSource).toContain("const input = selectSchemaDiffInputForObject(result, diffObjects.value, objectId);");
+    expect(dialogSource).toContain(':deploy-sql="focusedDeploySql"');
+    expect(dialogSource).toContain(':deploy-sql-all="selectedDeploySql"');
+    expect(dialogSource).not.toContain("deploySqlAll.value = result.syncSql");
+  });
+
+  it("executes the selected SQL rather than the focused preview", () => {
+    expect(dialogSource).toContain("sql: selectedDeploySql.value");
+    expect(dialogSource).toContain("[selectedDeploySql.value]");
+    expect(dialogSource).toContain("selectedObjectId.value !== objectId");
+  });
 });

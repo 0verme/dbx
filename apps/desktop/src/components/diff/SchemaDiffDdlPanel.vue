@@ -39,6 +39,7 @@ const props = defineProps<{
   focusedObject?: SchemaDiffObject | null;
   deploySql: string;
   deploySqlAll: string;
+  rollbackForwardSql?: string;
   compatibilityWarnings?: CompatibilityWarning[];
   rollbackSql?: string;
   deploySqlMode?: "forward" | "rollback";
@@ -71,7 +72,7 @@ const rollbackConnectorKey = ref(0);
 
 const rollbackHunks = computed(() => {
   if (!props.rollbackSql) return [];
-  return buildHunks(props.deploySql, props.rollbackSql);
+  return buildHunks(props.rollbackForwardSql ?? props.deploySql, props.rollbackSql);
 });
 
 const hunks = computed(() => {

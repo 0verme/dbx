@@ -33,6 +33,7 @@ import {
   flattenSchemaDiffObjects,
   schemaDiffSelectionTargets,
   selectSchemaDiffInput,
+  selectSchemaDiffInputForObject,
   selectedSchemaDiffObjects,
   setSchemaDiffObjectSelected,
   setSchemaDiffObjectSelectedWithDependencies,
@@ -108,8 +109,11 @@ const loading = ref(false);
 const diffObjects = ref<SchemaDiffObject[]>([]);
 const diffGroups = ref<OperationGroup[]>([]);
 const selectedObjectId = ref<string | null>(null);
-const deploySql = ref("");
-const deploySqlAll = ref("");
+const focusedDeploySql = ref("");
+const focusedForwardDeploySql = ref("");
+const focusedRollbackSql = ref("");
+const selectedDeploySql = ref("");
+const selectedForwardDeploySql = ref("");
 const executing = ref(false);
 const lastDiffResult = ref<SchemaDiffPreparation | null>(null);
 const targetDbVersion = ref<string | null>(null);
@@ -124,7 +128,8 @@ const renameCandidates = ref<RenameCandidate[]>([]);
 const compatibilityWarnings = ref<CompatibilityWarning[]>([]);
 const permissionDiffs = ref<PermissionDiff[]>([]);
 const dependencyGraph = ref<DependencyGraph | null>(null);
-let deploySqlGeneration = 0;
+let selectedDeploySqlGeneration = 0;
+let focusedDeploySqlGeneration = 0;
 
 // Rename candidates panel
 const showRenamePanel = ref(true);
@@ -274,13 +279,17 @@ const canDeploy = computed(() => {
 });
 
 function resetComparisonResultState() {
-  deploySqlGeneration++;
+  selectedDeploySqlGeneration++;
+  focusedDeploySqlGeneration++;
   step.value = "config";
   diffObjects.value = [];
   diffGroups.value = [];
   selectedObjectId.value = null;
-  deploySql.value = "";
-  deploySqlAll.value = "";
+  focusedDeploySql.value = "";
+  focusedForwardDeploySql.value = "";
+  focusedRollbackSql.value = "";
+  selectedDeploySql.value = "";
+  selectedForwardDeploySql.value = "";
   lastDiffResult.value = null;
   rollbackSql.value = "";
   rollbackCompleteness.value = "complete";
@@ -552,17 +561,12 @@ async function handleCompare() {
     // Group by operation type and object kind
     diffGroups.value = groupDiffObjects(diffObjects.value);
 
-    // Save full result and apply column rename detection to SQL
+    // Save the structured result; both script previews are generated from the
+    // current selection projection below rather than from the initial full SQL.
     lastDiffResult.value = result;
-    deploySqlAll.value = result.syncSql;
-    if (opts?.detectRenames && opts.renameThreshold) {
-      deploySqlAll.value = injectColumnRenameSql(deploySqlAll.value, result.diffs, opts.renameThreshold);
-      if (rollbackSql.value) {
-        rollbackSql.value = injectColumnRenameSql(rollbackSql.value, result.diffs, opts.renameThreshold, true);
-      }
-    }
     deploySqlMode.value = "forward";
-    await regenerateDeploySql();
+    await regenerateSelectedDeploySql();
+    await regenerateFocusedDeploySql();
 
     step.value = "result";
   } catch (e: any) {
@@ -585,7 +589,7 @@ function handleToggleGroupSelection(operationType: DiffOperationType, selected: 
     }
   }
   rebuildDiffGroups();
-  void regenerateDeploySql();
+  void regenerateSelectedDeploySql();
 }
 
 function handleToggleObjectSelection(object: SchemaDiffObject, selected: boolean) {
@@ -595,7 +599,7 @@ function handleToggleObjectSelection(object: SchemaDiffObject, selected: boolean
   }
   if (!changed) return;
   rebuildDiffGroups();
-  void regenerateDeploySql();
+  void regenerateSelectedDeploySql();
 }
 
 function updateObjectSelection(objectId: string, selected: boolean): boolean {
@@ -615,43 +619,81 @@ function rebuildDiffGroups() {
   }));
 }
 
-async function regenerateDeploySql() {
-  const result = lastDiffResult.value;
-  if (!result) {
-    deploySql.value = "-- No objects selected";
-    rollbackSql.value = "";
-    return;
-  }
+function buildSchemaSyncPlanOptions(options: SchemaDiffCompareOptions) {
+  return {
+    databaseType: getDbType(),
+    targetSchema: schemaDiffDeployTargetSchema(getDbType(), targetDatabase.value, targetSchema.value),
+    cascadeDelete: options.cascadeDelete,
+    sourceDialect: options.sourceDialect ? normalizeDialectKind(options.sourceDialect) : sourceDbType.value ? databaseTypeToDialectKind(sourceDbType.value) : undefined,
+    fieldMappings: options.fieldMappings,
+    enableRollback: options.enableRollback,
+  };
+}
 
-  const generation = ++deploySqlGeneration;
-  const options = normalizeSchemaDiffCompareOptions(activeConfig.value?.options, getDbType());
-  const input = selectSchemaDiffInput(result, diffObjects.value);
-  let plan;
-  try {
-    plan = await api.generateSchemaSyncPlan(input, {
-      databaseType: getDbType(),
-      targetSchema: schemaDiffDeployTargetSchema(getDbType(), targetDatabase.value, targetSchema.value),
-      cascadeDelete: options.cascadeDelete,
-      sourceDialect: options.sourceDialect ? normalizeDialectKind(options.sourceDialect) : sourceDbType.value ? databaseTypeToDialectKind(sourceDbType.value) : undefined,
-      fieldMappings: options.fieldMappings,
-      enableRollback: options.enableRollback,
-    });
-  } catch (error: any) {
-    if (generation === deploySqlGeneration) toast(error?.message || String(error), 5000);
-    return;
-  }
-  if (generation !== deploySqlGeneration) return;
-
+function formatSchemaSyncPlan(plan: Awaited<ReturnType<typeof api.generateSchemaSyncPlan>>, input: ReturnType<typeof selectSchemaDiffInput>, options: SchemaDiffCompareOptions) {
   let forwardSql = plan.syncSql || "-- No objects selected";
   let nextRollbackSql = plan.rollbackSyncSql ?? "";
-  rollbackCompleteness.value = plan.rollbackCompleteness ?? "complete";
-  missingRollbackObjects.value = plan.missingRollbackObjects ?? [];
   if (options.detectRenames && options.renameThreshold) {
     forwardSql = injectColumnRenameSql(forwardSql, input.diffs, options.renameThreshold);
     if (nextRollbackSql) nextRollbackSql = injectColumnRenameSql(nextRollbackSql, input.diffs, options.renameThreshold, true);
   }
-  rollbackSql.value = nextRollbackSql;
-  deploySql.value = deploySqlMode.value === "rollback" && nextRollbackSql ? nextRollbackSql : forwardSql;
+  return { forwardSql, rollbackSql: nextRollbackSql };
+}
+
+async function regenerateSelectedDeploySql() {
+  const result = lastDiffResult.value;
+  const generation = ++selectedDeploySqlGeneration;
+  if (!result) {
+    selectedForwardDeploySql.value = "-- No objects selected";
+    selectedDeploySql.value = "-- No objects selected";
+    rollbackSql.value = "";
+    return;
+  }
+
+  const options = normalizeSchemaDiffCompareOptions(activeConfig.value?.options, getDbType());
+  const input = selectSchemaDiffInput(result, diffObjects.value);
+  let plan;
+  try {
+    plan = await api.generateSchemaSyncPlan(input, buildSchemaSyncPlanOptions(options));
+  } catch (error: any) {
+    if (generation === selectedDeploySqlGeneration) toast(error?.message || String(error), 5000);
+    return;
+  }
+  if (generation !== selectedDeploySqlGeneration) return;
+
+  const formatted = formatSchemaSyncPlan(plan, input, options);
+  rollbackCompleteness.value = plan.rollbackCompleteness ?? "complete";
+  missingRollbackObjects.value = plan.missingRollbackObjects ?? [];
+  selectedForwardDeploySql.value = formatted.forwardSql;
+  rollbackSql.value = formatted.rollbackSql;
+  selectedDeploySql.value = deploySqlMode.value === "rollback" && formatted.rollbackSql ? formatted.rollbackSql : formatted.forwardSql;
+}
+
+async function regenerateFocusedDeploySql(objectId: string | null = selectedObjectId.value) {
+  const result = lastDiffResult.value;
+  const generation = ++focusedDeploySqlGeneration;
+  if (!result || !objectId || !findSchemaDiffObject(diffObjects.value, objectId)) {
+    focusedForwardDeploySql.value = "-- No objects selected";
+    focusedRollbackSql.value = "";
+    focusedDeploySql.value = "-- No objects selected";
+    return;
+  }
+
+  const options = normalizeSchemaDiffCompareOptions(activeConfig.value?.options, getDbType());
+  const input = selectSchemaDiffInputForObject(result, diffObjects.value, objectId);
+  let plan;
+  try {
+    plan = await api.generateSchemaSyncPlan(input, buildSchemaSyncPlanOptions(options));
+  } catch (error: any) {
+    if (generation === focusedDeploySqlGeneration && selectedObjectId.value === objectId) toast(error?.message || String(error), 5000);
+    return;
+  }
+  if (generation !== focusedDeploySqlGeneration || selectedObjectId.value !== objectId) return;
+
+  const formatted = formatSchemaSyncPlan(plan, input, options);
+  focusedForwardDeploySql.value = formatted.forwardSql;
+  focusedRollbackSql.value = formatted.rollbackSql;
+  focusedDeploySql.value = deploySqlMode.value === "rollback" && formatted.rollbackSql ? formatted.rollbackSql : formatted.forwardSql;
 }
 
 function switchDeploySqlMode(mode: "forward" | "rollback") {
@@ -660,10 +702,10 @@ function switchDeploySqlMode(mode: "forward" | "rollback") {
     return;
   }
   deploySqlMode.value = mode;
-  if (mode === "rollback" && rollbackSql.value) {
-    deploySql.value = rollbackSql.value;
-  } else {
-    void regenerateDeploySql();
+  selectedDeploySql.value = mode === "rollback" && rollbackSql.value ? rollbackSql.value : selectedForwardDeploySql.value;
+  focusedDeploySql.value = mode === "rollback" && focusedRollbackSql.value ? focusedRollbackSql.value : focusedForwardDeploySql.value;
+  if (mode === "rollback" && !rollbackSql.value) {
+    void regenerateSelectedDeploySql();
   }
 }
 
@@ -676,7 +718,7 @@ const canExecuteDeploy = computed(() => {
 
 const destructiveStatements = computed(() => {
   const databaseType = store.getConfig(targetConnectionId.value)?.db_type;
-  return detectDestructiveSchemaDiffStatements(deploySql.value, databaseType);
+  return detectDestructiveSchemaDiffStatements(selectedDeploySql.value, databaseType);
 });
 
 function applyRename(rc: RenameCandidate) {
@@ -703,7 +745,8 @@ function applyRename(rc: RenameCandidate) {
   }
   if (found) {
     rebuildDiffGroups();
-    void regenerateDeploySql();
+    void regenerateSelectedDeploySql();
+    void regenerateFocusedDeploySql();
     toast(t("diff.renameApplied"), 2000);
   }
 }
@@ -720,11 +763,12 @@ function ignoreRename(index: number) {
   }
   renameCandidates.value.splice(index, 1);
   rebuildDiffGroups();
-  void regenerateDeploySql();
+  void regenerateSelectedDeploySql();
+  void regenerateFocusedDeploySql();
 }
 
 async function handleExecuteScript() {
-  if (!deploySql.value.trim() || deploySql.value.trim() === "-- No objects selected") {
+  if (!selectedDeploySql.value.trim() || selectedDeploySql.value.trim() === "-- No objects selected") {
     toast(t("diff.noObjectsSelected"), 3000);
     return;
   }
@@ -743,10 +787,10 @@ async function executeDeploySql() {
     const failed = await executeWithProductionSqlGuard({
       connection: targetConnection,
       database: targetDatabase.value,
-      sql: deploySql.value,
+      sql: selectedDeploySql.value,
       source: t("production.sourceSchemaDiff"),
       execute: async () => {
-        const txLog = await api.executeScriptWith2pc(targetConnectionId.value, targetDatabase.value, [deploySql.value], targetSchema.value, destructiveStatements.value.length > 0);
+        const txLog = await api.executeScriptWith2pc(targetConnectionId.value, targetDatabase.value, [selectedDeploySql.value], targetSchema.value, destructiveStatements.value.length > 0);
         return txLog;
       },
     });
@@ -769,6 +813,7 @@ function showDeployTxResult(txLog: any) {
 }
 async function handleSelectObject(reviewObject: SchemaDiffObject) {
   selectedObjectId.value = reviewObject.id;
+  void regenerateFocusedDeploySql(reviewObject.id);
   const obj = reviewObject.parentId ? (findSchemaDiffObject(diffObjects.value, reviewObject.parentId) ?? reviewObject) : reviewObject;
 
   // Dynamically fetch DDL for objects that don't have pre-generated DDL
@@ -1035,8 +1080,9 @@ const targetConnectionInfo = computed(() => {
               <SchemaDiffDdlPanel
                 :selected-object="selectedObject"
                 :focused-object="selectedTreeObject"
-                :deploy-sql="deploySql"
-                :deploy-sql-all="deploySqlAll"
+                :deploy-sql="focusedDeploySql"
+                :deploy-sql-all="selectedDeploySql"
+                :rollback-forward-sql="selectedForwardDeploySql"
                 :compatibility-warnings="selectedCompatibilityWarnings"
                 :rollback-sql="rollbackSql"
                 :deploy-sql-mode="deploySqlMode"
@@ -1055,7 +1101,7 @@ const targetConnectionInfo = computed(() => {
         <!-- Deploy Review Step -->
         <template v-else-if="step === 'deploy-review'">
           <SchemaDiffDeployStep
-            v-model:deploy-sql="deploySql"
+            v-model:deploy-sql="selectedDeploySql"
             :selected-objects="diffObjects"
             :target-connection-id="targetConnectionId"
             :target-database="targetDatabase"
