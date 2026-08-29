@@ -870,6 +870,18 @@ function emitExecutionRequest(source: SqlExecutionOverride, openInNewResultTab =
   }
 }
 
+/**
+ * Captures a manual selection before a toolbar click can cause a platform
+ * focus transition. The snapshot is immutable, so downstream execution keeps
+ * the exact SQL and source offsets that were visible when the button was
+ * pressed.
+ */
+function captureExecutionSnapshot(): SqlExecutionSnapshot | undefined {
+  const currentView = view.value;
+  if (!currentView || currentView.state.selection.main.empty) return undefined;
+  return sqlExecutionSnapshotFromView(currentView);
+}
+
 function requestExecute(options: RequestExecuteOptions = {}) {
   executionViewportOwnership.cancelPendingRequest();
   const currentView = view.value;
@@ -6525,6 +6537,7 @@ defineExpose({
   shouldBlockExecutionShortcut,
   requestExecute,
   requestExecuteInNewResultTab,
+  captureExecutionSnapshot,
   pasteClipboardAsSqlInCondition,
   focusStatementRange,
   previewStatementRange,

@@ -423,6 +423,7 @@ async function resolveActiveExecutableSql(snapshot?: SqlExecutionSnapshot) {
 const blockDangerousRedisCommands = ref(true);
 const databaseRequiredSignal = ref(0);
 const databaseRequiredTabId = ref<string | null>(null);
+const pendingToolbarExecutionSnapshot = ref<SqlExecutionSnapshot>();
 const sqlExecutionDangerStore = useSqlExecutionDangerStore();
 const productionSafetyStore = useProductionSafetyStore();
 
@@ -466,7 +467,19 @@ const {
   onExecutionStarted: (editorViewportRequestId) => contentAreaRef.value?.acceptQueryEditorExecutionViewport(editorViewportRequestId),
 });
 
-function requestActiveEditorExecute() {
+function captureActiveEditorExecutionSnapshot() {
+  pendingToolbarExecutionSnapshot.value = contentAreaRef.value?.captureQueryEditorExecutionSnapshot?.();
+}
+
+function requestActiveEditorExecute(source?: "pointer" | "keyboard") {
+  const snapshot = pendingToolbarExecutionSnapshot.value;
+  pendingToolbarExecutionSnapshot.value = undefined;
+  if (source === "pointer") {
+    if (snapshot) {
+      void tryExecute(snapshot);
+      return;
+    }
+  }
   if (contentAreaRef.value?.requestQueryEditorExecute?.()) return;
   void tryExecute();
 }
@@ -3088,7 +3101,8 @@ onUnmounted(() => {
                   @commit="activeTab && queryStore.commitTransaction(activeTab.id)"
                   @rollback="activeTab && queryStore.rollbackTransaction(activeTab.id)"
                   @dismiss-txn-rolled-back="activeTab && (activeTab.txnAutoRolledBack = false)"
-                  @execute="requestActiveEditorExecute()"
+                  @execute-pointer-down="captureActiveEditorExecutionSnapshot()"
+                  @execute="requestActiveEditorExecute($event)"
                   @multi-execute="requestMultiDbExecute()"
                   @cancel="cancelActiveExecution()"
                   @explain="tryExplain()"
