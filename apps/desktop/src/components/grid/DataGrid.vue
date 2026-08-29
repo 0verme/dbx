@@ -8329,6 +8329,15 @@ function transposeCellIsSelected(rowIndex: number, actualColIdx: number) {
   return visibleColIdx >= 0 && cellIsSelected(rowIndex, visibleColIdx);
 }
 
+// Transposed cells render at a compact row height (30px by default), while the
+// expanded editor (long text) grows well beyond that. Like the normal grid cell,
+// the transposed cell must stop clipping its content while the editor / readonly
+// text selection is active, otherwise the editor gets cropped below the row.
+function transposeCellEditorActive(recordIndex: number, valueIndex: number): boolean {
+  const rowId = displayItems.value[recordIndex]?.id;
+  return (editingCell.value?.rowId === rowId && editingCell.value.col === valueIndex) || readonlyTextCellMatches(rowId, valueIndex);
+}
+
 function onTransposeCellMouseenter(rowIndex: number, actualColIdx: number) {
   quickDownloadMenuCell.value = retainBinaryCellDownloadMenuForHover(quickDownloadMenuCell.value, { rowIndex, col: actualColIdx });
   if (isScrolling.value) return;
@@ -12487,10 +12496,12 @@ function openGridSnapshot() {
                     <div
                       v-for="cell in item.values"
                       :key="`${item.id}:${cell.recordIndex}`"
-                      class="relative flex shrink-0 items-center border-r border-border/70 px-2 py-0 truncate"
+                      class="relative flex shrink-0 items-center border-r border-border/70 px-2 py-0"
                       :class="[
                         transposeCellTextColorClass(cell.recordIndex, cell.valueIndex),
                         {
+                          'overflow-visible z-20 border-r-transparent': transposeCellEditorActive(cell.recordIndex, cell.valueIndex),
+                          'overflow-hidden text-ellipsis whitespace-nowrap': !transposeCellEditorActive(cell.recordIndex, cell.valueIndex),
                           'cell-selected': transposeCellIsSelected(cell.recordIndex, cell.valueIndex) && !displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
                           'cell-selected-dirty': transposeCellIsSelected(cell.recordIndex, cell.valueIndex) && displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
                           'cell-selected--sparse': transposeCellIsSelected(cell.recordIndex, cell.valueIndex) && !displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
