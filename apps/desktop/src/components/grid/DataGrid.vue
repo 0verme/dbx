@@ -977,7 +977,18 @@ const dataGridSearch = useDataGridSearch({
   getCellSearchText: (row, columnIndex) => (row.data[columnIndex] === null ? "" : rowLowerTextCache.get(row.data, columnIndex)),
   onNavigate: () => nextTick(scrollToCurrentMatch),
 });
-const { searchText, deferredSearchText: deferredClientSearchText, overlayVisible: searchOverlayVisible, currentMatchIndex, suggestions: searchSuggestions, suggestionIndex, matches: searchMatches, matchSet: searchMatchSet, currentMatch: currentSearchMatch } = dataGridSearch;
+const {
+  searchText,
+  deferredSearchText: deferredClientSearchText,
+  overlayVisible: searchOverlayVisible,
+  currentMatchIndex,
+  suggestions: searchSuggestions,
+  suggestionIndex,
+  matchCount: searchMatchCount,
+  matchAt: searchMatchAt,
+  matchSet: searchMatchSet,
+  currentMatch: currentSearchMatch,
+} = dataGridSearch;
 
 const orderByInput = ref(props.initialOrderByInput ?? "");
 const whereFilterInput = ref(props.initialWhereInput ?? "");
@@ -4925,8 +4936,9 @@ function navigateMatch(delta: number) {
 
 function scrollToCurrentMatch() {
   const idx = currentMatchIndex.value;
-  if (idx < 0 || idx >= searchMatches.value.length) return;
-  const match = searchMatches.value[idx];
+  if (idx < 0 || idx >= searchMatchCount.value) return;
+  const match = searchMatchAt(idx);
+  if (!match) return;
   if (showTranspose.value) {
     scrollTransposeMatchIntoView(match);
     return;
@@ -12359,7 +12371,7 @@ function openGridSnapshot() {
               :open="searchOverlayVisible"
               :suggestions="searchSuggestions"
               :suggestion-index="suggestionIndex"
-              :match-count="searchMatches.length"
+              :match-count="searchMatchCount"
               :current-match-index="currentMatchIndex"
               :has-deferred-search-text="!!deferredClientSearchText"
               :values-truncated="(props.result.large_value_cells?.length ?? 0) > 0"
