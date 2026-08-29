@@ -472,7 +472,7 @@ DBX is free and open source, but ongoing maintenance, database compatibility tes
 ## Contributors
 
 <a href="https://github.com/t8y2/dbx/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=t8y2/dbx" />
+  <img src="https://contrib.rocks/image?repo=t8y2/dbx&max=300&columns=15" />
 </a>
 
 ## Community
