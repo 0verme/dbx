@@ -802,6 +802,26 @@ export function selectSchemaDiffInput(result: SchemaDiffPreparation, objects: Sc
   };
 }
 
+function projectSchemaDiffObjectSelection(object: SchemaDiffObject, focusedObjectId: string, selectDescendants: boolean): SchemaDiffObject {
+  const isFocused = object.id === focusedObjectId;
+  const selectChildren = selectDescendants || isFocused;
+  return {
+    ...object,
+    selected: isFocused || selectDescendants,
+    children: object.children?.map((child) => projectSchemaDiffObjectSelection(child, focusedObjectId, selectChildren)),
+  };
+}
+
+/** Project one focused tree object onto a fresh selection without mutating checkbox state. */
+export function selectSchemaDiffInputForObject(result: SchemaDiffPreparation, objects: SchemaDiffObject[], objectId: string): SelectedSchemaDiffInput {
+  if (!findSchemaDiffObject(objects, objectId)) {
+    return { diffs: [], functionDiffs: [], sequenceDiffs: [], ruleDiffs: [], ownerDiffs: [] };
+  }
+
+  const focusedSelection = objects.map((object) => projectSchemaDiffObjectSelection(object, objectId, false));
+  return selectSchemaDiffInput(result, focusedSelection);
+}
+
 export function buildDeploySqlForObjects(objects: SchemaDiffObject[]): string {
   const selected = objects.filter((o) => {
     return o.selected && o.operationType !== "none" && !o.parentId;
