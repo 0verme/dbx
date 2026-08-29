@@ -1420,6 +1420,12 @@ export default withEnglishFallback({
     totalRowCountEstimated: "(약 {count})",
     totalRowCountLoading: "(집계 중...)",
     loadingMore: "데이터를 더 불러오는 중...",
+    pageJumpLoading: "{page}페이지로 이동 중",
+    pageJumpProgress: "완료된 요청 {current}/{total}",
+    esDeepPageJumpConfirmTitle: "Elasticsearch 심층 페이지 이동 확인",
+    esDeepPageJumpConfirmMessage:
+      "Elasticsearch의 search_after는 지정한 페이지로 바로 이동할 수 없습니다. DBX는 누락된 커서를 순서대로 가져와야 하며 이전 페이지로 이동할 때는 1페이지부터 다시 시작합니다. {page}페이지로 이동하면 약 {requests}개의 쿼리가 전송됩니다. 시간이 오래 걸리고 클러스터 부하가 증가할 수 있습니다. 계속하시겠습니까?",
+    esDeepPageJumpContinue: "계속 이동",
     allLoaded: "모두 로드됨",
     calculateTotalRows: "전체 행 수 집계",
     calculateTotalRowsInline: "(전체 행 수 집계)",

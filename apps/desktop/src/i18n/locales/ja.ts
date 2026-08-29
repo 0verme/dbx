@@ -2002,6 +2002,12 @@ export default withEnglishFallback({
     truncatedHint: "結果は{count}行を読み込んだ時点で切り詰められました。フッターのページネーションで読み込み済みデータを参照できます。完全な結果のエクスポート時はデータベースへ再問い合わせします。",
     victoriaMetricsTruncatedHint: "結果が読み込み上限を超えたため、先頭の{count}行のみ読み込みました。1ページあたりの行数は読み込み済みデータだけをページ分割します。完全な結果を取得するには、時間範囲を短くするかフィルターを追加してください。",
     loadingMore: "さらにデータを読み込み中...",
+    pageJumpLoading: "ページ {page} に移動中",
+    pageJumpProgress: "完了したリクエスト {current}/{total}",
+    esDeepPageJumpConfirmTitle: "Elasticsearch のディープページ移動を確認",
+    esDeepPageJumpConfirmMessage:
+      "Elasticsearch の search_after では指定ページへ直接移動できません。DBX は不足しているカーソルを順番に取得し、前のページへ戻る場合は 1 ページ目からやり直します。ページ {page} への移動では約 {requests} 回のクエリが送信される見込みです。時間がかかり、クラスター負荷が増える可能性があります。続行しますか？",
+    esDeepPageJumpContinue: "移動を続ける",
     allLoaded: "すべて読み込み済み",
     previewSqlEmpty: "プレビューする保留中のSQL変更はありません",
     renderMode: "レンダーモード",

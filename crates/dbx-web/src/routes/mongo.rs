@@ -444,6 +444,7 @@ pub async fn find_documents(
             req.sort.as_deref(),
             req.collation.as_deref(),
             None,
+            false,
         ),
     )
     .await?;

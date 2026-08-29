@@ -1480,6 +1480,12 @@ export default withEnglishFallback({
     totalRowCountEstimated: "(aprox. {count})",
     totalRowCountLoading: "(contando...)",
     loadingMore: "Cargando más datos...",
+    pageJumpLoading: "Saltando a la página {page}",
+    pageJumpProgress: "Solicitudes completadas {current}/{total}",
+    esDeepPageJumpConfirmTitle: "Confirmar salto profundo en Elasticsearch",
+    esDeepPageJumpConfirmMessage:
+      "search_after de Elasticsearch no puede saltar directamente a una página. DBX debe obtener en orden los cursores que faltan y, al retroceder, comienza de nuevo desde la página 1. Saltar a la página {page} enviará aproximadamente {requests} consultas. Puede tardar y aumentar la carga del clúster. ¿Continuar?",
+    esDeepPageJumpContinue: "Continuar",
     allLoaded: "todo cargado",
     calculateTotalRows: "Contar filas totales",
     calculateTotalRowsInline: "(contar filas totales)",

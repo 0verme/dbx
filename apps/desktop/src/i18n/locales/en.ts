@@ -1539,6 +1539,12 @@ export default {
     totalRowCountEstimated: "(~{count})",
     totalRowCountLoading: "(counting...)",
     loadingMore: "Loading more data...",
+    pageJumpLoading: "Jumping to page {page}",
+    pageJumpProgress: "Requests completed {current}/{total}",
+    esDeepPageJumpConfirmTitle: "Confirm deep Elasticsearch page jump",
+    esDeepPageJumpConfirmMessage:
+      "Elasticsearch search_after cannot jump directly to a page. DBX must fetch missing cursors in order, and backward navigation restarts from page 1. Jumping to page {page} is expected to send {requests} queries. This may take a long time and increase cluster load. Continue?",
+    esDeepPageJumpContinue: "Continue",
     allLoaded: "all loaded",
     calculateTotalRows: "Count total rows",
     calculateTotalRowsInline: "(count total rows)",
