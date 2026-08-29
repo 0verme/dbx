@@ -167,6 +167,7 @@ import { connectionIsEffectivelyReadOnly } from "@/lib/database/readOnlyWriteAcc
 type DataGridHandle = DataGridColumnLayoutHandle & {
   onToolbarRefresh: () => Promise<void> | void;
   focusSearch: () => boolean;
+  openGoToColumn: () => boolean;
   openCellDetailSearch: () => boolean;
   nullColumnsHidden: boolean;
   allNullColumnCount: number;
@@ -902,6 +903,11 @@ function focusSearch(): boolean {
   return dataGridRef.value?.focusSearch() ?? false;
 }
 
+function openGoToColumn(): boolean {
+  if (props.activeTab.mode !== "data") return false;
+  return dataGridRef.value?.openGoToColumn() ?? false;
+}
+
 function refreshQueryEditorCompletionCache(): boolean {
   if (props.activeTab.mode !== "query" || !queryEditorRef.value) return false;
   queryEditorRef.value.refreshCompletionCache();
@@ -1163,6 +1169,7 @@ async function executeRedisCommand(command: string): Promise<boolean> {
 
 defineExpose({
   focusSearch,
+  openGoToColumn,
   refreshData,
   toggleResultsPane,
   refreshQueryEditorCompletionCache,

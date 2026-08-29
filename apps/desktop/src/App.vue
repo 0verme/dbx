@@ -74,6 +74,7 @@ import {
   isExecuteSqlInNewResultTabShortcut,
   isExecuteSqlShortcut,
   isFocusSearchShortcut,
+  isGoToColumnShortcut,
   isModRShortcut,
   handleTabHistoryNavigationShortcut,
   isNewQueryShortcut,
@@ -2570,8 +2571,17 @@ async function handleKeydown(e: KeyboardEvent) {
   if (e.defaultPrevented) return;
 
   const shortcuts = settingsStore.editorSettings.shortcuts;
-  const tabSwitcherDirection = tabSwitcherDirectionFromShortcut(e, shortcuts);
   if (showTabSwitcher.value) return;
+  // Grid-scoped shortcuts normally win inside DataGrid. Keep that precedence
+  // for a data tab even when focus is in a sibling input, where the grid's
+  // local listener intentionally leaves native editing untouched.
+  if (isGoToColumnShortcut(e, shortcuts) && contentAreaRef.value?.openGoToColumn()) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
+  const tabSwitcherDirection = tabSwitcherDirectionFromShortcut(e, shortcuts);
   if (tabSwitcherDirection) {
     e.preventDefault();
     e.stopPropagation();

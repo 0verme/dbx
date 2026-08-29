@@ -2547,6 +2547,9 @@ let highlightedColumnTimer = 0;
 
 const goToColumnOpen = ref(false);
 const goToColumnSearch = ref("");
+const goToColumnSearchInput = ref<HTMLInputElement>();
+const goToColumnListRef = ref<HTMLElement>();
+const goToColumnSelectedIndex = ref(0);
 const columnOrderKeys = computed(() => uniqueDataGridColumnOrderKeys(props.result.columns, props.sourceColumns));
 const resolvedColumnLayoutScopeKey = computed(
   () =>
@@ -2731,15 +2734,76 @@ function scrollToColumn(columnIndex: number) {
   gridRef.value?.focus();
 }
 
+function focusGoToColumnSearch() {
+  goToColumnSearchInput.value?.focus();
+}
+
+function scrollGoToColumnSelectionIntoView() {
+  void nextTick(() => {
+    goToColumnListRef.value?.querySelectorAll<HTMLButtonElement>("button")[goToColumnSelectedIndex.value]?.scrollIntoView({ block: "nearest" });
+  });
+}
+
+function openGoToColumn(): boolean {
+  if (!displayableColumnIndexes.value.length) return false;
+
+  const alreadyOpen = goToColumnOpen.value;
+  goToColumnSearch.value = "";
+  goToColumnSelectedIndex.value = 0;
+  goToColumnOpen.value = true;
+  if (alreadyOpen) void nextTick(focusGoToColumnSearch);
+  return true;
+}
+
+function moveGoToColumnSelection(delta: number) {
+  const count = filteredGoToColumns.value.length;
+  if (!count) return;
+  goToColumnSelectedIndex.value = (goToColumnSelectedIndex.value + delta + count) % count;
+  scrollGoToColumnSelectionIntoView();
+}
+
 function onGoToColumnKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape") {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    event.stopPropagation();
+    moveGoToColumnSelection(1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    event.stopPropagation();
+    moveGoToColumnSelection(-1);
+  } else if (event.key === "Enter") {
+    const selected = filteredGoToColumns.value[goToColumnSelectedIndex.value];
+    if (!selected) return;
+    event.preventDefault();
+    event.stopPropagation();
+    scrollToColumn(selected.index);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
     goToColumnOpen.value = false;
     goToColumnSearch.value = "";
   }
 }
 
 watch(goToColumnOpen, (open) => {
-  if (!open) goToColumnSearch.value = "";
+  if (!open) {
+    goToColumnSearch.value = "";
+    return;
+  }
+  goToColumnSelectedIndex.value = 0;
+  void nextTick(() => {
+    focusGoToColumnSearch();
+    scrollGoToColumnSelectionIntoView();
+  });
+});
+
+watch(goToColumnSearch, () => {
+  goToColumnSelectedIndex.value = 0;
+  scrollGoToColumnSelectionIntoView();
+});
+
+watch(filteredGoToColumns, (columns) => {
+  if (goToColumnSelectedIndex.value >= columns.length) goToColumnSelectedIndex.value = Math.max(columns.length - 1, 0);
 });
 
 function matchesTableInfoColumn(resultColumn: string, sourceColumn: string | undefined, columnName: string): boolean {
@@ -9355,14 +9419,13 @@ async function onGridKeydown(event: KeyboardEvent) {
     openTableStructureEditor();
     return;
   }
-  if (!targetAllowsNativeClipboard && displayableColumnIndexes.value.length > 0 && isGoToColumnShortcut(event, settingsStore.editorSettings.shortcuts)) {
+  if (!targetAllowsNativeClipboard && isGoToColumnShortcut(event, settingsStore.editorSettings.shortcuts) && openGoToColumn()) {
     event.preventDefault();
     event.stopPropagation();
-    goToColumnOpen.value = true;
     return;
   }
   if (!targetAllowsNativeClipboard && handleGridPaginationShortcut(event)) return;
-  if (isFocusSearchShortcut(event)) {
+  if (isFocusSearchShortcut(event) && !isGoToColumnShortcut(event, settingsStore.editorSettings.shortcuts)) {
     event.preventDefault();
     focusSearch();
     return;
@@ -11721,6 +11784,7 @@ defineExpose({
   setMultiRowTranspose,
   toggleMultiRowTranspose,
   focusSearch,
+  openGoToColumn,
   visibleColumnCount,
   displayableColumnCount,
   hiddenColumnCount,
@@ -12292,13 +12356,23 @@ function openGridSnapshot() {
                     <PopoverContent align="end" class="w-56 p-2" @keydown="onGoToColumnKeydown">
                       <div class="relative mb-1">
                         <Search class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                        <input v-model="goToColumnSearch" :placeholder="t('grid.searchColumn')" class="h-8 w-full rounded-md border bg-transparent pl-7 pr-6 text-xs outline-none focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25" />
+                        <input ref="goToColumnSearchInput" v-model="goToColumnSearch" :placeholder="t('grid.searchColumn')" class="h-8 w-full rounded-md border bg-transparent pl-7 pr-6 text-xs outline-none focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25" />
                         <button v-if="goToColumnSearch" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" @click="goToColumnSearch = ''">
                           <X class="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <div class="max-h-56 overflow-auto rounded border">
-                        <button v-for="column in filteredGoToColumns" :key="column.index" type="button" class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground" @click="scrollToColumn(column.index)">
+                      <div ref="goToColumnListRef" class="max-h-56 overflow-auto rounded border">
+                        <button
+                          v-for="(column, index) in filteredGoToColumns"
+                          :key="column.index"
+                          type="button"
+                          :class="[
+                            'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground focus-visible:outline-none',
+                            index === goToColumnSelectedIndex ? 'bg-accent text-accent-foreground' : '',
+                          ]"
+                          @pointerenter="goToColumnSelectedIndex = index"
+                          @click="scrollToColumn(column.index)"
+                        >
                           <span class="min-w-0 truncate">{{ column.name }}</span>
                           <span class="shrink-0 font-mono text-[10px] text-muted-foreground">#{{ column.index + 1 }}</span>
                           <span v-if="column.comment" class="col-span-2 min-w-0 truncate text-[11px] leading-4 text-muted-foreground" :title="column.comment">{{ column.comment }}</span>
