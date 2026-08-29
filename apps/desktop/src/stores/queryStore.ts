@@ -1942,15 +1942,27 @@ export const useQueryStore = defineStore("query", () => {
     return id;
   }
 
-  function openObjectBrowser(connectionId: string, database: string, schema?: string, catalog?: string, eventName?: string, eventReadOnly = false, initialObjectFilter?: "tables" | "events") {
+  function openObjectBrowser(connectionId: string, database: string, schema?: string, catalog?: string, eventName?: string, eventReadOnly = false, initialObjectFilter?: "tables" | "events", eventCreateRequestId?: number) {
     const title = catalog ? `${catalog}.${database} objects` : schema ? `${schema} objects` : `${database} objects`;
     const existing = tabs.value.find((tab) => tab.mode === "objects" && tab.connectionId === connectionId && tab.database === database && (tab.objectBrowser?.catalog || "") === (catalog || "") && (tab.objectBrowser?.schema || "") === (schema || ""));
     if (existing) {
-      if (eventName) {
+      if (eventCreateRequestId !== undefined) {
+        // 新建事件：显式 CREATE 请求优先，并清掉可能残留的"编辑已有事件"状态，
+        // 保证同一 tab 被复用时每次点击都能重新进入 CREATE 编辑器（请求号单调递增）。
+        existing.objectBrowser = {
+          ...existing.objectBrowser,
+          eventName: undefined,
+          eventReadOnly: false,
+          eventOpenRequestId: undefined,
+          eventCreateRequestId,
+          initialObjectFilter: initialObjectFilter ?? "events",
+        };
+      } else if (eventName) {
         existing.objectBrowser = {
           ...existing.objectBrowser,
           eventName,
           eventReadOnly,
+          eventCreateRequestId: undefined,
           initialObjectFilter: initialObjectFilter ?? (eventName ? "events" : existing.objectBrowser?.initialObjectFilter),
           eventOpenRequestId: (existing.objectBrowser?.eventOpenRequestId ?? 0) + 1,
         };
@@ -1975,10 +1987,11 @@ export const useQueryStore = defineStore("query", () => {
         catalog,
         schema,
         objectType: "tables",
-        eventName,
-        eventReadOnly,
-        initialObjectFilter: initialObjectFilter ?? (eventName ? "events" : undefined),
+        eventName: eventCreateRequestId !== undefined ? undefined : eventName,
+        eventReadOnly: eventCreateRequestId !== undefined ? false : eventReadOnly,
+        initialObjectFilter: initialObjectFilter ?? (eventName || eventCreateRequestId !== undefined ? "events" : undefined),
         eventOpenRequestId: eventName ? 1 : undefined,
+        eventCreateRequestId,
       },
     };
     tabs.value.push(tab);
