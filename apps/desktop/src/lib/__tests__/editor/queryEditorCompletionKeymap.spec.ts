@@ -60,6 +60,7 @@ function createHarness(options: {
   acceptCompletion?: (view: MockView) => boolean;
   selectedCompletionIndex?: (state: MockState) => number | null;
   selectFirstCompletion?: (view: MockView) => boolean;
+  applySelectedBatchColumnSelection?: (view: MockView) => boolean;
   closeCompletion?: (view: MockView) => boolean;
   insertNewlineKeepIndent?: (view: MockView) => boolean;
   nextSnippetField?: (view: MockView) => boolean;
@@ -99,6 +100,7 @@ function createHarness(options: {
     "codeMirrorSelectFirstCompletion",
     "acceptSelectedCompletionWithRetry",
     "acceptSelectedOrFirstCompletion",
+    "applySelectedBatchColumnSelection",
     "codeMirrorCloseCompletion",
     "codeMirrorInsertNewlineKeepIndent",
     "insertQueryEditorNewline",
@@ -117,6 +119,7 @@ function createHarness(options: {
     options.selectFirstCompletion ?? (() => false),
     acceptSelectedCompletionWithRetry,
     acceptSelectedOrFirstCompletion,
+    options.applySelectedBatchColumnSelection ?? (() => false),
     options.closeCompletion ?? (() => false),
     options.insertNewlineKeepIndent ?? (() => false),
     (view: MockView, fallback: ((view: MockView) => boolean) | null | undefined) => fallback?.(view) ?? false,
@@ -207,7 +210,7 @@ describe("QueryEditor completion Tab keymap", () => {
   });
 
   it("keeps ASCII single-character filtering while allowing Han pinyin matches", () => {
-    const source = [extractFunction("completionItemsForBypassedFilter"), extractFunction("shouldBypassCompletionFilter"), extractFunction("buildCompletionResult")].join("\n");
+    const source = [extractFunction("isBatchColumnSelectionAction"), extractFunction("completionItemsForBypassedFilter"), extractFunction("shouldBypassCompletionFilter"), extractFunction("buildCompletionResult")].join("\n");
     const javascript = ts.transpileModule(source, {
       compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
     }).outputText;

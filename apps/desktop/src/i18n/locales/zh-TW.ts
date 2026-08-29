@@ -1208,6 +1208,9 @@ export default withEnglishFallback({
       numericLiteral: "數值常值",
       booleanValue: "布林值",
       starExpansionColumns: "{count} 欄",
+      insertSelectedColumns: "插入已選欄位（{count}）",
+      insertSelectedColumnsDetail: "勾選欄位後一次插入",
+      selectColumnsBeforeInsert: "請至少選擇一個欄位",
       tableAlias: "資料表別名",
       functionDescriptions: {
         COUNT: "回傳列數",

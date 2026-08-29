@@ -1119,6 +1119,9 @@ export default withEnglishFallback({
       numericLiteral: "숫자 리터럴",
       booleanValue: "불리언 값",
       starExpansionColumns: "{count}개 컬럼",
+      insertSelectedColumns: "선택한 열 삽입 ({count})",
+      insertSelectedColumnsDetail: "열을 선택한 후 한 번에 삽입합니다",
+      selectColumnsBeforeInsert: "먼저 하나 이상의 열을 선택하세요",
       tableAlias: "테이블 별칭",
       functionDescriptions: {
         COUNT: "행 수를 반환합니다",

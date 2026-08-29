@@ -1208,6 +1208,9 @@ export default withEnglishFallback({
       numericLiteral: "Costante numerica",
       booleanValue: "Valore booleano",
       starExpansionColumns: "{count} colonne",
+      insertSelectedColumns: "Inserisci colonne selezionate ({count})",
+      insertSelectedColumnsDetail: "Seleziona le colonne e poi inseriscile insieme",
+      selectColumnsBeforeInsert: "Seleziona prima almeno una colonna",
       tableAlias: "Alias della tabella",
       functionDescriptions: {
         COUNT: "Restituisce il numero di righe",

@@ -1228,6 +1228,9 @@ export default withEnglishFallback({
       numericLiteral: "数値リテラル",
       booleanValue: "真偽値",
       starExpansionColumns: "{count}列",
+      insertSelectedColumns: "選択した列を挿入（{count}）",
+      insertSelectedColumnsDetail: "チェックした列をまとめて挿入します",
+      selectColumnsBeforeInsert: "少なくとも 1 列選択してください",
       tableAlias: "テーブルエイリアス",
       functionDescriptions: {
         COUNT: "行数を返す",

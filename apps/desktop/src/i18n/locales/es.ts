@@ -1210,6 +1210,9 @@ export default withEnglishFallback({
       numericLiteral: "Literal numérico",
       booleanValue: "Valor booleano",
       starExpansionColumns: "{count} columnas",
+      insertSelectedColumns: "Insertar columnas seleccionadas ({count})",
+      insertSelectedColumnsDetail: "Selecciona columnas y, después, insértalas juntas",
+      selectColumnsBeforeInsert: "Selecciona al menos una columna primero",
       tableAlias: "Alias de tabla",
       functionDescriptions: {
         COUNT: "Devuelve el número de filas",

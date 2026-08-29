@@ -1232,6 +1232,9 @@ export default {
       numericLiteral: "Numeric literal",
       booleanValue: "Boolean value",
       starExpansionColumns: "{count} columns",
+      insertSelectedColumns: "Insert selected columns ({count})",
+      insertSelectedColumnsDetail: "Choose columns with the checkboxes, then insert them together",
+      selectColumnsBeforeInsert: "Select at least one column first",
       tableAlias: "Table alias",
       functionDescriptions: {
         COUNT: "Returns the number of rows",
