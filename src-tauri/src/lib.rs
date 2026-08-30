@@ -1605,6 +1605,7 @@ pub fn run() {
             } else {
                 AppState::new_with_plugin_dir_and_app_version(storage, plugin_dir, env!("CARGO_PKG_VERSION"))
             };
+            dbx_core::db::sqlite_worker::enable_sqlite_ssh_runtime(env!("CARGO_PKG_VERSION"));
             state.set_duckdb_worker_process_isolation_enabled(desktop_settings.duckdb_worker_process_isolation);
             state.set_duckdb_worker_max_processes(desktop_settings.duckdb_worker_max_processes);
             let oidc_app_handle = app.handle().clone();
@@ -2174,6 +2175,7 @@ pub fn run() {
             commands::fs_open::is_sqlite_database_file,
             commands::fs_open::delete_database_backup_files,
             commands::sqlite_backup::backup_sqlite_database,
+            commands::sqlite_backup::restore_sqlite_database,
             commands::mongo_cmd::mongo_list_databases,
             commands::mongo_cmd::mongo_list_collections,
             commands::vector_cmd::vector_collection_detail,
