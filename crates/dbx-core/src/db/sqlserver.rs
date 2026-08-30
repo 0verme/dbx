@@ -2374,9 +2374,11 @@ fn sqlserver_list_tables_sql_with_kind(
 
     // Use SELECT TOP for broad SQL Server version compatibility.
     // OFFSET / FETCH NEXT is only available in SQL Server 2012+.
+    // Keep the requested limit intact: the sidebar requests page_size + 1 to
+    // detect whether it should render a load-more node.
     match (limit, offset) {
         (Some(limit), Some(offset)) if offset > 0 => {
-            let end = offset + limit.min(1000);
+            let end = offset + limit;
             format!(
                 "SELECT * FROM (\
                  SELECT {base_columns}, ROW_NUMBER() OVER ({order_by}) AS __dbx_rn \
@@ -2385,7 +2387,7 @@ fn sqlserver_list_tables_sql_with_kind(
             )
         }
         (Some(limit), _) => {
-            format!("SELECT TOP ({}) {base_columns} {base_from} {base_where} {order_by}", limit.min(1000))
+            format!("SELECT TOP ({}) {base_columns} {base_from} {base_where} {order_by}", limit)
         }
         _ => {
             format!("SELECT {base_columns} {base_from} {base_where} {order_by}")
@@ -4245,6 +4247,15 @@ mod tests {
         assert!(!sql.contains("o.type IN ('U','V')"));
         assert!(sql.contains("ROW_NUMBER() OVER (ORDER BY o.name)"));
         assert!(sql.contains("__dbx_rn > 100 AND __dbx_rn <= 201"));
+    }
+
+    #[test]
+    fn sqlserver_table_objects_sql_preserves_sidebar_probe_limits_above_1000() {
+        let first_page = sqlserver_table_objects_sql("dbo", None, Some(1001), None);
+        let next_page = sqlserver_table_objects_sql("dbo", None, Some(1001), Some(1000));
+
+        assert!(first_page.contains("SELECT TOP (1001)"));
+        assert!(next_page.contains("__dbx_rn > 1000 AND __dbx_rn <= 2001"));
     }
 
     #[test]
