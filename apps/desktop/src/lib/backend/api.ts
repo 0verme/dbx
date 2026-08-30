@@ -380,6 +380,9 @@ export const inspectExternalSqlFile = forward("inspectExternalSqlFile");
 export const writeExternalSqlFile = forward("writeExternalSqlFile");
 export const saveExternalSqlFile = forward("saveExternalSqlFile");
 export const listSqlFilesInFolder = forward("listSqlFilesInFolder");
+export const createSqlFileInFolder = forward("createSqlFileInFolder");
+export const renameSqlFileInFolder = forward("renameSqlFileInFolder");
+export const deleteSqlFileInFolder = forward("deleteSqlFileInFolder");
 
 // Nacos
 export const nacosTestConnection = forward("nacosTestConnection");

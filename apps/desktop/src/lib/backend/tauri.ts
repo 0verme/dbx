@@ -891,6 +891,18 @@ export async function listSqlFilesInFolder(folderPath: string): Promise<SqlFileE
   return invoke("list_sql_files_in_folder", { folderPath });
 }
 
+export async function createSqlFileInFolder(rootPath: string, directoryPath: string, fileName: string): Promise<string> {
+  return invoke("create_sql_file_in_folder", { rootPath, directoryPath, fileName });
+}
+
+export async function renameSqlFileInFolder(rootPath: string, filePath: string, fileName: string): Promise<string> {
+  return invoke("rename_sql_file_in_folder", { rootPath, filePath, fileName });
+}
+
+export async function deleteSqlFileInFolder(rootPath: string, filePath: string): Promise<void> {
+  return invoke("delete_sql_file_in_folder", { rootPath, filePath });
+}
+
 // --- AI Conversations ---
 
 export interface AiChatMessage {

@@ -3005,8 +3005,26 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[tokio::test]
-    async fn external_driver_table_export_closes_cursor_after_fetch_error() {
+    #[test]
+    fn external_driver_table_export_closes_cursor_after_fetch_error() {
+        let handle = std::thread::Builder::new()
+            .name("table-export-fetch-error".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("build table export fetch error test runtime")
+                    .block_on(run_external_driver_table_export_closes_cursor_after_fetch_error());
+            })
+            .expect("spawn table export fetch error test thread");
+        if let Err(panic) = handle.join() {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[cfg(unix)]
+    async fn run_external_driver_table_export_closes_cursor_after_fetch_error() {
         let fixture = external_driver_export_fixture(
             r#"  case "$line" in
     *'"method":"executeQueryPage"'*)

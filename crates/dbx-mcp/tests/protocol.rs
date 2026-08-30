@@ -165,6 +165,9 @@ async fn initializes_lists_tools_and_calls_a_tool() {
 
     let tools = client.peer().list_tools(None).await.expect("list tools");
     let names = tools.tools.iter().map(|tool| tool.name.as_ref()).collect::<Vec<_>>();
+    #[cfg(feature = "mq-admin")]
+    assert_eq!(names.len(), 14);
+    #[cfg(not(feature = "mq-admin"))]
     assert_eq!(names.len(), 13);
     assert!(names.contains(&"dbx_list_connections"));
     assert!(names.contains(&"dbx_duplicate_connection"));
@@ -172,6 +175,8 @@ async fn initializes_lists_tools_and_calls_a_tool() {
     assert!(names.contains(&"dbx_execute_and_show"));
     assert!(names.contains(&"dbx_open_session"));
     assert!(names.contains(&"dbx_close_session"));
+    #[cfg(feature = "mq-admin")]
+    assert!(names.contains(&"dbx_send_message"));
 
     let result = client.peer().call_tool(CallToolRequestParams::new("dbx_list_connections")).await.expect("call tool");
     let response = result.content[0].as_text().expect("text response");

@@ -2563,6 +2563,29 @@ export const useQueryStore = defineStore("query", () => {
     tab.externalSqlFileMissing = true;
   }
 
+  function relocateExternalSqlFilePath(previousPath: string, nextPath: string, version?: QueryTab["externalSqlFileVersion"]) {
+    const previous = normalizeExternalSqlPath(previousPath);
+    if (!previous) return;
+    for (const tab of tabs.value) {
+      if (tab.mode !== "query" || !tab.externalSqlPath || normalizeExternalSqlPath(tab.externalSqlPath) !== previous) continue;
+      tab.externalSqlPath = nextPath;
+      if (version) tab.externalSqlFileVersion = version;
+      tab.externalSqlIgnoredFileVersion = undefined;
+      tab.externalSqlFileMissing = undefined;
+    }
+    refreshExternalSqlFileTitles();
+  }
+
+  function markExternalSqlFileMissingForPath(path: string) {
+    const normalizedPath = normalizeExternalSqlPath(path);
+    if (!normalizedPath) return;
+    for (const tab of tabs.value) {
+      if (tab.mode === "query" && tab.externalSqlPath && normalizeExternalSqlPath(tab.externalSqlPath) === normalizedPath) {
+        tab.externalSqlFileMissing = true;
+      }
+    }
+  }
+
   function persistSavedSqlEditorPosition(tab: QueryTab | undefined) {
     if (!tab?.savedSqlId || tab.mode !== "query") return;
     const pending = savedSqlEditorPositionTimers.get(tab.savedSqlId);
@@ -6785,6 +6808,8 @@ export const useQueryStore = defineStore("query", () => {
     updateExternalSqlFileVersion,
     ignoreExternalSqlFileVersion,
     acknowledgeExternalSqlFileMissing,
+    relocateExternalSqlFilePath,
+    markExternalSqlFileMissingForPath,
     discardTabChanges,
     requestAppCloseConfirmation,
     closeOtherTabs,

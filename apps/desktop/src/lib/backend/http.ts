@@ -2221,6 +2221,18 @@ export async function listSqlFilesInFolder(_folderPath: string): Promise<SqlFile
   throw new Error("Listing SQL files in a folder is only available in the desktop app");
 }
 
+export async function createSqlFileInFolder(_rootPath: string, _directoryPath: string, _fileName: string): Promise<string> {
+  throw new Error("Managing SQL files in folders is only available in the desktop app");
+}
+
+export async function renameSqlFileInFolder(_rootPath: string, _filePath: string, _fileName: string): Promise<string> {
+  throw new Error("Managing SQL files in folders is only available in the desktop app");
+}
+
+export async function deleteSqlFileInFolder(_rootPath: string, _filePath: string): Promise<void> {
+  throw new Error("Managing SQL files in folders is only available in the desktop app");
+}
+
 // ---------------------------------------------------------------------------
 // Data Transfer
 // ---------------------------------------------------------------------------
