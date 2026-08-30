@@ -1521,6 +1521,8 @@ export default withEnglishFallback({
     mongoJsonPreviewEmpty: "選擇一筆 MongoDB 文件以預覽。",
     copyJson: "複製 JSON",
     copyDdl: "複製 DDL",
+    hoverSearchPlaceholder: "搜尋欄位…",
+    hoverSearchNoResult: "沒有符合的欄位",
     copyCell: "複製儲存格",
     copyRow: "複製整筆（JSON 物件）",
     copyColumnJson: "複製欄 (JSON)",

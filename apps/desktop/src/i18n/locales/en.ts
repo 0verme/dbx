@@ -1632,6 +1632,8 @@ export default {
     mongoJsonPreviewEmpty: "Select a MongoDB document to preview.",
     copyJson: "Copy JSON",
     copyDdl: "Copy DDL",
+    hoverSearchPlaceholder: "Search columns…",
+    hoverSearchNoResult: "No matching columns",
     copyCell: "Copy Cell",
     copyRow: "Copy Entire Row (JSON Object)",
     copyColumnJson: "Copy Column (JSON)",

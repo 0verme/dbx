@@ -1555,6 +1555,8 @@ export default withEnglishFallback({
     mongoJsonPreviewEmpty: "选择一条 MongoDB 文档以预览。",
     copyJson: "复制 JSON",
     copyDdl: "复制 DDL",
+    hoverSearchPlaceholder: "搜索列…",
+    hoverSearchNoResult: "没有匹配的列",
     copyCell: "复制单元格",
     copyRow: "复制整行（JSON 对象）",
     copyColumnJson: "复制列 (JSON)",

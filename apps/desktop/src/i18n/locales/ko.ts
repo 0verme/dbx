@@ -1513,6 +1513,8 @@ export default withEnglishFallback({
     mongoJsonPreviewEmpty: "미리보려면 MongoDB 문서를 선택하세요.",
     copyJson: "JSON 복사",
     copyDdl: "DDL 복사",
+    hoverSearchPlaceholder: "열 검색…",
+    hoverSearchNoResult: "일치하는 열 없음",
     copyCell: "셀 복사",
     copyRow: "전체 행 복사(JSON 객체)",
     copyColumnJson: "컬럼 복사 (JSON)",
