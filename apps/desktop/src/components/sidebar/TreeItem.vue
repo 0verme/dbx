@@ -68,6 +68,7 @@ import { filterSidebarModifierSelectionIds, supportsSidebarModifierSelection, tr
 import { applyConnectionMultiSelection, applyTreeNodeSelection, connectionMultiSelectionAfterToggle } from "@/lib/sidebar/sidebarConnectionMultiSelect";
 import { connectionBearingGroupIdsUnder, connectionIdsUnderGroup } from "@/lib/sidebar/sidebarLayout";
 import { isSidebarDatabaseOpenForVisual } from "@/lib/sidebar/sidebarDatabaseOpenState";
+import { isLoginUserSchemaNode } from "@/lib/sidebar/loginUserNode";
 import { sidebarTreeContextKey } from "@/lib/sidebar/sidebarTreeContext";
 import { connectionCanConfigureSidebarVisibleDatabases } from "@/lib/sidebar/sidebarVisibleFilterMenu";
 import { supportsSidebarObjectNameFilter } from "@/lib/sidebar/sidebarObjectNameFilter";
@@ -754,6 +755,10 @@ const isNodeDefaultDatabase = computed(
 function isNodeDefaultSchema(): boolean {
   return activeNode.value.type === "schema" && !!activeNode.value.connectionId && !!activeNode.value.schema && connectionStore.isDefaultSchema(activeNode.value.connectionId, activeNode.value.schema);
 }
+
+// #7490: on Oracle-family connections whose schemas are database users, bold the
+// schema node matching the login user so it stands out among many user schemas.
+const isLoginUserNode = computed(() => isLoginUserSchemaNode(activeNode.value, activeNode.value.connectionId ? connectionStore.getConfig(activeNode.value.connectionId) : undefined));
 
 const trailingComment = computed(() => {
   if (!settingsStore.editorSettings.sidebarObjectInfoMode.startsWith("comment-")) return null;
@@ -1453,7 +1458,7 @@ function onKeydown(event: KeyboardEvent) {
               @keydown.escape.prevent="cancelRename"
               @click.stop
             />
-            <span v-else ref="labelRef" :class="[labelWidthClass, { 'flex-1': node.type === 'connection' && !trailingComment }]">{{ visibleLabel(node) }}</span>
+            <span v-else ref="labelRef" :class="[labelWidthClass, { 'flex-1': node.type === 'connection' && !trailingComment, 'font-semibold': isLoginUserNode }]">{{ visibleLabel(node) }}</span>
             <span v-if="treeNodeSecondaryValue(node)" class="min-w-0 max-w-[55%] shrink truncate text-xs text-muted-foreground" :title="treeNodeSecondaryValue(node)">{{ treeNodeSecondaryValue(node) }}</span>
             <button
               v-if="canDragPinnedOrder()"
