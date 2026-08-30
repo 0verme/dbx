@@ -118,7 +118,7 @@ import { buildQueryEditorLineNumbersExtension, createQueryEditorLineNumberAlignm
 import { searchKeymapWithoutModD } from "@/lib/editor/codemirrorSearchKeymap";
 import { defaultKeymapForGlobalShortcuts } from "@/lib/editor/codemirrorDefaultKeymap";
 import { appendSqlCompletionSpace } from "@/lib/editor/sqlCompletionInsertion";
-import { batchColumnSelectionColumnList, batchColumnSelectionReplaceTo, shouldResolveSqlColumnCompletion } from "@/lib/editor/batchColumnSelection";
+import { batchColumnSelectionColumnList, batchColumnSelectionInsertReplacement, batchColumnSelectionReplaceTo, isBatchColumnSelectionCompletionActive, shouldResolveSqlColumnCompletion } from "@/lib/editor/batchColumnSelection";
 import { compareSqlCompletions, completionLabelPresentation } from "@/lib/editor/sqlCompletionPresentation";
 import { clampEditorFontSize, createEditorWheelZoomGestureGuard, createEditorZoomCommitScheduler, fontSizeFromGestureScale, fontSizeFromWheelDelta } from "@/lib/editor/editorZoom";
 import { enabledSqlShortcutActions, resolveSqlShortcutTemplate } from "@/lib/sql/sqlShortcutActions";
@@ -2085,7 +2085,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
 
 function handleEnter(view: EditorViewType): boolean {
   clearPendingCompletionEnter();
-  if (applySelectedBatchColumnSelection(view)) return true;
+  if (isBatchColumnSelectionCompletionActive(codeMirrorCompletionStatus?.(view.state) ?? null) && applySelectedBatchColumnSelection(view)) return true;
   // CodeMirror's default completion keymap is disabled so batch selection can
   // take precedence. Preserve its normal single-item acceptance here.
   if (codeMirrorAcceptCompletion?.(view)) return true;
@@ -2139,8 +2139,8 @@ function acceptCompletionOrNextSnippetField(view: EditorViewType): boolean {
   // not word completion. A completion popup can still appear as a side effect
   // of the indent edit itself, so it must never hijack this or a following Tab.
   if (view.state.selection.ranges.every((range) => range.empty)) {
-    if (applySelectedBatchColumnSelection(view)) return true;
     const completionStatus = codeMirrorCompletionStatus?.(view.state) ?? null;
+    if (isBatchColumnSelectionCompletionActive(completionStatus) && applySelectedBatchColumnSelection(view)) return true;
     if (completionStatus === "active" && acceptSelectedOrFirstCompletion(view, codeMirrorAcceptCompletion, codeMirrorSelectedCompletionIndex, codeMirrorSelectFirstCompletion)) return true;
     if (completionStatus) return waitForCompletionTab(view);
   }
@@ -3513,6 +3513,10 @@ type QueryCompletionOption = Completion & {
 
 let batchColumnSelectionSession: BatchColumnSelectionSession | null = null;
 
+function clearBatchColumnSelectionSession() {
+  batchColumnSelectionSession = null;
+}
+
 function isBatchColumnSelectionAction(item: QueryCompletionItem | BatchColumnSelectionActionItem): item is BatchColumnSelectionActionItem {
   return "batchColumnSelectionAction" in item && item.batchColumnSelectionAction === true;
 }
@@ -3627,20 +3631,35 @@ function applyBatchColumnSelection(view: EditorViewType, item: BatchColumnSelect
     return;
   }
 
-  const replaceTo = batchColumnSelectionReplaceTo({
-    to,
-    mode: session.mode,
-    nextCharacter: view.state.sliceDoc(to, to + 1),
-    replaceClosingQuote: session.replaceClosingQuote,
-  });
   const columns = batchColumnSelectionColumnList(
     selected.map((candidate) => candidate.apply),
     session.mode,
     session.qualifier,
   );
-  const insert = session.mode === "insert" ? `${columns}) ${settingsStore.editorSettings.sqlFormatter.keywordCase === "lower" ? "values" : "VALUES"} (${selected.map((_, index) => `\${${index + 1}:value}`).join(", ")})` : columns;
+  let replaceTo = batchColumnSelectionReplaceTo({
+    to,
+    mode: session.mode,
+    nextCharacter: view.state.sliceDoc(to, to + 1),
+    replaceClosingQuote: session.replaceClosingQuote,
+  });
+  let insert = columns;
+  if (session.mode === "insert") {
+    const replacement = batchColumnSelectionInsertReplacement({
+      document: view.state.doc.toString(),
+      to,
+      columns,
+      valuesKeyword: settingsStore.editorSettings.sqlFormatter.keywordCase === "lower" ? "values" : "VALUES",
+      valueCount: selected.length,
+    });
+    replaceTo = replacement.replaceTo;
+    insert = replacement.insert;
+  }
 
-  batchColumnSelectionSession = null;
+  if (session.mode === "insert" && !codeMirrorSnippetCompletion) {
+    clearBatchColumnSelectionSession();
+    return;
+  }
+  clearBatchColumnSelectionSession();
   markCompletionAccepted(item);
   if (session.mode === "insert") {
     const snippet = codeMirrorSnippetCompletion(insert, { label: item.label });
@@ -3658,7 +3677,7 @@ function applyBatchColumnSelection(view: EditorViewType, item: BatchColumnSelect
 
 function applySelectedBatchColumnSelection(view: EditorViewType): boolean {
   const session = batchColumnSelectionSession;
-  if (!session || session.document !== view.state.doc.toString() || session.selectedKeys.size === 0) return false;
+  if (!session || !isBatchColumnSelectionCompletionActive(codeMirrorCompletionStatus?.(view.state) ?? null) || session.document !== view.state.doc.toString() || session.selectedKeys.size === 0) return false;
   applyBatchColumnSelection(
     view,
     {
@@ -5659,6 +5678,7 @@ onMounted(async () => {
           {
             key: "Escape",
             run: () => {
+              clearBatchColumnSelectionSession();
               return searchPanelRef.value?.closeSearch() ?? false;
             },
           },
@@ -5718,6 +5738,7 @@ onMounted(async () => {
           const status = codeMirrorCompletionStatus(update.state) ?? null;
           if (status === null) {
             activeCompletionOrigin = null;
+            clearBatchColumnSelectionSession();
           }
         }
       }),
