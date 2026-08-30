@@ -120,5 +120,7 @@ describe("SchemaDiffDialog fullscreen layout", () => {
     expect(dialogSource).toContain("sql: selectedDeploySql.value");
     expect(dialogSource).toContain("[selectedDeploySql.value]");
     expect(dialogSource).toContain("selectedObjectId.value !== objectId");
+    expect(dialogSource).toContain('selectedDeploySql.value = "";');
+    expect(dialogSource).toContain("const sql = selectedDeploySql.value.trim();");
   });
 });
