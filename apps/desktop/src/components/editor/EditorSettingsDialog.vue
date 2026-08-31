@@ -62,6 +62,7 @@ import {
   DUCKDB_WORKER_MAX_PROCESSES_MIN,
   normalizeDuckDbWorkerMaxProcesses,
   normalizeAiEnv,
+  normalizeAiHeaders,
   type AiProvider,
   type AiApiStyle,
   type AiAuthMethod,
@@ -322,6 +323,12 @@ interface TableColumnTemplateGridRow {
 interface AiEnvRow {
   id: string;
   key: string;
+  value: string;
+}
+
+interface AiHeaderRow {
+  id: string;
+  name: string;
   value: string;
 }
 
@@ -3341,6 +3348,7 @@ const aiEditEndpoint = ref("");
 const aiEditModel = ref("");
 const aiEditLegacyModels = ref<AiConfiguredModel[]>([]);
 const aiEditApiStyle = ref<AiApiStyle>("completions");
+const aiEditCustomHeaderRows = ref<AiHeaderRow[]>([]);
 const aiEditProxyEnabled = ref(false);
 const aiEditProxyUrl = ref("");
 const aiEditEnableThinking = ref(true);
@@ -3505,6 +3513,7 @@ const aiCliMcpActionLabel = computed(() => {
   return t("settings.mcpUpToDate");
 });
 const aiCliEnvError = computed(() => cliEnvValidationError());
+const aiHeadersValidationError = computed(() => customHeadersValidationError());
 const aiCliPathError = computed(() => {
   const path = aiEditCliPath.value.trim();
   const firstToken = path.split(/\s+/)[0] || "";
@@ -3518,6 +3527,49 @@ function aiEnvRowsFromConfig(env: unknown): AiEnvRow[] {
     key,
     value,
   }));
+}
+
+function aiHeaderRowsFromConfig(headers: unknown): AiHeaderRow[] {
+  return Object.entries(normalizeAiHeaders(headers)).map(([name, value]) => ({
+    id: uuid(),
+    name,
+    value,
+  }));
+}
+
+const AI_HEADER_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const RESERVED_AI_HEADERS = new Set(["host", "content-length", "content-type", "connection", "transfer-encoding", "proxy-authorization"]);
+
+function customHeadersFromRows(): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const row of aiEditCustomHeaderRows.value) {
+    const name = row.name.trim();
+    if (name) result[name] = row.value;
+  }
+  return result;
+}
+
+function customHeadersValidationError(): string {
+  const names = new Set<string>();
+  for (const row of aiEditCustomHeaderRows.value) {
+    const name = row.name.trim();
+    if (!name && !row.value) continue;
+    if (!AI_HEADER_NAME_RE.test(name)) return t("ai.customHeadersInvalidName", { name: row.name || "—" });
+    const normalizedName = name.toLowerCase();
+    if (RESERVED_AI_HEADERS.has(normalizedName)) return t("ai.customHeadersReserved", { name });
+    if (names.has(normalizedName)) return t("ai.customHeadersDuplicate", { name });
+    if (/\r|\n/.test(row.value)) return t("ai.customHeadersInvalidValue", { name });
+    names.add(normalizedName);
+  }
+  return "";
+}
+
+function addAiCustomHeaderRow() {
+  aiEditCustomHeaderRows.value.push({ id: uuid(), name: "", value: "" });
+}
+
+function removeAiCustomHeaderRow(id: string) {
+  aiEditCustomHeaderRows.value = aiEditCustomHeaderRows.value.filter((row) => row.id !== id);
 }
 
 function cliEnvFromRows(rows = aiEditCliEnvRows.value): Record<string, string> {
@@ -3578,6 +3630,7 @@ function currentAiEditConfig() {
       supportedEffortLevels: model.supportedEffortLevels ? [...model.supportedEffortLevels] : undefined,
     })),
     apiStyle: aiEditApiStyle.value,
+    customHeaders: customHeadersFromRows(),
     proxyEnabled: aiEditProxyEnabled.value,
     proxyUrl: aiEditProxyUrl.value,
     enableThinking: aiEditEnableThinking.value,
@@ -3624,6 +3677,7 @@ function aiSelectProvider(provider: AiProvider) {
   aiEditModel.value = "";
   aiEditLegacyModels.value = [];
   aiEditApiStyle.value = preset.apiStyle;
+  aiEditCustomHeaderRows.value = [];
   aiEditEnableThinking.value = true;
   aiEditReasoningLevel.value = "default";
   if (CLI_AI_PROVIDERS.has(provider)) void ensureCliMcpStatus();
@@ -3659,6 +3713,7 @@ function aiEnterEditMode(configId?: string) {
         supportedEffortLevels: model.supportedEffortLevels ? [...model.supportedEffortLevels] : undefined,
       }));
       aiEditApiStyle.value = config.apiStyle;
+      aiEditCustomHeaderRows.value = aiHeaderRowsFromConfig(config.customHeaders);
       aiEditProxyEnabled.value = config.proxyEnabled ?? false;
       aiEditProxyUrl.value = config.proxyUrl ?? "";
       aiEditEnableThinking.value = config.enableThinking ?? true;
@@ -3690,6 +3745,7 @@ function aiEnterEditMode(configId?: string) {
     aiEditModel.value = "";
     aiEditLegacyModels.value = [];
     aiEditApiStyle.value = AI_PROVIDER_PRESETS["claude"].apiStyle;
+    aiEditCustomHeaderRows.value = [];
     aiEditProxyEnabled.value = false;
     aiEditProxyUrl.value = "";
     aiEditEnableThinking.value = true;
@@ -3730,6 +3786,7 @@ async function applyPendingAiConfigDeepLinkDraft() {
   aiEditModel.value = draft.model;
   aiEditLegacyModels.value = [];
   aiEditApiStyle.value = draft.apiStyle;
+  aiEditCustomHeaderRows.value = [];
 
   if (!draft.promptForClipboardApiKey) return;
 
@@ -3762,6 +3819,10 @@ async function aiSaveConfig() {
   }
   if (validationResult === "duplicate") {
     toast(t("ai.configNameExists", { name: aiEditConfigName.value }), 3000);
+    return;
+  }
+  if (aiHeadersValidationError.value) {
+    toast(aiHeadersValidationError.value, 3000);
     return;
   }
 
@@ -3817,6 +3878,11 @@ async function aiSetDefaultConfig(id: string) {
 
 async function aiTestConn() {
   if ((aiRequiresApiKey.value && !aiEditApiKey.value.trim()) || (!aiIsCliProvider.value && !aiEditEndpoint.value.trim())) return;
+  if (aiHeadersValidationError.value) {
+    aiTestResult.value = "error";
+    aiTestError.value = aiHeadersValidationError.value;
+    return;
+  }
   if (aiCliValidationError.value) {
     aiTestResult.value = "error";
     aiTestError.value = aiCliValidationError.value;
@@ -7206,6 +7272,28 @@ onUnmounted(() => {
                   </div>
                 </div>
 
+                <!-- Custom HTTP headers for API gateways and tenant routing. -->
+                <div v-if="!aiIsCliProvider" class="grid grid-cols-3 items-start gap-3">
+                  <Label class="pt-2 text-right text-xs">{{ t("ai.customHeaders") }}</Label>
+                  <div class="col-span-2 space-y-2">
+                    <div class="space-y-1.5">
+                      <div v-for="row in aiEditCustomHeaderRows" :key="row.id" class="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)_2rem] gap-2">
+                        <Input v-model="row.name" autocomplete="off" class="h-8 font-mono text-xs" :placeholder="t('ai.customHeadersNamePlaceholder')" />
+                        <PasswordInput v-model="row.value" autocomplete="off" class="min-w-0" inputClass="h-8 font-mono text-xs" :placeholder="t('ai.customHeadersValuePlaceholder')" />
+                        <Button type="button" variant="ghost" size="icon" class="h-8 w-8" :title="t('common.remove')" :aria-label="t('common.remove')" @click="removeAiCustomHeaderRow(row.id)">
+                          <X class="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" class="h-7 px-2 text-xs" @click="addAiCustomHeaderRow">
+                      <Plus class="mr-1 h-3.5 w-3.5" />
+                      {{ t("ai.customHeadersAdd") }}
+                    </Button>
+                    <p v-if="aiHeadersValidationError" class="text-[11px] text-destructive">{{ aiHeadersValidationError }}</p>
+                    <p v-else class="text-[11px] text-muted-foreground">{{ t("ai.customHeadersHint") }}</p>
+                  </div>
+                </div>
+
                 <!-- CLI Path -->
                 <div v-if="aiIsCliProvider" class="grid grid-cols-3 items-start gap-3">
                   <Label class="pt-2 text-right text-xs">{{ t("ai.cliPath", { provider: aiCliProviderLabel }) }}</Label>
@@ -8191,7 +8279,7 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <div class="flex min-w-0 flex-1 items-center gap-2">
-                <Button size="sm" variant="outline" :disabled="aiTesting || !!aiCliValidationError || (aiRequiresApiKey && !aiEditApiKey?.trim()) || (!aiIsCliProvider && !aiEditEndpoint?.trim())" @click="aiTestConn">
+                <Button size="sm" variant="outline" :disabled="aiTesting || !!aiCliValidationError || !!aiHeadersValidationError || (aiRequiresApiKey && !aiEditApiKey?.trim()) || (!aiIsCliProvider && !aiEditEndpoint?.trim())" @click="aiTestConn">
                   <Loader2 v-if="aiTesting" class="h-3 w-3 animate-spin mr-1" />
                   {{ t("connection.test") }}
                 </Button>
