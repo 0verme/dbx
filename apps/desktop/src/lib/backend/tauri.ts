@@ -888,8 +888,8 @@ export interface SqlFileEntry {
   children: SqlFileEntry[];
 }
 
-export async function listSqlFilesInFolder(folderPath: string): Promise<SqlFileEntry[]> {
-  return invoke("list_sql_files_in_folder", { folderPath });
+export async function listSqlFilesInFolder(folderPath: string, fileFilter?: string): Promise<SqlFileEntry[]> {
+  return invoke("list_sql_files_in_folder", { folderPath, fileFilter });
 }
 
 export async function createSqlFileInFolder(rootPath: string, directoryPath: string, fileName: string): Promise<string> {

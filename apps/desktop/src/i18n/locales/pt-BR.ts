@@ -7423,6 +7423,11 @@ export default withEnglishFallback({
     deleteFailed: "Falha ao excluir o arquivo SQL: {message}",
     expandAll: "Expandir todos",
     collapseAll: "Recolher todos",
+    filterSettings: "Filtro de arquivos",
+    fileFilter: "Filtro de nome de arquivo",
+    fileFilterPlaceholder: "Filtro de nome de arquivo",
+    filterInvalid: "Filtro de arquivo inválido; o anterior foi mantido: {message}",
+    fileFilterHint: "Use um curinga como *.sql ou *.sh, ou uma expressão regular como {regex}.",
   },
   mqTopics: {
     title: "Gerenciamento de tópicos",

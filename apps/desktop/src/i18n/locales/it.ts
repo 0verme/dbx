@@ -7422,6 +7422,11 @@ export default withEnglishFallback({
     deleteFailed: "Impossibile eliminare il file SQL: {message}",
     expandAll: "Espandi tutto",
     collapseAll: "Comprimi tutto",
+    filterSettings: "Filtro file",
+    fileFilter: "Filtro nome file",
+    fileFilterPlaceholder: "Filtro nome file",
+    filterInvalid: "Filtro file non valido; viene mantenuto il precedente: {message}",
+    fileFilterHint: "Usa un carattere jolly come *.sql o *.sh oppure un'espressione regolare come {regex}.",
   },
   mqTopics: {
     title: "Gestione topic",

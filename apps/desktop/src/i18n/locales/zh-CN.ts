@@ -5799,6 +5799,11 @@ export default withEnglishFallback({
     deleteFailed: "删除 SQL 文件失败: {message}",
     expandAll: "全部展开",
     collapseAll: "全部折叠",
+    filterSettings: "文件过滤",
+    fileFilter: "文件名过滤规则",
+    fileFilterPlaceholder: "文件名过滤规则",
+    filterInvalid: "文件过滤规则无效，已保留原规则：{message}",
+    fileFilterHint: "支持通配符（如 *.sql、*.sh）或正则表达式（如 {regex}）。",
   },
   diff: {
     progress: {
