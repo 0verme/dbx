@@ -2,8 +2,9 @@ use super::dialect::StructureDialect;
 use super::types::EditableStructureColumn;
 use crate::models::connection::DatabaseType;
 
-pub(super) fn qualified_table(dialect: StructureDialect, schema: Option<&str>, table_name: &str) -> String {
-    if matches!(
+/// Dialects whose qualified names use `schema.table` when a non-empty schema is present.
+fn is_schema_qualifying_dialect(dialect: StructureDialect) -> bool {
+    matches!(
         dialect,
         StructureDialect::Postgres
             | StructureDialect::Oracle
@@ -13,8 +14,11 @@ pub(super) fn qualified_table(dialect: StructureDialect, schema: Option<&str>, t
             | StructureDialect::H2
             | StructureDialect::Informix
             | StructureDialect::Sqlite
-    ) && schema.is_some_and(|schema| !schema.trim().is_empty())
-    {
+    )
+}
+
+pub(super) fn qualified_table(dialect: StructureDialect, schema: Option<&str>, table_name: &str) -> String {
+    if is_schema_qualifying_dialect(dialect) && schema.is_some_and(|schema| !schema.trim().is_empty()) {
         return format!("{}.{}", quote_ident(dialect, schema.unwrap()), quote_ident(dialect, table_name));
     }
     quote_ident(dialect, table_name)
@@ -31,18 +35,7 @@ pub(super) fn qualified_new_table(
     schema: Option<&str>,
     table_name: &str,
 ) -> String {
-    if matches!(
-        dialect,
-        StructureDialect::Postgres
-            | StructureDialect::Oracle
-            | StructureDialect::Dameng
-            | StructureDialect::Oscar
-            | StructureDialect::SqlServer
-            | StructureDialect::H2
-            | StructureDialect::Informix
-            | StructureDialect::Sqlite
-    ) && schema.is_some_and(|schema| !schema.trim().is_empty())
-    {
+    if is_schema_qualifying_dialect(dialect) && schema.is_some_and(|schema| !schema.trim().is_empty()) {
         return format!(
             "{}.{}",
             quote_ident(dialect, schema.unwrap()),
@@ -82,14 +75,24 @@ fn is_simple_informix_identifier(name: &str) -> bool {
 /// exact spelling of an existing quoted Oracle object, while a newly entered ordinary name
 /// should use Oracle's normal case-insensitive identifier semantics.
 pub(super) fn quote_new_ident(database_type: Option<DatabaseType>, dialect: StructureDialect, name: &str) -> String {
-    if database_type == Some(DatabaseType::Oracle)
-        && dialect == StructureDialect::Oracle
-        && is_simple_oracle_identifier(name)
-        && !is_oracle_reserved_identifier(name)
-    {
-        name.to_string()
+    if database_type == Some(DatabaseType::Oracle) && dialect == StructureDialect::Oracle {
+        oracle_new_object_reference(name)
     } else {
         quote_ident(dialect, name)
+    }
+}
+
+/// Reference spelling that resolves to an object created through [`quote_new_ident`]'s Oracle path.
+///
+/// Plain Oracle identifiers are created unquoted and are therefore stored uppercase-folded; a
+/// later reference with the same unquoted spelling folds to the same object.  Names that had to
+/// stay quoted at creation (special characters, reserved words) keep exact quoting here too, so
+/// generated references always line up with the created object.
+pub(crate) fn oracle_new_object_reference(name: &str) -> String {
+    if is_simple_oracle_identifier(name) && !is_oracle_reserved_identifier(name) {
+        name.to_string()
+    } else {
+        quote_ident(StructureDialect::Oracle, name)
     }
 }
 
