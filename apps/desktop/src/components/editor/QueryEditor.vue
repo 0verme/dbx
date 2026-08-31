@@ -3819,6 +3819,13 @@ function shouldInsertSqlCompletionSpace(): boolean {
   return props.databaseType !== "mongodb" && props.databaseType !== "redis" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "meilisearch" && props.databaseType !== "victoriametrics";
 }
 
+// Snippet expansion normally follows from the item type; a provider can also
+// opt a differently-typed item in so its `${}` fields still expand on accept.
+function shouldApplyCompletionAsSnippet(item: QueryCompletionItem): boolean {
+  if ("applyAsSnippet" in item && item.applyAsSnippet === true) return true;
+  return item.type === "snippet" || item.type === "function";
+}
+
 function completionOptionForItem(item: QueryCompletionItem | BatchColumnSelectionActionItem) {
   const filterText = "filterText" in item && typeof item.filterText === "string" ? item.filterText : undefined;
   const labelPresentation = completionLabelPresentation(item.label, filterText);
@@ -3837,7 +3844,7 @@ function completionOptionForItem(item: QueryCompletionItem | BatchColumnSelectio
     recordCompletionSelection(item.label, item.type);
   };
   const batchColumnSelection = batchColumnSelectionMarkerForItem(item);
-  if ((item.type === "snippet" || item.type === "function") && item.apply) {
+  if (shouldApplyCompletionAsSnippet(item) && item.apply) {
     const completion = codeMirrorSnippetCompletion(item.apply, {
       ...labelPresentation,
       type: item.type,
