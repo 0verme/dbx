@@ -1535,6 +1535,8 @@ export default withEnglishFallback({
     mongoJsonPreviewEmpty: "プレビューする MongoDB ドキュメントを選択してください。",
     copyJson: "JSON をコピー",
     copyDdl: "DDLをコピー",
+    hoverSearchPlaceholder: "列を検索…",
+    hoverSearchNoResult: "一致する列はありません",
     copyCell: "セルをコピー",
     copyRow: "行全体をコピー（JSON オブジェクト）",
     copyColumnJson: "列をコピー (JSON)",

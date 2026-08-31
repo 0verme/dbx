@@ -1523,6 +1523,8 @@ export default withEnglishFallback({
     mongoJsonPreviewEmpty: "Selecione um documento MongoDB para visualizar.",
     copyJson: "Copiar JSON",
     copyDdl: "Copiar DDL",
+    hoverSearchPlaceholder: "Pesquisar colunas…",
+    hoverSearchNoResult: "Nenhuma coluna correspondente",
     copyCell: "Copiar Célula",
     copyRow: "Copiar linha inteira (objeto JSON)",
     copyColumnJson: "Copiar Coluna (JSON)",

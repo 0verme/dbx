@@ -92,6 +92,7 @@ import {
 } from "@/lib/sql/sqlNavigation";
 import { buildHoverTableSql, ddlForHoverPreview, hoverTableMatchesScope, normalizeAlignedSqlWhitespace, quoteIdentifier, quoteQualifiedName, reformatHoverDdl, scopeHoverTables, type HoverTableScope } from "@/lib/editor/hoverTableSql";
 import { constrainSqlHoverLayout } from "@/lib/editor/sqlHoverLayout";
+import { createHoverSearch, type HoverSearchController } from "@/lib/editor/sqlHoverSearch";
 import { lineColumnToOffset, sqlErrorDecorationRange as resolveSqlErrorDecorationRange } from "@/lib/sql/sqlDiagnostics";
 import { analyzeMysqlRoutineSyntax, supportsMysqlRoutineSyntaxDiagnostics } from "@/lib/sql/mysqlRoutineSyntaxDiagnostics";
 import { buildOracleSyntaxDiagnostics } from "@/lib/sql/oracleSyntaxDiagnostics";
@@ -2655,6 +2656,7 @@ function createHoverDom(title: string, detail: string, sqlContent?: string, rows
 
   let layoutController: ReturnType<typeof constrainSqlHoverLayout> | null = null;
   let handleCopy: ((event: ClipboardEvent) => void) | null = null;
+  let searchController: HoverSearchController | null = null;
 
   if (sqlContent) {
     heading.className = "flex items-center justify-between gap-3 font-medium";
@@ -2699,7 +2701,18 @@ function createHoverDom(title: string, detail: string, sqlContent?: string, rows
       sqlContainer.textContent = sqlContent;
     }
 
+    // 纯前端搜索：在已生成的 DDL 内容上做大小写不敏感匹配并高亮，不重新请求元数据/DDL。
+    // originalHtml 必须在挂到文档前、内容渲染后捕获，作为每次搜索的还原基线。
+    searchController = createHoverSearch({
+      target: sqlContainer,
+      originalHtml: sqlContainer.innerHTML,
+      placeholder: t("grid.hoverSearchPlaceholder"),
+      noResultLabel: t("grid.hoverSearchNoResult"),
+    });
+    dom.appendChild(searchController.element);
+
     dom.appendChild(sqlContainer);
+    dom.appendChild(searchController.status);
     // 返回 mount/destroy 给 CodeMirror TooltipView 生命周期钩子，
     // 避免 MutationObserver 监听 body 全子树来兜底清理。
     layoutController = constrainSqlHoverLayout(dom, sqlContainer);
@@ -2733,16 +2746,17 @@ function createHoverDom(title: string, detail: string, sqlContent?: string, rows
   return {
     dom,
     mount:
-      layoutController || handleCopy
+      layoutController || handleCopy || searchController
         ? () => {
             layoutController?.mount();
             if (handleCopy) document.addEventListener("copy", handleCopy);
           }
         : undefined,
     destroy:
-      layoutController || handleCopy
+      layoutController || handleCopy || searchController
         ? () => {
             layoutController?.destroy();
+            searchController?.destroy();
             if (handleCopy) document.removeEventListener("copy", handleCopy);
           }
         : undefined,
