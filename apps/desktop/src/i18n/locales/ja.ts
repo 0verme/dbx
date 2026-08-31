@@ -6351,6 +6351,8 @@ export default withEnglishFallback({
     formatSqlOnSqlFileSaveDescription: "SQL ファイル保存時に SQL を自動フォーマットします。SQL ライブラリに保存されたファイルや、新規クエリを .sql ファイルとして保存する場合も含みます。",
     clickTableNavigationTarget: "Ctrl+クリックでテーブル構造を開く",
     clickTableNavigationTargetDescription: "有効にすると、Ctrl/Cmd+クリックでテーブル構造エディタ（DDL）を開きます。無効の場合はテーブルデータビューを開きます。",
+    showTableDdlHoverPreview: "ホバー時にテーブル DDL を表示",
+    showTableDdlHoverPreviewDescription: "SQL エディタでテーブル名にホバーしたときに DDL プレビューを表示します。",
     sqlVariableSyntax: "SQL 変数・プレースホルダー置換",
     sqlVariableSyntaxDescription: "SQL 実行前に置換する変数・プレースホルダー構文をデータベース種別ごとに選択します。既定ではすべて有効です。",
     sqlVariableSubstitutionEnabled: "置換を有効化",

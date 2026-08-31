@@ -6338,6 +6338,8 @@ export default withEnglishFallback({
     formatSqlOnSqlFileSaveDescription: "Formata automaticamente o SQL ao salvar um arquivo SQL, incluindo arquivos salvos na biblioteca SQL e consultas salvas como arquivos .sql.",
     clickTableNavigationTarget: "Ctrl+Clique abre DDL da tabela",
     clickTableNavigationTargetDescription: "Quando ativado, Ctrl/Cmd+clicar no nome da tabela abre o editor de estrutura (DDL). Quando desativado, abre a visualização de dados.",
+    showTableDdlHoverPreview: "Mostrar DDL da tabela ao passar o mouse",
+    showTableDdlHoverPreviewDescription: "Mostra uma prévia do DDL ao passar o mouse sobre o nome de uma tabela no editor SQL.",
     sqlVariableSyntax: "Substituição de variáveis e espaços reservados SQL",
     sqlVariableSyntaxDescription: "Escolha quais sintaxes de variáveis e espaços reservados o DBX substitui antes de executar SQL, por tipo de banco de dados. Todas ativadas por padrão.",
     sqlVariableSubstitutionEnabled: "Ativada",

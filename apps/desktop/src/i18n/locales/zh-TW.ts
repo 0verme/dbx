@@ -5652,6 +5652,8 @@ export default withEnglishFallback({
     formatSqlOnSqlFileSaveDescription: "儲存 SQL 檔案時自動格式化 SQL，包括透過 SQL 庫儲存的檔案，以及將新查詢儲存為 .sql 檔案等場景。",
     clickTableNavigationTarget: "Ctrl+點擊表名開啟 DDL",
     clickTableNavigationTargetDescription: "開啟後，Ctrl/Cmd+點擊表名將開啟表結構編輯器（DDL）；關閉則開啟表資料檢視。",
+    showTableDdlHoverPreview: "滑過表名時顯示 DDL",
+    showTableDdlHoverPreviewDescription: "在 SQL 編輯器中滑過表名時顯示 DDL 預覽。",
     sqlVariableSyntax: "SQL 變數與佔位符替換",
     sqlVariableSyntaxDescription: "依資料庫類型選擇執行 SQL 前替換哪些變數與佔位符語法，預設全部開啟。",
     sqlVariableSubstitutionEnabled: "啟用替換",

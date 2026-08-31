@@ -37,7 +37,7 @@ describe("EditorSettingsDialog live preview placement", () => {
     expect(dialogSource.match(/ref="previewRef"/g)).toHaveLength(1);
     expect(editorSection).not.toContain('ref="previewRef"');
 
-    for (const id of ["editor-show-statement-run-buttons", "editor-show-line-numbers", "editor-show-current-statement-frame", "editor-sql-semantic-diagnostics"]) {
+    for (const id of ["editor-show-statement-run-buttons", "editor-show-line-numbers", "editor-show-current-statement-frame", "editor-sql-semantic-diagnostics", "editor-show-table-ddl-hover-preview"]) {
       expect(editorSection.indexOf(`id="${id}"`)).toBeGreaterThan(previewControls);
       expect(editorSection.indexOf(`id="${id}"`)).toBeLessThan(executeMode);
       expect(editorSection.match(new RegExp(`id="${id}"`, "g"))).toHaveLength(1);

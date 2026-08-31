@@ -6679,6 +6679,8 @@ export default withEnglishFallback({
     formatSqlOnSqlFileSaveDescription: "保存 SQL 文件时自动格式化 SQL，包括通过 SQL 库保存的文件以及将新查询保存为 .sql 文件等场景。",
     clickTableNavigationTarget: "Ctrl+点击表名打开 DDL",
     clickTableNavigationTargetDescription: "开启后，Ctrl/Cmd+点击表名将打开表结构编辑器（DDL）；关闭则打开表数据视图。",
+    showTableDdlHoverPreview: "悬浮表名时显示 DDL",
+    showTableDdlHoverPreviewDescription: "在 SQL 编辑器中悬浮表名时显示 DDL 预览。",
     sqlVariableSyntax: "SQL 变量与占位符替换",
     sqlVariableSyntaxDescription: "按数据库类型选择执行 SQL 前替换哪些变量与占位符语法，默认全部开启。",
     sqlVariableSubstitutionEnabled: "启用替换",

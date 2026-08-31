@@ -506,6 +506,15 @@ describe("normalizeEditorSettings - clickTableNavigationTarget", () => {
   });
 });
 
+describe("normalizeEditorSettings - showTableDdlHoverPreview", () => {
+  it("keeps table DDL hover previews enabled unless explicitly disabled", () => {
+    expect(normalizeEditorSettings({}).showTableDdlHoverPreview).toBe(true);
+    expect(normalizeEditorSettings({ showTableDdlHoverPreview: false }).showTableDdlHoverPreview).toBe(false);
+    expect(normalizeEditorSettings({ showTableDdlHoverPreview: true }).showTableDdlHoverPreview).toBe(true);
+    expect(normalizeEditorSettings({ showTableDdlHoverPreview: "true" } as any).showTableDdlHoverPreview).toBe(true);
+  });
+});
+
 describe("normalizeEditorSettings - completionTriggerMode", () => {
   it("defaults completionTriggerMode to positional", () => {
     expect(normalizeEditorSettings({}).completionTriggerMode).toBe("positional");

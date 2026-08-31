@@ -5558,6 +5558,8 @@ export default withEnglishFallback({
     clearSettingsSearch: "설정 검색 지우기",
     exitSettingsSearch: "설정으로 돌아가기",
     editorTab: "편집기",
+    showTableDdlHoverPreview: "호버 시 테이블 DDL 표시",
+    showTableDdlHoverPreviewDescription: "SQL 편집기에서 테이블 이름에 마우스를 올리면 DDL 미리 보기를 표시합니다.",
     globalConnectTimeout: "전역 연결 제한 시간 (초)",
     globalConnectTimeoutDescription: "전역 설정을 상속하는 연결에 사용됩니다.",
     globalQueryTimeout: "전역 쿼리 제한 시간 (초)",

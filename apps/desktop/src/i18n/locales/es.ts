@@ -6336,6 +6336,8 @@ export default withEnglishFallback({
     formatSqlOnSqlFileSaveDescription: "Formatea automáticamente el SQL al guardar un archivo SQL, incluidos los archivos guardados en la biblioteca SQL y las consultas guardadas como archivos .sql.",
     clickTableNavigationTarget: "Ctrl+Clic abre DDL de tabla",
     clickTableNavigationTargetDescription: "Cuando está activado, Ctrl/Cmd+clic en el nombre de la tabla abre el editor de estructura (DDL). Cuando está desactivado, abre la vista de datos.",
+    showTableDdlHoverPreview: "Mostrar DDL de tabla al pasar el cursor",
+    showTableDdlHoverPreviewDescription: "Muestra una vista previa del DDL al pasar el cursor sobre el nombre de una tabla en el editor SQL.",
     sqlVariableSyntax: "Sustitución de variables y marcadores SQL",
     sqlVariableSyntaxDescription: "Elige qué sintaxis de variables y marcadores sustituye DBX antes de ejecutar SQL, por tipo de base de datos. Todas están habilitadas de forma predeterminada.",
     sqlVariableSubstitutionEnabled: "Activada",

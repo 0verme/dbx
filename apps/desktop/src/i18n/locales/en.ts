@@ -6698,6 +6698,8 @@ export default {
     formatSqlOnSqlFileSaveDescription: "Automatically format SQL when saving a SQL file, including saved SQL library files and queries saved as .sql files.",
     clickTableNavigationTarget: "Ctrl+Click Table Opens DDL",
     clickTableNavigationTargetDescription: "When enabled, Ctrl/Cmd+clicking a table name opens the table structure editor (DDL). When disabled, it opens the table data view.",
+    showTableDdlHoverPreview: "Show table DDL on hover",
+    showTableDdlHoverPreviewDescription: "Show a DDL preview when hovering over a table name in the SQL editor.",
     sqlVariableSyntax: "SQL variable & placeholder substitution",
     sqlVariableSyntaxDescription: "Choose which variable and placeholder syntaxes DBX substitutes before running SQL, per database type. All are enabled by default.",
     sqlVariableSubstitutionEnabled: "Enabled",

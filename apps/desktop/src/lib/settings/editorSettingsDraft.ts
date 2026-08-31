@@ -73,6 +73,7 @@ export const EDITOR_SETTINGS_DRAFT_KEYS = [
   "prefillNewQueryWithSelect",
   "generateSqlIncludeDatabaseName",
   "formatSqlOnSqlFileSave",
+  "showTableDdlHoverPreview",
   "updateNotificationsEnabled",
   "sidebarObjectInfoMode",
   "sidebarAllowHorizontalScroll",
