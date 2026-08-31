@@ -518,6 +518,7 @@ export const useConnectionStore = defineStore("connection", () => {
     database: string;
     schema?: string;
     tableName?: string;
+    tableNames?: string[];
   } | null>(null);
   const docsSource = ref<{
     connectionId: string;

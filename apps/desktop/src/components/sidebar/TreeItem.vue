@@ -53,7 +53,17 @@ import { Switch } from "@/components/ui/switch";
 import LightTooltip from "@/components/ui/LightTooltip.vue";
 import type { ColumnInfo, ConnectionConfig, CustomTypeTreeMemberMeta, DatabaseType, TreeNode, TriggerInfo } from "@/types/database";
 import { alignedCommentLeadingWidth, canTreeNodePin, canTreeNodeShowExpander, sidebarTreeNodeComment, trailingCommentAvailableWidth, trailingCommentGapPx, treeItemPaddingLeft, treeLabelWidthClass, usesFullWidthTreeLabel } from "@/lib/sidebar/sidebarTreeItemLayout";
-import { clearActiveTableReferencePayload, createTableReferenceDragEndEvent, createTableReferenceDropEvent, createTableReferenceHoverEvent, createTableReferencePayload, setActiveTableReferencePayload, type QueryEditorTableReferencePayload } from "@/lib/editor/queryEditorTableDrop";
+import {
+  clearActiveTableReferencePayload,
+  createColumnReferencePayload,
+  createMultiTableReferencePayload,
+  createTableReferenceDragEndEvent,
+  createTableReferenceDropEvent,
+  createTableReferenceHoverEvent,
+  createTableReferencePayload,
+  setActiveTableReferencePayload,
+  type QueryEditorTableReferencePayload,
+} from "@/lib/editor/queryEditorTableDrop";
 import { AI_ASSISTANT_TABLE_DROP_ROOT_SELECTOR } from "@/lib/ai/aiTableReferenceDrop";
 import { beginTableReferenceDragFeedback, isOverSqlEditorTarget, type TableReferenceDragFeedback } from "@/lib/editor/tableReferenceDragFeedback";
 import { formatSidebarObjectStorage } from "@/lib/sidebar/sidebarDatabaseStorage";
@@ -64,7 +74,8 @@ import { encodeSpannerResourcePath } from "@/lib/connection/spannerResourcePath"
 import { hexToRgba } from "@/lib/common/color";
 import { sidebarDisplayTableName } from "@/lib/sidebar/sidebarTableNameDisplay";
 import { shouldMeasureSidebarLabelOverflow } from "@/lib/sidebar/sidebarLabelTooltip";
-import { filterSidebarModifierSelectionIds, supportsSidebarModifierSelection, treeSelectionRangeIdsByIndex, treeSelectionRangeIds } from "@/lib/sidebar/sidebarTreeSelection";
+import { filterSidebarModifierSelectionIds, selectedTreeNodesInVisibleOrder as orderSelectedTreeNodes, supportsSidebarModifierSelection, treeSelectionRangeIdsByIndex, treeSelectionRangeIds } from "@/lib/sidebar/sidebarTreeSelection";
+import { resolveSidebarColumnDragNames, resolveSidebarTableCopyTargets, type SidebarTableCopyTarget } from "@/lib/sidebar/sidebarTableNameCopy";
 import { applyConnectionMultiSelection, applyTreeNodeSelection, connectionMultiSelectionAfterToggle } from "@/lib/sidebar/sidebarConnectionMultiSelect";
 import { connectionBearingGroupIdsUnder, connectionIdsUnderGroup } from "@/lib/sidebar/sidebarLayout";
 import { isSidebarDatabaseOpenForVisual } from "@/lib/sidebar/sidebarDatabaseOpenState";
@@ -1172,13 +1183,31 @@ let referenceDragFeedback: TableReferenceDragFeedback | null = null;
 
 let suppressNextTableReferenceClick = false;
 
+function selectedTreeNodesInVisibleOrder(): TreeNode[] {
+  return orderSelectedTreeNodes(visibleTreeNodes(), connectionStore.selectedTreeNodeIds);
+}
+
 function tableReferenceDragLabel(payload: QueryEditorTableReferencePayload): string {
-  if (payload.referenceType === "column" && payload.columnName) return payload.columnName;
+  if (payload.referenceType === "column") {
+    const names = payload.columnNames?.length ? payload.columnNames : payload.columnName ? [payload.columnName] : [];
+    if (names.length <= 3) return names.join(", ");
+    return t("grid.columnDragChipMany", { names: names.slice(0, 2).join(", "), count: names.length });
+  }
+  const tableNames = payload.tableReferences?.map((entry) => entry.tableName) ?? (payload.tableName ? [payload.tableName] : []);
+  if (tableNames.length <= 3) return tableNames.join(", ");
+  if (tableNames.length > 1) return t("grid.columnDragChipMany", { names: tableNames.slice(0, 2).join(", "), count: tableNames.length });
   return payload.tableName || payload.database;
 }
 
 function tableReferenceDragPayload(): QueryEditorTableReferencePayload | null {
   if (!canDragTableReference.value) return null;
+  const selectedNodes = selectedTreeNodesInVisibleOrder();
+  const tableCopyOptions = {
+    tableNameSeparator: settingsStore.editorSettings.sidebarCopyTableNameSeparator,
+    includeTableSchema: settingsStore.editorSettings.sidebarCopyTableNameIncludeSchema,
+    databaseType: currentDatabaseType(),
+    driverProfile: currentDriverProfile(),
+  };
   if (activeNode.value.type === "database") {
     return createTableReferencePayload({
       connectionId: activeNode.value.connectionId,
@@ -1189,16 +1218,24 @@ function tableReferenceDragPayload(): QueryEditorTableReferencePayload | null {
     });
   }
   if (activeNode.value.type === "column") {
-    const columnName = columnNameForDrag(activeNode.value);
-    if (!activeNode.value.tableName || !columnName) return null;
-    return createTableReferencePayload({
+    const columnNames = resolveSidebarColumnDragNames(activeNode.value, selectedNodes);
+    if (!activeNode.value.connectionId || activeNode.value.database == null || columnNames.length === 0) return null;
+    return createColumnReferencePayload({
       connectionId: activeNode.value.connectionId,
       database: activeNode.value.database,
       schema: activeNode.value.schema,
-      tableName: activeNode.value.tableName,
-      columnName,
+      columnNames,
       databaseType: currentDatabaseType(),
-      driverProfile: currentDriverProfile(),
+      columnNameSeparator: settingsStore.editorSettings.sidebarCopyTableNameSeparator,
+    });
+  }
+  const tableTargets = resolveSidebarTableCopyTargets(activeNode.value, selectedNodes);
+  if (tableTargets.length > 1) {
+    return createMultiTableReferencePayload({
+      connectionId: activeNode.value.connectionId,
+      database: activeNode.value.database,
+      tableReferences: tableTargets.map((target: SidebarTableCopyTarget) => ({ schema: target.schema, tableName: target.label })),
+      ...tableCopyOptions,
     });
   }
   const payload = createTableReferencePayload({
@@ -1209,13 +1246,11 @@ function tableReferenceDragPayload(): QueryEditorTableReferencePayload | null {
     databaseType: currentDatabaseType(),
     driverProfile: currentDriverProfile(),
   });
+  if (payload && tableCopyOptions.includeTableSchema) {
+    payload.includeTableSchema = true;
+    payload.tableNameSeparator = tableCopyOptions.tableNameSeparator;
+  }
   return payload;
-}
-
-function columnNameForDrag(node: TreeNode): string {
-  const column = node.meta as Partial<ColumnInfo> | undefined;
-  if (typeof column?.name === "string" && column.name) return column.name;
-  return node.label.replace(/\s+\([^()]*\)$/, "");
 }
 
 function startTableReferenceDrag(payload: QueryEditorTableReferencePayload) {

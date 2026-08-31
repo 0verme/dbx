@@ -80,6 +80,8 @@ export const EDITOR_SETTINGS_DRAFT_KEYS = [
   "sidebarIndent",
   "sidebarFontSize",
   "sidebarHiddenTablePrefixes",
+  "sidebarCopyTableNameSeparator",
+  "sidebarCopyTableNameIncludeSchema",
   "redisKeyTemplates",
   "exportBatchSize",
   "exportRowLimitEnabled",

@@ -88,6 +88,7 @@ import { buildXuguSchedulerJobSql, type XuguSchedulerJobAction } from "@/lib/dat
 import { elasticsearchClearIndexPreview, isElasticsearchClearConfirmed, isElasticsearchIndexPattern } from "@/lib/sidebar/elasticsearchIndexActions";
 import { mysqlObjectTemplateForGroup } from "@/lib/sidebar/mysqlObjectTemplates";
 import { buildTableDeleteTemplate, buildTableInsertTemplate, buildTableSelectTemplate, buildTableUpdateTemplate } from "@/lib/table/tableSqlTemplates";
+import { joinExportedDdls } from "@/lib/export/ddlExport";
 import { qualifiedTableName } from "@/lib/table/tableSelectSql";
 import { driverStoreFocusForInstallError } from "@/lib/connection/agentDriverInstallHint";
 import {
@@ -177,8 +178,10 @@ import { sidebarTreeContextKey } from "@/lib/sidebar/sidebarTreeContext";
 import { batchTableEmptyFeedback, runBatchTableEmpty } from "@/lib/sidebar/batchTableEmpty";
 import { runBatchTableTruncate } from "@/lib/table/batchTableTruncate";
 import { runBatchTableDrop } from "@/lib/table/batchTableDrop";
-import { buildSidebarDdlTemplateSql, sidebarDdlTargetsForExecutionContext } from "@/lib/sidebar/sidebarDdlTemplate";
-import { sidebarStructureExportTargets } from "@/lib/sidebar/sidebarExportRuntime";
+import { buildSidebarDdlTemplateSql } from "@/lib/sidebar/sidebarDdlTemplate";
+import { resolveSidebarDdlTargets } from "@/lib/sidebar/sidebarDdlTargets";
+import { sidebarTableDataExportTargets } from "@/lib/sidebar/sidebarExportRuntime";
+import { formatSidebarTableCopyText, type FormatSidebarTableNamesOptions } from "@/lib/sidebar/sidebarTableNameCopy";
 import { supportsScheduledDatabaseBackup } from "@/lib/backup/scheduledDatabaseBackup";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { copyToClipboard } from "@/lib/common/clipboard";
@@ -389,6 +392,7 @@ const { openAllDatabasesExport, openDataCompare, openDatabaseExport, openDatabas
   queryStore,
   settingsStore,
   tableChildObjectName: tableChildDropObjectName,
+  acceptedSelectionIds: () => acceptedSelectionIds,
 });
 
 const emit = defineEmits<{
@@ -409,7 +413,7 @@ const emit = defineEmits<{
   "open-visible-schemas": [node: TreeNode];
   "open-visible-nacos-namespaces": [node: TreeNode];
   "open-table-name-filters": [node: TreeNode];
-  "add-to-ai": [node: TreeNode];
+  "add-to-ai": [nodes: TreeNode | TreeNode[]];
   "open-danger-dialog": [request: SidebarDangerDialogRequest];
   "open-dialog-controller": [controller: Record<string, any> | null];
   "open-install-extension": [node: TreeNode];
@@ -635,6 +639,21 @@ function rawDatabaseType(): DatabaseType | undefined {
 
 function databaseTypeForNode(node: TreeNode): DatabaseType | undefined {
   return node.connectionId ? effectiveDatabaseTypeForConnection(connectionStore.getConfig(node.connectionId)) : undefined;
+}
+
+function sidebarTableCopyFormatOptions(node: TreeNode = activeNode.value): FormatSidebarTableNamesOptions {
+  const config = node.connectionId ? connectionStore.getConfig(node.connectionId) : undefined;
+  return {
+    separator: settingsStore.editorSettings.sidebarCopyTableNameSeparator,
+    includeSchema: settingsStore.editorSettings.sidebarCopyTableNameIncludeSchema,
+    databaseType: node.connectionId ? effectiveDatabaseTypeForConnection(config) : undefined,
+    driverProfile: config?.driver_profile,
+    identifierQuote: node.connectionId ? connectionStore.connectionIdentifierQuote?.(node.connectionId) : undefined,
+  };
+}
+
+function formatSelectedTableNamesForClipboard(selectedNodes: readonly TreeNode[] = selectedTreeNodesInVisibleOrder()): string {
+  return formatSidebarTableCopyText(activeNode.value, selectedNodes, sidebarTableCopyFormatOptions());
 }
 
 function tableStructureDatabaseTypeForNode(node: TreeNode): DatabaseType | undefined {
@@ -1755,8 +1774,7 @@ function openRedisInstanceInfo() {
   queryStore.createTab(node.connectionId, "0", `${dbName} - ${t("contextMenu.instanceInfo")}`, "redis-dashboard");
 }
 
-async function loadTemplateContext(allowView = false) {
-  const node = activeNode.value;
+async function loadTemplateContext(allowView = false, node: TreeNode = activeNode.value) {
   if (!node.connectionId || !hasTreeNodeDatabaseContext(node)) return null;
   const isTableNode = node.type === "table";
   const isReadableObject = isTableNode || (allowView && (node.type === "view" || node.type === "materialized_view"));
@@ -1791,6 +1809,20 @@ async function loadTemplateContext(allowView = false) {
   return { node, dbType, driverProfile: config?.driver_profile, identifierQuote, tableSchema, columns, tableType };
 }
 
+async function openMultiTableSqlTemplate(targets: Array<TreeNode & { connectionId: string; database: string }>, buildSql: (context: NonNullable<Awaited<ReturnType<typeof loadTemplateContext>>>) => string, allowView: boolean, titlePrefix: string) {
+  const parts: string[] = [];
+  const tabTarget = targets.find((target) => target.id === activeNode.value.id) ?? targets[0]!;
+  for (const target of targets) {
+    const context = await loadTemplateContext(allowView, target);
+    if (!context) continue;
+    parts.push(buildSql(context));
+  }
+  if (!parts.length) return;
+  const sql = parts.length === 1 ? parts[0]! : joinExportedDdls(parts);
+  const title = targets.length === 1 ? undefined : `${titlePrefix} - ${targets.map((target) => target.label).join(", ")}`;
+  openSqlTemplateTab(tabTarget.connectionId, tabTarget.database, tabTarget.schema, tabTarget.catalog, sql, title);
+}
+
 function openSqlTemplateTab(connectionId: string, database: string, schema: string | undefined, catalog: string | undefined, sql: string, title?: string) {
   const tabId = queryStore.createTab(connectionId, database, title, "query", schema, undefined, catalog, { forceWordWrap: true });
   queryStore.updateSql(tabId, sql);
@@ -1798,6 +1830,27 @@ function openSqlTemplateTab(connectionId: string, database: string, schema: stri
 
 async function newSelectTemplate() {
   try {
+    const targets = selectedDdlTargets().filter((target) => target.type === "table" || target.type === "view" || target.type === "materialized_view");
+    if (targets.length > 1) {
+      await openMultiTableSqlTemplate(
+        targets,
+        (context) =>
+          buildTableSelectTemplate({
+            databaseType: context.dbType,
+            driverProfile: context.driverProfile,
+            identifierQuote: context.identifierQuote,
+            catalog: context.node.catalog,
+            database: context.node.database,
+            schema: context.tableSchema,
+            includeDatabaseName: settingsStore.editorSettings.generateSqlIncludeDatabaseName,
+            tableName: context.node.label,
+            columns: context.columns,
+          }),
+        true,
+        "SELECT",
+      );
+      return;
+    }
     const context = await loadTemplateContext(true);
     if (!context) return;
     const sql = buildTableSelectTemplate({
@@ -1819,6 +1872,28 @@ async function newSelectTemplate() {
 
 async function newInsertTemplate() {
   try {
+    const targets = selectedDdlTargets().filter((target) => target.type === "table");
+    if (targets.length > 1) {
+      await openMultiTableSqlTemplate(
+        targets,
+        (context) =>
+          buildTableInsertTemplate({
+            databaseType: context.dbType,
+            driverProfile: context.driverProfile,
+            identifierQuote: context.identifierQuote,
+            catalog: context.node.catalog,
+            database: context.node.database,
+            schema: context.tableSchema,
+            includeDatabaseName: settingsStore.editorSettings.generateSqlIncludeDatabaseName,
+            tableName: context.node.label,
+            columns: context.columns,
+            tableType: context.tableType,
+          }),
+        false,
+        "INSERT",
+      );
+      return;
+    }
     const context = await loadTemplateContext(false);
     if (!context) return;
     const sql = buildTableInsertTemplate({
@@ -1841,6 +1916,27 @@ async function newInsertTemplate() {
 
 async function newUpdateTemplate() {
   try {
+    const targets = selectedDdlTargets().filter((target) => target.type === "table");
+    if (targets.length > 1) {
+      await openMultiTableSqlTemplate(
+        targets,
+        (context) =>
+          buildTableUpdateTemplate({
+            databaseType: context.dbType,
+            driverProfile: context.driverProfile,
+            identifierQuote: context.identifierQuote,
+            catalog: context.node.catalog,
+            database: context.node.database,
+            schema: context.tableSchema,
+            includeDatabaseName: settingsStore.editorSettings.generateSqlIncludeDatabaseName,
+            tableName: context.node.label,
+            columns: context.columns,
+          }),
+        false,
+        "UPDATE",
+      );
+      return;
+    }
     const context = await loadTemplateContext(false);
     if (!context) return;
     const sql = buildTableUpdateTemplate({
@@ -1862,6 +1958,27 @@ async function newUpdateTemplate() {
 
 async function newDeleteTemplate() {
   try {
+    const targets = selectedDdlTargets().filter((target) => target.type === "table");
+    if (targets.length > 1) {
+      await openMultiTableSqlTemplate(
+        targets,
+        (context) =>
+          buildTableDeleteTemplate({
+            databaseType: context.dbType,
+            driverProfile: context.driverProfile,
+            identifierQuote: context.identifierQuote,
+            catalog: context.node.catalog,
+            database: context.node.database,
+            schema: context.tableSchema,
+            includeDatabaseName: settingsStore.editorSettings.generateSqlIncludeDatabaseName,
+            tableName: context.node.label,
+            columns: context.columns,
+          }),
+        false,
+        "DELETE",
+      );
+      return;
+    }
     const context = await loadTemplateContext(false);
     if (!context) return;
     const sql = buildTableDeleteTemplate({
@@ -1881,41 +1998,44 @@ async function newDeleteTemplate() {
   }
 }
 
+async function openSidebarMultiTableDdlTab(targets: Array<TreeNode & { connectionId: string; database: string }>) {
+  const tabTarget = targets.find((target) => target.id === activeNode.value.id) ?? targets[0]!;
+  const sql = await buildSidebarDdlTemplateSql(
+    targets,
+    async (target) => {
+      await connectionStore.ensureConnected(target.connectionId);
+      const schema = target.schema || target.database;
+      if (target.type === "table") return api.getTableDisplayDdl(target.connectionId, target.database, schema, target.label, undefined, target.catalog);
+      if (target.type === "materialized_view") return api.getTableDisplayDdl(target.connectionId, target.database, schema, target.label, "MATERIALIZED_VIEW", target.catalog);
+      const result = await api.getObjectSource(target.connectionId, target.database, schema, target.label, "VIEW");
+      return buildViewDdl({
+        databaseType: databaseTypeForNode(target),
+        identifierQuote: connectionStore.connectionIdentifierQuote?.(target.connectionId),
+        schema,
+        name: target.label,
+        source: result.source,
+      });
+    },
+    (ddl, target) => formatSqlForDisplay(ddl, sqlFormatDialectForDbType(databaseTypeForNode(target)), settingsStore.editorSettings.sqlFormatter),
+  );
+  connectionStore.activeConnectionId = tabTarget.connectionId;
+  const title = `DDL - ${targets.map((target) => target.label).join(", ")}`;
+  openSqlTemplateTab(tabTarget.connectionId, tabTarget.database, tabTarget.schema, tabTarget.catalog, sql, title);
+}
+
 async function generateDdlTemplate() {
   if (currentDatabaseType() === "victoriametrics") return;
   const targets = selectedDdlTargets();
   if (!targets.length) return;
-  const tabTarget = targets.find((target) => target.id === activeNode.value.id) ?? targets[0]!;
   try {
-    const sql = await buildSidebarDdlTemplateSql(
-      targets,
-      async (target) => {
-        await connectionStore.ensureConnected(target.connectionId);
-        const schema = target.schema || target.database;
-        if (target.type === "table") return api.getTableDisplayDdl(target.connectionId, target.database, schema, target.label, undefined, target.catalog);
-        if (target.type === "materialized_view") return api.getTableDisplayDdl(target.connectionId, target.database, schema, target.label, "MATERIALIZED_VIEW", target.catalog);
-        const result = await api.getObjectSource(target.connectionId, target.database, schema, target.label, "VIEW");
-        return buildViewDdl({
-          databaseType: databaseTypeForNode(target),
-          identifierQuote: connectionStore.connectionIdentifierQuote?.(target.connectionId),
-          schema,
-          name: target.label,
-          source: result.source,
-        });
-      },
-      (ddl, target) => formatSqlForDisplay(ddl, sqlFormatDialectForDbType(databaseTypeForNode(target)), settingsStore.editorSettings.sqlFormatter),
-    );
-    connectionStore.activeConnectionId = tabTarget.connectionId;
-    const title = `DDL - ${targets.map((target) => target.label).join(", ")}`;
-    openSqlTemplateTab(tabTarget.connectionId, tabTarget.database, tabTarget.schema, tabTarget.catalog, sql, title);
+    await openSidebarMultiTableDdlTab(targets);
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
   }
 }
 
 function selectedDdlTargets() {
-  const targets = sidebarStructureExportTargets(activeNode.value, connectionStore.treeNodes, acceptedSelectionIds ?? connectionStore.selectedTreeNodeIds);
-  return sidebarDdlTargetsForExecutionContext(activeNode.value as TreeNode & { connectionId: string; database: string }, targets);
+  return resolveSidebarDdlTargets(activeNode.value, connectionStore.treeNodes, acceptedSelectionIds ?? connectionStore.selectedTreeNodeIds);
 }
 
 async function openDdl() {
@@ -1923,10 +2043,33 @@ async function openDdl() {
   const targets = selectedDdlTargets();
   if (!targets.length) return;
   if (targets.length > 1) {
-    await exportStructure();
+    try {
+      await openSidebarMultiTableDdlTab(targets);
+    } catch (e: any) {
+      toast(e?.message || String(e), 5000);
+    }
     return;
   }
   emit("open-ddl", targets[0]!);
+}
+
+async function openDdlForSelection(node: TreeNode, selectedNodeIds: readonly string[]): Promise<boolean> {
+  if (node.type !== "table" && node.type !== "view" && node.type !== "materialized_view") return false;
+  activateRuntimeNode(node);
+  const dbType = node.connectionId ? effectiveDatabaseTypeForConnection(connectionStore.getConfig(node.connectionId)) : undefined;
+  if (dbType === "victoriametrics") return false;
+  const targets = resolveSidebarDdlTargets(node, connectionStore.treeNodes, selectedNodeIds);
+  if (!targets.length) return false;
+  if (targets.length > 1) {
+    try {
+      await openSidebarMultiTableDdlTab(targets);
+    } catch (e: any) {
+      toast(e?.message || String(e), 5000);
+    }
+    return true;
+  }
+  emit("open-ddl", targets[0]!);
+  return true;
 }
 
 function openElasticsearchIndexMetadata(kind: ElasticsearchIndexMetadataKind) {
@@ -1944,9 +2087,8 @@ async function refresh() {
 }
 
 async function copyName() {
-  const node = activeNode.value;
   try {
-    await copyToClipboard(copyNameForTreeNode(node));
+    await copyToClipboard(formatSelectedTableNamesForClipboard());
     toast(t("connection.copied"), 2000);
   } catch (e: any) {
     toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
@@ -2038,7 +2180,7 @@ async function copySelectedNames() {
   }
   updateTreeClipboardForNodes(nodes);
   try {
-    await copyToClipboard(nodes.map(copyNameForTreeNode).join("\n"));
+    await copyToClipboard(formatSelectedTableNamesForClipboard(selectedNodes));
     toast(t("connection.copied"), 2000);
   } catch (e: any) {
     toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
@@ -4844,7 +4986,26 @@ const shortcutRefresh = "F5";
 
 const shortcutDelete = "Delete";
 
+function selectedDataExportTargetCount(): number {
+  return sidebarTableDataExportTargets(activeNode.value, connectionStore.treeNodes, acceptedSelectionIds ?? connectionStore.selectedTreeNodeIds).length;
+}
+
+function selectedAiTableTargets(): Array<TreeNode & { connectionId: string; database: string }> {
+  return resolveSidebarDdlTargets(activeNode.value, connectionStore.treeNodes, acceptedSelectionIds ?? connectionStore.selectedTreeNodeIds).filter((target) => target.type === "table");
+}
+
+function addToAiMenuItem(node: TreeNode): ContextMenuItem {
+  const tables = node.type === "table" ? selectedAiTableTargets() : [];
+  const count = tables.length;
+  return {
+    label: count > 1 ? t("contextMenu.addToAiMultiple", { count }) : t("contextMenu.addToAi"),
+    action: () => emit("add-to-ai", count > 1 ? tables : node),
+    icon: Sparkles,
+  };
+}
+
 function exportDataSubmenu(includeSqlInsert = true): ContextMenuItem {
+  const count = selectedDataExportTargetCount();
   const children: ContextMenuItem[] = [
     { label: "CSV", action: () => exportData("csv") },
     { label: "JSON", action: () => exportData("json") },
@@ -4852,7 +5013,7 @@ function exportDataSubmenu(includeSqlInsert = true): ContextMenuItem {
   if (includeSqlInsert) children.push({ label: "SQL INSERT", action: () => exportData("sql") });
   children.push({ label: "XLSX", action: () => exportDataXlsx() });
   return {
-    label: t("contextMenu.exportData"),
+    label: count > 1 ? t("contextMenu.exportDataMultiple", { count }) : t("contextMenu.exportData"),
     icon: Upload,
     children,
   };
@@ -4974,7 +5135,7 @@ function buildConnectionSidebarMenu(context: SidebarMenuFactoryContext): boolean
     if (supportsQueryActions) {
       items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
       if (supportsAiContext) {
-        items.push({ label: t("contextMenu.addToAi"), action: () => emit("add-to-ai", node), icon: Sparkles });
+        items.push(addToAiMenuItem(node));
       }
     }
     const connectionWorkspace = node.connectionId ? driverProfileDatabaseWorkspace(connectionStore.getConfig(node.connectionId)?.driver_profile) : undefined;
@@ -5190,7 +5351,7 @@ function buildDatabaseSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     if (supportsConnectionQueryActions(currentDatabaseType())) {
       items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
       if (node.type === "database" && supportsAiAssistantContext(currentDatabaseType())) {
-        items.push({ label: t("contextMenu.addToAi"), action: () => emit("add-to-ai", node), icon: Sparkles });
+        items.push(addToAiMenuItem(node));
       }
       const sqlHistoryMenu = savedSqlHistorySubmenu();
       if (sqlHistoryMenu) items.push(sqlHistoryMenu);
@@ -5524,7 +5685,7 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
       items.push({ label: t("contextMenu.openInNewDataTab"), action: openDataInNewTabImmediately, icon: CopyPlus });
       items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
       if (supportsAiAssistantContext(currentDatabaseType())) {
-        items.push({ label: t("contextMenu.addToAi"), action: () => emit("add-to-ai", node), icon: Sparkles });
+        items.push(addToAiMenuItem(node));
       }
       items.push({ label: "", separator: true });
       items.push(exportDataSubmenu(false));
@@ -5535,7 +5696,7 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     items.push(copyNameMenuItem());
     items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
     if (node.type === "table" && supportsAiAssistantContext(currentDatabaseType())) {
-      items.push({ label: t("contextMenu.addToAi"), action: () => emit("add-to-ai", node), icon: Sparkles });
+      items.push(addToAiMenuItem(node));
     }
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.viewData"), action: openDataImmediately, icon: TableProperties });
@@ -6088,6 +6249,7 @@ defineExpose({
   handleRowKeydown,
   openPrimaryVisibleFilter,
   openDataInNewTab,
+  openDdlForSelection,
   requestPaste,
   toggleNode,
 });

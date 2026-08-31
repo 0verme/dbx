@@ -26,7 +26,7 @@ const emit = defineEmits<{
   startResize: [event: MouseEvent];
   collapse: [];
   "open-settings": [initialTab: string];
-  "add-to-ai": [node: TreeNode];
+  "add-to-ai": [nodes: TreeNode | TreeNode[]];
 }>();
 
 type ImportSource = "dbx" | "navicat" | "dbeaver" | "datagrip";
@@ -293,7 +293,7 @@ defineExpose({ focusSearch, locateTabInSidebar });
         </template>
       </div>
       <div class="flex-1 min-h-0">
-        <ConnectionTree ref="connectionTreeRef" @open-settings="(initialTab) => emit('open-settings', initialTab)" @add-to-ai="(node) => emit('add-to-ai', node)" />
+        <ConnectionTree ref="connectionTreeRef" @open-settings="(initialTab) => emit('open-settings', initialTab)" @add-to-ai="(nodes) => emit('add-to-ai', nodes)" />
       </div>
     </div>
     <div class="panel-resize-handle panel-resize-handle--right" @mousedown="emit('startResize', $event)" />
