@@ -3290,6 +3290,8 @@ export default withEnglishFallback({
     damengUsers: "用户",
     damengRoles: "角色",
     damengJobAdmin: "代理作业",
+    xuguTablespaces: "存储空间",
+    xuguDatafiles: "文件",
     linkedServers: "链接服务器",
     defaultDatabase: "默认库",
     columns: "字段",

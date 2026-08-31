@@ -1812,6 +1812,7 @@ pub fn run() {
             commands::schema::list_databases,
             commands::schema::list_database_metadata,
             commands::schema::list_database_storage,
+            commands::schema::list_xugu_tablespaces,
             commands::schema::get_sqlserver_completion_context,
             commands::schema::list_doris_catalogs,
             commands::schema::list_doris_catalog_databases,

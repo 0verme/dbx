@@ -1196,6 +1196,7 @@ pub enum AgentMethod {
     ListTables,
     ListObjects,
     ListDataTypes,
+    ListXuguTablespaces,
     CompletionAssistantSearchV1,
     GetObjectSource,
     GetColumns,
@@ -1283,6 +1284,7 @@ impl AgentMethod {
             Self::ListTables => "list_tables",
             Self::ListObjects => "list_objects",
             Self::ListDataTypes => "list_data_types",
+            Self::ListXuguTablespaces => "list_xugu_tablespaces",
             Self::CompletionAssistantSearchV1 => "completion_assistant_search_v1",
             Self::GetObjectSource => "get_object_source",
             Self::GetTableDdl => "get_table_ddl",
@@ -2107,6 +2109,18 @@ impl AgentDriverClient {
             timeout_duration,
         )
         .await
+    }
+
+    pub async fn list_xugu_tablespaces<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        database: Option<&str>,
+        timeout_duration: Option<Duration>,
+    ) -> Result<T, String> {
+        let params = database
+            .filter(|database| !database.trim().is_empty())
+            .map(|database| serde_json::json!({ "database": database }))
+            .unwrap_or_else(|| serde_json::json!({}));
+        self.call_method_with_timeout(AgentMethod::ListXuguTablespaces, params, timeout_duration).await
     }
 
     pub async fn completion_assistant_search<T: DeserializeOwned + Send + 'static>(
@@ -4873,6 +4887,7 @@ for line in sys.stdin:
         assert_eq!(AgentMethod::ListTables.as_str(), "list_tables");
         assert_eq!(AgentMethod::ListObjects.as_str(), "list_objects");
         assert_eq!(AgentMethod::ListDataTypes.as_str(), "list_data_types");
+        assert_eq!(AgentMethod::ListXuguTablespaces.as_str(), "list_xugu_tablespaces");
         assert_eq!(AgentMethod::CompletionAssistantSearchV1.as_str(), "completion_assistant_search_v1");
         assert_eq!(AgentMethod::GetObjectSource.as_str(), "get_object_source");
         assert_eq!(AgentMethod::GetColumns.as_str(), "get_columns");

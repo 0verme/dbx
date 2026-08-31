@@ -4,6 +4,7 @@ import type {
   DatabaseConnectionInfo,
   DatabaseInfo,
   DatabaseStorageInfo,
+  XuguTablespaceInfo,
   SqlServerCompletionContext,
   SchemaInfo,
   LinkedServerInfo,
@@ -794,6 +795,10 @@ export async function listDatabaseStorage(connectionId: string, databases: strin
     connection_id: connectionId,
     databases,
   });
+}
+
+export async function listXuguTablespaces(connectionId: string, database?: string): Promise<XuguTablespaceInfo[]> {
+  return get(`/api/schema/xugu/tablespaces?${qs({ connection_id: connectionId, database })}`);
 }
 
 export async function getSqlServerCompletionContext(connectionId: string, database: string): Promise<SqlServerCompletionContext> {

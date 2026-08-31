@@ -3274,6 +3274,8 @@ export default withEnglishFallback({
     damengUsers: "使用者",
     damengRoles: "角色",
     damengJobAdmin: "代理作業",
+    xuguTablespaces: "儲存空間",
+    xuguDatafiles: "檔案",
     linkedServers: "連結伺服器",
     materializedViews: "具體化檢視",
     defaultDatabase: "預設庫",

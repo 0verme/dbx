@@ -5,6 +5,7 @@ import { normalizeRustMongoCommand, type MongoCommand } from "@/lib/mongo/mongoS
 import { ExternalSqlFileTooLargeError } from "@/lib/sql/sqlFileOpen";
 import { appendDebugLog, isDebugLoggingEnabled } from "@/lib/backend/debugLog";
 import { decodeMeilisearchDocumentPage, decodeMeilisearchSearchResult, type MeilisearchDocumentPage, type MeilisearchDocumentPageWire, type MeilisearchSearchResult, type MeilisearchSearchWireResult } from "@/lib/backend/meilisearchTransport";
+import type { XuguTablespaceInfo } from "@/types/database";
 import type { CreatedKey, EnqueuedTaskSummary, KeyCreateInput, KeyListItem, KeyPage, KeyUpdateInput, MeilisearchSystemOverview, MeilisearchTask, TaskListInput, TaskPage, TaskSelector } from "@/types/meilisearchManagement";
 
 /** Normalize Tauri rejections once at the public backend boundary. */
@@ -1158,6 +1159,10 @@ export async function listDatabaseMetadata(connectionId: string): Promise<Databa
 
 export async function listDatabaseStorage(connectionId: string, databases: string[]): Promise<DatabaseStorageInfo[]> {
   return invoke("list_database_storage", { connectionId, databases });
+}
+
+export async function listXuguTablespaces(connectionId: string, database?: string): Promise<XuguTablespaceInfo[]> {
+  return invoke("list_xugu_tablespaces", { connectionId, database });
 }
 
 export async function getSqlServerCompletionContext(connectionId: string, database: string): Promise<SqlServerCompletionContext> {

@@ -240,6 +240,10 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: node.isExpanded ? FolderOpen : FolderClosed, colorClass: "text-amber-500" };
     case "database":
       return { icon: Database, colorClass: "text-yellow-500" };
+    case "tablespace":
+      return { icon: Database, colorClass: "text-orange-500" };
+    case "datafile":
+      return { icon: FileCode, colorClass: "text-slate-500" };
     case "linked-server-root":
       return { icon: Network, colorClass: "text-blue-500" };
     case "linked-server":
@@ -395,6 +399,10 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: node.isExpanded ? FolderOpen : FolderClosed, colorClass: "text-green-400" };
     case "group-extensions":
       return { icon: Package, colorClass: "text-violet-500" };
+    case "group-tablespaces":
+      return { icon: Database, colorClass: "text-orange-500" };
+    case "group-datafiles":
+      return { icon: node.isExpanded ? FolderOpen : FolderClosed, colorClass: "text-slate-500" };
     case "extension":
       return { icon: Package, colorClass: "text-violet-400" };
     case "load-more":
@@ -432,6 +440,7 @@ function displayLabel(node: TreeNode): string {
 function treeNodeSecondaryValue(node: TreeNode): string | undefined {
   if (node.type === "type" && node.customTypeKind) return t(`customType.kinds.${node.customTypeKind}`);
   if (node.type === "type-member") return (node.meta as CustomTypeTreeMemberMeta | undefined)?.displayValue;
+  if (node.type === "datafile") return node.xuguDatafilePath;
   return undefined;
 }
 

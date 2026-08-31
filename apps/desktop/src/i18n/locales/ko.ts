@@ -3154,6 +3154,8 @@ export default withEnglishFallback({
     damengUsers: "사용자",
     damengRoles: "역할",
     damengJobAdmin: "에이전트 작업",
+    xuguTablespaces: "저장 공간",
+    xuguDatafiles: "파일",
     linkedServers: "연결된 서버",
     defaultDatabase: "기본 DB",
     columns: "컬럼",

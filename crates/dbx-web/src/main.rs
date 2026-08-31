@@ -457,6 +457,7 @@ async fn main() {
         .route("/schema/databases", get(routes::schema::list_databases))
         .route("/schema/database-metadata", get(routes::schema::list_database_metadata))
         .route("/schema/database-storage", post(routes::schema::list_database_storage))
+        .route("/schema/xugu/tablespaces", get(routes::schema::list_xugu_tablespaces))
         .route("/schema/sqlserver/completion-context", get(routes::schema::get_sqlserver_completion_context))
         .route("/schema/doris/catalogs", get(routes::schema::list_doris_catalogs))
         .route("/schema/doris/catalog-databases", get(routes::schema::list_doris_catalog_databases))

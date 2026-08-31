@@ -3301,6 +3301,8 @@ export default withEnglishFallback({
     damengUsers: "ユーザー",
     damengRoles: "ロール",
     damengJobAdmin: "エージェントジョブ",
+    xuguTablespaces: "ストレージ領域",
+    xuguDatafiles: "ファイル",
     defaultDatabase: "デフォルトDB",
     columns: "列",
     attributes: "属性",

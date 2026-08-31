@@ -197,6 +197,40 @@ pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Resul
     retry_metadata_connection(state, connection_id, None, || list_databases_once(state, connection_id)).await
 }
 
+/// Lists XuguDB tablespaces and their physical data files for the selected
+/// database. This is deliberately a no-op for every other database type so
+/// the common schema surface and non-Xugu drivers remain untouched.
+pub async fn list_xugu_tablespaces_core(
+    state: &AppState,
+    connection_id: &str,
+    database: Option<&str>,
+) -> Result<Vec<db::XuguTablespaceInfo>, String> {
+    let config = connection_config(state, connection_id).await;
+    if !config.as_ref().is_some_and(|config| config.db_type == DatabaseType::Xugu) {
+        return Ok(Vec::new());
+    }
+    retry_metadata_connection(state, connection_id, database.filter(|database| !database.is_empty()), || async {
+        let pool_key = state
+            .get_or_create_metadata_pool_for_session(
+                connection_id,
+                database.filter(|database| !database.is_empty()),
+                None,
+            )
+            .await?;
+        let config = connection_config(state, connection_id).await;
+        let connections = state.connections.read().await;
+        if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
+            drop(connections);
+            let mut client = client.lock().await;
+            return client
+                .list_xugu_tablespaces::<Vec<db::XuguTablespaceInfo>>(database, agent_metadata_timeout(config.as_ref()))
+                .await;
+        }
+        Ok(Vec::new())
+    })
+    .await
+}
+
 /// Loads the more expensive database-level properties needed only by the
 /// connection resource browser. General metadata paths keep using
 /// `list_databases_core`, which only enumerates names.
