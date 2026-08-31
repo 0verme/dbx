@@ -11,7 +11,9 @@ import { useSidebarTreeToolRuntime } from "@/composables/useSidebarTreeToolRunti
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
 import {
+  BarChart3,
   BookOpen,
+  Braces,
   Database,
   ChevronsDown,
   FolderOpen,
@@ -70,6 +72,7 @@ import { useToast } from "@/composables/useToast";
 import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
 import type { ColumnInfo, DatabaseType, TreeNode, TreeNodeType } from "@/types/database";
 import * as api from "@/lib/backend/api";
+import type { ElasticsearchIndexMetadataKind } from "@/lib/backend/tauri";
 import { queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
 import { resolveDefaultDatabase } from "@/lib/database/defaultDatabase";
 import { connectionUsesVisibleSchemaFilter } from "@/lib/database/visibleDatabases";
@@ -82,6 +85,7 @@ import { loadSidebarObjectGroup } from "@/lib/sidebar/sidebarObjectGroupRouting"
 import { isXuguTypeMemberContainer } from "@/lib/sidebar/xuguTypeMembers";
 import { isXuguSyntheticTreeNode } from "@/lib/sidebar/xuguPublicSynonyms";
 import { buildXuguSchedulerJobSql, type XuguSchedulerJobAction } from "@/lib/database/xuguSchedulerJobSql";
+import { elasticsearchClearIndexPreview, isElasticsearchClearConfirmed, isElasticsearchIndexPattern } from "@/lib/sidebar/elasticsearchIndexActions";
 import { mysqlObjectTemplateForGroup } from "@/lib/sidebar/mysqlObjectTemplates";
 import { buildTableDeleteTemplate, buildTableInsertTemplate, buildTableSelectTemplate, buildTableUpdateTemplate } from "@/lib/table/tableSqlTemplates";
 import { qualifiedTableName } from "@/lib/table/tableSelectSql";
@@ -296,6 +300,9 @@ import {
   mongoIndexManagerSelectedName,
   mongoIndexManagerMode,
   mongoEditIndexOriginalName,
+  showClearElasticsearchIndexConfirm,
+  clearElasticsearchIndexLoading,
+  clearElasticsearchIndexTypedName,
   showFlushRedisDbConfirm,
   showCreateSchemaDialog,
   createSchemaName,
@@ -393,6 +400,7 @@ const emit = defineEmits<{
   "search-toggle": [node: TreeNode];
   "context-menu": [event: MouseEvent, node: TreeNode, items: ContextMenuItem[]];
   "open-ddl": [node: TreeNode];
+  "open-elasticsearch-index-metadata": [node: TreeNode, kind: ElasticsearchIndexMetadataKind];
   "open-object-source": [node: TreeNode, initialEditing: boolean];
   "open-procedure": [node: TreeNode];
   "open-settings": [initialTab: string];
@@ -527,6 +535,9 @@ const {
   dropMilvusCollection,
   dropMongoIndex,
   dropAllMongoIndexes,
+  canManageElasticsearchIndex,
+  clearElasticsearchIndex,
+  confirmClearElasticsearchIndex,
   flushRedisDb,
   prepareRedisDatabaseAliasDialog,
   confirmRedisDatabaseAlias,
@@ -1916,6 +1927,10 @@ async function openDdl() {
     return;
   }
   emit("open-ddl", targets[0]!);
+}
+
+function openElasticsearchIndexMetadata(kind: ElasticsearchIndexMetadataKind) {
+  emit("open-elasticsearch-index-metadata", createSidebarActionTarget(activeNode.value), kind);
 }
 
 async function refresh() {
@@ -4555,6 +4570,51 @@ routeDangerDialog(showDropAllMongoIndexesConfirm, () =>
   }),
 );
 
+routeDangerDialog(showClearElasticsearchIndexConfirm, () => {
+  // Pin the label for the life of this dialog. `activeNode` follows the tree
+  // selection, which the confirmation must not, and the typed-name gate below
+  // has to compare against the index the operator actually opened.
+  const index = activeNode.value.label;
+  const isPattern = isElasticsearchIndexPattern(index);
+  clearElasticsearchIndexTypedName.value = "";
+  return dangerRequest({
+    title: t("contextMenu.elasticsearchClearIndex"),
+    // A grouped node is a wildcard covering many indexes, so it gets its own
+    // wording rather than one that reads as a single index.
+    message: t(isPattern ? "contextMenu.elasticsearchClearIndexPatternMessage" : "contextMenu.elasticsearchClearIndexMessage", { index }),
+    detailsText: t("contextMenu.elasticsearchClearIndexDetails"),
+    sql: elasticsearchClearIndexPreview(index),
+    confirmLabel: t("contextMenu.elasticsearchClearIndexConfirm"),
+    get loading() {
+      return clearElasticsearchIndexLoading.value;
+    },
+    // A wildcard node clears every index it matches, so the pattern has to be
+    // typed back before the button unlocks. Concrete index names skip this.
+    ...(isPattern
+      ? {
+          textInput: {
+            value: "",
+            label: t("contextMenu.elasticsearchClearIndexTypeToConfirm", { index }),
+            placeholder: index,
+            onInput(value: string) {
+              clearElasticsearchIndexTypedName.value = value;
+            },
+          },
+        }
+      : {}),
+    // Declared directly on this literal, never inside the spread above: object
+    // spread evaluates an accessor once and copies the resulting value, which
+    // would freeze the gate shut at its construction-time answer. Concrete
+    // index names need no gate, and `isElasticsearchClearConfirmed` already
+    // returns true for them, so this stays unlocked for them.
+    get confirmDisabled() {
+      return !isElasticsearchClearConfirmed(index, clearElasticsearchIndexTypedName.value);
+    },
+    closeOnConfirm: false,
+    confirm: confirmClearElasticsearchIndex,
+  });
+});
+
 routeDangerDialog(showFlushRedisDbConfirm, () =>
   dangerRequest({
     title: t("redis.flushDb"),
@@ -5427,6 +5487,14 @@ function buildSpecialSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
     if (canRenameMongoCollection.value) {
       items.push({ label: t("contextMenu.renameObject"), action: openRenameMongoCollectionDialog, icon: Pencil, shortcut: shortcutRename });
+    }
+    if (canManageElasticsearchIndex.value) {
+      items.push({ label: "", separator: true });
+      items.push({ label: t("contextMenu.elasticsearchViewMapping"), action: () => openElasticsearchIndexMetadata("mapping"), icon: Braces });
+      items.push({ label: t("contextMenu.elasticsearchViewSettings"), action: () => openElasticsearchIndexMetadata("settings"), icon: Settings2 });
+      items.push({ label: t("contextMenu.elasticsearchViewStats"), action: () => openElasticsearchIndexMetadata("stats"), icon: BarChart3 });
+      items.push({ label: "", separator: true });
+      items.push({ label: t("contextMenu.elasticsearchClearIndex"), action: clearElasticsearchIndex, icon: Eraser, variant: "destructive" as const });
     }
     if (canDropMilvusCollection.value) {
       items.push({ label: "", separator: true });

@@ -147,6 +147,8 @@ import type {
   PromptTemplate,
   SshPromptResolution,
   MeilisearchIndexOverview,
+  ElasticsearchIndexMetadataKind,
+  ElasticsearchDeleteByQueryResult,
 } from "@/lib/backend/tauri";
 import type { QueryEditability } from "@/lib/sql/sqlAnalysis";
 import { isTerminalTransferProgress } from "@/lib/backend/transferProgress";
@@ -3866,6 +3868,21 @@ export async function elasticsearchCountDocuments(connectionId: string, index: s
     index,
     filter,
     executionId,
+  });
+}
+
+export async function elasticsearchGetIndexMetadata(connectionId: string, index: string, kind: ElasticsearchIndexMetadataKind): Promise<Record<string, any>> {
+  return post("/api/document-store/elasticsearch/index-metadata", {
+    connectionId,
+    index,
+    kind,
+  });
+}
+
+export async function elasticsearchDeleteAllDocuments(connectionId: string, index: string): Promise<ElasticsearchDeleteByQueryResult> {
+  return post("/api/document-store/elasticsearch/documents/delete-all", {
+    connectionId,
+    index,
   });
 }
 
