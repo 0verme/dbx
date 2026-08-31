@@ -172,6 +172,7 @@ import {
   dataGridRowDetailTsv,
   type DataGridCellDetail,
 } from "@/lib/dataGrid/dataGridDetail";
+import { adjacentDataGridDetailIndex, type DataGridDetailNavigationDelta } from "@/lib/dataGrid/dataGridDetailNavigation";
 import {
   applyColumnFormatter,
   buildColumnFormatterKey,
@@ -8545,6 +8546,25 @@ function openRowDetailDialog(rowId: number) {
   rowDetailDialogOpen.value = true;
 }
 
+function navigateRowDetail(delta: DataGridDetailNavigationDelta) {
+  if (!rowDetailDialogOpen.value || rowDetailDialogRowId.value === null) return;
+  const nextRowIndex = adjacentDataGridDetailIndex(displayRowIndexById(rowDetailDialogRowId.value), delta, displayRowCount.value);
+  if (nextRowIndex === null) return;
+  const nextItem = displayItemAt(nextRowIndex);
+  if (!nextItem) return;
+  rowDetailDialogRowId.value = nextItem.id;
+}
+
+function navigateColumnDetail(delta: DataGridDetailNavigationDelta) {
+  if (!columnDetailDialogOpen.value || columnDetailDialogColumnIndex.value === null) return;
+  const currentColumnPosition = visibleColumnIndexes.value.indexOf(columnDetailDialogColumnIndex.value);
+  const nextColumnPosition = adjacentDataGridDetailIndex(currentColumnPosition, delta, visibleColumnIndexes.value.length);
+  if (nextColumnPosition === null) return;
+  const nextColumnIndex = visibleColumnIndexes.value[nextColumnPosition];
+  if (nextColumnIndex === undefined) return;
+  columnDetailDialogColumnIndex.value = nextColumnIndex;
+}
+
 function openContextRowDetailDialog() {
   const cell = contextCell.value;
   if (!cell) return;
@@ -9955,7 +9975,8 @@ async function copyRowDetailTsv() {
 
 async function copyRowDetailFieldValue(field: DataGridCellDetail) {
   if (!(await hydrateLargeValueCell(field.rowId, field.colIndex))) return;
-  const resolved = cellDetailFor(field.rowNumber - 1, field.colIndex);
+  const rowIndex = displayRowIndexById(field.rowId);
+  const resolved = rowIndex >= 0 ? cellDetailFor(rowIndex, field.colIndex) : null;
   if (resolved) copyText(detailClipboardText(resolved));
 }
 
@@ -9987,7 +10008,8 @@ function copyColumnDetailColumnName() {
 
 async function copyColumnDetailFieldValue(field: DataGridCellDetail) {
   if (!(await hydrateLargeValueCell(field.rowId, field.colIndex))) return;
-  const resolved = cellDetailFor(field.rowNumber - 1, field.colIndex);
+  const rowIndex = displayRowIndexById(field.rowId);
+  const resolved = rowIndex >= 0 ? cellDetailFor(rowIndex, field.colIndex) : null;
   if (resolved) copyText(detailClipboardText(resolved));
 }
 
@@ -14598,6 +14620,8 @@ function openGridSnapshot() {
       :row-detail="rowDetail"
       :column-detail="columnDetail"
       :type-color-class="typeColorClass"
+      @navigate-row="navigateRowDetail"
+      @navigate-column="navigateColumnDetail"
       :open-image-preview="openImagePreview"
       :copy-row-detail-field-value="copyRowDetailFieldValue"
       :copy-column-detail-field-value="copyColumnDetailFieldValue"
