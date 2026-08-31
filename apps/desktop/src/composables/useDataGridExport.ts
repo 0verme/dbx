@@ -8,7 +8,7 @@ import { type CellSelectionMatrix, type CellSelectionRange, type SelectionData }
 import type { DataGridExtractRequest, DataGridExtractorOptions } from "@/lib/dataGrid/dataGridCopyExtractor";
 import { useToast } from "@/composables/useToast";
 import { useExportTracker } from "@/composables/useExportTracker";
-import { displayCellValue, type CellValue } from "@/lib/dataGrid/cellValue";
+import { clipboardCellValue, type CellValue } from "@/lib/dataGrid/cellValue";
 import { binaryCellClipboardText } from "@/lib/dataGrid/binaryCellDownload";
 import { tryStartExclusiveActivation, type ActionActivationGuard } from "@/lib/connection/actionActivation";
 import { copyToClipboard } from "@/lib/common/clipboard";
@@ -493,7 +493,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     });
   }
 
-  function clipboardCellValue(value: CellValue, columnIndex: number): CellValue {
+  function binaryClipboardCellValue(value: CellValue, columnIndex: number): CellValue {
     return binaryCellClipboardText(value, columnTypes.value?.[columnIndex], databaseType.value) ?? value;
   }
 
@@ -505,7 +505,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     }
     const obj: Record<string, unknown> = {};
     columns.value.forEach((col, i) => {
-      const value = clipboardCellValue(item.data[i], i);
+      const value = binaryClipboardCellValue(item.data[i], i);
       if (typeof value === "string" && columnTypes.value?.[i]?.trim().toLowerCase() === "json") {
         try {
           obj[col] = JSON.parse(value);
@@ -536,8 +536,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     const sourceIndex = visibleColumnIndexes.value[contextCell.value.col] ?? contextCell.value.col;
     const [resolvedItem] = await resolveVisibleRowValues([item], [sourceIndex]);
     const val = resolvedItem?.data[contextCell.value.col] ?? null;
-    // 外部剪贴板呈现文本型 MySQL VARBINARY；内部网格副本仍保留原 hex，保证回粘无损。
-    await copyText(displayCellValue(clipboardCellValue(val, contextCell.value.col)), { rows: [[val]] });
+    // 外部剪贴板呈现文本型 MySQL VARBINARY（NULL 也按空串输出）；内部网格副本仍保留原 hex，保证回粘无损。
+    await copyText(clipboardCellValue(binaryClipboardCellValue(val, contextCell.value.col)), { rows: [[val]] });
   }
 
   async function copyRow() {
@@ -679,10 +679,10 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   });
 
   async function copyAll() {
-    const header = columns.value.join("\t");
     const rows = (await resolveVisibleRowValues(displayItems.value.filter((item) => !item.isDraft))).map((item) => item.data);
-    const body = rows.map((row) => row.map((cell, index) => displayCellValue(clipboardCellValue(cell, index))).join("\t")).join("\n");
-    await copyText(`${header}\n${body}`, { rows, header: columns.value });
+    // formatTsv 引用处理解码后文本中可能出现的制表符/换行；内部副本仍用原始 rows（hex）保证回粘无损。
+    const decodedRows = rows.map((row) => row.map((cell, index) => binaryClipboardCellValue(cell, index)));
+    await copyText(formatTsv(columns.value, decodedRows), { rows, header: columns.value });
   }
 
   // --- Export functions ---

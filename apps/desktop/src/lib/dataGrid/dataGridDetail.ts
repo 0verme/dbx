@@ -1,6 +1,6 @@
 import { cellImagePreviewUrl } from "@/lib/dataGrid/cellImageUrl";
 import { binaryCellClipboardText } from "@/lib/dataGrid/binaryCellDownload";
-import { displayCellValue, type CellValue } from "@/lib/dataGrid/cellValue";
+import { clipboardCellValue, displayCellValue, type CellValue } from "@/lib/dataGrid/cellValue";
 import { formatJsonText } from "@/lib/dataGrid/cellDetailPresentation";
 import type { DatabaseType } from "@/types/database";
 
@@ -216,7 +216,7 @@ export function jsonDetailDisplayValue(value: unknown): unknown {
 }
 
 export function dataGridRowDetailTsv(detail: DataGridRowDetail, databaseType?: DatabaseType): string {
-  return detail.fields.map((field) => displayCellValue(binaryCellClipboardText(field.value, field.type, databaseType) ?? field.value)).join("\t");
+  return detail.fields.map((field) => clipboardCellValue(binaryCellClipboardText(field.value, field.type, databaseType) ?? field.value)).join("\t");
 }
 
 export function dataGridColumnDetailJson(detail: DataGridColumnDetail, databaseType?: DatabaseType): string {
@@ -231,7 +231,7 @@ export function dataGridColumnDetailJson(detail: DataGridColumnDetail, databaseT
 }
 
 export function dataGridColumnDetailTsv(detail: DataGridColumnDetail, databaseType?: DatabaseType): string {
-  return detail.fields.map((field) => displayCellValue(binaryCellClipboardText(field.value, field.type, databaseType) ?? field.value)).join("\n");
+  return detail.fields.map((field) => clipboardCellValue(binaryCellClipboardText(field.value, field.type, databaseType) ?? field.value)).join("\n");
 }
 
 export interface BuildDeleteRowConfirmDetailsOptions<TRow> {
