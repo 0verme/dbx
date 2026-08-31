@@ -143,6 +143,7 @@ import {
   binaryCellDisplayText,
   binaryCellDownloadFileName,
   binaryCellDownloadPayload,
+  binaryCellClipboardText,
   canImportBinaryCellFile,
   canDownloadBinaryCellValue,
   downloadBinaryCellPayload,
@@ -9635,13 +9636,20 @@ async function onGridKeydown(event: KeyboardEvent) {
   }
 }
 
+function detailClipboardText(detail: DataGridCellDetail): string {
+  if (detail.value === null) return "";
+  const binaryText = binaryCellClipboardText(detail.value, detail.type, resolvedDatabaseType.value);
+  if (binaryText !== null) return binaryText;
+  if (isBlobCellColumnType(detail.type)) return binaryCellUtf8Text(detail.value, detail.type, resolvedDatabaseType.value) ?? displayCellValue(detail.value);
+  return displayCellValue(detail.value);
+}
+
 async function copyDetailValue() {
   const initialDetail = activeCellDetail.value;
   if (!initialDetail || !(await hydrateLargeValueCell(initialDetail.rowId, initialDetail.colIndex))) return;
   const detail = activeCellDetail.value;
   if (!detail) return;
-  const text = detail.value === null ? "" : isBlobCellColumnType(detail.type) ? (binaryCellUtf8Text(detail.value, detail.type, resolvedDatabaseType.value) ?? displayCellValue(detail.value)) : displayCellValue(detail.value);
-  copyText(text);
+  copyText(detailClipboardText(detail));
 }
 
 async function copyDetailFormattedJson() {
@@ -9828,7 +9836,7 @@ async function copyRowDetailJson() {
   try {
     const detail = await resolvedRowDetailForCopy();
     if (!detail) return;
-    copyText(dataGridRowDetailJson(detail));
+    copyText(dataGridRowDetailJson(detail, undefined, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9838,7 +9846,7 @@ async function copyRowDetailTsv() {
   try {
     const detail = await resolvedRowDetailForCopy();
     if (!detail) return;
-    copyText(dataGridRowDetailTsv(detail));
+    copyText(dataGridRowDetailTsv(detail, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9847,14 +9855,14 @@ async function copyRowDetailTsv() {
 async function copyRowDetailFieldValue(field: DataGridCellDetail) {
   if (!(await hydrateLargeValueCell(field.rowId, field.colIndex))) return;
   const resolved = cellDetailFor(field.rowNumber - 1, field.colIndex);
-  if (resolved) copyText(resolved.value === null ? "" : displayCellValue(resolved.value));
+  if (resolved) copyText(detailClipboardText(resolved));
 }
 
 async function copyColumnDetailJson() {
   try {
     const detail = await resolvedColumnDetailForCopy();
     if (!detail) return;
-    copyText(dataGridColumnDetailJson(detail));
+    copyText(dataGridColumnDetailJson(detail, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9864,7 +9872,7 @@ async function copyColumnDetailTsv() {
   try {
     const detail = await resolvedColumnDetailForCopy();
     if (!detail) return;
-    copyText(dataGridColumnDetailTsv(detail));
+    copyText(dataGridColumnDetailTsv(detail, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9879,7 +9887,7 @@ function copyColumnDetailColumnName() {
 async function copyColumnDetailFieldValue(field: DataGridCellDetail) {
   if (!(await hydrateLargeValueCell(field.rowId, field.colIndex))) return;
   const resolved = cellDetailFor(field.rowNumber - 1, field.colIndex);
-  if (resolved) copyText(resolved.value === null ? "" : displayCellValue(resolved.value));
+  if (resolved) copyText(detailClipboardText(resolved));
 }
 
 const transposeRecordWidths = ref<number[]>([]);
