@@ -3191,6 +3191,7 @@ export default withEnglishFallback({
     createFunction: "Nova função",
     createTrigger: "Novo gatilho",
     changeOpenMode: "Alterar modo de abertura",
+    closeLeftTabs: "Fechar abas à esquerda",
     closeRightTabs: "Fechar abas à direita",
     viewObject: "View",
     eventEditorTitle: "MySQL Event",
