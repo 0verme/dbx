@@ -29,10 +29,11 @@ import { createSidebarSearchLoadingTracker } from "@/lib/sidebar/sidebarSearchLo
 import { buildTableTreeNodes } from "@/lib/table/tableTree";
 import { isCancelSearchShortcut, isCopySidebarSelectionShortcut, isEditSidebarConnectionShortcut, isPasteSidebarSelectionShortcut, isViewTableDdlShortcut } from "@/lib/editor/keyboardShortcuts";
 import { sidebarNodeSupportsDdlView } from "@/lib/sidebar/sidebarTreeDdlShortcut";
-import { copyNameForTreeNode, objectSourceTargetForTreeNode } from "@/lib/sidebar/treeNodeClick";
+import { objectSourceTargetForTreeNode } from "@/lib/sidebar/treeNodeClick";
 import { supportsTypeObjectSource } from "@/lib/database/databaseObjectCapabilities";
 import { copyToClipboard } from "@/lib/common/clipboard";
 import { connectionPasteTargetGroupId, copySelectedConnectionsToClipboards, selectedConnectionEditTarget } from "@/lib/sidebar/sidebarConnectionSelection";
+import { formatSidebarTableCopyText } from "@/lib/sidebar/sidebarTableNameCopy";
 import { pruneTreeSelectionToVisibleNodeIds } from "@/lib/sidebar/sidebarTreeSelection";
 import { isEditableSidebarTypeSearchTarget, sidebarTypeSearchNextQuery } from "@/lib/sidebar/sidebarTypeSearch";
 import { isInternalDorisCatalog, usesTreeSchemaMode } from "@/lib/database/databaseFeatureSupport";
@@ -116,7 +117,7 @@ const sidebarContextMenuRef = ref<{ close: () => void } | null>(null);
 const sidebarContextMenuItems = ref<ContextMenuItem[]>([]);
 const emit = defineEmits<{
   "open-settings": [initialTab: string];
-  "add-to-ai": [node: TreeNode];
+  "add-to-ai": [nodes: TreeNode | TreeNode[]];
 }>();
 
 const sidebarContextMenuTarget = ref<SidebarActionTarget | null>(null);
@@ -1959,7 +1960,7 @@ function openSidebarDdlForSelection(): boolean {
   const selectedNodeId = store.selectedTreeNodeId;
   const node = selectedNodeId ? flatTreeIndex.value.nodeById.get(selectedNodeId) : null;
   if (!node || !sidebarNodeSupportsDdlView(node)) return false;
-  openSidebarDdl(node);
+  void sidebarTreeRuntimeHostRef.value?.openDdlForSelection?.(node, store.selectedTreeNodeIds);
   return true;
 }
 
@@ -2335,7 +2336,17 @@ function copySelectedSidebarNames(): boolean {
           })),
         }
       : null;
-  copyToClipboard(nodes.map(copyNameForTreeNode).join("\n"))
+  const activeNodeId = store.selectedTreeNodeId;
+  const activeNode = activeNodeId ? (flatTreeIndex.value.nodeById.get(activeNodeId) ?? nodes[0]!) : nodes[0]!;
+  const config = activeNode.connectionId ? store.getConfig(activeNode.connectionId) : undefined;
+  const copyText = formatSidebarTableCopyText(activeNode, nodes, {
+    separator: settingsStore.editorSettings.sidebarCopyTableNameSeparator,
+    includeSchema: settingsStore.editorSettings.sidebarCopyTableNameIncludeSchema,
+    databaseType: activeNode.connectionId ? effectiveDatabaseTypeForConnection(config) : undefined,
+    driverProfile: config?.driver_profile,
+    identifierQuote: activeNode.connectionId ? store.connectionIdentifierQuote?.(activeNode.connectionId) : undefined,
+  });
+  copyToClipboard(copyText)
     .then(() => toast(t("connection.copied"), 2000))
     .catch((e: any) => toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000));
   return true;
@@ -2420,7 +2431,7 @@ defineExpose({ focusSearch, createNewGroup, collapseAllTreeNodes, locateTabInSid
       @open-visible-schemas="openSidebarVisibleSchemas"
       @open-visible-nacos-namespaces="openSidebarVisibleNacosNamespaces"
       @open-table-name-filters="openSidebarTableNameFilters"
-      @add-to-ai="(node) => emit('add-to-ai', node)"
+      @add-to-ai="(nodes) => emit('add-to-ai', nodes)"
       @request-connection-rename="startRenamingConnectionNode"
       @request-group-rename="startRenamingCreatedGroup"
       @request-saved-sql-rename="startRenamingSavedSqlNode"

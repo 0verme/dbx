@@ -15,8 +15,10 @@ import { normalizeConnectTimeoutSecs, normalizeQueryTimeoutSecs } from "@/lib/co
 import { needsTabNavigationHistoryShortcutMigration, normalizeShortcutSettings, type ShortcutSettings } from "@/lib/editor/shortcutRegistry";
 import type { SavedSqlOpenTargetMode } from "@/lib/savedSql/savedSqlExecutionTarget";
 import type { ConnectionListSortMode } from "@/lib/sidebar/connectionListSort";
-import { normalizeSidebarHiddenTablePrefixes } from "@/lib/sidebar/sidebarTableNameDisplay";
+import { type ColumnNameCopySeparator } from "@/lib/dataGrid/dataGridColumnNameCopy";
 import { normalizeRedisKeyTemplates } from "@/lib/redis/redisKeyTemplates";
+import { normalizeSidebarHiddenTablePrefixes } from "@/lib/sidebar/sidebarTableNameDisplay";
+import { normalizeSidebarCopyTableNameSeparator } from "@/lib/sidebar/sidebarTableNameCopy";
 import type { SidebarActivation } from "@/lib/sidebar/treeNodeClick";
 import { DEFAULT_SQL_SNIPPETS } from "@/lib/sql/sqlCompletion";
 import { DEFAULT_SQL_FORMATTER_SETTINGS, normalizeSqlFormatterSettings, type SqlFormatterSettings } from "@/lib/sql/sqlFormatterConfig";
@@ -660,7 +662,7 @@ export interface EditorSettings {
   sidebarTableSearchLocal: boolean;
   sidebarGlobalSearchLocal: boolean;
   autoSelectActiveSidebarNode: boolean;
-  sidebarOpenDatabaseOnSingleClick: boolean;
+  sidebarBrowseObjectsOnDatabaseActivation: boolean;
   openTabsRestoreMode: OpenTabsRestoreMode;
   disconnectTabHandlingMode: DisconnectTabHandlingMode;
   dataTabReuseMode: DataTabReuseMode;
@@ -670,6 +672,8 @@ export interface EditorSettings {
   formatSqlOnSqlFileSave: boolean;
   updateNotificationsEnabled: boolean;
   sidebarHiddenTablePrefixes: string[];
+  sidebarCopyTableNameSeparator: ColumnNameCopySeparator;
+  sidebarCopyTableNameIncludeSchema: boolean;
   sidebarObjectInfoMode: SidebarObjectInfoMode;
   sidebarShowConnectionNotes: boolean;
   sidebarAllowHorizontalScroll: boolean;
@@ -697,6 +701,7 @@ export interface EditorSettings {
   sqlVariableSubstitutionEnabled: boolean;
   sqlVariableSyntaxOverrides: SqlVariableSyntaxOverrides;
   continueOnErrorOnBatch: boolean;
+  showTableDdlHoverPreview: boolean;
   clickTableNavigationTarget: ClickTableNavigationTarget;
   completionTriggerMode: SqlCompletionTriggerMode;
   defaultTransactionMode: DefaultTransactionMode;
@@ -877,7 +882,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   sidebarTableSearchLocal: true,
   sidebarGlobalSearchLocal: false,
   autoSelectActiveSidebarNode: false,
-  sidebarOpenDatabaseOnSingleClick: false,
+  sidebarBrowseObjectsOnDatabaseActivation: false,
   openTabsRestoreMode: "all",
   disconnectTabHandlingMode: "close-tabs",
   dataTabReuseMode: DEFAULT_DATA_TAB_REUSE_MODE,
@@ -887,6 +892,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   formatSqlOnSqlFileSave: false,
   updateNotificationsEnabled: true,
   sidebarHiddenTablePrefixes: [],
+  sidebarCopyTableNameSeparator: "comma",
+  sidebarCopyTableNameIncludeSchema: false,
   sidebarObjectInfoMode: "comment-inline",
   sidebarShowConnectionNotes: false,
   sidebarAllowHorizontalScroll: false,
@@ -913,6 +920,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   sqlVariableSubstitutionEnabled: true,
   sqlVariableSyntaxOverrides: {},
   continueOnErrorOnBatch: false,
+  showTableDdlHoverPreview: true,
   clickTableNavigationTarget: "data",
   completionTriggerMode: "positional",
   defaultTransactionMode: "auto",
@@ -1284,7 +1292,12 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     sidebarTableSearchLocal: typeof settings.sidebarTableSearchLocal === "boolean" ? settings.sidebarTableSearchLocal : DEFAULT_EDITOR_SETTINGS.sidebarTableSearchLocal,
     sidebarGlobalSearchLocal: typeof settings.sidebarGlobalSearchLocal === "boolean" ? settings.sidebarGlobalSearchLocal : DEFAULT_EDITOR_SETTINGS.sidebarGlobalSearchLocal,
     autoSelectActiveSidebarNode: settings.autoSelectActiveSidebarNode ?? DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode,
-    sidebarOpenDatabaseOnSingleClick: typeof settings.sidebarOpenDatabaseOnSingleClick === "boolean" ? settings.sidebarOpenDatabaseOnSingleClick : DEFAULT_EDITOR_SETTINGS.sidebarOpenDatabaseOnSingleClick,
+    sidebarBrowseObjectsOnDatabaseActivation:
+      typeof settings.sidebarBrowseObjectsOnDatabaseActivation === "boolean"
+        ? settings.sidebarBrowseObjectsOnDatabaseActivation
+        : typeof (settings as Partial<EditorSettings> & { sidebarOpenDatabaseOnSingleClick?: unknown }).sidebarOpenDatabaseOnSingleClick === "boolean"
+          ? (settings as Partial<EditorSettings> & { sidebarOpenDatabaseOnSingleClick: boolean }).sidebarOpenDatabaseOnSingleClick
+          : DEFAULT_EDITOR_SETTINGS.sidebarBrowseObjectsOnDatabaseActivation,
     openTabsRestoreMode: normalizeOpenTabsRestoreMode(
       (settings as Partial<EditorSettings>).openTabsRestoreMode,
       (
@@ -1315,6 +1328,8 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     formatSqlOnSqlFileSave: settings.formatSqlOnSqlFileSave === true,
     updateNotificationsEnabled: settings.updateNotificationsEnabled ?? DEFAULT_EDITOR_SETTINGS.updateNotificationsEnabled,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(settings.sidebarHiddenTablePrefixes),
+    sidebarCopyTableNameSeparator: normalizeSidebarCopyTableNameSeparator(settings.sidebarCopyTableNameSeparator),
+    sidebarCopyTableNameIncludeSchema: settings.sidebarCopyTableNameIncludeSchema === true,
     sidebarObjectInfoMode: normalizeSidebarObjectInfoMode(
       settings.sidebarObjectInfoMode,
       (
@@ -1358,6 +1373,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     sqlVariableSubstitutionEnabled: typeof settings.sqlVariableSubstitutionEnabled === "boolean" ? settings.sqlVariableSubstitutionEnabled : DEFAULT_EDITOR_SETTINGS.sqlVariableSubstitutionEnabled,
     sqlVariableSyntaxOverrides: normalizeSqlVariableSyntaxOverrides(settings.sqlVariableSyntaxOverrides),
     continueOnErrorOnBatch: settings.continueOnErrorOnBatch === true,
+    showTableDdlHoverPreview: typeof settings.showTableDdlHoverPreview === "boolean" ? settings.showTableDdlHoverPreview : DEFAULT_EDITOR_SETTINGS.showTableDdlHoverPreview,
     clickTableNavigationTarget: normalizeClickTableNavigationTarget(settings.clickTableNavigationTarget),
     completionTriggerMode: normalizeCompletionTriggerMode(settings.completionTriggerMode),
     defaultTransactionMode: normalizeDefaultTransactionMode(settings.defaultTransactionMode),
@@ -1907,7 +1923,7 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.sidebarTableSearchLocal !== undefined) editorSettings.value.sidebarTableSearchLocal = partial.sidebarTableSearchLocal;
     if (partial.sidebarGlobalSearchLocal !== undefined) editorSettings.value.sidebarGlobalSearchLocal = partial.sidebarGlobalSearchLocal;
     if (partial.autoSelectActiveSidebarNode !== undefined) editorSettings.value.autoSelectActiveSidebarNode = partial.autoSelectActiveSidebarNode;
-    if (partial.sidebarOpenDatabaseOnSingleClick !== undefined) editorSettings.value.sidebarOpenDatabaseOnSingleClick = partial.sidebarOpenDatabaseOnSingleClick === true;
+    if (partial.sidebarBrowseObjectsOnDatabaseActivation !== undefined) editorSettings.value.sidebarBrowseObjectsOnDatabaseActivation = partial.sidebarBrowseObjectsOnDatabaseActivation === true;
     if (partial.openTabsRestoreMode !== undefined) editorSettings.value.openTabsRestoreMode = normalizeOpenTabsRestoreMode(partial.openTabsRestoreMode);
     if (partial.disconnectTabHandlingMode !== undefined) editorSettings.value.disconnectTabHandlingMode = normalizeDisconnectTabHandlingMode(partial.disconnectTabHandlingMode);
     if (partial.dataTabReuseMode !== undefined) editorSettings.value.dataTabReuseMode = normalizeDataTabReuseMode(partial.dataTabReuseMode);
@@ -1917,6 +1933,8 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.formatSqlOnSqlFileSave !== undefined) editorSettings.value.formatSqlOnSqlFileSave = partial.formatSqlOnSqlFileSave === true;
     if (partial.updateNotificationsEnabled !== undefined) editorSettings.value.updateNotificationsEnabled = partial.updateNotificationsEnabled;
     if (partial.sidebarHiddenTablePrefixes !== undefined) editorSettings.value.sidebarHiddenTablePrefixes = normalizeSidebarHiddenTablePrefixes(partial.sidebarHiddenTablePrefixes);
+    if (partial.sidebarCopyTableNameSeparator !== undefined) editorSettings.value.sidebarCopyTableNameSeparator = normalizeSidebarCopyTableNameSeparator(partial.sidebarCopyTableNameSeparator);
+    if (partial.sidebarCopyTableNameIncludeSchema !== undefined) editorSettings.value.sidebarCopyTableNameIncludeSchema = partial.sidebarCopyTableNameIncludeSchema === true;
     if (partial.sidebarObjectInfoMode !== undefined) editorSettings.value.sidebarObjectInfoMode = normalizeSidebarObjectInfoMode(partial.sidebarObjectInfoMode);
     if (partial.sidebarShowConnectionNotes !== undefined) editorSettings.value.sidebarShowConnectionNotes = partial.sidebarShowConnectionNotes === true;
     if (partial.sidebarAllowHorizontalScroll !== undefined) editorSettings.value.sidebarAllowHorizontalScroll = partial.sidebarAllowHorizontalScroll;
@@ -1943,6 +1961,7 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.sqlVariableSubstitutionEnabled !== undefined) editorSettings.value.sqlVariableSubstitutionEnabled = partial.sqlVariableSubstitutionEnabled === true;
     if (partial.sqlVariableSyntaxOverrides !== undefined) editorSettings.value.sqlVariableSyntaxOverrides = normalizeSqlVariableSyntaxOverrides(partial.sqlVariableSyntaxOverrides);
     if (partial.continueOnErrorOnBatch !== undefined) editorSettings.value.continueOnErrorOnBatch = partial.continueOnErrorOnBatch === true;
+    if (partial.showTableDdlHoverPreview !== undefined) editorSettings.value.showTableDdlHoverPreview = partial.showTableDdlHoverPreview === true;
     if (partial.clickTableNavigationTarget !== undefined) editorSettings.value.clickTableNavigationTarget = normalizeClickTableNavigationTarget(partial.clickTableNavigationTarget);
     if (partial.completionTriggerMode !== undefined) editorSettings.value.completionTriggerMode = normalizeCompletionTriggerMode(partial.completionTriggerMode);
     if (partial.defaultTransactionMode !== undefined) editorSettings.value.defaultTransactionMode = normalizeDefaultTransactionMode(partial.defaultTransactionMode);

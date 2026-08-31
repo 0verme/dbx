@@ -149,6 +149,7 @@ import {
 import { eventToModifierOnlyShortcut, eventToShortcut } from "@/lib/editor/keyboardShortcuts";
 import { SHORTCUT_DEFINITIONS, findShortcutConflict, normalizeShortcutSettings, type ShortcutActionId } from "@/lib/editor/shortcutRegistry";
 import { formatShortcutDisplay } from "@/lib/editor/shortcutDisplay";
+import { COLUMN_NAME_COPY_SEPARATOR_LABELS, COLUMN_NAME_COPY_SEPARATOR_OPTIONS, isColumnNameCopySeparator, type ColumnNameCopySeparator } from "@/lib/dataGrid/dataGridColumnNameCopy";
 import { normalizeSidebarHiddenTablePrefixes } from "@/lib/sidebar/sidebarTableNameDisplay";
 import { normalizeRedisKeyTemplates } from "@/lib/redis/redisKeyTemplates";
 import { currentStatementFrameRangeTo } from "@/lib/sql/currentStatementFrame";
@@ -512,7 +513,7 @@ const dataTabReuseModeHelp = ref<DataTabReuseMode | null>(null);
 const editRoutineSourceOpenMode = ref(settingsStore.editorSettings.routineSourceOpenMode);
 const editSidebarTableSearchEnabled = ref(settingsStore.editorSettings.sidebarTableSearchEnabled);
 const editAutoSelectActiveSidebarNode = ref(settingsStore.editorSettings.autoSelectActiveSidebarNode);
-const editSidebarOpenDatabaseOnSingleClick = ref(settingsStore.editorSettings.sidebarOpenDatabaseOnSingleClick);
+const editSidebarBrowseObjectsOnDatabaseActivation = ref(settingsStore.editorSettings.sidebarBrowseObjectsOnDatabaseActivation);
 const editOpenTabsRestoreMode = ref<OpenTabsRestoreMode>(settingsStore.editorSettings.openTabsRestoreMode);
 const editDisconnectTabHandlingMode = ref<DisconnectTabHandlingMode>(settingsStore.editorSettings.disconnectTabHandlingMode);
 const editDataTabReuseMode = ref<DataTabReuseMode>(settingsStore.editorSettings.dataTabReuseMode);
@@ -520,9 +521,12 @@ const editOpenDataTabsNextToActive = ref(settingsStore.editorSettings.openDataTa
 const editPrefillNewQueryWithSelect = ref(settingsStore.editorSettings.prefillNewQueryWithSelect);
 const editGenerateSqlIncludeDatabaseName = ref(settingsStore.editorSettings.generateSqlIncludeDatabaseName);
 const editFormatSqlOnSqlFileSave = ref(settingsStore.editorSettings.formatSqlOnSqlFileSave);
+const editShowTableDdlHoverPreview = ref(settingsStore.editorSettings.showTableDdlHoverPreview);
 const editClickTableNavigationTarget = ref<ClickTableNavigationTarget>(settingsStore.editorSettings.clickTableNavigationTarget);
 const editUpdateNotificationsEnabled = ref(settingsStore.editorSettings.updateNotificationsEnabled);
 const editSidebarHiddenTablePrefixes = ref(settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n"));
+const editSidebarCopyTableNameSeparator = ref<ColumnNameCopySeparator>(settingsStore.editorSettings.sidebarCopyTableNameSeparator);
+const editSidebarCopyTableNameIncludeSchema = ref(settingsStore.editorSettings.sidebarCopyTableNameIncludeSchema);
 const editRedisKeyTemplates = ref(normalizeRedisKeyTemplates(settingsStore.editorSettings.redisKeyTemplates).join("\n"));
 const editSidebarObjectInfoMode = ref<SidebarObjectInfoMode>(settingsStore.editorSettings.sidebarObjectInfoMode);
 const editSidebarAllowHorizontalScroll = ref(settingsStore.editorSettings.sidebarAllowHorizontalScroll);
@@ -656,7 +660,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     routineSourceOpenMode: editRoutineSourceOpenMode.value,
     sidebarTableSearchEnabled: editSidebarTableSearchEnabled.value,
     autoSelectActiveSidebarNode: editAutoSelectActiveSidebarNode.value,
-    sidebarOpenDatabaseOnSingleClick: editSidebarOpenDatabaseOnSingleClick.value,
+    sidebarBrowseObjectsOnDatabaseActivation: editSidebarBrowseObjectsOnDatabaseActivation.value,
     openTabsRestoreMode: editOpenTabsRestoreMode.value,
     disconnectTabHandlingMode: editDisconnectTabHandlingMode.value,
     dataTabReuseMode: editDataTabReuseMode.value,
@@ -664,12 +668,15 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     prefillNewQueryWithSelect: editPrefillNewQueryWithSelect.value,
     generateSqlIncludeDatabaseName: editGenerateSqlIncludeDatabaseName.value,
     formatSqlOnSqlFileSave: editFormatSqlOnSqlFileSave.value,
+    showTableDdlHoverPreview: editShowTableDdlHoverPreview.value,
     updateNotificationsEnabled: editUpdateNotificationsEnabled.value,
     sidebarObjectInfoMode: editSidebarObjectInfoMode.value,
     sidebarAllowHorizontalScroll: editSidebarAllowHorizontalScroll.value,
     sidebarIndent: editSidebarIndent.value,
     sidebarFontSize: editSidebarFontSize.value,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value),
+    sidebarCopyTableNameSeparator: editSidebarCopyTableNameSeparator.value,
+    sidebarCopyTableNameIncludeSchema: editSidebarCopyTableNameIncludeSchema.value,
     redisKeyTemplates: normalizeRedisKeyTemplates(editRedisKeyTemplates.value),
     exportBatchSize: editExportBatchSize.value,
     globalDateTimeDisplayFormat: editGlobalDateTimeDisplayFormat.value,
@@ -1052,7 +1059,7 @@ function syncEditorSettingsDraftFromStore() {
   editRoutineSourceOpenMode.value = settingsStore.editorSettings.routineSourceOpenMode;
   editSidebarTableSearchEnabled.value = settingsStore.editorSettings.sidebarTableSearchEnabled;
   editAutoSelectActiveSidebarNode.value = settingsStore.editorSettings.autoSelectActiveSidebarNode;
-  editSidebarOpenDatabaseOnSingleClick.value = settingsStore.editorSettings.sidebarOpenDatabaseOnSingleClick;
+  editSidebarBrowseObjectsOnDatabaseActivation.value = settingsStore.editorSettings.sidebarBrowseObjectsOnDatabaseActivation;
   editOpenTabsRestoreMode.value = settingsStore.editorSettings.openTabsRestoreMode;
   editDisconnectTabHandlingMode.value = settingsStore.editorSettings.disconnectTabHandlingMode;
   editDataTabReuseMode.value = settingsStore.editorSettings.dataTabReuseMode;
@@ -1060,9 +1067,12 @@ function syncEditorSettingsDraftFromStore() {
   editPrefillNewQueryWithSelect.value = settingsStore.editorSettings.prefillNewQueryWithSelect;
   editGenerateSqlIncludeDatabaseName.value = settingsStore.editorSettings.generateSqlIncludeDatabaseName;
   editFormatSqlOnSqlFileSave.value = settingsStore.editorSettings.formatSqlOnSqlFileSave;
+  editShowTableDdlHoverPreview.value = settingsStore.editorSettings.showTableDdlHoverPreview;
   editClickTableNavigationTarget.value = settingsStore.editorSettings.clickTableNavigationTarget;
   editUpdateNotificationsEnabled.value = settingsStore.editorSettings.updateNotificationsEnabled;
   editSidebarHiddenTablePrefixes.value = settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n");
+  editSidebarCopyTableNameSeparator.value = settingsStore.editorSettings.sidebarCopyTableNameSeparator;
+  editSidebarCopyTableNameIncludeSchema.value = settingsStore.editorSettings.sidebarCopyTableNameIncludeSchema;
   editRedisKeyTemplates.value = normalizeRedisKeyTemplates(settingsStore.editorSettings.redisKeyTemplates).join("\n");
   editSidebarObjectInfoMode.value = settingsStore.editorSettings.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = settingsStore.editorSettings.sidebarAllowHorizontalScroll;
@@ -1285,6 +1295,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editConfirmUnsavedSqlClose.value = DEFAULT_EDITOR_SETTINGS.confirmUnsavedSqlClose;
     editAppCloseUnsavedTabsMode.value = DEFAULT_EDITOR_SETTINGS.appCloseUnsavedTabsMode;
     editSavedSqlOpenTargetMode.value = DEFAULT_EDITOR_SETTINGS.savedSqlOpenTargetMode;
+    editShowTableDdlHoverPreview.value = DEFAULT_EDITOR_SETTINGS.showTableDdlHoverPreview;
     editClickTableNavigationTarget.value = DEFAULT_EDITOR_SETTINGS.clickTableNavigationTarget;
     editSqlVariableSubstitutionEnabled.value = DEFAULT_EDITOR_SETTINGS.sqlVariableSubstitutionEnabled;
     editSqlVariableSyntaxOverrides.value = normalizeSqlVariableSyntaxOverrides(DEFAULT_EDITOR_SETTINGS.sqlVariableSyntaxOverrides);
@@ -1313,7 +1324,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editRoutineSourceOpenMode.value = DEFAULT_EDITOR_SETTINGS.routineSourceOpenMode;
     editSidebarTableSearchEnabled.value = DEFAULT_EDITOR_SETTINGS.sidebarTableSearchEnabled;
     editAutoSelectActiveSidebarNode.value = DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode;
-    editSidebarOpenDatabaseOnSingleClick.value = DEFAULT_EDITOR_SETTINGS.sidebarOpenDatabaseOnSingleClick;
+    editSidebarBrowseObjectsOnDatabaseActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarBrowseObjectsOnDatabaseActivation;
     editOpenTabsRestoreMode.value = DEFAULT_EDITOR_SETTINGS.openTabsRestoreMode;
     editDisconnectTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.disconnectTabHandlingMode;
     editDataTabReuseMode.value = DEFAULT_EDITOR_SETTINGS.dataTabReuseMode;
@@ -1328,6 +1339,8 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editSidebarIndent.value = DEFAULT_EDITOR_SETTINGS.sidebarIndent;
     editSidebarFontSize.value = DEFAULT_EDITOR_SETTINGS.sidebarFontSize;
     editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
+    editSidebarCopyTableNameSeparator.value = DEFAULT_EDITOR_SETTINGS.sidebarCopyTableNameSeparator;
+    editSidebarCopyTableNameIncludeSchema.value = DEFAULT_EDITOR_SETTINGS.sidebarCopyTableNameIncludeSchema;
     editToolbarItems.value = { ...DEFAULT_EDITOR_SETTINGS.toolbarItems };
   } else if (tab === "data") {
     editShowColumnCommentsInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader;
@@ -1447,7 +1460,7 @@ function resetAllDefaults() {
   editRoutineSourceOpenMode.value = DEFAULT_EDITOR_SETTINGS.routineSourceOpenMode;
   editSidebarTableSearchEnabled.value = DEFAULT_EDITOR_SETTINGS.sidebarTableSearchEnabled;
   editAutoSelectActiveSidebarNode.value = DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode;
-  editSidebarOpenDatabaseOnSingleClick.value = DEFAULT_EDITOR_SETTINGS.sidebarOpenDatabaseOnSingleClick;
+  editSidebarBrowseObjectsOnDatabaseActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarBrowseObjectsOnDatabaseActivation;
   editOpenTabsRestoreMode.value = DEFAULT_EDITOR_SETTINGS.openTabsRestoreMode;
   editDisconnectTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.disconnectTabHandlingMode;
   editDataTabReuseMode.value = DEFAULT_EDITOR_SETTINGS.dataTabReuseMode;
@@ -1455,12 +1468,15 @@ function resetAllDefaults() {
   editPrefillNewQueryWithSelect.value = DEFAULT_EDITOR_SETTINGS.prefillNewQueryWithSelect;
   editGenerateSqlIncludeDatabaseName.value = DEFAULT_EDITOR_SETTINGS.generateSqlIncludeDatabaseName;
   editFormatSqlOnSqlFileSave.value = DEFAULT_EDITOR_SETTINGS.formatSqlOnSqlFileSave;
+  editShowTableDdlHoverPreview.value = DEFAULT_EDITOR_SETTINGS.showTableDdlHoverPreview;
   editUpdateNotificationsEnabled.value = DEFAULT_EDITOR_SETTINGS.updateNotificationsEnabled;
   editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll;
   editSidebarIndent.value = DEFAULT_EDITOR_SETTINGS.sidebarIndent;
   editSidebarFontSize.value = DEFAULT_EDITOR_SETTINGS.sidebarFontSize;
   editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
+  editSidebarCopyTableNameSeparator.value = DEFAULT_EDITOR_SETTINGS.sidebarCopyTableNameSeparator;
+  editSidebarCopyTableNameIncludeSchema.value = DEFAULT_EDITOR_SETTINGS.sidebarCopyTableNameIncludeSchema;
   editRedisKeyTemplates.value = normalizeRedisKeyTemplates(DEFAULT_EDITOR_SETTINGS.redisKeyTemplates).join("\n");
   editExportBatchSize.value = DEFAULT_EDITOR_SETTINGS.exportBatchSize;
   editGlobalDateTimeDisplayFormat.value = DEFAULT_EDITOR_SETTINGS.globalDateTimeDisplayFormat;
@@ -4548,6 +4564,16 @@ onUnmounted(() => {
                   </div>
                   <Switch id="editor-sql-semantic-diagnostics" :model-value="editSqlSemanticDiagnosticsEnabled" size="sm" @update:model-value="onSqlSemanticDiagnosticsEnabledChange" />
                 </div>
+
+                <div class="flex min-w-0 items-center justify-between gap-2 rounded-md border bg-muted/20 px-2 py-1.5">
+                  <div class="flex min-w-0 items-center gap-1">
+                    <Label for="editor-show-table-ddl-hover-preview" class="truncate text-xs">{{ t("settings.showTableDdlHoverPreview") }}</Label>
+                    <HelpTooltip :label="t('settings.showTableDdlHoverPreview')" trigger-class="[&_svg]:h-3 [&_svg]:w-3" content-class="max-w-64">
+                      {{ t("settings.showTableDdlHoverPreviewDescription") }}
+                    </HelpTooltip>
+                  </div>
+                  <Switch id="editor-show-table-ddl-hover-preview" v-model="editShowTableDdlHoverPreview" size="sm" />
+                </div>
               </div>
 
               <Separator />
@@ -5396,6 +5422,15 @@ onUnmounted(() => {
                   </Button>
                 </div>
               </div>
+              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <Label for="sidebar-browse-objects-on-database-activation">{{ t("settings.sidebarBrowseObjectsOnDatabaseActivation") }}</Label>
+                  <HelpTooltip :label="t('settings.sidebarBrowseObjectsOnDatabaseActivation')">
+                    {{ t("settings.sidebarBrowseObjectsOnDatabaseActivationDescription") }}
+                  </HelpTooltip>
+                </div>
+                <Switch id="sidebar-browse-objects-on-database-activation" v-model="editSidebarBrowseObjectsOnDatabaseActivation" />
+              </div>
               <div class="space-y-2">
                 <div class="flex items-center gap-2">
                   <Label>{{ t("settings.reuseDataTab") }}</Label>
@@ -5558,15 +5593,6 @@ onUnmounted(() => {
               </div>
               <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
                 <div class="flex items-center gap-2">
-                  <Label for="sidebar-open-database-on-single-click">{{ t("settings.sidebarOpenDatabaseOnSingleClick") }}</Label>
-                  <HelpTooltip :label="t('settings.sidebarOpenDatabaseOnSingleClick')">
-                    {{ t("settings.sidebarOpenDatabaseOnSingleClickDescription") }}
-                  </HelpTooltip>
-                </div>
-                <Switch id="sidebar-open-database-on-single-click" v-model="editSidebarOpenDatabaseOnSingleClick" />
-              </div>
-              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                <div class="flex items-center gap-2">
                   <Label for="sidebar-table-search-enabled">{{ t("settings.sidebarTableSearchEnabled") }}</Label>
                   <HelpTooltip :label="t('settings.sidebarTableSearchEnabled')">
                     {{ t("settings.sidebarTableSearchEnabledDescription") }}
@@ -5717,6 +5743,40 @@ onUnmounted(() => {
                 <p class="text-xs text-muted-foreground">
                   {{ t("settings.sidebarHiddenTablePrefixesDescription") }}
                 </p>
+              </div>
+              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="space-y-1">
+                  <Label for="sidebar-copy-table-name-separator">{{ t("settings.sidebarCopyTableNameSeparator") }}</Label>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("settings.sidebarCopyTableNameSeparatorDescription") }}
+                  </p>
+                </div>
+                <Select
+                  :model-value="editSidebarCopyTableNameSeparator"
+                  @update:model-value="
+                    (value) => {
+                      if (isColumnNameCopySeparator(value)) editSidebarCopyTableNameSeparator = value;
+                    }
+                  "
+                >
+                  <SelectTrigger id="sidebar-copy-table-name-separator" class="h-8 w-44 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" align="end">
+                    <SelectItem v-for="option in COLUMN_NAME_COPY_SEPARATOR_OPTIONS" :key="option" :value="option" class="font-mono text-xs">
+                      {{ COLUMN_NAME_COPY_SEPARATOR_LABELS[option] }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="space-y-1">
+                  <Label for="sidebar-copy-table-name-include-schema">{{ t("settings.sidebarCopyTableNameIncludeSchema") }}</Label>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("settings.sidebarCopyTableNameIncludeSchemaDescription") }}
+                  </p>
+                </div>
+                <Switch id="sidebar-copy-table-name-include-schema" v-model="editSidebarCopyTableNameIncludeSchema" class="mt-0.5" />
               </div>
               <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
                 <div class="space-y-1">

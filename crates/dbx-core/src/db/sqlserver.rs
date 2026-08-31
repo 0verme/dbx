@@ -131,6 +131,14 @@ pub fn completion_context_sql() -> &'static str {
     SQLSERVER_COMPLETION_CONTEXT_SQL
 }
 
+pub fn completion_context_sql_for_profile(driver_profile: Option<&str>) -> &'static str {
+    if driver_profile.is_some_and(|profile| profile.trim().eq_ignore_ascii_case(SQLSERVER_LEGACY_DRIVER_PROFILE)) {
+        "SELECT TOP 1 u.name AS default_schema, 1 AS engine_edition FROM sysusers u WHERE u.name = USER_NAME()"
+    } else {
+        completion_context_sql()
+    }
+}
+
 pub fn completion_context_from_query_result(result: QueryResult) -> Result<SqlServerCompletionContext, String> {
     let row = result.rows.first().ok_or_else(|| "SQL Server completion context query returned no rows".to_string())?;
     let default_schema = row.first().and_then(serde_json::Value::as_str);
@@ -2374,9 +2382,11 @@ fn sqlserver_list_tables_sql_with_kind(
 
     // Use SELECT TOP for broad SQL Server version compatibility.
     // OFFSET / FETCH NEXT is only available in SQL Server 2012+.
+    // Keep the requested limit intact: the sidebar requests page_size + 1 to
+    // detect whether it should render a load-more node.
     match (limit, offset) {
         (Some(limit), Some(offset)) if offset > 0 => {
-            let end = offset + limit.min(1000);
+            let end = offset + limit;
             format!(
                 "SELECT * FROM (\
                  SELECT {base_columns}, ROW_NUMBER() OVER ({order_by}) AS __dbx_rn \
@@ -2385,7 +2395,7 @@ fn sqlserver_list_tables_sql_with_kind(
             )
         }
         (Some(limit), _) => {
-            format!("SELECT TOP ({}) {base_columns} {base_from} {base_where} {order_by}", limit.min(1000))
+            format!("SELECT TOP ({}) {base_columns} {base_from} {base_where} {order_by}", limit)
         }
         _ => {
             format!("SELECT {base_columns} {base_from} {base_where} {order_by}")
@@ -4164,6 +4174,17 @@ mod tests {
     }
 
     #[test]
+    fn sqlserver_legacy_completion_context_uses_sql_server_2000_catalogs() {
+        let sql = super::completion_context_sql_for_profile(Some(" SQLSERVER-LEGACY "));
+        assert_eq!(
+            sql,
+            "SELECT TOP 1 u.name AS default_schema, 1 AS engine_edition FROM sysusers u WHERE u.name = USER_NAME()"
+        );
+        assert!(!sql.contains("sys.schemas"));
+        assert!(!sql.contains("SERVERPROPERTY"));
+    }
+
+    #[test]
     fn sqlserver_completion_context_disables_use_for_azure_database_endpoints() {
         assert!(!sqlserver_supports_session_database_switch(5));
         assert!(!sqlserver_supports_session_database_switch(6));
@@ -4253,6 +4274,15 @@ mod tests {
         assert!(!sql.contains("o.type IN ('U','V')"));
         assert!(sql.contains("ROW_NUMBER() OVER (ORDER BY o.name)"));
         assert!(sql.contains("__dbx_rn > 100 AND __dbx_rn <= 201"));
+    }
+
+    #[test]
+    fn sqlserver_table_objects_sql_preserves_sidebar_probe_limits_above_1000() {
+        let first_page = sqlserver_table_objects_sql("dbo", None, Some(1001), None);
+        let next_page = sqlserver_table_objects_sql("dbo", None, Some(1001), Some(1000));
+
+        assert!(first_page.contains("SELECT TOP (1001)"));
+        assert!(next_page.contains("__dbx_rn > 1000 AND __dbx_rn <= 2001"));
     }
 
     #[test]

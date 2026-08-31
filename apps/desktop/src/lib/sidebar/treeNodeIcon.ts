@@ -15,6 +15,10 @@ export function getTreeNodeIconInfo(node: TreeNode): TreeNodeIconInfo | null {
     case "database":
     case "mongo-db":
       return { icon: Database, colorClass: "text-yellow-500" };
+    case "tablespace":
+      return { icon: Database, colorClass: "text-orange-500" };
+    case "datafile":
+      return { icon: FileCode, colorClass: "text-slate-500" };
     case "vector-database":
       return { icon: Database, colorClass: "text-cyan-500" };
     case "linked-server-root":
@@ -138,6 +142,10 @@ export function getTreeNodeIconInfo(node: TreeNode): TreeNodeIconInfo | null {
       return { icon: Clock, colorClass: "text-orange-400" };
     case "group-packages":
       return { icon: Package, colorClass: "text-cyan-500" };
+    case "group-tablespaces":
+      return { icon: Database, colorClass: "text-orange-500" };
+    case "group-datafiles":
+      return { icon: node.isExpanded ? FolderOpen : FolderClosed, colorClass: "text-slate-500" };
     case "group-partitions":
       return { icon: node.isExpanded ? FolderOpen : FolderClosed, colorClass: "text-green-400" };
     case "group-extensions":
