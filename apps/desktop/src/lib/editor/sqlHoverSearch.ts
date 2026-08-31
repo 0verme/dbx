@@ -4,32 +4,36 @@
  * The hover already renders the full table DDL (syntax-highlighted). When a
  * table has many columns, finding one by eye is slow, so this module adds a
  * compact search box that highlights matches inside the *already fetched* DDL
- * text — no extra metadata or DDL request is made. Matching runs over the raw
- * plaintext `content`, never over the highlighted HTML, and uses substring
- * search (not a `RegExp` built from user input) so special characters can never
- * break matching.
+ * text — no extra metadata or DDL request is made. Matching runs over the
+ * container's `textContent` — the same offset domain the highlight walker
+ * accumulates over its text nodes — never over the highlighted HTML, and uses
+ * substring search (not a `RegExp` built from user input) so special
+ * characters can never break matching. Keeping corpus and walker on the same
+ * source matters because the syntax highlighter renders line breaks as `<br>`
+ * elements: its `textContent` has no newline characters even though the raw
+ * DDL string does.
  */
 
 const MATCH_ATTRIBUTE = "data-sql-hover-search-match";
 const ACTIVE_ATTRIBUTE = "data-sql-hover-search-active";
 
 export interface HoverSearchMatch {
-  /** Offset of the first matched character within `content`. */
+  /** Offset of the first matched character within the searched text. */
   start: number;
-  /** Offset just past the last matched character within `content`. */
+  /** Offset just past the last matched character within the searched text. */
   end: number;
 }
 
 /**
- * Find every case-insensitive, non-overlapping occurrence of `query` inside
- * `content`. A blank/whitespace-only query yields no matches (the caller treats
- * this as "restore full content"). Uses `indexOf`, so arbitrary user input —
- * including regex metacharacters like `()[]$.*` — is matched literally.
+ * Find every case-insensitive, non-overlapping occurrence of `query` inside the
+ * searched text. A blank/whitespace-only query yields no matches (the caller
+ * treats this as "restore full content"). Uses `indexOf`, so arbitrary user
+ * input — including regex metacharacters like `()[]$.*` — is matched literally.
  */
-export function findHoverSearchMatches(content: string, query: string): HoverSearchMatch[] {
+export function findHoverSearchMatches(text: string, query: string): HoverSearchMatch[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
-  const haystack = content.toLowerCase();
+  const haystack = text.toLowerCase();
   const matches: HoverSearchMatch[] = [];
   let from = 0;
   for (;;) {
@@ -44,9 +48,10 @@ export function findHoverSearchMatches(content: string, query: string): HoverSea
 /**
  * Wrap each matched range in a `<mark>` by walking the container's text nodes,
  * so the surrounding syntax-highlight spans are preserved untouched. A match
- * that straddles two adjacent text nodes is highlighted per node segment. The
- * container's `textContent` must equal `content`; call {@link clearHoverSearchHighlights}
- * (or restore the original HTML) before re-applying.
+ * that straddles two adjacent text nodes is highlighted per node segment.
+ * Match offsets are relative to the concatenated text-node content (the
+ * container's `textContent`); call {@link clearHoverSearchHighlights} (or
+ * restore the original HTML) before re-applying.
  *
  * Returns the created `<mark>` elements in document order; the first is tagged
  * as the active match so callers can scroll it into view.
@@ -111,8 +116,6 @@ export interface HoverSearchController {
 }
 
 export interface HoverSearchOptions {
-  /** Raw plaintext DDL — the search corpus and the target's textContent. */
-  content: string;
   /** Scrollable element whose innerHTML holds the rendered DDL. */
   target: HTMLElement;
   /** The target's pristine innerHTML, restored before every re-highlight. */
@@ -133,7 +136,7 @@ export interface HoverSearchOptions {
  *   Enter/composition never fire or dismiss the tooltip while typing.
  */
 export function createHoverSearch(options: HoverSearchOptions): HoverSearchController {
-  const { content, target, originalHtml, placeholder, noResultLabel } = options;
+  const { target, originalHtml, placeholder, noResultLabel } = options;
 
   const element = document.createElement("div");
   element.dataset.sqlHoverSearch = "true";
@@ -159,7 +162,12 @@ export function createHoverSearch(options: HoverSearchOptions): HoverSearchContr
     // Restore the pristine highlighted DDL, then re-apply match highlights.
     target.innerHTML = originalHtml;
     const query = input.value;
-    const matches = findHoverSearchMatches(content, query);
+    // Search the rendered text, not the raw DDL string: the highlighter emits
+    // `<br>` for line breaks, so `textContent` differs from the raw DDL by the
+    // dropped newline characters — and the walker's offsets live in the
+    // `textContent` domain. Using any other corpus shifts every match after
+    // the first line.
+    const matches = findHoverSearchMatches(target.textContent ?? "", query);
     if (!query.trim()) {
       status.hidden = true;
       return;

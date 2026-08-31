@@ -100,7 +100,6 @@ describe("createHoverSearch", () => {
     const target = document.createElement("div");
     target.textContent = DDL;
     const controller = createHoverSearch({
-      content: DDL,
       target,
       originalHtml: target.innerHTML,
       placeholder: "Search columns…",
@@ -109,6 +108,36 @@ describe("createHoverSearch", () => {
     const input = controller.element.querySelector<HTMLInputElement>('[data-sql-hover-search-input="true"]')!;
     return { target, controller, input };
   }
+
+  it("highlights correctly when line breaks render as <br> elements", () => {
+    const target = document.createElement("div");
+    // Mirror the syntax highlighter's inline output: lines separated by <br>,
+    // so textContent contains no newline characters.
+    const lines = DDL.split("\n");
+    lines.forEach((line, index) => {
+      if (index > 0) target.appendChild(document.createElement("br"));
+      if (line) target.appendChild(document.createTextNode(line));
+    });
+    const controller = createHoverSearch({
+      target,
+      originalHtml: target.innerHTML,
+      placeholder: "Search columns…",
+      noResultLabel: "No matching columns",
+    });
+    const input = controller.element.querySelector<HTMLInputElement>('[data-sql-hover-search-input="true"]')!;
+
+    // `customer_order_status` sits on the third line — two `<br>`s in, exactly
+    // where newline-domain offsets used to drift into the wrong text.
+    input.value = "customer_order_status";
+    input.dispatchEvent(new Event("input"));
+
+    const marks = target.querySelectorAll("mark");
+    expect(marks.length).toBeGreaterThan(0);
+    for (const mark of marks) {
+      expect(mark.textContent?.toLowerCase()).toContain(input.value.toLowerCase());
+    }
+    expect(target.textContent?.toLowerCase()).toContain(input.value.toLowerCase());
+  });
 
   it("creates a search input and a hidden no-result status", () => {
     const { controller, input } = setup();

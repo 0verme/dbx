@@ -2703,7 +2703,6 @@ function createHoverDom(title: string, detail: string, sqlContent?: string, rows
     // 纯前端搜索：在已生成的 DDL 内容上做大小写不敏感匹配并高亮，不重新请求元数据/DDL。
     // originalHtml 必须在挂到文档前、内容渲染后捕获，作为每次搜索的还原基线。
     searchController = createHoverSearch({
-      content: sqlContent,
       target: sqlContainer,
       originalHtml: sqlContainer.innerHTML,
       placeholder: t("grid.hoverSearchPlaceholder"),
