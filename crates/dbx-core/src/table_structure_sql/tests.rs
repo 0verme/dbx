@@ -998,8 +998,226 @@ fn oracle_create_table_preserves_character_length_units() {
         is_gaussdb_m_mode: false,
     });
 
-    assert!(result.statements[0].contains("\"BYTE_COL\" VARCHAR2(12 BYTE)"));
-    assert!(result.statements[0].contains("\"CHAR_COL\" VARCHAR2(12 CHAR)"));
+    assert!(result.statements[0].contains("BYTE_COL VARCHAR2(12 BYTE)"));
+    assert!(result.statements[0].contains("CHAR_COL VARCHAR2(12 CHAR)"));
+}
+
+#[test]
+fn oracle_create_table_uses_unquoted_identifiers_for_new_objects() {
+    let mut user_id = column("user_id");
+    user_id.data_type = "NUMBER".to_string();
+    user_id.is_primary_key = true;
+    user_id.comment = "identifier".to_string();
+    let mut user_name = column("userName");
+    user_name.data_type = "VARCHAR2(100)".to_string();
+    let mut upper_id = column("USER_CODE");
+    upper_id.data_type = "NUMBER".to_string();
+    let mut dollar_id = column("ABC$01");
+    dollar_id.data_type = "NUMBER".to_string();
+    let mut hash_id = column("ABC#01");
+    hash_id.data_type = "NUMBER".to_string();
+    let idx = index("idx_user_id", &["user_id"]);
+
+    let result = build_create_table_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Oracle),
+        schema: Some("APP".to_string()),
+        table_name: "orders".to_string(),
+        columns: vec![user_id, user_name, upper_id, dollar_id, hash_id],
+        indexes: vec![idx],
+        foreign_keys: Vec::new(),
+        triggers: Vec::new(),
+        table_comment: Some("user table".to_string()),
+        original_table_comment: None,
+        mysql_engine: None,
+        partitioned: false,
+        is_gaussdb_m_mode: false,
+    });
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements[0],
+        "CREATE TABLE \"APP\".orders (\n  user_id NUMBER,\n  userName VARCHAR2(100),\n  USER_CODE NUMBER,\n  ABC$01 NUMBER,\n  ABC#01 NUMBER,\n  PRIMARY KEY (user_id)\n);"
+    );
+    assert!(result.statements.iter().any(|statement| statement == "COMMENT ON TABLE \"APP\".orders IS 'user table';"));
+    assert!(result
+        .statements
+        .iter()
+        .any(|statement| statement == "COMMENT ON COLUMN \"APP\".orders.user_id IS 'identifier';"));
+    assert!(result
+        .statements
+        .iter()
+        .any(|statement| statement == "CREATE INDEX idx_user_id ON \"APP\".orders (user_id);"));
+}
+
+#[test]
+fn oracle_create_table_leaves_uppercase_regular_identifier_unquoted() {
+    let mut user_id = column("USER_ID");
+    user_id.data_type = "NUMBER".to_string();
+
+    let result = build_create_table_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Oracle),
+        schema: None,
+        table_name: "USERS".to_string(),
+        columns: vec![user_id],
+        indexes: Vec::new(),
+        foreign_keys: Vec::new(),
+        triggers: Vec::new(),
+        table_comment: None,
+        original_table_comment: None,
+        mysql_engine: None,
+        partitioned: false,
+        is_gaussdb_m_mode: false,
+    });
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(result.statements, vec!["CREATE TABLE USERS (\n  USER_ID NUMBER\n);".to_string()]);
+}
+
+#[test]
+fn oracle_create_table_quotes_special_and_reserved_identifiers() {
+    let mut special = column("user name");
+    special.data_type = "VARCHAR2(100)".to_string();
+    special.comment = "special".to_string();
+    let mut escaped = column(r#"a"b"#);
+    escaped.data_type = "VARCHAR2(100)".to_string();
+    let mut select = column("SELECT");
+    select.data_type = "VARCHAR2(100)".to_string();
+    let mut from = column("FROM");
+    from.data_type = "VARCHAR2(100)".to_string();
+    let mut table = column("TABLE");
+    table.data_type = "VARCHAR2(100)".to_string();
+    let mut leading_digit = column("123column");
+    leading_digit.data_type = "VARCHAR2(100)".to_string();
+
+    let result = build_create_table_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Oracle),
+        schema: Some("APP".to_string()),
+        table_name: "order detail".to_string(),
+        columns: vec![special, escaped, select, from, table, leading_digit],
+        indexes: Vec::new(),
+        foreign_keys: Vec::new(),
+        triggers: Vec::new(),
+        table_comment: None,
+        original_table_comment: None,
+        mysql_engine: None,
+        partitioned: false,
+        is_gaussdb_m_mode: false,
+    });
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    let ddl = &result.statements[0];
+    assert!(ddl.starts_with("CREATE TABLE \"APP\".\"order detail\" ("));
+    assert!(ddl.contains("\"user name\" VARCHAR2(100)"));
+    assert!(ddl.contains("\"a\"\"b\" VARCHAR2(100)"));
+    assert!(ddl.contains("\"SELECT\" VARCHAR2(100)"));
+    assert!(ddl.contains("\"FROM\" VARCHAR2(100)"));
+    assert!(ddl.contains("\"TABLE\" VARCHAR2(100)"));
+    assert!(ddl.contains("\"123column\" VARCHAR2(100)"));
+    assert!(result
+        .statements
+        .iter()
+        .any(|statement| statement == "COMMENT ON COLUMN \"APP\".\"order detail\".\"user name\" IS 'special';"));
+}
+
+#[test]
+fn oracle_create_table_distinguishes_new_and_referenced_foreign_key_identifiers() {
+    let mut user_id = column("user_id");
+    user_id.data_type = "NUMBER".to_string();
+    let mut customer_fk = foreign_key("fk_orders_user", "user_id", "CamelCase", "UserName");
+    customer_fk.ref_schema = "CaseSchema".to_string();
+    let audit_trigger = trigger("auditTrigger", "BEFORE", "INSERT", "BEGIN\n  NULL;\nEND");
+
+    let result = build_create_table_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Oracle),
+        schema: Some("APP".to_string()),
+        table_name: "orders".to_string(),
+        columns: vec![user_id],
+        indexes: Vec::new(),
+        foreign_keys: vec![customer_fk],
+        triggers: vec![audit_trigger],
+        table_comment: None,
+        original_table_comment: None,
+        mysql_engine: None,
+        partitioned: false,
+        is_gaussdb_m_mode: false,
+    });
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec![
+            "CREATE TABLE \"APP\".orders (\n  user_id NUMBER\n);",
+            "ALTER TABLE \"APP\".orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES \"CaseSchema\".\"CamelCase\" (\"UserName\");",
+            "CREATE OR REPLACE TRIGGER \"APP\".auditTrigger BEFORE INSERT ON \"APP\".orders\nFOR EACH ROW\nBEGIN\n  NULL;\nEND;",
+        ]
+    );
+}
+
+#[test]
+fn oracle_existing_quoted_identifiers_keep_exact_spelling() {
+    let mut column = column("CamelCase");
+    column.data_type = "NUMBER".to_string();
+    column.original = Some(ColumnInfo {
+        name: "CamelCase".to_string(),
+        data_type: "VARCHAR2(100)".to_string(),
+        is_nullable: true,
+        column_default: None,
+        is_primary_key: false,
+        extra: None,
+        comment: None,
+        ..Default::default()
+    });
+
+    let result = build_table_structure_change_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Oracle),
+        schema: Some("CaseSchema".to_string()),
+        table_name: "CaseTable".to_string(),
+        columns: vec![column],
+        indexes: Vec::new(),
+        foreign_keys: Vec::new(),
+        triggers: Vec::new(),
+        table_comment: None,
+        original_table_comment: None,
+        mysql_engine: None,
+        partitioned: false,
+        is_gaussdb_m_mode: false,
+    });
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec!["ALTER TABLE \"CaseSchema\".\"CaseTable\" MODIFY (\"CamelCase\" NUMBER);".to_string()]
+    );
+}
+
+#[test]
+fn oracle_new_identifier_formatting_does_not_change_other_dialects() {
+    for (database_type, expected) in [
+        (DatabaseType::Postgres, "CREATE TABLE \"users\" (\n  \"user_id\" INTEGER\n);"),
+        (DatabaseType::Mysql, "CREATE TABLE `users` (\n  `user_id` INTEGER\n);"),
+        (DatabaseType::SqlServer, "CREATE TABLE [users] (\n  [user_id] INTEGER\n);"),
+        (DatabaseType::Dameng, "CREATE TABLE \"users\" (\n  \"user_id\" INTEGER\n);"),
+    ] {
+        let mut user_id = column("user_id");
+        user_id.data_type = "INTEGER".to_string();
+        let result = build_create_table_sql(TableStructureSqlOptions {
+            database_type: Some(database_type),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![user_id],
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+            triggers: Vec::new(),
+            table_comment: None,
+            original_table_comment: None,
+            mysql_engine: None,
+            partitioned: false,
+            is_gaussdb_m_mode: false,
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new(), "{database_type:?}");
+        assert_eq!(result.statements, vec![expected.to_string()], "{database_type:?}");
+    }
 }
 
 #[test]
@@ -4870,7 +5088,7 @@ fn builds_oracle_foreign_key_with_supported_actions() {
     assert_eq!(result.warnings, Vec::<String>::new());
     assert_eq!(
         result.statements[1],
-        "ALTER TABLE \"HR\".\"ORDERS_COPY\" ADD CONSTRAINT \"ORDERS_COPY_FK1\" FOREIGN KEY (\"CUSTOMER_ID\") REFERENCES \"CRM\".\"CUSTOMERS\" (\"ID\") ON DELETE CASCADE;"
+        "ALTER TABLE \"HR\".ORDERS_COPY ADD CONSTRAINT ORDERS_COPY_FK1 FOREIGN KEY (CUSTOMER_ID) REFERENCES \"CRM\".\"CUSTOMERS\" (\"ID\") ON DELETE CASCADE;"
     );
 }
 

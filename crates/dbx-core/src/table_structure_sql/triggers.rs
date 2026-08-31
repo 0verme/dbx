@@ -1,8 +1,23 @@
 use super::dialect::{database_label, StructureDialect};
 use super::types::{EditableStructureTrigger, TableStructureSqlOptions, TriggerInfo};
-use super::util::{clean, qualified_table, quote_ident};
+use super::util::{clean, qualified_new_table, qualified_table, quote_ident, quote_new_ident};
 
 pub(super) fn build_trigger_sql(options: &TableStructureSqlOptions, warnings: &mut Vec<String>) -> Vec<String> {
+    build_trigger_sql_with_mode(options, warnings, false)
+}
+
+pub(super) fn build_trigger_sql_for_new_table(
+    options: &TableStructureSqlOptions,
+    warnings: &mut Vec<String>,
+) -> Vec<String> {
+    build_trigger_sql_with_mode(options, warnings, true)
+}
+
+fn build_trigger_sql_with_mode(
+    options: &TableStructureSqlOptions,
+    warnings: &mut Vec<String>,
+    for_new_table: bool,
+) -> Vec<String> {
     if options.triggers.is_empty() {
         return Vec::new();
     }
@@ -16,7 +31,11 @@ pub(super) fn build_trigger_sql(options: &TableStructureSqlOptions, warnings: &m
         return Vec::new();
     }
 
-    let table = qualified_table(dialect, options.schema.as_deref(), &options.table_name);
+    let table = if for_new_table {
+        qualified_new_table(options.database_type, dialect, options.schema.as_deref(), &options.table_name)
+    } else {
+        qualified_table(dialect, options.schema.as_deref(), &options.table_name)
+    };
     let mut statements = Vec::new();
 
     for trigger in &options.triggers {
@@ -46,7 +65,15 @@ pub(super) fn build_trigger_sql(options: &TableStructureSqlOptions, warnings: &m
             }
         }
 
-        if let Some(sql) = create_trigger_sql(dialect, options.schema.as_deref(), &table, trigger, warnings) {
+        if let Some(sql) = create_trigger_sql(
+            options.database_type,
+            dialect,
+            options.schema.as_deref(),
+            &table,
+            trigger,
+            warnings,
+            for_new_table,
+        ) {
             statements.push(sql);
             // SQL Server rebuilds via DROP + CREATE, which resets is_disabled to
             // enabled; restore the catalog-reported disabled state explicitly.
@@ -93,11 +120,13 @@ fn drop_trigger_sql(dialect: StructureDialect, schema: Option<&str>, name: &str)
 }
 
 fn create_trigger_sql(
+    database_type: Option<crate::models::connection::DatabaseType>,
     dialect: StructureDialect,
     schema: Option<&str>,
     table: &str,
     trigger: &EditableStructureTrigger,
     warnings: &mut Vec<String>,
+    for_new_table: bool,
 ) -> Option<String> {
     let name = clean(&trigger.name);
     let timing = normalize_keyword(&trigger.timing);
@@ -113,9 +142,17 @@ fn create_trigger_sql(
         StructureDialect::SqlServer => {
             create_sqlserver_trigger_sql(schema, table, &name, &timing, &event, &statement, warnings)
         }
-        StructureDialect::Oracle => {
-            create_oracle_trigger_sql(schema, table, &name, &timing, &event, &statement, warnings)
-        }
+        StructureDialect::Oracle => create_oracle_trigger_sql(
+            database_type,
+            schema,
+            table,
+            &name,
+            &timing,
+            &event,
+            &statement,
+            warnings,
+            for_new_table,
+        ),
         _ => None,
     }
 }
@@ -239,6 +276,7 @@ fn create_mysql_trigger_sql(
 }
 
 fn create_oracle_trigger_sql(
+    database_type: Option<crate::models::connection::DatabaseType>,
     schema: Option<&str>,
     table: &str,
     name: &str,
@@ -246,6 +284,7 @@ fn create_oracle_trigger_sql(
     event: &str,
     statement: &str,
     warnings: &mut Vec<String>,
+    for_new_table: bool,
 ) -> Option<String> {
     let Some((timing_clause, row_level)) = oracle_trigger_timing(timing) else {
         warnings.push(format!("Unsupported Oracle trigger timing \"{timing}\"."));
@@ -256,14 +295,15 @@ fn create_oracle_trigger_sql(
         return None;
     }
 
-    let trigger_name = if schema.is_some_and(|schema| !schema.trim().is_empty()) {
-        format!(
-            "{}.{}",
-            quote_ident(StructureDialect::Oracle, schema.unwrap()),
-            quote_ident(StructureDialect::Oracle, name)
-        )
+    let trigger_identifier = if for_new_table {
+        quote_new_ident(database_type, StructureDialect::Oracle, name)
     } else {
         quote_ident(StructureDialect::Oracle, name)
+    };
+    let trigger_name = if schema.is_some_and(|schema| !schema.trim().is_empty()) {
+        format!("{}.{}", quote_ident(StructureDialect::Oracle, schema.unwrap()), trigger_identifier)
+    } else {
+        trigger_identifier
     };
     let row_clause = if row_level { "\nFOR EACH ROW" } else { "" };
     let statement = statement.trim_end().trim_end_matches('/').trim_end().trim_end_matches(';').trim_end();
