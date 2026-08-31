@@ -619,7 +619,7 @@ jobs:
           VSIGN_OPERATOR_PWD: ${{ secrets.VSIGN_OPERATOR_PWD }}
         run: ./.github/scripts/setup-vsign.ps1
 
-      - name: Bundle and upload Windows 7 fixed-runtime installer
+      - name: Bundle and upload Windows 7 / Server 2012 R2 fixed-runtime installer
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -628,7 +628,8 @@ jobs:
         run: |
           $version = "${env:GITHUB_REF_NAME}".TrimStart("v")
           $bundleDir = "target/x86_64-win7-windows-msvc/release/bundle/nsis"
-          $offlineName = "DBX_${version}_x64-win7-webview2-109-offline-setup.exe"
+          $offlineName = "DBX_${version}_x64-win7-server2012r2-webview2-109-offline-setup.exe"
+          $checksumName = "${offlineName}.sha256"
           $cargoMetadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
           $appVersion = ($cargoMetadata.packages | Where-Object { $_.name -eq "dbx" } | Select-Object -First 1).version
 
@@ -645,7 +646,7 @@ jobs:
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
           if (!$installer) {
-            Write-Error "Missing Windows 7 fixed-runtime installer in ${bundleDir}"
+            Write-Error "Missing Windows 7 / Server 2012 R2 fixed-runtime installer in ${bundleDir}"
             exit 1
           }
 
@@ -653,7 +654,10 @@ jobs:
           ./.github/scripts/assert-authenticode.ps1 -Path $installer.FullName
 
           Copy-Item $installer.FullName $offlineName -Force
-          gh release upload "${env:GITHUB_REF_NAME}" $offlineName --repo "${env:GITHUB_REPOSITORY}" --clobber
+          $hash = (Get-FileHash -LiteralPath $offlineName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $offlineName" | Set-Content -LiteralPath $checksumName -Encoding ascii
+          gh release upload "${env:GITHUB_REF_NAME}" $offlineName $checksumName `
+            --repo "${env:GITHUB_REPOSITORY}" --clobber
 
       - name: Remove temporary VSign files
         if: always()
