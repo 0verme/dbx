@@ -21,7 +21,7 @@ import TransferTaskTree from "@/components/transfer/TransferTaskTree.vue";
 import type { DatabaseType } from "@/types/database";
 import type { TransferTask, TransferTaskConfig } from "@/types/database";
 import { isSchemaAware, supportsTransfer } from "@/lib/database/databaseCapabilities";
-import { effectiveDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
+import { transferDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { isDorisFamilyCatalogCapable } from "@/lib/database/databaseFeatureSupport";
 import { decodeTransferDatabaseOption, encodeTransferDatabaseOptions, isSameTransferDatabase, isTransferDatabaseSelected, normalizeTransferCatalog } from "@/lib/database/dataTransferSelection";
 import { formatDatabaseLabel } from "@/lib/database/defaultDatabase";
@@ -60,7 +60,7 @@ const transferDialogStyle = {
 
 const store = useConnectionStore();
 
-const sqlConnections = computed(() => store.connections.filter((c) => supportsTransfer(effectiveDatabaseTypeForConnection(c))));
+const sqlConnections = computed(() => store.connections.filter((c) => supportsTransfer(transferDatabaseTypeForConnection(c))));
 
 // Source state
 const sourceConnectionId = ref("");
@@ -115,7 +115,7 @@ const treeDisabledGroups = computed<TransferObjectKind[]>(() => {
   }
   const sourceConfig = store.getConfig(sourceConnectionId.value);
   const targetConfig = store.getConfig(targetConnectionId.value);
-  const allowed = crossFamilyTransferableKinds(effectiveDatabaseTypeForConnection(sourceConfig), effectiveDatabaseTypeForConnection(targetConfig));
+  const allowed = crossFamilyTransferableKinds(transferDatabaseTypeForConnection(sourceConfig), transferDatabaseTypeForConnection(targetConfig));
   return presentKinds.filter((k) => k !== "TABLE" && !allowed.includes(k));
 });
 
@@ -133,9 +133,9 @@ const showCrossFamilyViewHint = computed(() => {
   const targetConfig = store.getConfig(targetConnectionId.value);
   if (transferContent.value === "dataOnly") return false;
   if (!sourceConfig || !targetConfig) return false;
-  const allowed = crossFamilyTransferableKinds(effectiveDatabaseTypeForConnection(sourceConfig), effectiveDatabaseTypeForConnection(targetConfig));
+  const allowed = crossFamilyTransferableKinds(transferDatabaseTypeForConnection(sourceConfig), transferDatabaseTypeForConnection(targetConfig));
   if (!allowed.includes("VIEW")) return false;
-  return !isSameTransferFamily(effectiveDatabaseTypeForConnection(sourceConfig), effectiveDatabaseTypeForConnection(targetConfig)) && (selectedObjects.value.VIEW?.size ?? 0) > 0;
+  return !isSameTransferFamily(transferDatabaseTypeForConnection(sourceConfig), transferDatabaseTypeForConnection(targetConfig)) && (selectedObjects.value.VIEW?.size ?? 0) > 0;
 });
 const pendingSourceSchemaPrefill = ref("");
 const pendingSelectedTablesPrefill = ref<string[] | null>(null);
@@ -409,7 +409,7 @@ async function loadObjects(isCancelled: () => boolean = () => false) {
     const config = store.getConfig(connectionId);
     const needsSchema = isSchemaAware(config?.db_type);
     const schema = needsSchema && schemaValue ? schemaValue : database;
-    const kinds = transferObjectKindsForDatabase(effectiveDatabaseTypeForConnection(config));
+    const kinds = transferObjectKindsForDatabase(transferDatabaseTypeForConnection(config));
     const groups: Partial<Record<TransferObjectKind, string[]>> = {};
     for (const kind of kinds) {
       try {

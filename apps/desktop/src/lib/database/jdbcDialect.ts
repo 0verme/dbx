@@ -82,6 +82,22 @@ export function effectiveDatabaseTypeForConnection(connection?: JdbcDialectConne
   return inferJdbcDialect(connection) ?? "jdbc";
 }
 
+/**
+ * Database type the data-transfer pipeline treats a connection as. Doris-family
+ * engines (Doris/SelectDB/StarRocks) are saved as `db_type=mysql` with a
+ * doris/starrocks `driver_profile`, and the transfer backend routes them through
+ * the MySQL object family (catalog routing is driver_profile-aware); the
+ * standalone `doris`/`starrocks` manifest entries are not transfer-capable.
+ * Resolve those connections back to their raw db_type so they stay selectable in
+ * the transfer dialog and keep the MySQL object kinds — the effective type alone
+ * would drop them from the connection list and disable every non-table kind.
+ */
+export function transferDatabaseTypeForConnection(connection?: JdbcDialectConnection): DatabaseType | undefined {
+  const effective = effectiveDatabaseTypeForConnection(connection);
+  if (effective === "doris" || effective === "starrocks") return connection?.db_type;
+  return effective;
+}
+
 export function connectionUsesConnectionRootSchemaMode(connection?: JdbcDialectConnection): boolean {
   const type = effectiveDatabaseTypeForConnection(connection);
   return !!type && CONNECTION_ROOT_SCHEMA_TYPES.has(type);
