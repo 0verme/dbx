@@ -1788,7 +1788,7 @@ function handleKeydown(e: KeyboardEvent) {
       return;
     }
   }
-  if (e.key === " " || e.key === "Spacebar") {
+  if (!typing && (e.key === " " || e.key === "Spacebar")) {
     e.preventDefault();
     isSpacePressed.value = true;
   }
