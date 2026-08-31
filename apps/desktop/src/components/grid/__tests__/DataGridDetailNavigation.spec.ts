@@ -123,4 +123,10 @@ describe("DataGrid detail keyboard safety", () => {
     expect(detailDialogsSource).toContain('const rowSearch = ref("");');
     expect(detailDialogsSource).toContain('const columnSearch = ref("");');
   });
+
+  it("focuses the dialog content on open so arrows work immediately", () => {
+    expect(detailDialogsSource).toContain('@open-auto-focus="focusDetailDialogContentOnOpen"');
+    expect(detailDialogsSource).toContain('tabindex="-1"');
+    expect(detailDialogsSource).toContain("function focusDetailDialogContentOnOpen(event: Event) {");
+  });
 });

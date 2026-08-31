@@ -35,6 +35,16 @@ const columnSearch = ref("");
 const filteredRowFields = computed(() => (props.rowDetail ? filterDataGridDetailFields(props.rowDetail.fields, rowSearch.value) : []));
 const filteredColumnFields = computed(() => (props.columnDetail ? filterDataGridDetailFields(props.columnDetail.fields, columnSearch.value) : []));
 
+// The dialog must be arrow-navigable the moment it opens. FocusScope's default
+// focuses the first tabbable element — the search input — whose arrows move
+// the caret and are ignored by shouldIgnoreDataGridDetailNavigation. Cancel the
+// default and focus the content root instead (event.target is the FocusScope
+// container, i.e. the rendered dialog content element).
+function focusDetailDialogContentOnOpen(event: Event) {
+  event.preventDefault();
+  (event.target as HTMLElement | null)?.focus();
+}
+
 function onRowDetailKeydown(event: KeyboardEvent) {
   if (!rowOpen.value || shouldIgnoreDataGridDetailNavigation(event)) return;
   const delta = detailNavigationDelta(event.key, "row");
@@ -56,7 +66,7 @@ function onColumnDetailKeydown(event: KeyboardEvent) {
 
 <template>
   <Dialog v-model:open="rowOpen">
-    <DialogContent v-if="rowDetail" class="sm:max-w-[960px] max-h-[85vh] flex flex-col overflow-hidden" @keydown="onRowDetailKeydown">
+    <DialogContent v-if="rowDetail" tabindex="-1" class="sm:max-w-[960px] max-h-[85vh] flex flex-col overflow-hidden" @open-auto-focus="focusDetailDialogContentOnOpen" @keydown="onRowDetailKeydown">
       <DialogHeader class="shrink-0 pr-8">
         <DialogTitle class="flex min-w-0 items-center gap-2 text-sm"
           ><ListTree class="h-4 w-4 shrink-0 text-muted-foreground" /><span class="min-w-0 truncate">{{ t("grid.rowDetailsFor", { row: rowDetail.rowNumber }) }}</span></DialogTitle
@@ -114,7 +124,7 @@ function onColumnDetailKeydown(event: KeyboardEvent) {
   </Dialog>
 
   <Dialog v-model:open="columnOpen">
-    <DialogContent v-if="columnDetail" class="sm:max-w-[900px] max-h-[85vh] flex flex-col overflow-hidden" @keydown="onColumnDetailKeydown">
+    <DialogContent v-if="columnDetail" tabindex="-1" class="sm:max-w-[900px] max-h-[85vh] flex flex-col overflow-hidden" @open-auto-focus="focusDetailDialogContentOnOpen" @keydown="onColumnDetailKeydown">
       <DialogHeader class="shrink-0 pr-8"
         ><DialogTitle class="flex min-w-0 items-center gap-2 text-sm"
           ><TableProperties class="h-4 w-4 shrink-0 text-muted-foreground" /><span class="min-w-0 truncate">{{ t("grid.columnDetailsFor", { column: columnDetail.column }) }}</span></DialogTitle
