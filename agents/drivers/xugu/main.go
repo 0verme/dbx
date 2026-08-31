@@ -57,6 +57,33 @@ SELECT SCHEMA_NAME
 FROM ALL_SCHEMAS
 WHERE DB_ID = CURRENT_DB_ID
 ORDER BY SCHEMA_NAME`
+
+// Xugu exposes storage metadata through SYS_* views scoped to the current
+// database. Keep these statements independent from the generic object
+// catalog so ordinary schema browsing remains unchanged for every driver.
+const xuguListTablespacesSQL = `
+SELECT NODEID, SPACE_ID, SPACE_NAME, DATAFILE_NUM, SPACE_TYPE, MEDIA_ERROR,
+       TOTAL_CHUNK_NUM, FREE_CHUNK_NUM
+FROM SYS_TABLESPACES
+ORDER BY SPACE_ID`
+
+// ALL_* is the ordinary-account view exposed by Xugu. SYS_* is retained as
+// the primary query because it is the stable shape used by the native agent;
+// this fallback lets DBA/normal logins browse the same read-only metadata when
+// their account is not allowed to read the SYS_* views.
+const xuguListAllTablespacesSQL = `
+SELECT NODE_ID, SPACE_ID, SPACE_NAME, DATAFILE_NUM, SPACE_TYPE, MEDIA_ERROR,
+       TOTAL_CHUNK_NUM, FREE_CHUNK_NUM
+FROM ALL_TABLESPACES
+ORDER BY SPACE_ID`
+const xuguListDatafilesSQL = `
+SELECT NODEID, SPACE_ID, PATH, FILE_NO, MAX_SIZE, STEP_SIZE, CURR_SIZE, RESERVED1
+FROM SYS_DATAFILES
+ORDER BY SPACE_ID, FILE_NO`
+const xuguListAllDatafilesSQL = `
+SELECT NODEID, SPACE_ID, PATH, FILE_NO, MAX_SIZE, STEP_SIZE, CURR_SIZE, RESERVED1
+FROM ALL_DATAFILES
+ORDER BY SPACE_ID, FILE_NO`
 const xuguCatalogTableNameSelectSQL = `
 SELECT s.SCHEMA_NAME, t.TABLE_NAME
 FROM ALL_TABLES t
@@ -387,6 +414,29 @@ type querySession struct {
 
 type databaseInfo struct {
 	Name string `json:"name"`
+}
+
+type xuguDatafileInfo struct {
+	NodeID    string  `json:"node_id"`
+	SpaceID   int64   `json:"space_id"`
+	Path      string  `json:"path"`
+	FileNo    int64   `json:"file_no"`
+	MaxSize   *int64  `json:"max_size"`
+	StepSize  *int64  `json:"step_size"`
+	CurrSize  *int64  `json:"curr_size"`
+	Reserved1 *string `json:"reserved1"`
+}
+
+type xuguTablespaceInfo struct {
+	NodeID        string             `json:"node_id"`
+	SpaceID       int64              `json:"space_id"`
+	SpaceName     string             `json:"space_name"`
+	DatafileNum   int64              `json:"datafile_num"`
+	SpaceType     string             `json:"space_type"`
+	MediaError    *string            `json:"media_error"`
+	TotalChunkNum *int64             `json:"total_chunk_num"`
+	FreeChunkNum  *int64             `json:"free_chunk_num"`
+	Datafiles     []xuguDatafileInfo `json:"datafiles"`
 }
 
 type tableInfo struct {
@@ -1034,6 +1084,14 @@ func (s *server) dispatch(method string, params map[string]json.RawMessage) (any
 		return map[string]bool{"ok": true}, false, s.validateConnection()
 	case "list_databases":
 		result, err := s.listDatabases()
+		return result, false, err
+	case "list_xugu_tablespaces":
+		if database := stringParam(params, "database"); database != "" {
+			if err := s.useDatabase(database); err != nil {
+				return nil, false, err
+			}
+		}
+		result, err := s.listTablespaces()
 		return result, false, err
 	case "list_schemas":
 		if err := s.useDatabase(stringParam(params, "database")); err != nil {
@@ -1699,6 +1757,84 @@ func fallbackDatabasesFromParams(params connectParams) []databaseInfo {
 	return nil
 }
 
+func (s *server) listTablespaces() ([]xuguTablespaceInfo, error) {
+	spaceRows, err := s.queryRows(xuguListTablespacesSQL, nil)
+	if err != nil && isXuguMetadataUnavailableError(err) {
+		spaceRows, err = s.queryRows(xuguListAllTablespacesSQL, nil)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer s.closeRows(spaceRows)
+
+	spaces := make([]xuguTablespaceInfo, 0)
+	spaceIndex := make(map[int64]int)
+	for spaceRows.Next() {
+		values, err := scanRow(spaceRows, 8)
+		if err != nil {
+			return nil, err
+		}
+		space := xuguTablespaceInfo{
+			NodeID:        xuguString(values[0]),
+			SpaceID:       xuguInt64(values[1]),
+			SpaceName:     xuguString(values[2]),
+			DatafileNum:   xuguInt64(values[3]),
+			SpaceType:     xuguString(values[4]),
+			MediaError:    optionalStringPtr(values[5]),
+			TotalChunkNum: optionalInt64(values[6]),
+			FreeChunkNum:  optionalInt64(values[7]),
+			Datafiles:     []xuguDatafileInfo{},
+		}
+		spaceIndex[space.SpaceID] = len(spaces)
+		spaces = append(spaces, space)
+	}
+	if err := spaceRows.Err(); err != nil {
+		return nil, err
+	}
+	if len(spaces) == 0 {
+		return spaces, nil
+	}
+
+	fileRows, err := s.queryRows(xuguListDatafilesSQL, nil)
+	if err != nil {
+		// Accounts may inspect the parent view without being allowed to read
+		// physical file paths. Keep the parent rows usable in that case.
+		if isXuguMetadataUnavailableError(err) {
+			fileRows, err = s.queryRows(xuguListAllDatafilesSQL, nil)
+			if err != nil && isXuguMetadataUnavailableError(err) {
+				return spaces, nil
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer s.closeRows(fileRows)
+	for fileRows.Next() {
+		values, err := scanRow(fileRows, 8)
+		if err != nil {
+			return nil, err
+		}
+		file := xuguDatafileInfo{
+			NodeID:    xuguString(values[0]),
+			SpaceID:   xuguInt64(values[1]),
+			Path:      xuguString(values[2]),
+			FileNo:    xuguInt64(values[3]),
+			MaxSize:   optionalInt64(values[4]),
+			StepSize:  optionalInt64(values[5]),
+			CurrSize:  optionalInt64(values[6]),
+			Reserved1: optionalStringPtr(values[7]),
+		}
+		if index, ok := spaceIndex[file.SpaceID]; ok {
+			spaces[index].Datafiles = append(spaces[index].Datafiles, file)
+		}
+	}
+	if err := fileRows.Err(); err != nil {
+		return nil, err
+	}
+	return spaces, nil
+}
+
 func configuredDatabaseName(params connectParams) string {
 	if name := strings.TrimSpace(params.Database); name != "" {
 		return name
@@ -1731,7 +1867,7 @@ func isXuguMetadataAccessError(err error) bool {
 	catalogObject := false
 	for _, object := range []string{
 		"DATABASES", "SCHEMAS", "TABLES", "VIEWS", "COLUMNS", "CONSTRAINTS", "INDEXES",
-		"TRIGGERS", "PARTIS", "SUBPARTIS", "IDX_PARTIS", "IDX_SUBPARTIS", "SEQUENCES", "SYNONYMS", "JOBS", "PROCEDURES", "PACKAGES", "TYPES",
+		"TRIGGERS", "PARTIS", "SUBPARTIS", "IDX_PARTIS", "IDX_SUBPARTIS", "SEQUENCES", "SYNONYMS", "JOBS", "PROCEDURES", "PACKAGES", "TYPES", "TABLESPACES", "DATAFILES",
 	} {
 		if strings.Contains(message, "ALL_"+object) || strings.Contains(message, "SYS_"+object) {
 			catalogObject = true
@@ -5576,6 +5712,42 @@ func xuguInt(value any) int {
 		parsed, _ := strconv.Atoi(strings.TrimSpace(fmt.Sprint(v)))
 		return parsed
 	}
+}
+
+func xuguInt64(value any) int64 {
+	value = normalizeValue(value)
+	switch v := value.(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case uint64:
+		return int64(v)
+	case float64:
+		return int64(v)
+	case string:
+		parsed, _ := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		return parsed
+	default:
+		parsed, _ := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(v)), 10, 64)
+		return parsed
+	}
+}
+
+func optionalInt64(value any) *int64 {
+	if normalizeValue(value) == nil {
+		return nil
+	}
+	parsed := xuguInt64(value)
+	return &parsed
+}
+
+func optionalStringPtr(value any) *string {
+	if normalizeValue(value) == nil {
+		return nil
+	}
+	parsed := xuguString(value)
+	return &parsed
 }
 
 func stringPtr(value string) *string {

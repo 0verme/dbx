@@ -86,6 +86,7 @@ import { tableObjectSourceKind } from "@/lib/table/tableObjectSourceKind";
 import { tableColumnDefaultDisplayValue } from "@/lib/table/tableColumnDefaultPresentation";
 import { shouldNavigateFromTableInfoColumnClick } from "@/lib/table/tableInfoColumnNavigation";
 import { tableInfoTabForDrawerToggle } from "@/lib/table/tableInfoTabPreference";
+import { loadObjectDdl } from "@/lib/metadata/objectDdlCache";
 import { loadObjectMetadataFacet } from "@/lib/metadata/objectMetadataCache";
 import * as api from "@/lib/backend/api";
 import { formatElapsedSeconds } from "@/lib/common/elapsedTime";
@@ -143,6 +144,7 @@ import {
   binaryCellDisplayText,
   binaryCellDownloadFileName,
   binaryCellDownloadPayload,
+  binaryCellClipboardText,
   canImportBinaryCellFile,
   canDownloadBinaryCellValue,
   downloadBinaryCellPayload,
@@ -246,7 +248,7 @@ import {
   type DataGridScrollPosition,
 } from "@/lib/dataGrid/dataGridInfiniteScroll";
 import { resolveDataGridWheelScroll } from "@/lib/dataGrid/dataGridWheel";
-import { CANVAS_DATA_GRID_ROW_HEIGHT, MAX_CANVAS_DATA_GRID_PIXEL_RATIO, canvasDataGridActionOverlayWidth, canvasDataGridActionReservedWidth, dataGridSearchMatchKey, drawCanvasDataGrid, type CanvasDevicePixelSize } from "@/lib/dataGrid/canvasDataGridRenderer";
+import { CANVAS_DATA_GRID_ROW_HEIGHT, MAX_CANVAS_DATA_GRID_PIXEL_RATIO, canvasDataGridActionOverlayWidth, canvasDataGridActionReservedWidth, dataGridSearchMatchKey, drawCanvasDataGrid, resolveCanvasCellTextLayout, type CanvasDevicePixelSize } from "@/lib/dataGrid/canvasDataGridRenderer";
 import { resolveCrosshairTarget, type CrosshairTarget } from "@/lib/dataGrid/crosshairHighlight";
 import { DATA_GRID_DARK_STRIPED_ROW_BG, DATA_GRID_LIGHT_STRIPED_ROW_BG, dataGridActiveRowBackground } from "@/lib/dataGrid/dataGridPaintTheme";
 import { createRowLowerTextCache } from "@/lib/dataGrid/dataGridRowLowerText";
@@ -702,6 +704,8 @@ const columnCommentMap = computed(() => {
 });
 const dataGridTopbarWidth = ref(0);
 const dataGridViewportWidth = ref(0);
+const dataGridTopbarOverflowCompact = ref(false);
+const dataGridTopbarExpandedRequiredWidth = ref(0);
 const showColumnCommentsInHeader = computed(() => settingsStore.editorSettings.showColumnCommentsInHeader);
 const showColumnTypesInHeader = computed(() => settingsStore.editorSettings.showColumnTypesInHeader);
 const showTransposeFieldMetadata = computed(() => settingsStore.editorSettings.dataGridShowTransposeFieldMetadata);
@@ -721,7 +725,7 @@ const columnIndexMap = computed(() => buildColumnIndexMap(indexes.value, primary
 const compactColumnHeaderActions = computed(() => settingsStore.editorSettings.compactColumnHeaderActions);
 const dataGridRenderMode = computed(() => settingsStore.editorSettings.dataGridRenderMode);
 const dataGridSearchMode = computed(() => settingsStore.editorSettings.dataGridSearchMode);
-const compactDataGridToolbar = computed(() => isDataGridToolbarCompact(dataGridTopbarWidth.value, dataGridViewportWidth.value, DATA_GRID_CONDITION_TOOLBAR_MIN_WIDTH));
+const compactDataGridToolbar = computed(() => dataGridTopbarOverflowCompact.value || isDataGridToolbarCompact(dataGridTopbarWidth.value, dataGridViewportWidth.value, DATA_GRID_CONDITION_TOOLBAR_MIN_WIDTH));
 const infiniteScrollEnabled = computed(() => props.paginationEnabled && settingsStore.editorSettings.infiniteScroll);
 const queryResultMaxRows = computed(() => effectiveQueryResultMaxRows(settingsStore.editorSettings.queryResultMaxRowsEnabled, settingsStore.editorSettings.queryResultMaxRows));
 const paginationMaxRows = computed(() => (isResultsContext.value ? queryResultMaxRows.value : undefined));
@@ -1460,6 +1464,7 @@ async function loadServerFilterValues(columnIndex: number, searchValue: string) 
     const columnInfo = tableMeta.columns.find((column) => column.name === columnName);
     const sql = await buildDataGridColumnDistinctValuesSql({
       databaseType: resolvedDatabaseType.value,
+      driverProfile: props.connectionId ? connectionStore.getConfig(props.connectionId)?.driver_profile : undefined,
       identifierQuote: connectionStore.connectionIdentifierQuote?.(props.connectionId),
       catalog: tableMeta.catalog,
       database: tableMeta.database,
@@ -2536,6 +2541,8 @@ let gridVerticalScrollbarThumbTopPercent = 0;
 let gridVerticalScrollbarThumbHeightPercent = 100;
 let gridScrollbarsRuntime: DataGridScrollbarsRuntime;
 let dataGridTopbarResizeObserver: ResizeObserver | null = null;
+let dataGridTopbarMutationObserver: MutationObserver | null = null;
+let dataGridTopbarRecheckTimer: ReturnType<typeof setTimeout> | null = null;
 let cellEditResizeObserver: ResizeObserver | null = null;
 // vue-virtual-scroller's @resize only fires in pageMode (it observes window),
 // so in container-scroll mode (transpose uses RecycleScroller without pageMode)
@@ -3184,18 +3191,67 @@ function observeGridHorizontalScrollbarScroller() {
 }
 
 function updateDataGridTopbarWidth() {
-  dataGridTopbarWidth.value = dataGridTopbarRef.value?.clientWidth ?? 0;
+  const topbar = dataGridTopbarRef.value;
+  dataGridTopbarWidth.value = topbar?.clientWidth ?? 0;
   dataGridViewportWidth.value = typeof window === "undefined" ? 0 : window.innerWidth;
+
+  if (!topbar) return;
+
+  const fixedBreakpointCompact = isDataGridToolbarCompact(dataGridTopbarWidth.value, dataGridViewportWidth.value, DATA_GRID_CONDITION_TOOLBAR_MIN_WIDTH);
+  if (fixedBreakpointCompact) return;
+
+  if (dataGridTopbarOverflowCompact.value) {
+    if (dataGridTopbarWidth.value >= dataGridTopbarExpandedRequiredWidth.value) {
+      dataGridTopbarOverflowCompact.value = false;
+      dataGridTopbarExpandedRequiredWidth.value = 0;
+    }
+    return;
+  }
+
+  // The action list gains preview/save/rollback controls in editable grids. The
+  // fixed breakpoint cannot see that extra width, so capture the full layout
+  // width before the overflow-clip wrapper can hide the trailing action.
+  if (topbar.scrollWidth > topbar.clientWidth + 1) {
+    dataGridTopbarExpandedRequiredWidth.value = topbar.scrollWidth;
+    dataGridTopbarOverflowCompact.value = true;
+  }
+}
+
+function resetDataGridTopbarOverflowCompact() {
+  if (!dataGridTopbarOverflowCompact.value) return;
+  dataGridTopbarOverflowCompact.value = false;
+  dataGridTopbarExpandedRequiredWidth.value = 0;
+  if (dataGridTopbarRecheckTimer) clearTimeout(dataGridTopbarRecheckTimer);
+  // Wait for the label-width transition to finish before measuring the newly
+  // shortened action list. If it still overflows, updateDataGridTopbarWidth
+  // captures its new, smaller expanded width.
+  dataGridTopbarRecheckTimer = setTimeout(() => {
+    dataGridTopbarRecheckTimer = null;
+    updateDataGridTopbarWidth();
+  }, 360);
+}
+
+function clearDataGridTopbarRecheckTimer() {
+  if (!dataGridTopbarRecheckTimer) return;
+  clearTimeout(dataGridTopbarRecheckTimer);
+  dataGridTopbarRecheckTimer = null;
 }
 
 function observeDataGridTopbarWidth() {
   dataGridTopbarResizeObserver?.disconnect();
   dataGridTopbarResizeObserver = null;
+  dataGridTopbarMutationObserver?.disconnect();
+  dataGridTopbarMutationObserver = null;
+  clearDataGridTopbarRecheckTimer();
   const topbar = dataGridTopbarRef.value;
   updateDataGridTopbarWidth();
   if (topbar && typeof ResizeObserver !== "undefined") {
     dataGridTopbarResizeObserver = new ResizeObserver(updateDataGridTopbarWidth);
     dataGridTopbarResizeObserver.observe(topbar);
+  }
+  if (topbar && typeof MutationObserver !== "undefined") {
+    dataGridTopbarMutationObserver = new MutationObserver(updateDataGridTopbarWidth);
+    dataGridTopbarMutationObserver.observe(topbar, { childList: true, characterData: true, subtree: true });
   }
 }
 
@@ -3452,6 +3508,7 @@ function onScrollerScroll(e: Event) {
   } else {
     syncHeaderScroll(e);
   }
+  if (editingCell.value) scheduleActiveCellEditTextareaResize();
   markGridScrolling();
 }
 
@@ -3765,7 +3822,8 @@ function currentWhereInput(): string | undefined {
 }
 
 function currentOrderBy(): string | undefined {
-  return orderByInput.value.trim() || (sortCol.value ? `${queryColumnRef(sortCol.value)} ${sortDir.value.toUpperCase()}` : undefined);
+  const structuredOrderBy = sortMode.value === "database" && sortCol.value ? `${queryColumnRef(sortCol.value)} ${sortDir.value.toUpperCase()}` : undefined;
+  return orderByInput.value.trim() || structuredOrderBy;
 }
 
 function executeServerPageJump(targetPage: number, updateCurrentPage = false) {
@@ -4421,6 +4479,7 @@ async function startCellEdit(rowId: number, columnIndex: number, expanded: boole
 }
 
 async function startDomCellEdit(rowId: number, columnIndex: number, displayText: string, event: MouseEvent) {
+  const target = event.currentTarget;
   if (!(await hydrateLargeValueCell(rowId, columnIndex))) return;
   const item = getRowItem(rowId);
   const editText = item ? cellEditorTextForValue(item.data[columnIndex], columnIndex) : displayText;
@@ -4430,7 +4489,7 @@ async function startDomCellEdit(rowId: number, columnIndex: number, displayText:
     cellEditContentNeedsExpandedEditor({
       displayText,
       editText,
-      target: event.currentTarget,
+      target,
     }),
   );
 }
@@ -4842,6 +4901,21 @@ const previewToolbarCapability = computed<DataGridToolbarActionCapability>(() =>
   loading: isPreviewLoading.value,
   onTrigger: openSqlPreview,
 }));
+watch(
+  () => previewToolbarCapability.value.visible,
+  (visible, previousVisible) => {
+    if (previousVisible && !visible) resetDataGridTopbarOverflowCompact();
+  },
+);
+// Save/rollback disappear with saveToolbarState.showActions (committing or
+// discarding all pending edits), which shortens the action list while compact
+// just like the preview action disappearing does.
+watch(
+  () => saveToolbarState.value.showActions,
+  (showActions, previousShowActions) => {
+    if (previousShowActions && !showActions) resetDataGridTopbarOverflowCompact();
+  },
+);
 const layerPreviewToolbarCapability = computed<DataGridToolbarActionCapability>(() => {
   const action = previewActions.value.find((candidate) => candidate.id === "geometry-map-preview");
   return {
@@ -7410,6 +7484,7 @@ function onCanvasScroll(event: Event) {
   }
   if (headerRef.value && headerRef.value.scrollLeft !== scrollLeft) headerRef.value.scrollLeft = scrollLeft;
   recordScrollPosition({ top: scrollTop, left: scrollLeft });
+  if (editingCell.value) scheduleActiveCellEditTextareaResize();
   markGridScrolling();
   scheduleCanvasDraw();
 }
@@ -7644,8 +7719,29 @@ function canvasCellContentOverflows(item: RowItem, actualColIdx: number, visible
   const displayText = formatCellCached(item.data[actualColIdx], actualColIdx);
   const editText = cellEditorTextForValue(item.data[actualColIdx], actualColIdx);
   if (editText.includes("\n") || editText.includes("\r") || editText.length > displayText.length) return true;
-  const textWidth = measureCellTextWidth(displayText, `400 ${tableFontSize.value}px ${tableFontFamily.value}`);
-  return textWidth > Math.max(0, cellWidth - 24);
+  const canvas = activeCanvasSurface();
+  const context = canvas?.getContext("2d");
+  if (!context) {
+    const textWidth = measureCellTextWidth(displayText, `400 ${tableFontSize.value}px ${tableFontFamily.value}`);
+    return textWidth > Math.max(0, cellWidth - 24);
+  }
+
+  const isRightAlign = columnAligns.value[visibleColIdx] === "right";
+  const actionCell = canvasRightAlignedActionCell.value;
+  const reservedWidth = actionCell?.rowIndex === item.displayIndex && actionCell.visibleColIdx === visibleColIdx ? actionCell.reservedWidth : 0;
+  const { maxWidth } = resolveCanvasCellTextLayout({
+    drawX: 0,
+    colWidth: cellWidth,
+    dpr: 1,
+    isRightAlign,
+    reservedWidth,
+  });
+  context.save();
+  context.font = `400 ${tableFontSize.value}px ${tableFontFamily.value}`;
+  if ("fontVariantNumeric" in context) (context as CanvasRenderingContext2D & { fontVariantNumeric?: string }).fontVariantNumeric = "tabular-nums";
+  const textWidth = context.measureText(displayText).width;
+  context.restore();
+  return textWidth > maxWidth;
 }
 
 function canvasCellViewportRect(rowIndex: number, visibleColIdx: number) {
@@ -7923,6 +8019,9 @@ function pauseCanvasGridWork() {
   disconnectCellEditResizeObserver();
   dataGridTopbarResizeObserver?.disconnect();
   dataGridTopbarResizeObserver = null;
+  dataGridTopbarMutationObserver?.disconnect();
+  dataGridTopbarMutationObserver = null;
+  clearDataGridTopbarRecheckTimer();
   disconnectTransposeViewportObserver();
   canvasPixelRatioMediaQueryCleanup?.();
   canvasPixelRatioMediaQueryCleanup = null;
@@ -7993,6 +8092,8 @@ onUnmounted(() => {
   canvasRuntime.dispose();
   gridScrollbarsRuntime.dispose();
   dataGridTopbarResizeObserver?.disconnect();
+  dataGridTopbarMutationObserver?.disconnect();
+  clearDataGridTopbarRecheckTimer();
   disconnectCellEditResizeObserver();
   disconnectTransposeViewportObserver();
   stopGridHorizontalScrollbarDrag();
@@ -8531,10 +8632,11 @@ function showTransposeCellDetails(rowIndex: number, actualColIdx: number) {
 }
 
 async function onTransposeCellDblClick(rowIndex: number, actualColIdx: number, displayText: string, event: MouseEvent) {
+  const target = event.currentTarget;
   const item = displayItemAt(rowIndex);
   if (!item) return;
   if (!canEditCellItem(item, actualColIdx)) {
-    await startReadonlyCellTextSelection(item.id, actualColIdx, displayText, cellEditContentNeedsExpandedEditor({ displayText, editText: cellEditorTextForValue(item.data[actualColIdx], actualColIdx), target: event.currentTarget }));
+    await startReadonlyCellTextSelection(item.id, actualColIdx, displayText, cellEditContentNeedsExpandedEditor({ displayText, editText: cellEditorTextForValue(item.data[actualColIdx], actualColIdx), target }));
     return;
   }
   await startDomCellEdit(item.id, actualColIdx, displayText, event);
@@ -9655,13 +9757,20 @@ async function onGridKeydown(event: KeyboardEvent) {
   }
 }
 
+function detailClipboardText(detail: DataGridCellDetail): string {
+  if (detail.value === null) return "";
+  const binaryText = binaryCellClipboardText(detail.value, detail.type, resolvedDatabaseType.value);
+  if (binaryText !== null) return binaryText;
+  if (isBlobCellColumnType(detail.type)) return binaryCellUtf8Text(detail.value, detail.type, resolvedDatabaseType.value) ?? displayCellValue(detail.value);
+  return displayCellValue(detail.value);
+}
+
 async function copyDetailValue() {
   const initialDetail = activeCellDetail.value;
   if (!initialDetail || !(await hydrateLargeValueCell(initialDetail.rowId, initialDetail.colIndex))) return;
   const detail = activeCellDetail.value;
   if (!detail) return;
-  const text = detail.value === null ? "" : isBlobCellColumnType(detail.type) ? (binaryCellUtf8Text(detail.value, detail.type, resolvedDatabaseType.value) ?? displayCellValue(detail.value)) : displayCellValue(detail.value);
-  copyText(text);
+  copyText(detailClipboardText(detail));
 }
 
 async function copyDetailFormattedJson() {
@@ -9848,7 +9957,7 @@ async function copyRowDetailJson() {
   try {
     const detail = await resolvedRowDetailForCopy();
     if (!detail) return;
-    copyText(dataGridRowDetailJson(detail));
+    copyText(dataGridRowDetailJson(detail, undefined, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9858,7 +9967,7 @@ async function copyRowDetailTsv() {
   try {
     const detail = await resolvedRowDetailForCopy();
     if (!detail) return;
-    copyText(dataGridRowDetailTsv(detail));
+    copyText(dataGridRowDetailTsv(detail, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9868,14 +9977,14 @@ async function copyRowDetailFieldValue(field: DataGridCellDetail) {
   if (!(await hydrateLargeValueCell(field.rowId, field.colIndex))) return;
   const rowIndex = displayRowIndexById(field.rowId);
   const resolved = rowIndex >= 0 ? cellDetailFor(rowIndex, field.colIndex) : null;
-  if (resolved) copyText(resolved.value === null ? "" : displayCellValue(resolved.value));
+  if (resolved) copyText(detailClipboardText(resolved));
 }
 
 async function copyColumnDetailJson() {
   try {
     const detail = await resolvedColumnDetailForCopy();
     if (!detail) return;
-    copyText(dataGridColumnDetailJson(detail));
+    copyText(dataGridColumnDetailJson(detail, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9885,7 +9994,7 @@ async function copyColumnDetailTsv() {
   try {
     const detail = await resolvedColumnDetailForCopy();
     if (!detail) return;
-    copyText(dataGridColumnDetailTsv(detail));
+    copyText(dataGridColumnDetailTsv(detail, resolvedDatabaseType.value));
   } catch (error) {
     reportLargeValueLoadError(error);
   }
@@ -9901,7 +10010,7 @@ async function copyColumnDetailFieldValue(field: DataGridCellDetail) {
   if (!(await hydrateLargeValueCell(field.rowId, field.colIndex))) return;
   const rowIndex = displayRowIndexById(field.rowId);
   const resolved = rowIndex >= 0 ? cellDetailFor(rowIndex, field.colIndex) : null;
-  if (resolved) copyText(resolved.value === null ? "" : displayCellValue(resolved.value));
+  if (resolved) copyText(detailClipboardText(resolved));
 }
 
 const transposeRecordWidths = ref<number[]>([]);
@@ -10512,19 +10621,45 @@ function onCellEditTextareaPaste(event: ClipboardEvent) {
 
 function resizeCellEditTextareaElement(textarea: HTMLTextAreaElement | null) {
   if (!textarea) return;
-  const textareaRect = textarea.getBoundingClientRect();
+  // The result grid is a scroll container, so an absolutely positioned editor
+  // cannot escape its bottom clipping edge. Use the cell's viewport rect as the
+  // anchor and position the editor itself in the viewport instead.
+  const anchorRect = textarea.parentElement?.getBoundingClientRect();
+  if (!anchorRect) return;
   const visibleBottom = cellEditVisibleBottom(textarea);
-  const availableHeight = Math.max(36, Math.floor(visibleBottom - textareaRect.top - 10));
+  const visibleTop = cellEditVisibleTop(textarea);
   const metrics = cellEditTextMetrics(textarea);
   const maxVisibleHeight = Math.ceil(metrics.lineHeight * 9.5 + metrics.verticalChrome);
-  const maxHeight = Math.min(maxVisibleHeight, availableHeight);
   const naturalHeight = cellEditNaturalHeight(textarea, metrics);
   const targetMinHeight = Math.max(64, Math.min(naturalHeight, 120));
+  const preferredHeight = Math.min(maxVisibleHeight, Math.max(targetMinHeight, naturalHeight));
+  const spaceBelow = Math.max(0, Math.floor(visibleBottom - anchorRect.top - 10));
+  const spaceAbove = Math.max(0, Math.floor(anchorRect.bottom - visibleTop - 10));
+  const placeAbove = spaceBelow < preferredHeight && spaceAbove > spaceBelow;
+  const availableHeight = placeAbove ? spaceAbove : spaceBelow;
+  const maxHeight = Math.min(maxVisibleHeight, Math.max(36, availableHeight));
   const minHeight = Math.min(targetMinHeight, maxHeight);
+  const height = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
+  const top = placeAbove ? Math.max(visibleTop, Math.min(anchorRect.top, visibleBottom - height)) : anchorRect.top;
+  const horizontalInset = 7;
+  const desiredWidth = Math.max(0, anchorRect.width - horizontalInset * 2);
+  const maxViewportWidth = Math.max(0, window.innerWidth - horizontalInset * 2);
+  const width = Math.min(desiredWidth, maxViewportWidth);
+  const left = Math.min(Math.max(horizontalInset, anchorRect.left + horizontalInset), Math.max(horizontalInset, window.innerWidth - width - horizontalInset));
   textarea.style.setProperty("--cell-edit-min-height", `${minHeight}px`);
   textarea.style.setProperty("--cell-edit-max-height", `${maxHeight}px`);
+  textarea.style.left = `${left}px`;
+  textarea.style.width = `${width}px`;
   textarea.style.height = "auto";
-  textarea.style.height = `${Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight))}px`;
+  textarea.style.height = `${height}px`;
+  textarea.style.top = `${top}px`;
+  // Virtualized and contained scrollers can establish a fixed-position
+  // containing block in either viewport or scrolled-content coordinates. Use
+  // the rendered rect to correct that implementation detail back to viewport
+  // coordinates instead of guessing from the ancestor tree.
+  const positionedRect = textarea.getBoundingClientRect();
+  textarea.style.left = `${left + (left - positionedRect.left)}px`;
+  textarea.style.top = `${top + (top - positionedRect.top)}px`;
   if (resetCellEditTextareaScrollOnResize) {
     textarea.scrollTop = 0;
     textarea.setSelectionRange?.(0, 0);
@@ -10570,6 +10705,16 @@ function cellEditVisibleBottom(textarea: HTMLTextAreaElement): number {
   }
 
   return Math.min(...bottoms.filter((bottom) => Number.isFinite(bottom)));
+}
+
+function cellEditVisibleTop(textarea: HTMLTextAreaElement): number {
+  const tops: number[] = [];
+  const scroller = cellEditScrollerElement(textarea);
+  const root = gridRef.value;
+  if (scroller) tops.push(scroller.getBoundingClientRect().top);
+  if (root) tops.push(root.getBoundingClientRect().top);
+  if (typeof window !== "undefined") tops.push(0);
+  return Math.max(...tops.filter((top) => Number.isFinite(top)));
 }
 
 function scheduleCellEditTextareaResize(textarea: HTMLTextAreaElement | null) {
@@ -10671,6 +10816,9 @@ function clampCellDetailPanelSize(value: number, layout = cellDetailPanelLayout.
 const showTableInfo = ref(false);
 const activeTableInfoTab = ref<TableInfoTab>(settingsStore.editorSettings.tableInfoActiveTab);
 const ddlContent = ref("");
+const tableInfoColumns = ref<ColumnInfo[]>(props.tableMeta?.columns ?? []);
+const tableInfoColumnsLoading = ref(false);
+let tableInfoColumnsRequestGeneration = 0;
 const ddlPreRef = ref<HTMLPreElement | null>(null);
 const ddlSearchMatchCount = ref(0);
 const ddlSearchMatchIndex = ref(0);
@@ -10829,6 +10977,14 @@ let constraintsRequestGeneration = 0;
 // also shown (each constraint appears once; FK navigation stays in that tab).
 const constraintsForTab = computed(() => constraintsForConstraintsTab(constraints.value, tableMetadataCapabilities.value.foreignKeys));
 const searchQuery = ref("");
+const activeTableInfoLoading = computed(() => {
+  if (activeTableInfoTab.value === "ddl") return ddlLoading.value;
+  if (activeTableInfoTab.value === "columns") return tableInfoColumnsLoading.value;
+  if (activeTableInfoTab.value === "indexes") return indexesLoading.value;
+  if (activeTableInfoTab.value === "foreignKeys") return foreignKeysLoading.value;
+  if (activeTableInfoTab.value === "constraints") return constraintsLoading.value;
+  return activeTableInfoTab.value === "triggers" && triggersLoading.value;
+});
 const cellDetailPanelLayout = computed(() => settingsStore.editorSettings.cellDetailPanelLayout);
 const cellDetailPanelIsBottom = computed(() => cellDetailPanelLayout.value === "bottom");
 
@@ -10928,7 +11084,7 @@ const tableInfoTabs = computed(() => {
       id: "columns",
       label: t("grid.tableInfoColumns"),
       icon: ListTree,
-      count: props.tableMeta?.columns.length,
+      count: tableInfoColumns.value.length,
     });
   }
   if (canShowTableIndexes.value) {
@@ -11002,17 +11158,75 @@ watch(
   { immediate: true },
 );
 
-async function fetchDdl() {
+async function fetchDdl(force = settingsStore.editorSettings.refreshDdlOnOpen) {
   if (!props.connectionId || !props.tableMeta) return;
   showTableInfo.value = true;
   ddlLoading.value = true;
   try {
     // Preserve view identity so the backend loads the stored view source instead of synthesizing table DDL.
-    ddlContent.value = await api.getTableDisplayDdl(props.connectionId, props.database || "", props.tableMeta.schema || props.database || "", props.tableMeta.tableName, tableObjectSourceKind(props.tableMeta.tableType), props.tableMeta.catalog);
+    const { ddl } = await loadObjectDdl(
+      {
+        connectionId: props.connectionId,
+        database: props.database || "",
+        schema: props.tableMeta.schema || props.database || "",
+        tableName: props.tableMeta.tableName,
+        objectType: tableObjectSourceKind(props.tableMeta.tableType),
+        catalog: props.tableMeta.catalog,
+      },
+      { force },
+    );
+    ddlContent.value = ddl;
   } catch (e: any) {
     ddlContent.value = `-- Error: ${e}`;
   } finally {
     ddlLoading.value = false;
+  }
+}
+
+async function fetchTableInfoColumns(force = false) {
+  if (!props.connectionId || !props.tableMeta) return;
+  const requestGeneration = ++tableInfoColumnsRequestGeneration;
+  tableInfoColumnsLoading.value = true;
+  try {
+    // Route through the shared metadata facet cache so a grid-side refresh
+    // invalidates/populates the same cache the sidebar and hover views read.
+    const request = {
+      connectionId: props.connectionId,
+      database: props.database || "",
+      schema: props.tableMeta.schema || props.database || "",
+      tableName: props.tableMeta.tableName,
+      objectType: tableObjectSourceKind(props.tableMeta.tableType),
+      catalog: props.tableMeta.catalog,
+    };
+    const { value: columns } = await loadObjectMetadataFacet(request, "columns", () => api.getColumns(request.connectionId, request.database, request.schema, request.tableName, request.catalog), { force });
+    if (requestGeneration !== tableInfoColumnsRequestGeneration) return;
+    tableInfoColumns.value = columns;
+  } catch (error) {
+    if (requestGeneration !== tableInfoColumnsRequestGeneration) return;
+    toast(translateBackendError(t, error), 5000);
+  } finally {
+    if (requestGeneration === tableInfoColumnsRequestGeneration) tableInfoColumnsLoading.value = false;
+  }
+}
+
+async function refreshActiveTableInfo() {
+  if (!showTableInfo.value || !props.tableMeta) return;
+  if (canShowTableOwner.value) void fetchTableOwner(true);
+
+  if (activeTableInfoTab.value === "ddl") await fetchDdl(true);
+  else if (activeTableInfoTab.value === "columns") await fetchTableInfoColumns(true);
+  else if (activeTableInfoTab.value === "indexes") {
+    indexesLoaded.value = false;
+    await fetchIndexes();
+  } else if (activeTableInfoTab.value === "foreignKeys") {
+    foreignKeysLoaded.value = false;
+    await fetchForeignKeys();
+  } else if (activeTableInfoTab.value === "constraints") {
+    constraintsLoaded.value = false;
+    await fetchConstraints();
+  } else if (activeTableInfoTab.value === "triggers") {
+    triggersLoaded.value = false;
+    await fetchTriggers();
   }
 }
 
@@ -11204,6 +11418,9 @@ async function fetchConstraints() {
 watch(
   () => [props.connectionId, props.database, props.tableMeta?.catalog, props.tableMeta?.schema, props.tableMeta?.tableName],
   () => {
+    tableInfoColumns.value = props.tableMeta?.columns ?? [];
+    tableInfoColumnsLoading.value = false;
+    tableInfoColumnsRequestGeneration += 1;
     tableOwner.value = null;
     tableOwnerLoading.value = false;
     tableOwnerError.value = "";
@@ -11233,6 +11450,13 @@ watch(
     }
     if (showTableInfo.value) selectTableInfoTab(activeTableInfoTab.value);
     if (showTableInfo.value) void fetchTableOwner();
+  },
+);
+
+watch(
+  () => props.tableMeta?.columns,
+  (columns) => {
+    if (!tableInfoColumnsLoading.value) tableInfoColumns.value = columns ?? [];
   },
 );
 
@@ -11679,7 +11903,7 @@ onUnmounted(() => {
   stopLoadingElapsedTimer();
 });
 
-const filteredColumns = computed(() => filterObjectBrowserTableColumns(props.tableMeta?.columns ?? [], searchQuery.value));
+const filteredColumns = computed(() => filterObjectBrowserTableColumns(tableInfoColumns.value, searchQuery.value));
 
 const filteredIndexes = computed(() => {
   if (!searchQuery.value) return indexes.value;
@@ -12753,6 +12977,7 @@ function openGridSnapshot() {
                           @input="onCellEditTextareaInput"
                           @keydown.stop="onCellEditKeydown"
                           @paste.stop="onCellEditTextareaPaste"
+                          @wheel.stop
                         />
                         <input
                           v-else
@@ -13495,6 +13720,7 @@ function openGridSnapshot() {
                         @input="onCellEditTextareaInput"
                         @keydown.stop="onCellEditKeydown"
                         @paste.stop="onCellEditTextareaPaste"
+                        @wheel.stop
                       />
                       <input
                         v-else
@@ -13704,6 +13930,7 @@ function openGridSnapshot() {
                             @input="onCellEditTextareaInput"
                             @keydown.stop="onCellEditKeydown"
                             @paste.stop="onCellEditTextareaPaste"
+                            @wheel.stop
                           />
                           <input
                             v-else
@@ -13885,6 +14112,9 @@ function openGridSnapshot() {
                     <X class="w-3 h-3" />
                   </button>
                 </div>
+                <Button variant="ghost" size="icon" class="h-7 w-7 shrink-0" :disabled="activeTableInfoLoading" :title="t('structureEditor.refresh')" :aria-label="t('structureEditor.refresh')" @click="refreshActiveTableInfo">
+                  <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': activeTableInfoLoading }" />
+                </Button>
                 <template v-if="activeTableInfoTab === 'ddl'">
                   <span class="w-9 shrink-0 text-center text-[11px] tabular-nums text-muted-foreground">
                     {{ searchQuery ? (ddlSearchMatchCount > 0 ? `${ddlSearchMatchIndex + 1}/${ddlSearchMatchCount}` : "0") : "" }}
@@ -13900,7 +14130,10 @@ function openGridSnapshot() {
             </div>
 
             <div v-if="activeTableInfoTab === 'columns'" class="flex-1 min-h-0 overflow-auto">
-              <div v-if="searchQuery && filteredColumns.length === 0" class="p-6 text-center text-xs text-muted-foreground">
+              <div v-if="tableInfoColumnsLoading" class="h-full flex items-center justify-center">
+                <Loader2 class="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+              <div v-else-if="searchQuery && filteredColumns.length === 0" class="p-6 text-center text-xs text-muted-foreground">
                 {{ t("grid.tableInfoNoResults") }}
               </div>
               <table v-else class="w-full text-xs">
@@ -15032,11 +15265,13 @@ function openGridSnapshot() {
 }
 
 .cell-edit-input--expanded {
+  position: fixed;
   left: 7px;
   width: calc(100% - 14px);
   min-height: var(--cell-edit-min-height, 54px);
   max-height: var(--cell-edit-max-height, calc(9.5lh + 10px));
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--foreground) 24%, transparent) transparent;
   resize: none;

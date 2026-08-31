@@ -92,8 +92,10 @@ import {
 } from "@/lib/sql/sqlNavigation";
 import { buildHoverTableSql, ddlForHoverPreview, hoverTableMatchesScope, normalizeAlignedSqlWhitespace, quoteIdentifier, quoteQualifiedName, reformatHoverDdl, scopeHoverTables, type HoverTableScope } from "@/lib/editor/hoverTableSql";
 import { constrainSqlHoverLayout } from "@/lib/editor/sqlHoverLayout";
+import { createHoverSearch, type HoverSearchController } from "@/lib/editor/sqlHoverSearch";
 import { lineColumnToOffset, sqlErrorDecorationRange as resolveSqlErrorDecorationRange } from "@/lib/sql/sqlDiagnostics";
 import { analyzeMysqlRoutineSyntax, supportsMysqlRoutineSyntaxDiagnostics } from "@/lib/sql/mysqlRoutineSyntaxDiagnostics";
+import { buildOracleSyntaxDiagnostics } from "@/lib/sql/oracleSyntaxDiagnostics";
 import {
   DBX_TABLE_REFERENCE_MIME,
   DBX_TABLE_REFERENCE_DROP_EVENT,
@@ -2654,6 +2656,7 @@ function createHoverDom(title: string, detail: string, sqlContent?: string, rows
 
   let layoutController: ReturnType<typeof constrainSqlHoverLayout> | null = null;
   let handleCopy: ((event: ClipboardEvent) => void) | null = null;
+  let searchController: HoverSearchController | null = null;
 
   if (sqlContent) {
     heading.className = "flex items-center justify-between gap-3 font-medium";
@@ -2698,7 +2701,18 @@ function createHoverDom(title: string, detail: string, sqlContent?: string, rows
       sqlContainer.textContent = sqlContent;
     }
 
+    // 纯前端搜索：在已生成的 DDL 内容上做大小写不敏感匹配并高亮，不重新请求元数据/DDL。
+    // originalHtml 必须在挂到文档前、内容渲染后捕获，作为每次搜索的还原基线。
+    searchController = createHoverSearch({
+      target: sqlContainer,
+      originalHtml: sqlContainer.innerHTML,
+      placeholder: t("grid.hoverSearchPlaceholder"),
+      noResultLabel: t("grid.hoverSearchNoResult"),
+    });
+    dom.appendChild(searchController.element);
+
     dom.appendChild(sqlContainer);
+    dom.appendChild(searchController.status);
     // 返回 mount/destroy 给 CodeMirror TooltipView 生命周期钩子，
     // 避免 MutationObserver 监听 body 全子树来兜底清理。
     layoutController = constrainSqlHoverLayout(dom, sqlContainer);
@@ -2732,16 +2746,17 @@ function createHoverDom(title: string, detail: string, sqlContent?: string, rows
   return {
     dom,
     mount:
-      layoutController || handleCopy
+      layoutController || handleCopy || searchController
         ? () => {
             layoutController?.mount();
             if (handleCopy) document.addEventListener("copy", handleCopy);
           }
         : undefined,
     destroy:
-      layoutController || handleCopy
+      layoutController || handleCopy || searchController
         ? () => {
             layoutController?.destroy();
+            searchController?.destroy();
             if (handleCopy) document.removeEventListener("copy", handleCopy);
           }
         : undefined,
@@ -2804,7 +2819,7 @@ async function resolveSqlHoverTooltip(currentView: EditorViewType, pos: number) 
       cachedTables = mergeCompletionTables(cachedTables, remoteHoverTables);
       table = matchTable(qualifiedTableLookup, hoverTables) ?? matchTable(tableLookupName, hoverTables) ?? matchTable(identifier, hoverTables) ?? matchTable(name, hoverTables);
     }
-    if (table && !semanticQualifierIsRowSource && (!qualifier || table.schema?.toLowerCase() === qualifier.toLowerCase() || table.name === name)) {
+    if (table && settingsStore.editorSettings.showTableDdlHoverPreview && !semanticQualifierIsRowSource && (!qualifier || table.schema?.toLowerCase() === qualifier.toLowerCase() || table.name === name)) {
       const hoverDatabase = hoverScope.database;
       const hoverSchema = hoverScope.schema ?? table.schema ?? "";
       const hoverQualifiedName = [hoverScope.catalog, hoverDatabase, hoverSchema, table.name].filter(Boolean).join(".");
@@ -3175,6 +3190,13 @@ async function refreshSemanticDiagnostics(options: { preserveOutsideRanges?: boo
   }
 
   const nextDiagnostics: SqlSemanticDiagnostic[] = [];
+  const oracleSyntaxDiagnostics = buildOracleSyntaxDiagnostics(sql, props.databaseType);
+  nextDiagnostics.push(
+    ...oracleSyntaxDiagnostics.filter((diagnostic) => {
+      const diagnosticRange = sqlTextSpanToRange(sql, diagnostic.span);
+      return !!diagnosticRange && diagnosticRanges.some((range) => rangesOverlap(diagnosticRange, range));
+    }),
+  );
   const mysqlRoutineAnalysis = props.databaseType === "mysql" && supportsMysqlRoutineSyntaxDiagnostics(sqlDriverProfile.value) ? analyzeMysqlRoutineSyntax(sql) : null;
   if (mysqlRoutineAnalysis) {
     nextDiagnostics.push(
@@ -3352,7 +3374,11 @@ function hasDroppedTableReference(event: DragEvent) {
 
 function insertTableReferencePayload(currentView: EditorViewType, payload: QueryEditorTableReferencePayload, coords?: { clientX: number; clientY: number }): boolean {
   if (props.readOnly) return false;
-  const insertText = tableReferenceInsertText(payload, props.databaseType);
+  const insertText = tableReferenceInsertText(payload, props.databaseType, {
+    tableNameSeparator: settingsStore.editorSettings.sidebarCopyTableNameSeparator,
+    columnNameSeparator: settingsStore.editorSettings.sidebarCopyTableNameSeparator,
+    includeTableSchema: settingsStore.editorSettings.sidebarCopyTableNameIncludeSchema,
+  });
   const dropPos = coords ? currentView.posAtCoords({ x: coords.clientX, y: coords.clientY }) : null;
   const selection = currentView.state.selection.main;
   const from = dropPos ?? selection.from;
@@ -3807,6 +3833,13 @@ function shouldInsertSqlCompletionSpace(): boolean {
   return props.databaseType !== "mongodb" && props.databaseType !== "redis" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "meilisearch" && props.databaseType !== "victoriametrics";
 }
 
+// Snippet expansion normally follows from the item type; a provider can also
+// opt a differently-typed item in so its `${}` fields still expand on accept.
+function shouldApplyCompletionAsSnippet(item: QueryCompletionItem): boolean {
+  if ("applyAsSnippet" in item && item.applyAsSnippet === true) return true;
+  return item.type === "snippet" || item.type === "function";
+}
+
 function completionOptionForItem(item: QueryCompletionItem | BatchColumnSelectionActionItem) {
   const filterText = "filterText" in item && typeof item.filterText === "string" ? item.filterText : undefined;
   const labelPresentation = completionLabelPresentation(item.label, filterText);
@@ -3825,7 +3858,7 @@ function completionOptionForItem(item: QueryCompletionItem | BatchColumnSelectio
     recordCompletionSelection(item.label, item.type);
   };
   const batchColumnSelection = batchColumnSelectionMarkerForItem(item);
-  if ((item.type === "snippet" || item.type === "function") && item.apply) {
+  if (shouldApplyCompletionAsSnippet(item) && item.apply) {
     const completion = codeMirrorSnippetCompletion(item.apply, {
       ...labelPresentation,
       type: item.type,
