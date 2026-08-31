@@ -89,7 +89,7 @@ import {
   SIDEBAR_FONT_SIZE_MIN,
   SIDEBAR_FONT_SIZE_MAX,
 } from "@/stores/settingsStore";
-import { createRunStatementButtonDom, loadEditorTheme, editorFontTheme } from "@/lib/editor/editorThemes";
+import { EDITOR_FONT_FAMILY_CSS_VAR, EDITOR_FONT_SIZE_CSS_VAR, createRunStatementButtonDom, loadEditorTheme, editorFontTheme } from "@/lib/editor/editorThemes";
 import { orderAiConfigsForDisplay } from "@/lib/ai/aiConfigOrdering";
 import { isAiConnectionTestConfigCurrent } from "@/lib/ai/aiConnectionTest";
 import { MAX_AGENT_TURNS_DEFAULT, MAX_AGENT_TURNS_MAX, MAX_AGENT_TURNS_MIN, maxAgentTurnsOutOfRange, normalizeMaxAgentTurns } from "@/lib/ai/maxAgentTurns";
@@ -3895,6 +3895,11 @@ const previewSettings = computed<{
   showCurrentStatementFrame: editShowCurrentStatementFrame.value,
 }));
 
+const previewFontStyle = computed<Record<string, string>>(() => ({
+  [EDITOR_FONT_SIZE_CSS_VAR]: `${editFontSize.value}px`,
+  [EDITOR_FONT_FAMILY_CSS_VAR]: editFontFamily.value,
+}));
+
 const previewSqlNormal = `SELECT u.id, u.name
 FROM users u
 ORDER BY u.id LIMIT 5;
@@ -4042,19 +4047,43 @@ watch(
   async ([ss]) => {
     if (!previewView.value || !fontThemeComp || !themeComp || !previewLineNumbersComp || !editorViewModule) return;
 
+    const currentPreviewView = previewView.value;
+    const currentFontThemeComp = fontThemeComp;
+    const currentThemeComp = themeComp;
+    const currentPreviewLineNumbersComp = previewLineNumbersComp;
+    const currentPreviewRunGutterComp = previewRunGutterComp;
+    const currentPreviewStatementFrameComp = currentStatementFrameComp;
+    const currentEditorViewModule = editorViewModule;
+
     const themeExt = await loadEditorTheme(ss.theme, ss.appAppearance, ss.customColors, ss.appPalette);
-    previewView.value.dispatch({
+    if (
+      previewView.value !== currentPreviewView ||
+      fontThemeComp !== currentFontThemeComp ||
+      themeComp !== currentThemeComp ||
+      previewLineNumbersComp !== currentPreviewLineNumbersComp ||
+      previewRunGutterComp !== currentPreviewRunGutterComp ||
+      currentStatementFrameComp !== currentPreviewStatementFrameComp ||
+      editorViewModule !== currentEditorViewModule
+    ) {
+      return;
+    }
+
+    currentPreviewView.dispatch({
       effects: [
-        themeComp.reconfigure(themeExt),
-        fontThemeComp.reconfigure(editorFontTheme(editorViewModule.EditorView, ss.fontSize, ss.fontFamily)),
-        previewLineNumbersComp.reconfigure(buildPreviewLineNumbersExtension(ss.showLineNumbers)),
-        ...(previewRunGutterComp ? [previewRunGutterComp.reconfigure(buildPreviewRunGutterExtension())] : []),
-        ...(currentStatementFrameComp ? [currentStatementFrameComp.reconfigure(buildPreviewCurrentStatementFrameExtension(editorViewModule, ss.showCurrentStatementFrame))] : []),
+        currentThemeComp.reconfigure(themeExt),
+        currentFontThemeComp.reconfigure(editorFontTheme(currentEditorViewModule.EditorView, ss.fontSize, ss.fontFamily)),
+        currentPreviewLineNumbersComp.reconfigure(buildPreviewLineNumbersExtension(ss.showLineNumbers)),
+        ...(currentPreviewRunGutterComp ? [currentPreviewRunGutterComp.reconfigure(buildPreviewRunGutterExtension())] : []),
+        ...(currentPreviewStatementFrameComp ? [currentPreviewStatementFrameComp.reconfigure(buildPreviewCurrentStatementFrameExtension(currentEditorViewModule, ss.showCurrentStatementFrame))] : []),
       ],
     });
   },
   { deep: true },
 );
+
+watch([editFontFamily, editFontSize], () => {
+  previewView.value?.requestMeasure();
+});
 
 watch(editSqlSemanticDiagnosticsEnabled, () => {
   updatePreviewSqlDiagnostics();
@@ -4063,8 +4092,7 @@ watch(editSqlSemanticDiagnosticsEnabled, () => {
 let previewInitialized = false;
 
 function cleanupPreviewEditor() {
-  if (!previewView.value) return;
-  previewView.value.destroy();
+  previewView.value?.destroy();
   previewView.value = null;
   previewInitialized = false;
   fontThemeComp = null;
@@ -4094,9 +4122,14 @@ watch(activeSettingsTab, (tab) => {
 });
 
 watch(previewRef, async (el) => {
-  if (!el || previewInitialized) return;
+  if (!el) {
+    cleanupPreviewEditor();
+    return;
+  }
+  if (previewInitialized) return;
   previewInitialized = true;
   if (previewView.value) return;
+  const previewHost = el;
 
   const [{ EditorView, Decoration, ViewPlugin, gutter, GutterMarker, layer, RectangleMarker, lineNumbers, highlightActiveLineGutter }, { EditorState, Compartment, StateEffect, StateField }, { sql, MySQL }, { basicSetup }] = await Promise.all([
     import("@codemirror/view"),
@@ -4104,6 +4137,8 @@ watch(previewRef, async (el) => {
     import("@codemirror/lang-sql"),
     import("codemirror"),
   ]);
+
+  if (!previewInitialized || previewRef.value !== previewHost) return;
 
   editorViewModule = {
     Decoration,
@@ -4128,6 +4163,7 @@ watch(previewRef, async (el) => {
 
   const ss = previewSettings.value;
   const themeExt = await loadEditorTheme(ss.theme, ss.appAppearance, ss.customColors, ss.appPalette);
+  if (!previewInitialized || previewRef.value !== previewHost) return;
   const previewBasicSetup = (basicSetup as readonly import("@codemirror/state").Extension[]).slice(2);
   const diagnosticTheme = EditorView.baseTheme({
     ".cm-settings-preview-sql-error": {
@@ -4223,7 +4259,7 @@ watch(previewRef, async (el) => {
     ],
   });
 
-  previewView.value = new EditorView({ state, parent: previewRef.value });
+  previewView.value = new EditorView({ state, parent: previewHost });
 });
 
 watch(
@@ -4277,6 +4313,17 @@ onUnmounted(() => {
               <button v-if="settingsSearchQuery" type="button" class="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" :aria-label="t('settings.clearSettingsSearch')" @click="exitSettingsSearch">
                 <X class="h-4 w-4" />
               </button>
+            </div>
+          </div>
+          <div v-if="activeSettingsTab === 'editor' && !settingsSearchVisible" class="settings-editor-live-preview shrink-0 px-1 pr-2" data-editor-live-preview>
+            <div class="space-y-2 py-2">
+              <Label>{{ t("settings.preview") }}</Label>
+              <div class="settings-editor-live-preview-surface rounded-md border max-w-full" :class="editTheme === 'vscode-light' || editTheme === 'duotone-light' || editTheme === 'xcode' ? 'border-border' : 'border-border/50'">
+                <div ref="previewRef" :style="{ minWidth: '100%', ...previewFontStyle }" />
+              </div>
+              <p v-if="editSqlSemanticDiagnosticsEnabled" class="text-xs text-muted-foreground">
+                {{ t("settings.previewSyntaxErrorHint") }}
+              </p>
             </div>
           </div>
           <div v-if="settingsSearchVisible" id="settings-search-results" role="listbox" :aria-label="t('settings.searchSettingsResults')" class="min-h-0 flex-1 overflow-y-auto px-1 pr-2">
@@ -4435,17 +4482,6 @@ onUnmounted(() => {
                   </div>
                   <Switch id="editor-sql-semantic-diagnostics" :model-value="editSqlSemanticDiagnosticsEnabled" size="sm" @update:model-value="onSqlSemanticDiagnosticsEnabledChange" />
                 </div>
-              </div>
-
-              <!-- Live Preview -->
-              <div class="space-y-2">
-                <Label>{{ t("settings.preview") }}</Label>
-                <div class="rounded-md border overflow-auto max-w-full" :class="editTheme === 'vscode-light' || editTheme === 'duotone-light' || editTheme === 'xcode' ? 'border-border' : 'border-border/50'">
-                  <div ref="previewRef" style="min-width: 100%" />
-                </div>
-                <p v-if="editSqlSemanticDiagnosticsEnabled" class="text-xs text-muted-foreground">
-                  {{ t("settings.previewSyntaxErrorHint") }}
-                </p>
               </div>
 
               <Separator />
@@ -8449,6 +8485,16 @@ onUnmounted(() => {
 
 .settings-option-stack > * + * {
   margin-top: 0.625rem;
+}
+
+.settings-editor-live-preview {
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  background: var(--background);
+}
+
+.settings-editor-live-preview-surface {
+  max-height: min(16rem, 34vh);
+  overflow: auto;
 }
 
 .settings-mcp-config-tabs {
