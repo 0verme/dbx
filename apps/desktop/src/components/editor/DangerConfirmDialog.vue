@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { AlertTriangle, Check, Copy, Loader2, TextWrap } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,10 @@ const open = defineModel<boolean>("open", { default: false });
 const suppressFuturePrompts = defineModel<boolean>("suppressFuturePrompts", { default: false });
 const wrap = ref(true);
 const copied = ref(false);
+
+// The CodeMirror editor (if any) that was focused when this dialog opened, so
+// its internal selection can be restored without letting the browser move the caret.
+let editorRootToRestoreFocus: HTMLElement | null = null;
 
 const props = withDefaults(
   defineProps<{
@@ -73,6 +77,34 @@ const dialogOpen = computed({
   },
 });
 
+watch(
+  () => open.value,
+  (isOpen) => {
+    if (!isOpen) return;
+    const active = document.activeElement;
+    editorRootToRestoreFocus = active instanceof HTMLElement ? active.closest(".cm-editor") : null;
+  },
+  { immediate: true },
+);
+
+/**
+ * Restores focus through CodeMirror's own `EditorView.focus()` instead of the browser default.
+ *
+ * Reka UI's default close-auto-focus calls plain DOM `.focus()` on the element that was active
+ * before the dialog opened. In WebKit, refocusing a CodeMirror contenteditable this way can reset
+ * its caret to the start of the document, which makes the editor scroll to the top (#7692).
+ * `EditorView.focus()` restores CodeMirror's internal selection without creating that false change.
+ */
+function onDangerDialogCloseAutoFocus(event: Event) {
+  const target = editorRootToRestoreFocus;
+  editorRootToRestoreFocus = null;
+  if (!target || !target.isConnected) return;
+  event.preventDefault();
+  void import("@codemirror/view").then(({ EditorView }) => {
+    EditorView.findFromDOM(target)?.focus();
+  });
+}
+
 function onConfirm() {
   // Guard here as well as on the button: a disabled button still fires on some
   // synthetic/keyboard paths, and this one gates a destructive operation.
@@ -92,7 +124,7 @@ async function copyFullCode() {
 
 <template>
   <Dialog v-model:open="dialogOpen">
-    <DialogContent class="sm:max-w-[480px]">
+    <DialogContent class="sm:max-w-[480px]" @close-auto-focus="onDangerDialogCloseAutoFocus">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2 text-destructive">
           <AlertTriangle class="h-5 w-5" />

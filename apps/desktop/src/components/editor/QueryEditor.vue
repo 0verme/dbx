@@ -6584,6 +6584,10 @@ function acceptGutterExecutionViewport(requestId: number) {
   return executionViewportOwnership.acceptRequest(requestId);
 }
 
+function cancelGutterExecutionViewport(requestId: number) {
+  return executionViewportOwnership.cancelPendingRequest(requestId);
+}
+
 function shouldBlockExecutionShortcut(event?: KeyboardEvent, currentView: EditorViewType | null = view.value): boolean {
   return (currentView ? isEditorComposing(currentView) : false) || (event ? postCompositionKeyGuard.blocks(event) : false);
 }
@@ -6594,6 +6598,7 @@ defineExpose({
   scrollCursorIntoView,
   beginExecutionViewportTracking,
   acceptGutterExecutionViewport,
+  cancelGutterExecutionViewport,
   shouldBlockExecutionShortcut,
   requestExecute,
   requestExecuteInNewResultTab,
