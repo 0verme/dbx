@@ -3907,12 +3907,6 @@ function aiDeleteConfig(id: string) {
 
 async function aiConfirmDeleteConfig() {
   if (aiDeleteConfigId.value) {
-    if (settingsStore.activeModel?.configId === aiDeleteConfigId.value) {
-      toast(t("ai.cannotDeleteActiveConfig"), 5000);
-      aiDeleteConfirmOpen.value = false;
-      aiDeleteConfigId.value = null;
-      return;
-    }
     try {
       await settingsStore.deleteAiConfig(aiDeleteConfigId.value);
     } catch (e: any) {
@@ -7089,7 +7083,7 @@ onUnmounted(() => {
                       <Button type="button" size="sm" variant="ghost" @click="aiEnterEditMode(config.id)">
                         {{ t("common.edit") }}
                       </Button>
-                      <Button v-if="!config.isDefault" type="button" size="sm" variant="ghost" class="text-destructive" @click="aiDeleteConfig(config.id)">
+                      <Button type="button" size="sm" variant="ghost" class="text-destructive" @click="aiDeleteConfig(config.id)">
                         {{ t("common.delete") }}
                       </Button>
                     </div>

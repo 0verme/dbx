@@ -68,6 +68,7 @@ pub enum AiProvider {
     Openai,
     Gemini,
     Deepseek,
+    Kimi,
     Qwen,
     MiniMax,
     Ollama,
@@ -100,6 +101,7 @@ impl AiProvider {
             AiProvider::Openai => "openai",
             AiProvider::Gemini => "gemini",
             AiProvider::Deepseek => "deepseek",
+            AiProvider::Kimi => "kimi",
             AiProvider::Qwen => "qwen",
             AiProvider::MiniMax => "minimax",
             AiProvider::Ollama => "ollama",
@@ -794,6 +796,7 @@ pub fn resolve_endpoint(config: &AiConfig) -> String {
     match config.provider {
         AiProvider::Openai
         | AiProvider::Deepseek
+        | AiProvider::Kimi
         | AiProvider::Qwen
         | AiProvider::MiniMax
         | AiProvider::Ollama
@@ -1548,6 +1551,7 @@ fn provider_requires_api_key(provider: &AiProvider) -> bool {
             | AiProvider::Openai
             | AiProvider::Gemini
             | AiProvider::Deepseek
+            | AiProvider::Kimi
             | AiProvider::Qwen
             | AiProvider::MiniMax
     )
@@ -2022,6 +2026,7 @@ pub async fn list_models_core(config: &AiConfig) -> Result<Vec<AiModelInfo>, Str
                 }
                 AiProvider::Openai
                 | AiProvider::Deepseek
+                | AiProvider::Kimi
                 | AiProvider::Qwen
                 | AiProvider::MiniMax
                 | AiProvider::OpenaiCompatible => list_openai_compatible_models(&client, config).await?,
@@ -3057,6 +3062,7 @@ pub async fn complete(request: &AiCompletionRequest) -> Result<String, String> {
                 }
                 AiProvider::Openai
                 | AiProvider::Deepseek
+                | AiProvider::Kimi
                 | AiProvider::Qwen
                 | AiProvider::MiniMax
                 | AiProvider::Ollama
@@ -3118,6 +3124,7 @@ pub async fn stream(
         }
         AiProvider::Openai
         | AiProvider::Deepseek
+        | AiProvider::Kimi
         | AiProvider::Qwen
         | AiProvider::MiniMax
         | AiProvider::Ollama
@@ -5955,6 +5962,30 @@ mod tests {
     }
 
     #[test]
+    fn kimi_provider_uses_openai_compatible_endpoints_and_requires_an_api_key() {
+        let config = AiConfig {
+            provider: AiProvider::Kimi,
+            api_key: "key".to_string(),
+            auth_method: AiAuthMethod::Bearer,
+            endpoint: "https://api.moonshot.cn/v1".to_string(),
+            model: "kimi-k2.5".to_string(),
+            ..test_config(AiProvider::Kimi)
+        };
+
+        assert_eq!(resolve_endpoint(&config), "https://api.moonshot.cn/v1/chat/completions");
+        assert_eq!(resolve_model_list_endpoint(&config).unwrap(), "https://api.moonshot.cn/v1/models");
+        assert!(provider_requires_api_key(&config.provider));
+        assert_eq!(
+            validate_config(&AiConfig { api_key: String::new(), ..config.clone() }).unwrap_err(),
+            "API key is required"
+        );
+
+        let provider_json = serde_json::to_string(&AiProvider::Kimi).unwrap();
+        assert_eq!(provider_json, r#""kimi""#);
+        assert!(matches!(serde_json::from_str::<AiProvider>(&provider_json).unwrap(), AiProvider::Kimi));
+    }
+
+    #[test]
     fn auto_adds_v1_to_openai_compatible_endpoints() {
         // Endpoint without /v1 — auto add
         let config = AiConfig {
@@ -8112,6 +8143,7 @@ mod tests {
             AiProvider::Custom,
             AiProvider::Gemini,
             AiProvider::Deepseek,
+            AiProvider::Kimi,
             AiProvider::Qwen,
             AiProvider::Ollama,
             AiProvider::MiniMax,

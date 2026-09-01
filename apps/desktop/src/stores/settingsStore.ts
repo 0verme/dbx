@@ -224,6 +224,15 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     authMethod: "bearer",
     requiresApiKey: true,
   },
+  kimi: {
+    label: "Kimi",
+    provider: "kimi",
+    endpoint: "https://api.moonshot.cn/v1",
+    model: "",
+    apiStyle: "completions",
+    authMethod: "bearer",
+    requiresApiKey: true,
+  },
   qwen: {
     label: "Qwen",
     iconSlug: "alibabacloud",
@@ -490,6 +499,7 @@ function inferAiProviderFromConfig(config: Partial<AiConfig> | null | undefined)
   const endpoint = config?.endpoint?.toLowerCase() ?? "";
   const model = config?.model?.toLowerCase() ?? "";
   if (endpoint.includes("deepseek") || model.includes("deepseek")) return "deepseek";
+  if (endpoint.includes("moonshot") || endpoint.includes("kimi.com") || model.includes("kimi")) return "kimi";
   if (endpoint.includes("dashscope") || endpoint.includes("aliyuncs") || model.includes("qwen")) return "qwen";
   if (endpoint.includes("generativelanguage.googleapis.com") || model.includes("gemini")) return "gemini";
   if (endpoint.includes("minimax.io") || endpoint.includes("minimaxi.com") || model.includes("minimax")) return "minimax";
