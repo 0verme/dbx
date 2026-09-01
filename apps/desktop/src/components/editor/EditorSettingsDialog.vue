@@ -5991,7 +5991,7 @@ onUnmounted(() => {
                     <div class="flex h-8 min-w-0 items-center gap-2 border-t bg-background/35 px-2 text-[11px]">
                       <span class="shrink-0 text-muted-foreground">{{ t("grid.filterSqlPreview") }}</span>
                       <code class="min-w-0 flex-1 truncate rounded bg-muted/35 px-1.5 py-0.5">WHERE status = 'ACTIVE'</code>
-                      <span class="shrink-0 rounded bg-primary px-2 py-1 text-primary-foreground">{{ t("grid.applyFilter") }}</span>
+                      <span class="shrink-0 text-muted-foreground/70">{{ t("grid.applyFilter") }}</span>
                     </div>
                   </div>
 
@@ -6009,7 +6009,7 @@ onUnmounted(() => {
                     <div class="flex h-8 min-w-0 items-center gap-2 border-t bg-background/45 px-2 text-[11px]">
                       <span class="shrink-0 text-muted-foreground">{{ t("grid.filterSqlPreview") }}</span>
                       <code class="min-w-0 flex-1 truncate">WHERE status = 'ACTIVE'</code>
-                      <span class="shrink-0 rounded bg-primary px-2 py-1 text-primary-foreground">{{ t("grid.applyFilter") }}</span>
+                      <span class="shrink-0 text-muted-foreground/70">{{ t("grid.applyFilter") }}</span>
                     </div>
                   </div>
                 </div>
