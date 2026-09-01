@@ -413,6 +413,28 @@ describe("DataGridPagination", () => {
 });
 
 describe("DataGridColumnHeader", () => {
+  it("uses a compact formatter marker with an accessible explanation", () => {
+    const mounted = mountComponent(DataGridColumnHeader, {
+      name: "created_at",
+      actualColumnIndex: 0,
+      visibleColumnIndex: 0,
+      formatterActive: true,
+      formatterLabel: "Formatted display is active",
+      copyColumnNameLabel: "copy",
+      columnNameLabel: "name",
+      columnTypeLabel: "type",
+      columnCommentLabel: "comment",
+    });
+    const indicator = findOne(mounted.root, (node) => node.props["data-column-formatter-indicator"] === "");
+    const trigger = findOne(mounted.root, (node) => node.props["data-column-tooltip-trigger"] === "");
+
+    expect(hostText(indicator)).toBe("F");
+    expect(String(indicator.props.class)).toContain("h-4 w-4");
+    expect(indicator.props.title).toBe("Formatted display is active");
+    expect(indicator.props["aria-label"]).toBe("Formatted display is active");
+    expect(indicator.parent).not.toBe(trigger);
+  });
+
   it("limits the metadata tooltip trigger to the column text block", () => {
     const mounted = mountComponent(DataGridColumnHeader, {
       name: "status",

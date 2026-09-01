@@ -1700,6 +1700,7 @@ export default withEnglishFallback({
     databaseValueFilter: "数据库值筛选",
     databaseValueFilterFor: "数据库值筛选“{column}”",
     columnFormatter: "列格式化",
+    columnFormatterActive: "该列已应用格式化展示",
     columnFormatterFor: "格式化“{column}”",
     columnFormatterHint: "仅改变显示效果，原始值保持不变。",
     formatterType: "类型",

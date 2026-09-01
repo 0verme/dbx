@@ -1654,6 +1654,7 @@ export default withEnglishFallback({
     databaseValueFilter: "資料庫值篩選",
     databaseValueFilterFor: "資料庫值篩選「{column}」",
     columnFormatter: "欄位格式設定",
+    columnFormatterActive: "此欄位已套用格式化顯示",
     columnFormatterFor: "格式化「{column}」",
     columnFormatterHint: "僅改變顯示效果，原始值保持不變。",
     formatterType: "類型",

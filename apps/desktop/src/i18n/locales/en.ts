@@ -1776,6 +1776,7 @@ export default {
     databaseValueFilter: "Database value filter",
     databaseValueFilterFor: "Database Values For '{column}'",
     columnFormatter: "Column formatter",
+    columnFormatterActive: "Formatted display is active",
     columnFormatterFor: "Formatter for '{column}'",
     columnFormatterHint: "Formats display only; raw values stay unchanged.",
     formatterType: "Type",

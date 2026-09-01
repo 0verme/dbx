@@ -1666,6 +1666,7 @@ export default withEnglishFallback({
     databaseValueFilter: "データベース値フィルター",
     databaseValueFilterFor: "'{column}'のデータベース値",
     columnFormatter: "列フォーマッター",
+    columnFormatterActive: "この列には表示形式が適用されています",
     columnFormatterFor: "'{column}'のフォーマッター",
     columnFormatterHint: "表示のみをフォーマットし、実際の値は変更されません。",
     formatterType: "タイプ",

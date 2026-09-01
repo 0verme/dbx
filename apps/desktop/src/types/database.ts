@@ -775,6 +775,10 @@ export interface SpatialColumn {
 export interface QueryResultSourceColumnRef {
   sourceKey: string;
   sourceColumn: string;
+  /** Physical source identity for display-only features such as column formatters. */
+  database?: string;
+  schema?: string;
+  tableName?: string;
 }
 
 export interface QueryResultRun {

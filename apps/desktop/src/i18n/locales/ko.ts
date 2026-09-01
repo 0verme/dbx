@@ -1649,6 +1649,7 @@ export default withEnglishFallback({
     databaseValueFilter: "데이터베이스 값 필터",
     databaseValueFilterFor: "'{column}' 데이터베이스 값",
     columnFormatter: "컬럼 포매터",
+    columnFormatterActive: "이 열에 서식이 적용되어 있습니다",
     columnFormatterFor: "'{column}' 포매터",
     columnFormatterHint: "표시만 서식 지정하며 원시 값은 변경되지 않습니다.",
     formatterType: "유형",

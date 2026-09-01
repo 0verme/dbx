@@ -175,7 +175,7 @@ import {
 import { adjacentDataGridDetailIndex, type DataGridDetailNavigationDelta } from "@/lib/dataGrid/dataGridDetailNavigation";
 import {
   applyColumnFormatter,
-  buildColumnFormatterKey,
+  columnFormatterKeys,
   defaultIoTDBTimestampFormatter,
   DataGridDateTimePatterns,
   displayTimeZoneOption,
@@ -1521,7 +1521,7 @@ function openCompactLocalFilter(colIdx: number, mode: LocalFilterMode = "local")
   });
 }
 
-function compactColumnActionMenuItems(columnName: string, columnIndex: number) {
+function compactColumnActionMenuItems(columnIndex: number) {
   return createDataGridCompactColumnActionItems({
     labels: {
       formatter: t("grid.columnFormatter"),
@@ -1530,7 +1530,7 @@ function compactColumnActionMenuItems(columnName: string, columnIndex: number) {
       serverFilter: t("grid.databaseValueFilter"),
     },
     icons: { formatter: Code2, clearFormatter: Eraser, filter: Filter, database: Database },
-    formatterAvailable: !!formatterKeyForColumn(columnName),
+    formatterAvailable: !!formatterKeyForColumn(columnIndex),
     formatterActive: columnHasFormatter(columnIndex),
     serverFilterAvailable: canUseServerColumnFilter.value,
   });
@@ -1567,23 +1567,36 @@ function closeLocalFilter() {
   resetServerFilterState();
 }
 
-function formatterKeyForColumn(column: string): string | null {
-  if (!props.connectionId || !props.tableMeta) return null;
-  return buildColumnFormatterKey({
+function formatterKeysForColumn(columnIndex: number): string[] {
+  const resultColumn = props.result.columns[columnIndex];
+  if (!props.connectionId || !resultColumn) return [];
+  return columnFormatterKeys({
     connectionId: props.connectionId,
     database: props.database,
-    schema: props.tableMeta.schema,
-    tableName: props.tableMeta.tableName,
-    column,
+    schema: props.schema,
+    databaseType: resolvedDatabaseType.value,
+    resultColumn,
+    sourceColumn: props.sourceColumns?.[columnIndex],
+    displaySource: props.queryDisplaySourceColumns?.[columnIndex],
+    tableMeta: props.tableMeta,
   });
 }
 
+function formatterKeyForColumn(columnIndex: number): string | null {
+  return formatterKeysForColumn(columnIndex)[0] ?? null;
+}
+
+function savedColumnFormatterEntry(columnIndex: number): { key: string; formatter: ColumnFormatterConfig } | undefined {
+  for (const key of formatterKeysForColumn(columnIndex)) {
+    const formatter = settingsStore.editorSettings.columnFormatters[key];
+    if (formatter) return { key, formatter };
+  }
+  return undefined;
+}
+
 function columnFormatter(columnIndex: number): ColumnFormatterConfig | undefined {
-  const column = props.result.columns[columnIndex];
-  if (!column) return undefined;
-  const key = formatterKeyForColumn(column);
   const columnType = props.result.column_types?.[columnIndex] ?? tableColumnForGridColumn(columnIndex)?.data_type;
-  const savedFormatter = key ? settingsStore.editorSettings.columnFormatters[key] : undefined;
+  const savedFormatter = savedColumnFormatterEntry(columnIndex)?.formatter;
   const configured = resolveColumnFormatter(savedFormatter, settingsStore.editorSettings.customColumnFormatters, {
     pattern: settingsStore.editorSettings.globalDateTimeDisplayFormat,
     columnType,
@@ -1593,10 +1606,7 @@ function columnFormatter(columnIndex: number): ColumnFormatterConfig | undefined
 }
 
 function savedColumnFormatter(columnIndex: number): ColumnFormatterConfig | undefined {
-  const column = props.result.columns[columnIndex];
-  if (!column) return undefined;
-  const key = formatterKeyForColumn(column);
-  return key ? settingsStore.editorSettings.columnFormatters[key] : undefined;
+  return savedColumnFormatterEntry(columnIndex)?.formatter;
 }
 
 function columnHasFormatter(columnIndex: number): boolean {
@@ -1880,8 +1890,7 @@ function handleColumnFormatterOpenChange(value: boolean, columnIndex: number) {
 }
 
 async function saveColumnFormatter(columnIndex: number) {
-  const column = props.result.columns[columnIndex];
-  const key = column ? formatterKeyForColumn(column) : null;
+  const key = formatterKeyForColumn(columnIndex);
   if (!key) return;
   try {
     let formatter = currentFormatterDraft();
@@ -1909,10 +1918,12 @@ async function saveColumnFormatter(columnIndex: number) {
 }
 
 function clearColumnFormatter(columnIndex: number) {
-  const column = props.result.columns[columnIndex];
-  const key = column ? formatterKeyForColumn(column) : null;
-  if (!key) return;
-  settingsStore.updateColumnFormatter(key, undefined);
+  // Clear every candidate key: MySQL-family columns can carry both the shared
+  // empty-schema spelling and the legacy query-side mirrored-schema spelling,
+  // and either surface must leave the column unformatted everywhere.
+  const keys = formatterKeysForColumn(columnIndex);
+  if (!keys.length) return;
+  for (const key of keys) settingsStore.updateColumnFormatter(key, undefined);
   closeColumnFormatter();
 }
 
@@ -13083,6 +13094,8 @@ function openGridSnapshot() {
                     :column-unique-index-label="t('grid.columnUniqueIndex')"
                     :column-regular-index-label="t('grid.columnRegularIndex')"
                     :column-index-kind="showIndexIndicatorsInHeader ? columnIndexMap.get(columnIndexNameKey(col.name)) : undefined"
+                    :formatter-active="columnHasFormatter(col.actualColIdx)"
+                    :formatter-label="t('grid.columnFormatterActive')"
                     @pointerdown="startColumnHeaderDrag(col.visibleColIdx, $event)"
                     @click-capture="onHeaderClickCapture"
                     @click="onHeaderClick(col.visibleColIdx, $event)"
@@ -13130,7 +13143,7 @@ function openGridSnapshot() {
                         </LightDropdownMenu>
                         <LightDropdownMenu
                           v-if="compactColumnHeaderActions"
-                          :items="compactColumnActionMenuItems(col.name, col.actualColIdx)"
+                          :items="compactColumnActionMenuItems(col.actualColIdx)"
                           :open="headerActionMenuOpenColumn === col.actualColIdx"
                           check-position="none"
                           align="end"
@@ -13163,7 +13176,7 @@ function openGridSnapshot() {
                               type="button"
                               class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-foreground"
                               :class="columnHasFormatter(col.actualColIdx) ? 'text-primary opacity-100' : 'opacity-80'"
-                              :disabled="!formatterKeyForColumn(col.name)"
+                              :disabled="!formatterKeyForColumn(col.actualColIdx)"
                               :title="t('grid.columnFormatter')"
                               @click.stop
                             >

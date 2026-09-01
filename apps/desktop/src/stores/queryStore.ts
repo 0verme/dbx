@@ -3844,7 +3844,12 @@ export const useQueryStore = defineStore("query", () => {
       const loaded = loadedSources.find((entry) => entry.source.key === ref.sourceKey);
       const comment = loaded?.tableMeta.columns.find((column) => column.name === ref.sourceColumn)?.comment?.trim();
       comments.push(comment || undefined);
-      mapping.push(ref);
+      mapping.push({
+        ...ref,
+        database: loaded?.tableMeta.database,
+        schema: loaded?.tableMeta.schema,
+        tableName: loaded?.tableMeta.tableName,
+      });
     }
     return { comments, mapping };
   }
@@ -4335,7 +4340,7 @@ export const useQueryStore = defineStore("query", () => {
         const metadataAnalysis = expandStarProjectionColumnsForSource(bindColumnsForSource(dbType, loaded.analysis, loaded.source, loaded.tableMeta.columns, allSourceColumns), loaded.source, loaded.tableMeta.columns);
         const syntheticRowIdProjection = hiddenPrimaryKeys.find((projection) => projection.sourceName.toUpperCase() === DBX_ROWID_COLUMN);
         const primaryKeys = loaded.tableMeta.primaryKeys.length === 0 && syntheticRowIdProjection ? [DBX_ROWID_COLUMN] : loaded.tableMeta.primaryKeys;
-        const keylessResultInfo = primaryKeys.length === 0 ? resolveResultColumnInfo(dbType, analysis, tab.result.columns, loadedSources) : undefined;
+        const displaySourceInfo = resolveResultColumnInfo(dbType, analysis, tab.result.columns, loadedSources);
         const sourceColumns = sourceColumnsForResult(metadataAnalysis, tab.result.columns, loaded.source.key);
         if (sourceColumns && syntheticRowIdProjection) {
           const resultIndex = tab.result.columns.findIndex((column) => column.toLowerCase() === syntheticRowIdProjection.alias.toLowerCase());
@@ -4347,7 +4352,8 @@ export const useQueryStore = defineStore("query", () => {
             querySourceColumns: undefined,
             queryEditabilityReason: "no-primary-key",
             tableMeta: loaded.tableMeta,
-            resultColumnComments: keylessResultInfo?.comments,
+            resultColumnComments: displaySourceInfo.comments,
+            queryDisplaySourceColumns: displaySourceInfo.mapping,
           };
         }
 
@@ -4358,6 +4364,7 @@ export const useQueryStore = defineStore("query", () => {
             querySourceColumns: undefined,
             queryEditabilityReason: "primary-key-not-returned",
             tableMeta: loaded.tableMeta,
+            queryDisplaySourceColumns: displaySourceInfo.mapping,
           };
         }
 
@@ -4367,6 +4374,7 @@ export const useQueryStore = defineStore("query", () => {
             querySourceColumns: undefined,
             queryEditabilityReason: "aliased-columns",
             tableMeta: loaded.tableMeta,
+            queryDisplaySourceColumns: displaySourceInfo.mapping,
           };
         }
 
@@ -4375,7 +4383,8 @@ export const useQueryStore = defineStore("query", () => {
           querySourceColumns: sourceColumns,
           queryEditabilityReason: undefined,
           tableMeta: primaryKeys === loaded.tableMeta.primaryKeys ? loaded.tableMeta : { ...loaded.tableMeta, primaryKeys },
-          resultColumnComments: keylessResultInfo?.comments,
+          resultColumnComments: primaryKeys.length === 0 ? displaySourceInfo.comments : undefined,
+          queryDisplaySourceColumns: displaySourceInfo.mapping,
         };
       }
 

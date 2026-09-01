@@ -1654,6 +1654,7 @@ export default withEnglishFallback({
     databaseValueFilter: "Filtro valori database",
     databaseValueFilterFor: "Valori database per '{column}'",
     columnFormatter: "Formattatore colonna",
+    columnFormatterActive: "La visualizzazione formattata è attiva",
     columnFormatterFor: "Formattatore per '{column}'",
     columnFormatterHint: "Formatta solo la visualizzazione; i valori effettivi rimangono invariati.",
     formatterType: "Tipo",
