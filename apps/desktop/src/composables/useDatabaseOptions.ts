@@ -8,10 +8,8 @@ import { connectionUsesConnectionRootSchemaMode } from "@/lib/database/jdbcDiale
 import type { CatalogInfo, ConnectionConfig } from "@/types/database";
 import * as api from "@/lib/backend/api";
 
-type NamespaceOptionsConnection = Pick<
-  ConnectionConfig,
-  "database" | "db_type" | "driver_profile" | "driver_label" | "connection_string" | "jdbc_driver_class" | "jdbc_driver_paths" | "database_info" | "visible_databases" | "visible_database_patterns" | "visible_schemas" | "username" | "show_system_schemas"
->;
+type NamespaceOptionsConnection = Pick<ConnectionConfig, "database" | "db_type" | "driver_profile" | "driver_label" | "connection_string" | "jdbc_driver_class" | "jdbc_driver_paths" | "visible_databases" | "visible_database_patterns" | "visible_schemas" | "username" | "show_system_schemas"> &
+  Partial<Pick<ConnectionConfig, "database_info">>;
 export function catalogDatabaseOptionsKey(connectionId: string, catalog: string): string {
   return `${connectionId}:${catalog}`;
 }
@@ -35,8 +33,10 @@ export function databaseAfterCatalogChange(currentDatabase: string, databaseOpti
   return databaseOptions.includes(currentDatabase) ? currentDatabase : "";
 }
 
-export function databaseOptionsForConnection(databaseNames: string[], connection: Pick<ConnectionConfig, "db_type" | "visible_databases"> | undefined): string[] {
+export function databaseOptionsForConnection(databaseNames: string[], connection: (Pick<ConnectionConfig, "db_type" | "visible_databases"> & Partial<Pick<ConnectionConfig, "database" | "database_info">>) | undefined): string[] {
   const names = filterDatabaseNamesForConnection(databaseNames, connection);
+  const configuredDatabase = connection?.database?.trim() || connection?.database_info?.currentDatabase?.trim();
+  if (names.length === 0 && configuredDatabase) return [configuredDatabase];
   if (names.length === 0 && usesTreeSchemaMode(connection?.db_type)) return [""];
   return names;
 }

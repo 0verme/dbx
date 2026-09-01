@@ -155,6 +155,7 @@ import { loadObjectMetadataFacet } from "@/lib/metadata/objectMetadataCache";
 import { invalidateObjectMetadataCache } from "@/lib/metadata/objectMetadataCache";
 import { invalidateObjectDdl } from "@/lib/metadata/objectDdlCache";
 import { invalidateObjectBrowserRowsCache } from "@/lib/table/objectBrowserRowsCache";
+import { eventEditorInstanceKey, resolveInitialEventEditorRequest } from "@/lib/table/eventEditorRequest";
 
 type ObjectFilter = ObjectBrowserFilter;
 type ObjectBrowserColumnKey = "select" | "name" | "type" | "estimatedRows" | "totalBytes" | "created_at" | "updated_at" | "comment";
@@ -167,6 +168,8 @@ const props = defineProps<{
   initialEventName?: string;
   initialEventReadOnly?: boolean;
   initialEventOpenRequestId?: number;
+  /** 显式"新建事件"请求号：每次菜单点击递增，用于打开/重新进入 CREATE 编辑器 */
+  initialEventCreateRequestId?: number;
   initialObjectFilter?: "tables" | "events";
   viewport?: ObjectBrowserViewport;
 }>();
@@ -211,6 +214,13 @@ const sidePanelRow = ref<ObjectBrowserRow | null>(null);
 const openedInitialEvent = ref("");
 const isEventEditor = computed(() => sidePanelMode.value === "event-editor");
 const sidePanelMode = ref<"table-info" | "source" | "type-info" | "event-editor">("source");
+const eventEditorKey = computed(() =>
+  eventEditorInstanceKey({
+    createRequestId: props.initialEventCreateRequestId,
+    openRequestId: props.initialEventOpenRequestId,
+    rowId: sidePanelRow.value?.id,
+  }),
+);
 // Table info panel state
 const tableInfoTab = ref<TableInfoTab>("ddl");
 const tableColumns = ref<ColumnInfo[]>([]);
@@ -236,6 +246,13 @@ const tableConstraintsLoaded = ref(false);
 const tableConstraintsForTab = computed(() => constraintsForConstraintsTab(tableConstraints.value, tableMetadataCapabilities.value.foreignKeys));
 const tableInfoSearchQuery = ref("");
 const tableInfoDdlPreRef = ref<HTMLPreElement | null>(null);
+const activeTableInfoLoading = computed(() => {
+  if (tableInfoTab.value === "ddl") return tableDdlLoading.value;
+  if (tableInfoTab.value === "columns") return tableColumnsLoading.value;
+  if (tableInfoTab.value === "indexes") return tableIndexesLoading.value;
+  if (tableInfoTab.value === "foreignKeys") return tableForeignKeysLoading.value;
+  return tableInfoTab.value === "triggers" && tableTriggersLoading.value;
+});
 const SIDE_PANEL_MIN_WIDTH = 280;
 const SIDE_PANEL_MAX_WIDTH = 900;
 const sidePanelWidth = ref(settingsStore.editorSettings.tableInfoDrawerWidth || 420);
@@ -1088,7 +1105,7 @@ function tableMetadataRequest(row: ObjectBrowserRow): ObjectDdlRequest {
   };
 }
 
-async function fetchTableDdl(force = false) {
+async function fetchTableDdl(force = settingsStore.editorSettings.refreshDdlOnOpen) {
   const row = sidePanelRow.value;
   if (!row || (tableDdlLoaded.value && !force)) return;
   const epoch = sidePanelGuard.capture();
@@ -2711,18 +2728,33 @@ function applyObjectBrowserRows(nextRows: ObjectBrowserRow[]) {
 }
 
 function openInitialEventIfNeeded() {
-  const name = props.initialEventName?.trim();
-  const requestKey = `${props.initialEventOpenRequestId ?? 0}:${name}`;
-  if (!name || openedInitialEvent.value === requestKey || loadingObjects.value) return;
+  const name = props.initialEventName?.trim() ?? "";
+  const decision = resolveInitialEventEditorRequest({
+    eventCreateRequestId: props.initialEventCreateRequestId,
+    eventName: props.initialEventName,
+    eventOpenRequestId: props.initialEventOpenRequestId,
+    openedRequestKey: openedInitialEvent.value,
+    hasEventRow: rows.value.some((candidate) => candidate.type === "EVENT" && candidate.name === name),
+    loadingObjects: loadingObjects.value,
+  });
+  if (decision.type === "ignore") return;
+  openedInitialEvent.value = decision.requestKey;
+  if (decision.type === "create") {
+    // 新建事件：不依赖对象列表中的 EVENT row，直接进入 CREATE 编辑器。
+    // MySqlEventEditor 收到空 name 时会以 CREATE 模式渲染。
+    sidePanelGuard.start();
+    sidePanelRow.value = null;
+    sourceRow.value = null;
+    sidePanelMode.value = "event-editor";
+    return;
+  }
   const row = rows.value.find((candidate) => candidate.type === "EVENT" && candidate.name === name);
-  if (!row) return;
-  openedInitialEvent.value = requestKey;
-  openEventEditor(row);
+  if (row) openEventEditor(row);
 }
 
 function finishObjectBrowserRowsLoad() {
   loadingObjects.value = false;
-  const preferredFilter = props.initialObjectFilter ?? (props.initialEventName ? "events" : "tables");
+  const preferredFilter = props.initialObjectFilter ?? (props.initialEventName || props.initialEventCreateRequestId !== undefined ? "events" : "tables");
   if (!userHasSelectedFilter.value && objectCounts.value[preferredFilter] > 0) {
     // The default table filter is a presentation choice, not a user query
     // change, so preserve the tab's saved scroll offset across remounts.
@@ -2733,8 +2765,8 @@ function finishObjectBrowserRowsLoad() {
   restoreObjectBrowserViewport();
 }
 
-watch([() => props.initialEventName, () => props.initialEventOpenRequestId], ([name, requestId], [previousName, previousRequestId]) => {
-  if (name !== previousName || requestId !== previousRequestId) openedInitialEvent.value = "";
+watch([() => props.initialEventName, () => props.initialEventOpenRequestId, () => props.initialEventCreateRequestId], ([name, requestId, createRequestId], [previousName, previousRequestId, previousCreateRequestId]) => {
+  if (name !== previousName || requestId !== previousRequestId || createRequestId !== previousCreateRequestId) openedInitialEvent.value = "";
   openInitialEventIfNeeded();
 });
 
@@ -3474,7 +3506,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
         </div>
       </div>
       <!-- Right-side panel: table info or source -->
-      <div v-if="sidePanelRow" class="object-browser-side-panel relative flex min-h-0 shrink-0 flex-col border-l bg-background" :class="{ 'side-panel-resizing': isResizingSidePanel }" :style="{ width: `${sidePanelWidth}px` }">
+      <div v-if="sidePanelRow || isEventEditor" class="object-browser-side-panel relative flex min-h-0 shrink-0 flex-col border-l bg-background" :class="{ 'side-panel-resizing': isResizingSidePanel }" :style="{ width: `${sidePanelWidth}px` }">
         <div class="absolute left-0 top-0 bottom-0 z-20 w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-primary/30" @mousedown.prevent="onSidePanelResizeStart" />
         <!-- Table info mode -->
         <template v-if="sidePanelMode === 'table-info'">
@@ -3511,14 +3543,17 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
               <span class="block truncate">{{ tab.label }}</span>
             </button>
           </div>
-          <div class="px-2 py-1.5 border-b shrink-0 bg-background">
-            <div class="relative">
+          <div class="flex items-center gap-1 px-2 py-1.5 border-b shrink-0 bg-background">
+            <div class="relative min-w-0 flex-1">
               <Search class="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <input v-model="tableInfoSearchQuery" :placeholder="t('grid.tableInfoSearch')" class="w-full h-7 pl-7 pr-6 text-xs bg-muted/50 rounded border border-border focus:outline-none focus:border-primary/50" @keydown.escape="tableInfoSearchQuery = ''" />
               <button v-if="tableInfoSearchQuery" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" @click="tableInfoSearchQuery = ''">
                 <X class="w-3 h-3" />
               </button>
             </div>
+            <Button variant="ghost" size="icon" class="h-7 w-7 shrink-0" :disabled="activeTableInfoLoading" :title="t('structureEditor.refresh')" :aria-label="t('structureEditor.refresh')" @click="refreshActiveTableInfo">
+              <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': activeTableInfoLoading }" />
+            </Button>
           </div>
           <div v-if="tableInfoTab === 'columns'" class="flex-1 min-h-0 overflow-auto">
             <div v-if="tableColumnsLoading" class="h-full flex items-center justify-center">
@@ -3663,7 +3698,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
           <CustomTypeInfoPanel ref="sidePanelRef" :connection="props.connection" :database="props.database" :schema="sidePanelRow?.schema || selectedSchema || props.database" :name="sidePanelRow?.name || ''" :catalog="props.catalog" @close="closeSidePanel" />
         </template>
         <template v-else-if="sidePanelMode === 'event-editor'">
-          <MySqlEventEditor :connection="props.connection" :database="props.database" :schema="sidePanelRow?.schema || selectedSchema || props.database" :name="sidePanelRow?.name" :read-only="props.initialEventReadOnly" @saved="onEventSaved" @close="closeSidePanel" />
+          <MySqlEventEditor :key="eventEditorKey" :connection="props.connection" :database="props.database" :schema="sidePanelRow?.schema || selectedSchema || props.database" :name="sidePanelRow?.name" :read-only="props.initialEventReadOnly" @saved="onEventSaved" @close="closeSidePanel" />
         </template>
         <!-- Source mode (views, procedures, functions, sequences) -->
         <template v-else>
