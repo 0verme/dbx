@@ -98,7 +98,7 @@ describe("AppTabBar right-side close action", () => {
   });
 
   it("waits for query tab confirmation before closing special surfaces", () => {
-    expect(tabBarSource).toMatch(/queryStore\.closeRightTabs\(tab\.id, \(\) => \{[\s\S]*closeSpecialRegularSurfaces\(\);/);
+    expect(tabBarSource).toMatch(/queryStore\.closeTabsByIds\(tabsToClose, finalActiveTabId, \(\) => \{[\s\S]*closeSpecialRegularSurfaces\(\);/);
     expect(tabBarSource).toContain("if (shouldActivateTarget) activateTab(tab.id)");
   });
 
@@ -142,7 +142,8 @@ describe("AppTabBar overflow search", () => {
   it("filters every open tab by its display and source titles", () => {
     expect(tabBarSource).toContain('const tabSearchQuery = ref("");');
     expect(tabBarSource).toContain("const filteredOpenTabs = computed(() => {");
-    expect(tabBarSource).toContain("return queryStore.tabs.filter((tab) => tabTitleText(tab).toLocaleLowerCase().includes(query) || tab.title.toLocaleLowerCase().includes(query));");
+    expect(tabBarSource).toContain("return displayedTabs.value.filter((tab) => tabMatchesSearch(tab, query));");
+    expect(tabBarSource).toContain("return tabTitleText(tab).toLocaleLowerCase().includes(query) || tab.title.toLocaleLowerCase().includes(query) || connectionName.toLocaleLowerCase().includes(query);");
   });
 
   it("provides the same focused search control and empty state in both overflow menus", () => {

@@ -80,6 +80,9 @@ import {
   type SidebarObjectInfoMode,
   type SqlSemanticDiagnosticsMode,
   type SavedSqlOpenTargetMode,
+  type TabGroupMode,
+  type TabPlacement,
+  type TabSortMode,
   type UpdateDownloadSource,
   type CustomThemeColors,
   type CustomTheme,
@@ -411,6 +414,9 @@ const editAppCloseUnsavedTabsMode = ref<AppCloseUnsavedTabsMode>(settingsStore.e
 const editSavedSqlOpenTargetMode = ref<SavedSqlOpenTargetMode>(settingsStore.editorSettings.savedSqlOpenTargetMode);
 const editAppLayout = ref(settingsStore.editorSettings.appLayout);
 const editTabLayout = ref(settingsStore.editorSettings.tabLayout);
+const editTabPlacement = ref<TabPlacement>(settingsStore.editorSettings.tabPlacement);
+const editTabGroupMode = ref<TabGroupMode>(settingsStore.editorSettings.tabGroupMode);
+const editTabSortMode = ref<TabSortMode>(settingsStore.editorSettings.tabSortMode);
 const editShowTrayIcon = ref(settingsStore.desktopSettings.show_tray_icon);
 const editQuitOnClose = ref(settingsStore.desktopSettings.quit_on_close);
 const desktopCloseBehaviorResetPending = ref(false);
@@ -629,6 +635,9 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     savedSqlOpenTargetMode: editSavedSqlOpenTargetMode.value,
     appLayout: editAppLayout.value,
     tabLayout: editTabLayout.value,
+    tabPlacement: editTabPlacement.value,
+    tabGroupMode: editTabGroupMode.value,
+    tabSortMode: editTabSortMode.value,
     showColumnCommentsInHeader: editShowColumnCommentsInHeader.value,
     showColumnTypesInHeader: editShowColumnTypesInHeader.value,
     dataGridShowTransposeFieldMetadata: editDataGridShowTransposeFieldMetadata.value,
@@ -1027,6 +1036,9 @@ function syncEditorSettingsDraftFromStore() {
   editSavedSqlOpenTargetMode.value = settingsStore.editorSettings.savedSqlOpenTargetMode;
   editAppLayout.value = settingsStore.editorSettings.appLayout;
   editTabLayout.value = settingsStore.editorSettings.tabLayout;
+  editTabPlacement.value = settingsStore.editorSettings.tabPlacement;
+  editTabGroupMode.value = settingsStore.editorSettings.tabGroupMode;
+  editTabSortMode.value = settingsStore.editorSettings.tabSortMode;
   editShowColumnCommentsInHeader.value = settingsStore.editorSettings.showColumnCommentsInHeader;
   editShowColumnTypesInHeader.value = settingsStore.editorSettings.showColumnTypesInHeader;
   editDataGridShowTransposeFieldMetadata.value = settingsStore.editorSettings.dataGridShowTransposeFieldMetadata;
@@ -1311,6 +1323,9 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editActiveCustomThemeId.value = DEFAULT_EDITOR_SETTINGS.activeCustomThemeId;
     editAppLayout.value = DEFAULT_EDITOR_SETTINGS.appLayout;
     editTabLayout.value = DEFAULT_EDITOR_SETTINGS.tabLayout;
+    editTabPlacement.value = DEFAULT_EDITOR_SETTINGS.tabPlacement;
+    editTabGroupMode.value = DEFAULT_EDITOR_SETTINGS.tabGroupMode;
+    editTabSortMode.value = DEFAULT_EDITOR_SETTINGS.tabSortMode;
     editShowTrayIcon.value = DEFAULT_DESKTOP_SETTINGS.show_tray_icon;
     editQuitOnClose.value = DEFAULT_DESKTOP_SETTINGS.quit_on_close;
     desktopCloseBehaviorResetPending.value = true;
@@ -1782,6 +1797,18 @@ function setAppLayout(value: InterfaceLayout) {
 
 function setTabLayout(value: "scroll" | "wrap") {
   editTabLayout.value = value;
+}
+
+function setTabPlacement(value: TabPlacement) {
+  editTabPlacement.value = value;
+}
+
+function setTabGroupMode(value: TabGroupMode) {
+  editTabGroupMode.value = value;
+}
+
+function setTabSortMode(value: TabSortMode) {
+  editTabSortMode.value = value;
 }
 
 function setSidebarActivation(value: "single" | "double") {
@@ -5281,6 +5308,49 @@ onUnmounted(() => {
                       </div>
                     </div>
                   </Button>
+                </div>
+              </div>
+
+              <div class="settings-appearance-group">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div class="space-y-2">
+                    <Label>{{ t("settings.tabPlacement") }}</Label>
+                    <Select :model-value="editTabPlacement" @update:model-value="setTabPlacement($event as TabPlacement)">
+                      <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="top">{{ t("settings.tabPlacementTop") }}</SelectItem>
+                        <SelectItem value="bottom">{{ t("settings.tabPlacementBottom") }}</SelectItem>
+                        <SelectItem value="left">{{ t("settings.tabPlacementLeft") }}</SelectItem>
+                        <SelectItem value="right">{{ t("settings.tabPlacementRight") }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div class="space-y-2">
+                    <Label>{{ t("settings.tabGroup") }}</Label>
+                    <Select :model-value="editTabGroupMode" @update:model-value="setTabGroupMode($event as TabGroupMode)">
+                      <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{{ t("settings.tabGroupNone") }}</SelectItem>
+                        <SelectItem value="database-type">{{ t("settings.tabGroupDatabaseType") }}</SelectItem>
+                        <SelectItem value="connection">{{ t("settings.tabGroupConnection") }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div class="space-y-2">
+                    <Label>{{ t("settings.tabSort") }}</Label>
+                    <Select :model-value="editTabSortMode" @update:model-value="setTabSortMode($event as TabSortMode)">
+                      <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">{{ t("settings.tabSortManual") }}</SelectItem>
+                        <SelectItem value="created-asc">{{ t("settings.tabSortCreated") }}</SelectItem>
+                        <SelectItem value="title-asc">{{ t("settings.tabSortTitle") }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div class="space-y-1 text-xs text-muted-foreground">
+                  <p>{{ t("settings.tabPlacementDescription") }}</p>
+                  <p>{{ t("settings.tabOrganizationDescription") }}</p>
                 </div>
               </div>
 

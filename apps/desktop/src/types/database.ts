@@ -1115,6 +1115,8 @@ export interface QueryPageJumpProgress {
 
 export interface QueryTab {
   id: string;
+  /** Stable creation time used when tabs are displayed in creation order. */
+  createdAt?: number;
   title: string;
   customTitle?: boolean;
   /** Force the editor to word-wrap regardless of the global setting, e.g. for auto-generated single-line templates. */
