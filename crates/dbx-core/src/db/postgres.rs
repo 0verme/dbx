@@ -8270,7 +8270,7 @@ mod tests {
         assert_eq!(tiny.len(), 309);
 
         let mut huge_digits = vec![9];
-        huge_digits.extend(std::iter::repeat(9999).take(77));
+        huge_digits.extend(std::iter::repeat_n(9999, 77));
         let huge = "9".repeat(309);
         assert_eq!(
             decode_pg_numeric_bytes(&postgres_numeric_binary(77, 0x0000, 0, &huge_digits)).as_deref(),
