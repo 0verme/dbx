@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, watchEffect } from "vue";
 import { useI18n } from "vue-i18n";
-import { Play, CirclePlay, Loader2, Square, Database, Check, Table2, AlignLeft, GitBranch, Save, FolderOpen, X, Shield, Download, RotateCcw, AlertTriangle, ClipboardPaste, Minimize2, SpellCheck2, Eye } from "@lucide/vue";
+import { Play, CirclePlay, Loader2, Square, Database, Check, Table2, AlignLeft, GitBranch, Save, FolderOpen, X, Shield, Download, RotateCcw, AlertTriangle, ClipboardPaste, Minimize2, SpellCheck2, BetweenVerticalStart, Eye } from "@lucide/vue";
+import { supportsInsertValueHints } from "@/lib/editor/codemirrorInsertValueHints";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -165,6 +166,12 @@ function toggleSqlSemanticDiagnostics() {
   settingsStore.updateEditorSettings({
     sqlSemanticDiagnosticsMode: sqlSemanticDiagnosticsEnabled.value ? "disabled" : "enabled",
   });
+}
+const insertValueHintsEnabled = computed(() => settingsStore.editorSettings.showInsertValueHints);
+const insertValueHintsToggleTooltip = computed(() => (insertValueHintsEnabled.value ? t("toolbar.insertValueHintsToggleOn") : t("toolbar.insertValueHintsToggleOff")));
+const supportsInsertValueHintsToggle = computed(() => supportsInsertValueHints(props.activeConnection?.db_type));
+function toggleInsertValueHints() {
+  settingsStore.updateEditorSettings({ showInsertValueHints: !insertValueHintsEnabled.value });
 }
 const isTransactionActive = computed(() => !!props.txnSessionId);
 const isManualTransactionMode = computed(() => props.autoCommit === false || isTransactionActive.value);
@@ -397,6 +404,22 @@ async function changeCatalog(selectedCatalog: string) {
           </Button>
         </TooltipTrigger>
         <TooltipContent>{{ sqlSemanticDiagnosticsToggleTooltip }}</TooltipContent>
+      </Tooltip>
+      <Tooltip v-if="supportsInsertValueHintsToggle">
+        <TooltipTrigger as-child>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-6 w-6"
+            :class="insertValueHintsEnabled ? 'text-sky-600 bg-sky-500/10 hover:bg-sky-500/20 hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-200' : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground'"
+            :aria-label="insertValueHintsToggleTooltip"
+            :aria-pressed="insertValueHintsEnabled"
+            @click="toggleInsertValueHints"
+          >
+            <BetweenVerticalStart class="h-3.5 w-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{{ insertValueHintsToggleTooltip }}</TooltipContent>
       </Tooltip>
       <Tooltip v-if="activeConnection?.db_type === 'redis'">
         <TooltipTrigger as-child>

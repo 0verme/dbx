@@ -129,7 +129,7 @@ import { normalizeShortcutSettings, shortcutToCodeMirrorKey } from "@/lib/editor
 import { trimmedSelectionLayer } from "@/lib/editor/codemirrorTrimmedSelectionLayer";
 import { currentStatementFrameLayer } from "@/lib/editor/codemirrorCurrentStatementFrameLayer";
 import { selectionMatchOccurrences } from "@/lib/editor/codemirrorSelectionMatches";
-import { createInsertValueHintsExtension, requestInsertValueHintsRefresh } from "@/lib/editor/codemirrorInsertValueHints";
+import { createInsertValueHintsExtension, requestInsertValueHintsRefresh, supportsInsertValueHints } from "@/lib/editor/codemirrorInsertValueHints";
 import { sqlBlockFoldService } from "@/lib/editor/codemirrorSqlBlockFolding";
 import { focusEditorView } from "@/lib/editor/queryEditorFocus";
 import { createDbxCodeMirrorSqlDialect, type CodeMirrorSqlDialectName } from "@/lib/editor/codemirrorSqlDialect";
@@ -727,8 +727,6 @@ const queryEditorAppearanceSettings = computed(() => {
     wordWrap: settings.wordWrap,
     vimModeEnabled: settings.vimModeEnabled,
     autoCloseBrackets: settings.autoCloseBrackets,
-    showCurrentStatementFrame: settings.showCurrentStatementFrame,
-    showInsertValueHints: settings.showInsertValueHints,
     showLineNumbers: settings.showLineNumbers,
     shortcuts: settings.shortcuts,
     showStatementRunButtons: settings.showStatementRunButtons,
@@ -2432,7 +2430,7 @@ function getInsertValueHintTableColumns(table: string, schema?: string, database
 
 function requestInsertValueHintTableColumns(table: string, schema?: string, database?: string) {
   if (!props.connectionId || props.database == null) return;
-  if (props.databaseType === "redis" || props.databaseType === "mongodb" || props.databaseType === "elasticsearch" || props.databaseType === "easysearch" || props.databaseType === "meilisearch" || props.databaseType === "victoriametrics") return;
+  if (!supportsInsertValueHints(props.databaseType)) return;
   const cacheKey = insertHintCacheKey({ name: table, schema, database });
   const hasCachedColumns = props.databaseType === "sqlserver" ? cachedInsertValueHintColumnsByTable.has(cacheKey) : cachedColumnsByTable.has(cacheKey);
   if (hasCachedColumns || pendingInsertValueHintColumnLoads.has(cacheKey)) return;
@@ -5768,8 +5766,7 @@ onMounted(async () => {
       sqlSignatureComp.of(buildSqlSignatureExtension()),
       diagnosticComp.of(buildSqlDiagnosticExtension()),
       createInsertValueHintsExtension({
-        isEnabled: () =>
-          settingsStore.editorSettings.showInsertValueHints && props.databaseType !== "redis" && props.databaseType !== "mongodb" && props.databaseType !== "elasticsearch" && props.databaseType !== "easysearch" && props.databaseType !== "meilisearch" && props.databaseType !== "victoriametrics",
+        isEnabled: () => settingsStore.editorSettings.showInsertValueHints && supportsInsertValueHints(props.databaseType),
         getTableColumns: getInsertValueHintTableColumns,
         requestTableColumns: requestInsertValueHintTableColumns,
         getDialectId: () => resolveSqlDialectId({ databaseType: props.databaseType, dialect: sqlBehaviorDialect() }),
@@ -6670,7 +6667,7 @@ defineExpose({
   shouldBlockExecutionShortcut,
   requestExecute,
   requestExecuteInNewResultTab,
-requestPreviewChanges,
+  requestPreviewChanges,
   captureExecutionSnapshot,
   pasteClipboardAsSqlInCondition,
   focusStatementRange,
