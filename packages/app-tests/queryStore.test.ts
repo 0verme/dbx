@@ -4605,6 +4605,7 @@ test("starting a new query clears the previous result payload immediately", asyn
     rows: [[new Array(10_000).fill("old").join("")]],
     affected_rows: 0,
     execution_time_ms: 1,
+    local_column_filters: { "0": ["str:old"] },
   };
 
   globalThis.fetch = withConnectionHealthMock(async (input) => {
@@ -4636,6 +4637,7 @@ test("starting a new query clears the previous result payload immediately", asyn
     assert.equal(tab.results, undefined);
     await execution;
     assert.deepEqual(tab.result?.columns, ["new"]);
+    assert.equal(tab.result?.local_column_filters, undefined);
   } finally {
     globalThis.fetch = originalFetch;
     restoreStorage();
