@@ -8723,15 +8723,7 @@ function blankSelectionBatchAppendPasteTarget(pastedRows: readonly (readonly (st
   const range = selectedRange.value;
   if (!range || (range.startRow === range.endRow && range.startCol !== range.endCol)) return null;
   const selectedItems = Array.from({ length: range.endRow - range.startRow + 1 }, (_, offset) => displayItemAt(range.startRow + offset));
-  if (
-    selectedItems.some(
-      (item) =>
-        (!item?.isNew && !item?.isDraft) ||
-        item.isDeleted ||
-        item.data.some((value) => value !== null && (typeof value !== "string" || value.trim() !== "")),
-    )
-  )
-    return null;
+  if (selectedItems.some((item) => (!item?.isNew && !item?.isDraft) || item.isDeleted || item.data.some((value) => value !== null && (typeof value !== "string" || value.trim() !== "")))) return null;
   const item = selectedItems[0];
   const columnIndex = visibleColumnIndexes.value[range.startCol];
   if (!item || columnIndex === undefined || !canEditCellItem(item, columnIndex)) return null;
