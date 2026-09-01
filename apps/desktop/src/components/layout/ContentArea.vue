@@ -1139,6 +1139,10 @@ function acceptQueryEditorExecutionViewport(requestId: number) {
   return queryEditorRef.value?.acceptGutterExecutionViewport(requestId) ?? false;
 }
 
+function cancelQueryEditorExecutionViewport(requestId: number) {
+  return queryEditorRef.value?.cancelGutterExecutionViewport(requestId) ?? false;
+}
+
 async function handleExportQuery(payload: { sql: string; format: "csv" | "xlsx" | "txt"; columnComments?: (string | null)[] }) {
   const tab = props.activeTab;
   if (!tab || tab.mode !== "query") return;
@@ -1183,6 +1187,7 @@ defineExpose({
   requestQueryEditorExecuteInNewResultTab,
   shouldBlockQueryEditorExecutionShortcut,
   acceptQueryEditorExecutionViewport,
+  cancelQueryEditorExecutionViewport,
   pasteClipboardAsSqlInCondition,
   applyTableStructureChanges,
   insertRedisCommand,
