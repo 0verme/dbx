@@ -207,7 +207,7 @@ const {
   checkUpdates,
   openLatestRelease,
   ignoreCurrentVersion,
-  downloadAndInstallUpdate,
+  downloadUpdateInBackground,
   cancelDownload,
   installDownloadedUpdate,
   restartApp,
@@ -3011,6 +3011,10 @@ onUnmounted(() => {
           :show-settings-page="showSettingsPage"
           :checking-updates="checkingUpdates"
           :has-update-available="toolbarHasUpdateAvailable"
+          :is-downloading-update="isDownloadingUpdate"
+          :download-progress="downloadProgress"
+          :update-ready-to-install="updateDownloaded"
+          :update-ready="updateReady"
           :agent-driver-update-count="toolbarAgentDriverUpdateCount"
           :has-mcp-update-available="toolbarMcpUpdateAvailable"
           :has-connections="connectionStore.connections.length > 0"
@@ -3343,7 +3347,7 @@ onUnmounted(() => {
           :is-ignoring-update="isIgnoringUpdate"
           :active-task-count="activeUpdateTaskCount"
           @open-latest-release="openLatestRelease"
-          @download-and-install="downloadAndInstallUpdate"
+          @download-in-background="downloadUpdateInBackground"
           @cancel-download="cancelDownload"
           @install-downloaded="installDownloadedUpdate"
           @restart="restartApp"
