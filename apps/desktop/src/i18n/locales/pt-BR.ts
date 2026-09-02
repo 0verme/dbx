@@ -6260,6 +6260,8 @@ export default withEnglishFallback({
     sidebarObjectInfoModeHidden: "Nenhuma",
     sidebarAllowHorizontalScroll: "Permitir rolagem horizontal da barra lateral",
     sidebarAllowHorizontalScrollDescription: "Mostrar nomes longos de tabelas, views e coleções por completo, permitindo a rolagem horizontal da barra lateral.",
+    sidebarShowTooltips: "Dicas ao passar o mouse na barra lateral",
+    sidebarShowTooltipsDescription: "Mostra dicas com detalhes ao passar o mouse sobre conexões e objetos do banco de dados na barra lateral. Desative para ocultá-las.",
     snippetsDescription: "Personalize os modelos de snippets SQL acionados no editor.",
     syncSnippetProviderGitee: "Snippets do Gitee",
     snippetsAdd: "Adicionar snippet",

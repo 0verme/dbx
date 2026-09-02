@@ -6258,6 +6258,8 @@ export default withEnglishFallback({
     sidebarObjectInfoModeHidden: "Ninguna",
     sidebarAllowHorizontalScroll: "Permitir desplazamiento horizontal lateral",
     sidebarAllowHorizontalScrollDescription: "Muestra completos los nombres largos de tablas, vistas y colecciones permitiendo desplazamiento horizontal en la barra lateral.",
+    sidebarShowTooltips: "Sugerencias al pasar el cursor en la barra lateral",
+    sidebarShowTooltipsDescription: "Muestra sugerencias con detalles al pasar el cursor sobre conexiones y objetos de la base de datos en la barra lateral. Desactívalo para ocultarlas.",
     snippetsDescription: "Personaliza plantillas SQL activadas en el editor.",
     syncSnippetProviderGitee: "Fragmentos de Gitee",
     snippetsAdd: "Agregar fragmento",

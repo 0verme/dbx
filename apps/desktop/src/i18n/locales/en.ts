@@ -6587,6 +6587,8 @@ export default {
     sidebarObjectInfoModeHidden: "None",
     sidebarAllowHorizontalScroll: "Allow sidebar horizontal scroll",
     sidebarAllowHorizontalScrollDescription: "Show long table, view, and collection names in full by allowing horizontal sidebar scrolling.",
+    sidebarShowTooltips: "Sidebar hover tooltips",
+    sidebarShowTooltipsDescription: "Show detail tooltips when hovering connections and database objects in the sidebar. Turn off to stop hover popups.",
     sidebarIndent: "Sidebar indentation",
     sidebarIndentDescription: "Horizontal offset added per tree depth level, in pixels.",
     sidebarFontSize: "Sidebar font size",

@@ -6284,6 +6284,8 @@ export default withEnglishFallback({
     sidebarObjectInfoModeHidden: "表示しない",
     sidebarAllowHorizontalScroll: "サイドバーの横スクロールを許可",
     sidebarAllowHorizontalScrollDescription: "サイドバーの横スクロールを許可して、長いテーブル、ビュー、コレクション名を完全に表示します。",
+    sidebarShowTooltips: "サイドバーのホバーツールチップ",
+    sidebarShowTooltipsDescription: "サイドバーで接続やデータベースオブジェクトにホバーしたときに詳細ツールチップを表示します。オフにすると表示されません。",
     snippetsDescription: "エディタでトリガーされるSQLスニペットテンプレートをカスタマイズします。",
     syncSnippetProviderGitee: "Gitee コードスニペット",
     snippetsAdd: "スニペットを追加",

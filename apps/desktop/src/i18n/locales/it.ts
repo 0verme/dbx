@@ -6258,6 +6258,8 @@ export default withEnglishFallback({
     sidebarObjectInfoModeHidden: "Nessuna",
     sidebarAllowHorizontalScroll: "Consenti scorrimento orizzontale barra laterale",
     sidebarAllowHorizontalScrollDescription: "Mostra i nomi lunghi di tabelle, viste e collezioni per intero consentendo lo scorrimento orizzontale della barra laterale.",
+    sidebarShowTooltips: "Tooltip al passaggio del mouse nella barra laterale",
+    sidebarShowTooltipsDescription: "Mostra tooltip con dettagli al passaggio del mouse su connessioni e oggetti del database nella barra laterale. Disattiva per nasconderli.",
     snippetsDescription: "Personalizza i modelli di snippet SQL attivati nell'editor.",
     syncSnippetProviderGitee: "Snippet Gitee",
     snippetsAdd: "Aggiungi Snippet",

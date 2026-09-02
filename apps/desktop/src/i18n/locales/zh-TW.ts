@@ -5575,6 +5575,8 @@ export default withEnglishFallback({
     sidebarObjectInfoModeHidden: "不顯示",
     sidebarAllowHorizontalScroll: "允許側邊欄水平捲動",
     sidebarAllowHorizontalScrollDescription: "透過啟用側邊欄的水平捲動功能，完整顯示長表格、檢視和集合的名稱",
+    sidebarShowTooltips: "側邊欄懸浮提示",
+    sidebarShowTooltipsDescription: "在側邊欄的連線與資料庫物件上懸浮時顯示詳細提示；關閉後懸浮不再彈出。",
     snippetsDescription: "自訂編輯器中觸發的 SQL 程式碼片段範本。",
     syncSnippetProviderGitee: "Gitee 程式碼片段",
     snippetsAdd: "新增片段",

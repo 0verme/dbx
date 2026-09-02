@@ -6569,6 +6569,8 @@ export default withEnglishFallback({
     sidebarObjectInfoModeHidden: "不显示",
     sidebarAllowHorizontalScroll: "允许侧边栏横向滚动",
     sidebarAllowHorizontalScrollDescription: "完整显示较长的表、视图和集合名称；默认关闭以保留省略号截断。",
+    sidebarShowTooltips: "侧边栏悬浮提示",
+    sidebarShowTooltipsDescription: "在侧边栏的连接和数据库对象上悬浮时显示详情提示；关闭后悬浮不再弹出。",
     sidebarIndent: "侧边栏缩进",
     sidebarIndentDescription: "每个树层级缩进的像素偏移量。",
     sidebarFontSize: "侧边栏字体大小",
