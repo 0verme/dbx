@@ -1290,6 +1290,128 @@ SELECT @value AS Message;`;
     expect(explainTabSql).toHaveBeenCalledWith("tab-1", sql, "oracle", "explain");
   });
 
+  it("explains the resolved PostgreSQL statement after SQL parameter input", async () => {
+    const sql = "SELECT :var;";
+    const resolvedSql = "SELECT 123;";
+    const activeTab = ref<QueryTab | undefined>({ ...queryTab("app"), sql });
+    const activeConnection = ref<ConnectionConfig | undefined>(connection("postgres"));
+    const activeOutputView = ref<"result" | "summary" | "explain" | "chart">("result");
+    const queryStore = useQueryStore();
+    const explainTabSql = vi.spyOn(queryStore, "explainTabSql").mockResolvedValue({ ok: true, sql: resolvedSql });
+
+    const execution = useSqlExecution({
+      activeTab: computed(() => activeTab.value),
+      activeConnection: computed(() => activeConnection.value),
+      executableSql: computed(() => sql),
+      activeOutputView,
+    });
+
+    await execution.tryExplain();
+
+    expect(execution.showSqlParameterDialog.value).toBe(true);
+    expect(execution.sqlParameterNames.value.map((parameter) => parameter.name)).toEqual(["var"]);
+    expect(explainTabSql).not.toHaveBeenCalled();
+
+    await execution.onSqlParametersConfirm(resolvedSql);
+
+    expect(explainTabSql).toHaveBeenCalledWith("tab-1", resolvedSql, "postgres", "explain");
+  });
+
+  it("explains the analyzed PostgreSQL statement after SQL parameter input", async () => {
+    const sql = "SELECT :var;";
+    const resolvedSql = "SELECT 123;";
+    const activeTab = ref<QueryTab | undefined>({ ...queryTab("app"), sql });
+    const activeConnection = ref<ConnectionConfig | undefined>(connection("postgres"));
+    const activeOutputView = ref<"result" | "summary" | "explain" | "chart">("result");
+    const queryStore = useQueryStore();
+    const explainTabSql = vi.spyOn(queryStore, "explainTabSql").mockResolvedValue({ ok: true, sql: resolvedSql });
+
+    const execution = useSqlExecution({
+      activeTab: computed(() => activeTab.value),
+      activeConnection: computed(() => activeConnection.value),
+      executableSql: computed(() => sql),
+      activeOutputView,
+    });
+    execution.explainMode.value = "autotrace";
+
+    await execution.tryExplain();
+
+    expect(execution.showSqlParameterDialog.value).toBe(true);
+    expect(explainTabSql).not.toHaveBeenCalled();
+
+    await execution.onSqlParametersConfirm(resolvedSql);
+
+    expect(explainTabSql).toHaveBeenCalledWith("tab-1", resolvedSql, "postgres", "autotrace");
+  });
+
+  it("explains the string-parameter statement with the dialog's escaped substitution", async () => {
+    const sql = "SELECT :name;";
+    const resolvedSql = "SELECT 'O''Reilly';";
+    const activeTab = ref<QueryTab | undefined>({ ...queryTab("app"), sql });
+    const activeConnection = ref<ConnectionConfig | undefined>(connection("postgres"));
+    const activeOutputView = ref<"result" | "summary" | "explain" | "chart">("result");
+    const queryStore = useQueryStore();
+    const explainTabSql = vi.spyOn(queryStore, "explainTabSql").mockResolvedValue({ ok: true, sql: resolvedSql });
+
+    const execution = useSqlExecution({
+      activeTab: computed(() => activeTab.value),
+      activeConnection: computed(() => activeConnection.value),
+      executableSql: computed(() => sql),
+      activeOutputView,
+    });
+
+    await execution.tryExplain();
+
+    expect(execution.showSqlParameterDialog.value).toBe(true);
+
+    await execution.onSqlParametersConfirm(resolvedSql);
+
+    expect(explainTabSql).toHaveBeenCalledWith("tab-1", resolvedSql, "postgres", "explain");
+  });
+
+  it("explains a PostgreSQL cast statement without opening the parameter dialog", async () => {
+    const sql = "SELECT '1'::int;";
+    const activeTab = ref<QueryTab | undefined>({ ...queryTab("app"), sql });
+    const activeConnection = ref<ConnectionConfig | undefined>(connection("postgres"));
+    const activeOutputView = ref<"result" | "summary" | "explain" | "chart">("result");
+    const queryStore = useQueryStore();
+    const explainTabSql = vi.spyOn(queryStore, "explainTabSql").mockResolvedValue({ ok: true, sql });
+
+    const execution = useSqlExecution({
+      activeTab: computed(() => activeTab.value),
+      activeConnection: computed(() => activeConnection.value),
+      executableSql: computed(() => sql),
+      activeOutputView,
+    });
+
+    await execution.tryExplain();
+
+    expect(execution.showSqlParameterDialog.value).toBe(false);
+    expect(execution.sqlParameterNames.value).toEqual([]);
+    expect(explainTabSql).toHaveBeenCalledWith("tab-1", sql, "postgres", "explain");
+  });
+
+  it("explains a parameter-free statement without opening the parameter dialog", async () => {
+    const sql = "SELECT * FROM orders;";
+    const activeTab = ref<QueryTab | undefined>({ ...queryTab("app"), sql });
+    const activeConnection = ref<ConnectionConfig | undefined>(connection("postgres"));
+    const activeOutputView = ref<"result" | "summary" | "explain" | "chart">("result");
+    const queryStore = useQueryStore();
+    const explainTabSql = vi.spyOn(queryStore, "explainTabSql").mockResolvedValue({ ok: true, sql });
+
+    const execution = useSqlExecution({
+      activeTab: computed(() => activeTab.value),
+      activeConnection: computed(() => activeConnection.value),
+      executableSql: computed(() => sql),
+      activeOutputView,
+    });
+
+    await execution.tryExplain();
+
+    expect(execution.showSqlParameterDialog.value).toBe(false);
+    expect(explainTabSql).toHaveBeenCalledWith("tab-1", sql, "postgres", "explain");
+  });
+
   it("keeps the new-result-tab intent through Redis command confirmation", async () => {
     const sql = "DEL user:1";
     const activeTab = ref<QueryTab | undefined>({ ...queryTab("0"), sql });
