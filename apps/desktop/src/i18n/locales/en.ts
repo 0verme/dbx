@@ -7215,6 +7215,8 @@ export default {
     mcpToolListDatabases: "List databases",
     mcpToolListTables: "List tables",
     mcpToolDescribeTable: "Describe table",
+    mcpToolListRoutines: "List routines",
+    mcpToolGetRoutineSource: "Routine source",
     mcpToolGetSchemaContext: "Schema context",
     mcpToolExecuteQuery: "Execute SQL / Mongo commands",
     mcpToolOpenSession: "Open query session",
