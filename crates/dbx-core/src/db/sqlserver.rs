@@ -2468,7 +2468,10 @@ fn sqlserver_list_tables_sql_with_kind(
             }
         })
         .unwrap_or_default();
-    let base_columns = "o.name, CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END, ep.value AS TABLE_COMMENT";
+    // The ROW_NUMBER pagination path wraps these projections in a derived table;
+    // SQL Server requires every derived-table column to have a name.
+    let base_columns =
+        "o.name, CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END AS TABLE_TYPE, ep.value AS TABLE_COMMENT";
     let base_from = "FROM sys.objects o \
          JOIN sys.schemas s ON s.schema_id = o.schema_id \
          OUTER APPLY (SELECT CAST(ep.value AS NVARCHAR(MAX)) AS value FROM sys.extended_properties ep \
@@ -4457,6 +4460,14 @@ mod tests {
         assert!(!sql.contains("o.type IN ('U','V')"));
         assert!(sql.contains("ROW_NUMBER() OVER (ORDER BY o.name)"));
         assert!(sql.contains("__dbx_rn > 100 AND __dbx_rn <= 201"));
+    }
+
+    #[test]
+    fn sqlserver_table_objects_pagination_names_every_derived_column() {
+        let sql = sqlserver_table_objects_sql("dbo", None, Some(100), Some(100));
+
+        assert!(sql.contains("END AS TABLE_TYPE, ep.value AS TABLE_COMMENT"));
+        assert!(!sql.contains("END, ep.value AS TABLE_COMMENT"));
     }
 
     #[test]
