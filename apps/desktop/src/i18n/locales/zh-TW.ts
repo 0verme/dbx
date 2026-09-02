@@ -615,6 +615,7 @@ export default withEnglishFallback({
     redisKeyTemplatesHint: "每行一個模板。設定後會覆寫全域 Redis Key 模板，僅對此連線生效。",
     etcdEndpoints: "端點",
     etcdEndpointsHint: "每行一個端點。留空則使用上方的主機和連接埠。",
+    etcdV2ApiHint: "v2 API 僅適用於 etcd 2.x，或以 --enable-v2 啟動的 etcd 3.0–3.5。不支援鍵歷史、Lease、壓縮和碎片整理。",
     etcdGrpcMaxInbound: "gRPC 接收上限（MiB）",
     etcdGrpcMaxInboundHint: "單筆 etcd 回應的最大大小。預設 32 MiB，最高 256 MiB。",
     etcdCaCertPlaceholder: "/path/to/ca.crt",

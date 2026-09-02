@@ -615,6 +615,7 @@ export default withEnglishFallback({
     redisKeyTemplatesHint: "Um modelo por linha. Quando definido, substitui os modelos globais nesta conexão.",
     etcdEndpoints: "Endpoints",
     etcdEndpointsHint: "Um endpoint por linha. Deixe em branco para usar o host e porta acima.",
+    etcdV2ApiHint: "A API v2 está disponível apenas no etcd 2.x, ou no etcd 3.0–3.5 iniciado com --enable-v2. Histórico de chaves, leases, compactação e desfragmentação não estão disponíveis.",
     etcdGrpcMaxInbound: "Limite de recebimento gRPC (MiB)",
     etcdGrpcMaxInboundHint: "Tamanho máximo de uma resposta do etcd. O padrão é 32 MiB e o limite é 256 MiB.",
     etcdCaCertPlaceholder: "/caminho/para/ca.crt",

@@ -614,6 +614,7 @@ export default withEnglishFallback({
     redisKeyTemplatesHint: "1行に1つのテンプレート。設定するとこの接続のグローバルテンプレートを上書きします。",
     etcdEndpoints: "エンドポイント",
     etcdEndpointsHint: "1行に1つのエンドポイント。空白の場合、上のホストとポートを使用します。",
+    etcdV2ApiHint: "v2 API は etcd 2.x、または --enable-v2 を指定して起動した etcd 3.0–3.5 でのみ使用できます。キー履歴、リース、コンパクション、デフラグは利用できません。",
     etcdGrpcMaxInbound: "gRPC 受信上限（MiB）",
     etcdGrpcMaxInboundHint: "etcd 応答1件の最大サイズです。既定値は32 MiB、上限は256 MiBです。",
     etcdCaCertPlaceholder: "/path/to/ca.crt",

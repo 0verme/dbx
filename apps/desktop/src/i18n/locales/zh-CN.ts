@@ -570,6 +570,7 @@ export default withEnglishFallback({
     redisKeyTemplatesHint: "每行一个模板。填写后将覆盖全局 Redis Key 模板，仅对本连接生效。",
     etcdEndpoints: "Endpoints",
     etcdEndpointsHint: "每行一个 endpoint。留空时使用上面的 host 和端口。",
+    etcdV2ApiHint: "v2 API 仅适用于 etcd 2.x，或以 --enable-v2 启动的 etcd 3.0–3.5。不支持键历史、Lease、压缩和碎片整理。",
     etcdGrpcMaxInbound: "gRPC 接收上限（MiB）",
     etcdGrpcMaxInboundHint: "单条 etcd 响应的最大大小。默认 32 MiB，最高 256 MiB。",
     etcdCaCertPlaceholder: "/path/to/ca.crt",

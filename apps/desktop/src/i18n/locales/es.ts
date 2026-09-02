@@ -615,6 +615,7 @@ export default withEnglishFallback({
     redisKeyTemplatesHint: "Una plantilla por línea. Si se define, reemplaza las plantillas globales para esta conexión.",
     etcdEndpoints: "Endpoints",
     etcdEndpointsHint: "Una entrada por línea. Déjalo en blanco para usar el host y puerto de arriba.",
+    etcdV2ApiHint: "La API v2 solo está disponible en etcd 2.x, o etcd 3.0–3.5 iniciado con --enable-v2. El historial de claves, los leases, la compactación y la desfragmentación no están disponibles.",
     etcdGrpcMaxInbound: "Límite de recepción gRPC (MiB)",
     etcdGrpcMaxInboundHint: "Tamaño máximo de una respuesta de etcd. El valor predeterminado es 32 MiB y el máximo es 256 MiB.",
     etcdCaCertPlaceholder: "/ruta/a/ca.crt",

@@ -639,6 +639,7 @@ export default withEnglishFallback({
     redisKeyTemplatesHint: "한 줄에 하나의 템플릿. 설정하면 이 연결의 전역 템플릿을 덮어씁니다.",
     etcdEndpoints: "엔드포인트",
     etcdEndpointsHint: "한 줄에 하나의 엔드포인트. 비워두면 위의 호스트와 포트를 사용합니다.",
+    etcdV2ApiHint: "v2 API는 etcd 2.x 또는 --enable-v2로 시작한 etcd 3.0–3.5에서만 사용할 수 있습니다. 키 히스토리, 리스, 컨팩션, 조각모음은 지원되지 않습니다.",
     etcdGrpcMaxInbound: "gRPC 수신 제한 (MiB)",
     etcdGrpcMaxInboundHint: "단일 etcd 응답의 최대 크기입니다. 기본값은 32 MiB이며 최대 256 MiB입니다.",
     etcdCaCertPlaceholder: "/path/to/ca.crt",

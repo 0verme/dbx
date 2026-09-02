@@ -645,6 +645,7 @@ export default {
     redisKeyTemplatesHint: "One template per line. When set, these replace the global Redis key templates for this connection.",
     etcdEndpoints: "Endpoints",
     etcdEndpointsHint: "One endpoint per line. Leave blank to use the host and port above.",
+    etcdV2ApiHint: "The v2 API is only available on etcd 2.x, or etcd 3.0–3.5 started with --enable-v2. Key history, leases, compaction, and defragmentation are not available.",
     etcdGrpcMaxInbound: "gRPC receive limit (MiB)",
     etcdGrpcMaxInboundHint: "Maximum size of one etcd response. Defaults to 32 MiB and is capped at 256 MiB.",
     etcdCaCertPlaceholder: "/path/to/ca.crt",
