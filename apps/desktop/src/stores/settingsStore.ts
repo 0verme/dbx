@@ -64,8 +64,16 @@ export interface McpConnectionPolicy {
   readOnly: boolean;
   allowDangerousSql: boolean;
   executionModeConfigured: boolean;
+  executionModePolicyVersion: number | null;
   databaseScope: "all" | "selected" | "none";
   allowedDatabases: string[];
+  databasePolicies: McpDatabasePolicy[];
+}
+
+export interface McpDatabasePolicy {
+  databaseName: string;
+  readOnly: boolean;
+  allowDangerousSql: boolean;
 }
 
 export type DesktopIconTheme = "default" | "black";
@@ -116,13 +124,33 @@ export function normalizeMcpGlobalPolicy(policy: Partial<McpGlobalPolicy> | null
   const connectionPolicies = Object.values(
     (policy?.connectionPolicies ?? []).reduce<Record<string, McpConnectionPolicy>>((rules, rule) => {
       if (!rule || typeof rule.connectionId !== "string" || !rule.connectionId.trim()) return rules;
+      const databaseScope = rule.databaseScope === "selected" || rule.databaseScope === "none" ? rule.databaseScope : "all";
+      const allowedDatabases = databaseScope === "selected" ? [...new Set((rule.allowedDatabases ?? []).filter((database): database is string => typeof database === "string" && database.trim().length > 0).map((database) => database.trim()))] : [];
+      const allowedDatabaseNames = new Set(allowedDatabases);
+      const databasePolicies = Object.values(
+        (databaseScope === "selected" ? (rule.databasePolicies ?? []) : []).reduce<Record<string, McpDatabasePolicy>>((policies, databasePolicy) => {
+          if (!databasePolicy || typeof databasePolicy.databaseName !== "string") return policies;
+          const databaseName = databasePolicy.databaseName.trim();
+          if (!databaseName || !allowedDatabaseNames.has(databaseName)) return policies;
+          const current = policies[databaseName];
+          const readOnly = current?.readOnly === true || databasePolicy.readOnly === true;
+          policies[databaseName] = {
+            databaseName,
+            readOnly,
+            allowDangerousSql: !readOnly && (current ? current.allowDangerousSql && databasePolicy.allowDangerousSql === true : databasePolicy.allowDangerousSql === true),
+          };
+          return policies;
+        }, {}),
+      );
       rules[rule.connectionId.trim()] = {
         connectionId: rule.connectionId.trim(),
         readOnly: rule.readOnly === true,
         allowDangerousSql: rule.readOnly !== true && rule.allowDangerousSql === true,
         executionModeConfigured: rule.executionModeConfigured !== false,
-        databaseScope: rule.databaseScope === "selected" || rule.databaseScope === "none" ? rule.databaseScope : "all",
-        allowedDatabases: rule.databaseScope === "selected" ? [...new Set((rule.allowedDatabases ?? []).filter((database): database is string => typeof database === "string" && database.trim().length > 0).map((database) => database.trim()))] : [],
+        executionModePolicyVersion: rule.executionModePolicyVersion === 1 ? 1 : null,
+        databaseScope,
+        allowedDatabases,
+        databasePolicies,
       };
       return rules;
     }, {}),
