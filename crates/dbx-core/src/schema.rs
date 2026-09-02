@@ -8117,6 +8117,7 @@ fn sqlite_object_type(kind: &db::ObjectSourceKind) -> &'static str {
         | db::ObjectSourceKind::Event
         | db::ObjectSourceKind::Sequence
         | db::ObjectSourceKind::Synonym
+        | db::ObjectSourceKind::Job
         | db::ObjectSourceKind::Package
         | db::ObjectSourceKind::PackageBody
         | db::ObjectSourceKind::Type
@@ -8133,6 +8134,7 @@ fn sqlserver_object_type_filter(kind: &db::ObjectSourceKind) -> &'static str {
         db::ObjectSourceKind::Event
         | db::ObjectSourceKind::Sequence
         | db::ObjectSourceKind::Synonym
+        | db::ObjectSourceKind::Job
         | db::ObjectSourceKind::Package
         | db::ObjectSourceKind::PackageBody
         | db::ObjectSourceKind::Type
@@ -8378,6 +8380,7 @@ fn postgres_object_source_sql_inner(
         db::ObjectSourceKind::Trigger
         | db::ObjectSourceKind::Event
         | db::ObjectSourceKind::Synonym
+        | db::ObjectSourceKind::Job
         | db::ObjectSourceKind::Package
         | db::ObjectSourceKind::PackageBody
         | db::ObjectSourceKind::Type
@@ -8386,6 +8389,12 @@ fn postgres_object_source_sql_inner(
 }
 
 pub fn oracle_object_source_sql(schema: &str, name: &str, kind: &db::ObjectSourceKind) -> String {
+    // Scheduler jobs are currently an Xugu-specific Agent object. Do not
+    // manufacture an Oracle DBMS_METADATA request for a kind Oracle does not
+    // expose through this generic source-SQL helper.
+    if matches!(kind, db::ObjectSourceKind::Job) {
+        return String::new();
+    }
     let object_type = match kind {
         db::ObjectSourceKind::View => "VIEW",
         db::ObjectSourceKind::MaterializedView => "MATERIALIZED_VIEW",
@@ -8395,6 +8404,7 @@ pub fn oracle_object_source_sql(schema: &str, name: &str, kind: &db::ObjectSourc
         db::ObjectSourceKind::Event => "EVENT",
         db::ObjectSourceKind::Sequence => "SEQUENCE",
         db::ObjectSourceKind::Synonym => "SYNONYM",
+        db::ObjectSourceKind::Job => "",
         db::ObjectSourceKind::Package => "PACKAGE",
         db::ObjectSourceKind::PackageBody => "PACKAGE_BODY",
         db::ObjectSourceKind::Type => "TYPE",
@@ -8452,6 +8462,7 @@ pub fn mysql_object_source_sql(database: &str, name: &str, kind: &db::ObjectSour
         db::ObjectSourceKind::Event => format!("SHOW CREATE EVENT {qualified_name}"),
         db::ObjectSourceKind::Sequence
         | db::ObjectSourceKind::Synonym
+        | db::ObjectSourceKind::Job
         | db::ObjectSourceKind::Package
         | db::ObjectSourceKind::PackageBody
         | db::ObjectSourceKind::Type
@@ -8488,6 +8499,7 @@ pub(crate) fn mysql_object_source_ddl_column_index(kind: &db::ObjectSourceKind) 
         | db::ObjectSourceKind::Trigger
         | db::ObjectSourceKind::Sequence
         | db::ObjectSourceKind::Synonym
+        | db::ObjectSourceKind::Job
         | db::ObjectSourceKind::Package
         | db::ObjectSourceKind::PackageBody
         | db::ObjectSourceKind::Type
@@ -9706,6 +9718,7 @@ mod object_source_tests {
             oracle_object_source_sql("HR", "ORDER_SEQ", &ObjectSourceKind::Sequence),
             "SELECT DBMS_METADATA.GET_DDL('SEQUENCE', 'ORDER_SEQ', 'HR') FROM DUAL"
         );
+        assert_eq!(oracle_object_source_sql("HR", "NIGHTLY_JOB", &ObjectSourceKind::Job), "");
     }
 
     #[test]
