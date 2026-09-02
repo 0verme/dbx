@@ -140,6 +140,7 @@ import { computePasteCaretResyncTarget } from "@/lib/editor/queryEditorPasteCare
 import { queryEditorCommentTokens, queryEditorLineCommentToken } from "@/lib/editor/queryEditorLineComment";
 import { createShellLineCommentHighlight } from "@/lib/editor/codemirrorShellLineCommentHighlight";
 import { extendQueryEditorSelection, runQueryEditorAltExtendSelection } from "@/lib/editor/queryEditorExtendSelection";
+import { addNextQueryEditorSelectionOccurrence, selectAllQueryEditorSelectionOccurrences } from "@/lib/editor/queryEditorOccurrenceSelection";
 import { createQueryEditorStringMouseSelection } from "@/lib/editor/queryEditorStringMouseSelection";
 import { createQueryEditorCompletionShortcutBindings } from "@/lib/editor/queryEditorCompletionShortcut";
 import { createQueryEditorSelectionCaseShortcutBindings } from "@/lib/editor/queryEditorSelectionCaseShortcut";
@@ -1950,6 +1951,18 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
       disabled: props.readOnly || !canCopySelectedSql.value,
       icon: List,
     },
+    {
+      label: t("editor.contextMenu.addNextSelectionOccurrence"),
+      action: addNextSelectionOccurrenceFromContextMenu,
+      icon: TextSelect,
+      shortcut: shortcuts.addNextSelectionOccurrence,
+    },
+    {
+      label: t("editor.contextMenu.selectAllSelectionOccurrences"),
+      action: selectAllSelectionOccurrencesFromContextMenu,
+      icon: TextSelect,
+      shortcut: shortcuts.selectAllSelectionOccurrences,
+    },
     { label: "", separator: true },
     {
       label: t("editor.contextMenu.findReplace"),
@@ -2114,6 +2127,8 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
         ...binding(shortcuts.redo, (view) => codeMirrorRedo?.(view) ?? false),
         ...binding(shortcuts.selectAll, (view) => codeMirrorSelectAll?.(view) ?? false),
         ...binding(shortcuts.extendSelection, extendQueryEditorSelectionForView),
+        ...binding(shortcuts.addNextSelectionOccurrence, addNextQueryEditorSelectionOccurrence),
+        ...binding(shortcuts.selectAllSelectionOccurrences, selectAllQueryEditorSelectionOccurrences),
         ...createQueryEditorSelectionCaseShortcutBindings(shortcuts.uppercaseSelection, () => convertSelectedSqlCase("upper")),
         ...createQueryEditorSelectionCaseShortcutBindings(shortcuts.lowercaseSelection, () => convertSelectedSqlCase("lower")),
         ...binding(shortcuts.toggleLineComment, (view) => codeMirrorToggleLineComment?.(view) ?? false),
@@ -2200,6 +2215,18 @@ function extendQueryEditorSelectionForView(currentView: EditorViewType): boolean
     dialect: sqlBehaviorDialect(),
     language: queryEditorSelectionLanguage(),
   });
+}
+
+function addNextSelectionOccurrenceFromContextMenu() {
+  if (!view.value) return;
+  addNextQueryEditorSelectionOccurrence(view.value);
+  focusEditor();
+}
+
+function selectAllSelectionOccurrencesFromContextMenu() {
+  if (!view.value) return;
+  selectAllQueryEditorSelectionOccurrences(view.value);
+  focusEditor();
 }
 
 function acceptCompletionOrNextSnippetField(view: EditorViewType): boolean {
