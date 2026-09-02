@@ -7,6 +7,7 @@ const template = readFileSync(resolve(process.cwd(), "src-tauri/windows/nsis/ins
 const win7Config = JSON.parse(readFileSync(resolve(process.cwd(), "src-tauri/tauri.webview2-win7-fixed.conf.json"), "utf8"));
 const win7RuntimeScript = readFileSync(resolve(process.cwd(), ".github/scripts/prepare-webview2-win7-runtime.ps1"), "utf8");
 const win7PeAuditScript = readFileSync(resolve(process.cwd(), ".github/scripts/assert-win7-pe-compat.ps1"), "utf8");
+const win7LoaderAuditScript = readFileSync(resolve(process.cwd(), ".github/scripts/assert-webview2-win7-loader.ps1"), "utf8");
 const win7RuntimeProbeScript = readFileSync(resolve(process.cwd(), ".github/scripts/assert-webview2-win7-runtime.ps1"), "utf8");
 const win7InstallerAuditScript = readFileSync(resolve(process.cwd(), ".github/scripts/assert-win7-installer-content.ps1"), "utf8");
 const appCargoToml = readFileSync(resolve(process.cwd(), "src-tauri/Cargo.toml"), "utf8");
@@ -125,6 +126,30 @@ describe("Windows 7 fixed WebView2 runtime bundle", () => {
     expect(win7PeAuditScript).toContain('"ucrtbase.dll"');
     expect(win7PeAuditScript).toContain('"api-ms-win-crt-"');
     expect(win7PeAuditScript).toContain("dumpbin.exe");
+  });
+
+  it("audits the linked WebView2 loader in the final Win7 binary", () => {
+    expect(win7LoaderAuditScript).toContain('"Failed to find the Web"');
+    expect(win7LoaderAuditScript).toContain('"Failed to find the app"');
+    expect(win7LoaderAuditScript).toContain('"Failed to find an inst"');
+    expect(win7LoaderAuditScript).toContain('"WebView2: Failed to find an installed"');
+    expect(win7LoaderAuditScript).toContain("GetEncoding(28591)");
+    expect(ciWorkflow).toContain("./.github/scripts/assert-webview2-win7-loader.ps1");
+    expect(releaseWorkflow).toContain("./.github/scripts/assert-webview2-win7-loader.ps1");
+  });
+
+  it("keeps compile caching away from the Win7 WebView2 loader patch", () => {
+    const releaseWin7Job = releaseWorkflow.slice(releaseWorkflow.indexOf("  build-windows-7-offline:"), releaseWorkflow.indexOf("  static-browser:"));
+    const ciWin7Job = ciWorkflow.slice(ciWorkflow.indexOf("  windows-win7-bundle:"), ciWorkflow.indexOf("  duckdb-windows-driver:"));
+
+    // The loader patch rewrites a file inside the cargo registry, which no
+    // compile cache can see. v0.6.0 linked a >= 1.0.1054.31 loader despite the
+    // patched 1.0.902.49 one being verified on disk, so neither Win7 job may
+    // route rustc through sccache until the loader is vendored into the tree.
+    expect(releaseWin7Job).not.toContain("RUSTC_WRAPPER");
+    expect(releaseWin7Job).not.toContain("sccache-action");
+    expect(ciWin7Job).not.toContain("RUSTC_WRAPPER");
+    expect(ciWin7Job).not.toContain("sccache-action");
   });
 
   it("probes the fixed runtime through the Win7-compatible loader", () => {
