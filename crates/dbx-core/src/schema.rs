@@ -2551,6 +2551,11 @@ async fn list_tables_once(
                 .await
                 .map(|tables| filter_table_infos(tables, filter, limit, offset, object_types, table_name_filter))
         }
+        PoolKind::Mysql(p, _) if db_config.as_ref().is_some_and(db::oceanbase_mysql::is_config) => {
+            db::oceanbase_mysql::list_tables(p, mysql_table_metadata_catalog(database, schema))
+                .await
+                .map(|tables| filter_table_infos(tables, filter, limit, offset, object_types, table_name_filter))
+        }
         PoolKind::Mysql(p, mode) => {
             if *mode == MysqlMode::OceanBaseOracle {
                 let tables = db::ob_oracle::list_tables(p, schema).await?;
@@ -5984,6 +5989,8 @@ async fn list_objects_once(
                 db::manticoresearch::list_objects(p, database).await.map(unpaged_object_list)
             } else if db_config.as_ref().is_some_and(db::starrocks::is_config) {
                 db::starrocks::list_table_objects(p, database).await.map(unpaged_object_list)
+            } else if db_config.as_ref().is_some_and(db::oceanbase_mysql::is_config) {
+                db::oceanbase_mysql::list_objects(p, database).await.map(unpaged_object_list)
             } else if db_config.as_ref().is_some_and(db::mysql_compatible::uses_show_metadata) {
                 db::mysql::list_table_objects_show(p, database).await.map(unpaged_object_list)
             } else if mysql_table_list_source_for_config(db_config.as_ref()) == MysqlTableListSource::ShowFullTables {
