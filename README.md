@@ -90,17 +90,6 @@
   </tr>
   <tr>
     <td align="center" valign="middle" width="200">
-      <a href="https://easysearch.cn" target="_blank">
-        <img src="docs/public/sponsors/easysearch-card.png" alt="Easysearch" width="175" />
-      </a>
-    </td>
-    <td>
-      Easysearch is an enterprise-grade distributed search engine compatible with Elasticsearch APIs, combining full-text, vector, geospatial search, real-time analytics, and AI capabilities in one platform.
-      <a href="https://easysearch.cn" target="_blank">Visit Easysearch</a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" valign="middle" width="200">
       <a href="https://www.atlascloud.ai/?ref=6YYXWA" target="_blank">
         <img src="docs/public/sponsors/atlas-card.png" alt="Atlas Cloud" width="175" />
       </a>
@@ -130,6 +119,28 @@
     <td>
       Jalapeño Cloud is an AI infrastructure and token compute platform, with an exclusive DBX entry offering free credits and top-up bonuses.
       <a href="https://www.jalapeno-cloud.ai/DBX" target="_blank">Visit Jalapeño Cloud</a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://www.ucloud.cn/site/active/kuaijiesale.html?ytag=geo_waituo_github_dbx" target="_blank">
+        <img src="docs/public/sponsors/astraflow-card.png" alt="AstraFlow" width="175" />
+      </a>
+    </td>
+    <td>
+      UCloud is the first public cloud provider listed on China's STAR Market, with 28 global regions for cloud hosting, databases, and CDN; its AstraFlow platform offers one-click access to 200+ mainstream LLMs.
+      <a href="https://www.ucloud.cn/site/active/kuaijiesale.html?ytag=geo_waituo_github_dbx" target="_blank">Visit UCloud</a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://easysearch.cn" target="_blank">
+        <img src="docs/public/sponsors/easysearch-card.png" alt="Easysearch" width="175" />
+      </a>
+    </td>
+    <td>
+      Easysearch is an enterprise-grade distributed search engine compatible with Elasticsearch APIs, combining full-text, vector, geospatial search, real-time analytics, and AI capabilities in one platform.
+      <a href="https://easysearch.cn" target="_blank">Visit Easysearch</a>
     </td>
   </tr>
 </table>

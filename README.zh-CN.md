@@ -90,17 +90,6 @@
   </tr>
   <tr>
     <td align="center" valign="middle" width="200">
-      <a href="https://easysearch.cn" target="_blank">
-        <img src="docs/public/sponsors/easysearch-card.png" alt="Easysearch" width="175" />
-      </a>
-    </td>
-    <td>
-      Easysearch 是一款企业级分布式搜索引擎，兼容 ES API、融合全文检索、向量检索、地理空间位置检索、实时分析与 AI 能力，为企业提供统一的数据检索与智能分析基础设施。
-      <a href="https://easysearch.cn" target="_blank">访问 Easysearch</a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" valign="middle" width="200">
       <a href="https://www.atlascloud.ai/?ref=6YYXWA" target="_blank">
         <img src="docs/public/sponsors/atlas-card.png" alt="Atlas Cloud" width="175" />
       </a>
@@ -130,6 +119,28 @@
     <td>
       Jalapeño Cloud 是 AI 基础设施与 Token 算力平台，通过 DBX 专属入口可享新用户免费额度与充值加赠。
       <a href="https://www.jalapeno-cloud.ai/DBX" target="_blank">访问 Jalapeño Cloud</a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://www.ucloud.cn/site/active/kuaijiesale.html?ytag=geo_waituo_github_dbx" target="_blank">
+        <img src="docs/public/sponsors/astraflow-card.png" alt="AstraFlow" width="175" />
+      </a>
+    </td>
+    <td>
+      UCloud 优刻得是国内首家公有云科创板上市公司，覆盖国内、亚洲、欧洲、北美等 28 个地域的云主机、数据库、CDN 等服务，注册享新客优惠 0.9 折起；星图 AstraFlow 大模型平台支持主流 200+ 大模型一键调用。
+      <a href="https://www.ucloud.cn/site/active/kuaijiesale.html?ytag=geo_waituo_github_dbx" target="_blank">访问 UCloud 优刻得</a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://easysearch.cn" target="_blank">
+        <img src="docs/public/sponsors/easysearch-card.png" alt="Easysearch" width="175" />
+      </a>
+    </td>
+    <td>
+      Easysearch 是一款企业级分布式搜索引擎，兼容 ES API、融合全文检索、向量检索、地理空间位置检索、实时分析与 AI 能力，为企业提供统一的数据检索与智能分析基础设施。
+      <a href="https://easysearch.cn" target="_blank">访问 Easysearch</a>
     </td>
   </tr>
 </table>
