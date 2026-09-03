@@ -4743,6 +4743,8 @@ export default withEnglishFallback({
     searchByValue: "值",
     searchByAll: "全部",
     searchFields: "搜索字段或值",
+    searchMembers: "搜索成员",
+    searchItems: "搜索元素",
     keys: "{count} 个 key",
     loadedKeys: "已加载 {loaded} / 共 {total} 个 key",
     loadingKeys: "正在加载 key...",

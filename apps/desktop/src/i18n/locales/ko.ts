@@ -4181,6 +4181,8 @@ export default withEnglishFallback({
     searchByValue: "값",
     searchByAll: "전체",
     searchFields: "필드와 값 검색",
+    searchMembers: "멤버 검색",
+    searchItems: "항목 검색",
     keys: "키 {count}개",
     loadedKeys: "{total}개 중 {loaded}개 키 로드됨",
     loadingKeys: "키를 불러오는 중...",

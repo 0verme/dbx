@@ -3889,6 +3889,8 @@ export default withEnglishFallback({
     searchByValue: "值",
     searchByAll: "全部",
     searchFields: "搜尋欄位或值",
+    searchMembers: "搜尋成員",
+    searchItems: "搜尋元素",
     keys: "{count} 個 key",
     loadedKeys: "已載入 {loaded} / 共 {total} 個 key",
     loadingKeys: "正在載入 key……",

@@ -4566,6 +4566,8 @@ export default withEnglishFallback({
     searchByValue: "Valor",
     searchByAll: "Todo",
     searchFields: "Buscar campos y valores",
+    searchMembers: "Buscar miembros",
+    searchItems: "Buscar elementos",
     keys: "{count} claves",
     loadedKeys: "{loaded} / {total} claves cargadas",
     loadingKeys: "Cargando claves...",
