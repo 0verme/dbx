@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, useId, watch } from "vue";
-import { Compartment, type Extension } from "@codemirror/state";
+import { Compartment, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { StreamLanguage, ensureSyntaxTree } from "@codemirror/language";
-import type { EditorView } from "@codemirror/view";
+import { Decoration, EditorView } from "@codemirror/view";
 import { Archive, ArrowLeftRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Columns3, Download, FileClock, FileInput, FileText, Loader2, Network, Plus, RefreshCw, Save, Search, Send, Server, Trash2, X } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,7 @@ import { useTheme } from "@/composables/useTheme";
 import { executeWithProductionContextGuard } from "@/lib/database/productionExecutionGuard";
 import { productionContextForDatabase } from "@/lib/database/productionSafety";
 import { connectionIsEffectivelyReadOnly } from "@/lib/database/readOnlyWriteAccess";
+import { validateNacosConfigContent, type NacosConfigDiagnostic } from "@/lib/nacos/nacosConfigValidation";
 import type { NacosConfigEditorViewport } from "@/types/database";
 import type {
   NacosBatchPreview,
@@ -131,6 +132,8 @@ const savingConfig = ref(false);
 const deletingConfig = ref(false);
 const configAdvancedOpen = ref(false);
 const configSaveNotice = ref("");
+const configValidationOpen = ref(false);
+const configValidationDiagnostics = ref<NacosConfigDiagnostic[]>([]);
 const pendingConfigSave = ref(false);
 const pendingDeleteConfig = ref<NacosConfigDeleteSnapshot | null>(null);
 interface NacosBatchDeleteSnapshot {
@@ -205,9 +208,12 @@ const configEditorTheme = new Compartment();
 const configEditorFontTheme = new Compartment();
 const configEditorWordWrap = new Compartment();
 const configEditorLanguage = new Compartment();
+const configValidationHighlight = new Compartment();
+const setConfigValidationHighlight = StateEffect.define<NacosConfigDiagnostic[]>();
 const configListRequestGuard = createNacosLatestRequestGuard();
 const configDetailRequestGuard = createNacosLatestRequestGuard();
 let configEditorGeneration = 0;
+let configValidationHighlightActive = false;
 let configEditorSessionId = 0;
 let latestConfigSaveRequestId = 0;
 
@@ -507,6 +513,37 @@ async function configLanguageExtension(format: string): Promise<Extension[]> {
   }
 }
 
+function configValidationHighlightExtension() {
+  const decorationsFor = (state: import("@codemirror/state").EditorState, diagnostics: NacosConfigDiagnostic[]) => {
+    const ranges = diagnostics
+      .filter(() => state.doc.length > 0)
+      .map((diagnostic) => {
+        const from = Math.min(Math.max(0, diagnostic.from), state.doc.length - 1);
+        const to = Math.min(state.doc.length, Math.max(diagnostic.to, from + 1));
+        return Decoration.mark({
+          class: "cm-nacos-config-validation-error",
+          attributes: { title: diagnostic.message },
+        }).range(from, to);
+      });
+    return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
+  };
+
+  const field = StateField.define({
+    create() {
+      return Decoration.none;
+    },
+    update(decorations, transaction) {
+      for (const effect of transaction.effects) {
+        if (effect.is(setConfigValidationHighlight)) return decorationsFor(transaction.state, effect.value);
+      }
+      return transaction.docChanged ? decorations.map(transaction.changes) : decorations;
+    },
+    provide: (field) => EditorView.decorations.from(field),
+  });
+
+  return field;
+}
+
 async function mountConfigEditor() {
   await nextTick();
   if (!configEditorHost.value || configEditorView.value || !selectedConfig.value) return;
@@ -559,6 +596,7 @@ async function mountConfigEditor() {
         },
       }),
       configEditorLanguage.of(language),
+      configValidationHighlight.of(configValidationHighlightExtension()),
       configEditorTheme.of(theme),
       configEditorFontTheme.of(editorFontTheme(EditorView, editorSettings.fontSize, editorSettings.fontFamily, { fixedHeight: true, scrollable: true })),
       configEditorWordWrap.of(editorSettings.wordWrap ? EditorView.lineWrapping : []),
@@ -568,6 +606,8 @@ async function mountConfigEditor() {
         if (!update.docChanged || generation !== configEditorGeneration || editorSessionId !== configEditorSessionId) return;
         configContent.value = update.state.doc.toString();
         configSaveNotice.value = "";
+        clearConfigValidation(false);
+        refreshConfigValidationHighlights(update.state.doc.toString(), generation, editorSessionId);
       }),
       EditorView.theme({
         "&": {
@@ -754,9 +794,58 @@ function observeConfigListViewport(element: HTMLElement | null) {
 function inferConfigFormat(dataId: string): string {
   const ext = dataId.trim().toLowerCase().split(".").pop() || "";
   if (ext === "yml") return "yaml";
-  if (["yaml", "json", "xml", "html", "properties", "text"].includes(ext)) return ext;
+  if (["yaml", "json", "xml", "html", "properties", "toml", "text"].includes(ext)) return ext;
   if (ext === "txt") return "text";
   return "";
+}
+
+function clearConfigValidation(clearHighlight = true) {
+  configValidationOpen.value = false;
+  configValidationDiagnostics.value = [];
+  if (clearHighlight) {
+    configValidationHighlightActive = false;
+    configEditorView.value?.dispatch({ effects: setConfigValidationHighlight.of([]) });
+  }
+}
+
+function refreshConfigValidationHighlights(content: string, generation: number, editorSessionId: number) {
+  if (!configValidationHighlightActive) return;
+  queueMicrotask(() => {
+    const view = configEditorView.value;
+    if (!view || !configValidationHighlightActive || generation !== configEditorGeneration || editorSessionId !== configEditorSessionId || view.state.doc.toString() !== content) return;
+    const diagnostics = validateNacosConfigContent(content, configType.value);
+    configValidationDiagnostics.value = diagnostics;
+    view.dispatch({ effects: setConfigValidationHighlight.of(diagnostics) });
+    if (!diagnostics.length) configValidationHighlightActive = false;
+  });
+}
+
+function validateCurrentConfig(showSuccess = true): boolean {
+  if (!selectedConfig.value) return true;
+  const diagnostics = validateNacosConfigContent(configContent.value, configType.value);
+  configValidationDiagnostics.value = diagnostics;
+  configValidationHighlightActive = false;
+  configEditorView.value?.dispatch({ effects: setConfigValidationHighlight.of([]) });
+  if (diagnostics.length) {
+    configValidationOpen.value = true;
+    return false;
+  }
+  if (showSuccess) toast(t("nacos.validationPassed"), 2000);
+  return true;
+}
+
+function focusConfigValidationDiagnostic() {
+  const diagnostic = configValidationDiagnostics.value[0];
+  const view = configEditorView.value;
+  if (!diagnostic || !view) return;
+  configValidationOpen.value = false;
+  configValidationHighlightActive = true;
+  view.dispatch({
+    effects: setConfigValidationHighlight.of(configValidationDiagnostics.value),
+    selection: { anchor: diagnostic.from },
+    scrollIntoView: true,
+  });
+  view.focus();
 }
 
 function configFormatValue(item: Pick<NacosConfigItem, "dataId" | "configType">): string {
@@ -949,6 +1038,7 @@ function closePendingConfigMutationConfirmations() {
 
 async function selectConfig(item: NacosConfigItem) {
   closePendingConfigMutationConfirmations();
+  clearConfigValidation();
   const detailRequestId = configDetailRequestGuard.begin();
   configEditorSessionId += 1;
   const listItemHadFormat = !!configFormatValue(item);
@@ -1006,6 +1096,7 @@ async function selectConfig(item: NacosConfigItem) {
 
 function newConfig() {
   closePendingConfigMutationConfirmations();
+  clearConfigValidation();
   configDetailRequestGuard.invalidate();
   configEditorSessionId += 1;
   destroyConfigEditor();
@@ -1032,6 +1123,7 @@ function newConfig() {
 function saveConfigAsCopy() {
   if (!selectedConfig.value) return;
   closePendingConfigMutationConfirmations();
+  clearConfigValidation();
   configDetailRequestGuard.invalidate();
   configEditorSessionId += 1;
   const copy = createNacosSaveAsCopy({ ...selectedConfig.value, content: configContent.value, configType: configType.value });
@@ -1641,11 +1733,13 @@ async function setConfigFormat(format: string) {
   if (selectedConfig.value) selectedConfig.value.configType = format;
   if (selectedConfigOriginalKey.value) rememberConfigFormat({ ...selectedConfigOriginalKey.value, configType: format });
   configSaveNotice.value = "";
+  clearConfigValidation();
   await refreshConfigEditor();
 }
 
 function requestSaveConfig() {
   if (!selectedConfig.value || !canRequestConfigSave.value) return;
+  if (!validateCurrentConfig(false)) return;
   if (!isCreatingConfig.value && configContent.value !== originalConfigContent.value) {
     pendingConfigSave.value = true;
     return;
@@ -2880,6 +2974,10 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="nacos-editor-actions-primary flex shrink-0 items-center gap-1.5 bg-muted/15">
                   <div class="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+                  <Button size="sm" variant="outline" class="h-8 gap-1.5 px-3" :disabled="!selectedConfig || savingConfig" @click="validateCurrentConfig()">
+                    <CheckCircle2 class="h-3.5 w-3.5" />
+                    {{ t("nacos.validate") }}
+                  </Button>
                   <Button size="sm" class="h-8 gap-1.5 px-3" :disabled="!canRequestConfigSave || (!isCreatingConfig && !isConfigDirty)" @click="requestSaveConfig">
                     <Loader2 v-if="savingConfig" class="h-3.5 w-3.5 animate-spin" />
                     <Send v-else class="h-3.5 w-3.5" />
@@ -3164,6 +3262,30 @@ onBeforeUnmount(() => {
         </div>
       </Pane>
     </Splitpanes>
+
+    <Dialog :open="configValidationOpen" @update:open="configValidationOpen = $event">
+      <DialogContent class="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ t("nacos.validationErrorTitle") }}</DialogTitle>
+          <DialogDescription>{{ t("nacos.validationErrorDescription") }}</DialogDescription>
+        </DialogHeader>
+        <div v-if="configValidationDiagnostics.length" class="max-h-[min(50vh,24rem)] overflow-y-auto rounded-md border border-destructive/30 bg-destructive/5 text-sm">
+          <div v-for="(diagnostic, index) in configValidationDiagnostics" :key="`${diagnostic.from}-${diagnostic.to}-${index}`" class="border-b border-destructive/15 p-4 last:border-b-0">
+            <div class="min-w-0 space-y-2">
+              <p class="break-words font-medium text-destructive">{{ diagnostic.message }}</p>
+              <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>{{ t("nacos.validationLine", { line: diagnostic.line }) }}</span>
+                <span>{{ t("nacos.validationColumn", { column: diagnostic.column }) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button v-if="configValidationDiagnostics.length && configEditorView" variant="outline" @click="focusConfigValidationDiagnostic">{{ t("nacos.validationLocate") }}</Button>
+          <Button @click="configValidationOpen = false">{{ t("common.confirm") }}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <NacosConfigDiffDialog v-model:open="pendingConfigSave" :before="originalConfigContent" :after="configContent" :loading="savingConfig" @confirm="saveConfig" />
 
@@ -3472,6 +3594,15 @@ onBeforeUnmount(() => {
 
 .nacos-config-editor :deep(.cm-content ::selection) {
   background: var(--dbx-editor-selection-background, rgba(59, 130, 246, 0.35)) !important;
+}
+
+.nacos-config-editor :deep(.cm-nacos-config-validation-error) {
+  border-radius: 2px;
+  background: rgba(220, 38, 38, 0.16);
+  color: var(--destructive);
+  font-weight: 700;
+  text-decoration: underline wavy var(--destructive);
+  text-underline-offset: 3px;
 }
 
 .nacos-config-workbench {
