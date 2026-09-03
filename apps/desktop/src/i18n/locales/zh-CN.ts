@@ -4895,6 +4895,8 @@ export default withEnglishFallback({
     viewMember: "查看完整内容",
     copyMember: "复制成员",
     copyKeyName: "复制键名",
+    copyKeyPath: "复制路径",
+    deleteGroupKeys: "批量删除键",
     copied: "已复制",
     copyInsertStatement: "复制插入语句",
     copyInsertStatementBinary: "二进制数据无法生成插入语句",

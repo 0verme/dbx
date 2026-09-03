@@ -4735,6 +4735,8 @@ export default withEnglishFallback({
     viewMember: "完全な値を表示",
     copyMember: "メンバーをコピー",
     copyKeyName: "キー名をコピー",
+    copyKeyPath: "キーパスをコピー",
+    deleteGroupKeys: "キーを一括削除",
     copied: "コピーしました",
     copyInsertStatement: "INSERT文をコピー",
     copyInsertStatementBinary: "バイナリデータのINSERT文は生成できません",

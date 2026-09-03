@@ -4332,6 +4332,8 @@ export default withEnglishFallback({
     viewMember: "전체 값 보기",
     copyMember: "멤버 복사",
     copyKeyName: "키 이름 복사",
+    copyKeyPath: "키 경로 복사",
+    deleteGroupKeys: "키 일괄 삭제",
     copied: "복사했습니다",
     copyInsertStatement: "INSERT 구문 복사",
     copyInsertStatementBinary: "바이너리 데이터에 대한 INSERT 구문을 생성할 수 없습니다",

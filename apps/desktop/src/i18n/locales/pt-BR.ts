@@ -4708,6 +4708,8 @@ export default withEnglishFallback({
     viewMember: "Ver valor completo",
     copyMember: "Copiar membro",
     copyKeyName: "Copiar nome da chave",
+    copyKeyPath: "Copiar caminho da chave",
+    deleteGroupKeys: "Excluir chaves carregadas",
     copied: "Copiado",
     copyInsertStatement: "Copiar instrução de inserção",
     copyInsertStatementBinary: "Não é possível gerar instrução de inserção para dados binários",

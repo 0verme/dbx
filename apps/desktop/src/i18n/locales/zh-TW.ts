@@ -4032,6 +4032,8 @@ export default withEnglishFallback({
     viewMember: "檢視完整內容",
     copyMember: "複製成員",
     copyKeyName: "複製鍵名",
+    copyKeyPath: "複製路徑",
+    deleteGroupKeys: "批量刪除 key",
     copied: "已複製",
     copyInsertStatement: "複製為 INSERT 語句",
     copyInsertStatementBinary: "無法為二進位資料產生 INSERT 語句",

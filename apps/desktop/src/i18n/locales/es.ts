@@ -4708,6 +4708,8 @@ export default withEnglishFallback({
     viewMember: "Ver valor completo",
     copyMember: "Copiar miembro",
     copyKeyName: "Copiar nombre de clave",
+    copyKeyPath: "Copiar ruta de clave",
+    deleteGroupKeys: "Eliminar claves cargadas",
     copied: "Copiado",
     editMember: "Editar",
     jsonView: "Vista JSON",

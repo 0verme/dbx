@@ -4911,6 +4911,8 @@ export default {
     viewMember: "View full value",
     copyMember: "Copy member",
     copyKeyName: "Copy key name",
+    copyKeyPath: "Copy key path",
+    deleteGroupKeys: "Delete loaded keys",
     copied: "Copied",
     copyInsertStatement: "Copy Insert Statement",
     copyInsertStatementBinary: "Cannot generate insert statement for binary data",
