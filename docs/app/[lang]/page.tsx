@@ -311,6 +311,8 @@ const i18nText = {
     atlasCloudSponsorAction: "Visit Atlas Cloud",
     trustasiaSponsorDesc: "TrustAsia provides cloud-based code signing service for DBX, enabling trusted software through automated CI/CD builds.",
     trustasiaSponsorAction: "Visit TrustAsia",
+    jalapenoSponsorDesc: "Jalapeño Cloud is an AI infrastructure and token compute platform, with an exclusive DBX entry offering free credits and top-up bonuses.",
+    jalapenoSponsorAction: "Visit Jalapeño Cloud",
     footerTitle: "Ready to try DBX?",
     footerDesc: "Use the desktop app for local work, or deploy the Docker version for browser-based access.",
     release: "Latest release",
@@ -345,6 +347,8 @@ const i18nText = {
     atlasCloudSponsorAction: "访问 Atlas Cloud",
     trustasiaSponsorDesc: "由 TrustAsia 提供代码签名云签服务，实现 CICD 自动化构建可信软件。",
     trustasiaSponsorAction: "访问 TrustAsia",
+    jalapenoSponsorDesc: "Jalapeño Cloud 是 AI 基础设施与 Token 算力平台，通过 DBX 专属入口可享新用户免费额度与充值加赠。",
+    jalapenoSponsorAction: "访问 Jalapeño Cloud",
     footerTitle: "准备试试 DBX？",
     footerDesc: "本地工作使用桌面版，需要浏览器访问时部署 Docker 版。",
     release: "最新版本",
@@ -432,6 +436,14 @@ export default async function LandingPage({ params }: { params: Promise<{ lang: 
       logoClass: "w-full max-w-[120px] object-contain",
       description: t.trustasiaSponsorDesc,
       action: t.trustasiaSponsorAction,
+    },
+    {
+      name: "Jalapeño Cloud",
+      href: "https://www.jalapeno-cloud.ai/DBX",
+      logo: "/sponsors/jalapeno-card.png",
+      logoClass: "w-full max-w-[96px] object-contain",
+      description: t.jalapenoSponsorDesc,
+      action: t.jalapenoSponsorAction,
     },
   ];
 
