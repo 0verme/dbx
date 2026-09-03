@@ -3429,6 +3429,13 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
+  function markManualTransactionDirty(id: string) {
+    const tab = tabs.value.find((item) => item.id === id);
+    if (!tab?.txnSessionId) return;
+    const dbType = effectiveDatabaseTypeForConnection(useConnectionStore().getConfig(tab.connectionId));
+    if (dbType === "oracle") tab.oracleTxnPossiblyDirty = true;
+  }
+
   /** Reset only the Oracle sticky-dirty bit. Used when a session continues but
    *  the old dirty state must be discarded (e.g. idle-expiry recovery where the
    *  replacement session starts fresh). Full session cleanup goes through
@@ -7101,6 +7108,7 @@ export const useQueryStore = defineStore("query", () => {
     updateObjectBrowserViewport,
     updateNacosConfigEditorViewport,
     setAutoCommit,
+    markManualTransactionDirty,
     commitTransaction,
     rollbackTransaction,
     renameTab,
