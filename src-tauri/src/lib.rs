@@ -480,24 +480,8 @@ fn linux_appimage_requires_dmabuf_workaround(appimage: Option<&std::ffi::OsStr>)
     appimage.is_some_and(|value| !value.is_empty())
 }
 
-fn linux_appimage_wayland_backend_override(
-    appimage: Option<&std::ffi::OsStr>,
-    wayland_display: Option<&std::ffi::OsStr>,
-    gdk_backend: Option<&std::ffi::OsStr>,
-) -> Option<&'static str> {
-    if appimage.is_some() && wayland_display.is_some() && gdk_backend.is_none() {
-        // AppImage uses the host GTK/WebKitGTK stack. Prefer XWayland for the
-        // affected Wayland/EGL path, but keep Wayland and other compiled
-        // backends as fallbacks for systems without XWayland.
-        Some("x11,wayland,*")
-    } else {
-        None
-    }
-}
-
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn linux_uses_native_wayland(
-    appimage: Option<&std::ffi::OsStr>,
     wayland_display: Option<&std::ffi::OsStr>,
     session_type: Option<&std::ffi::OsStr>,
     gdk_backend: Option<&std::ffi::OsStr>,
@@ -509,8 +493,7 @@ fn linux_uses_native_wayland(
         return false;
     }
 
-    let automatic_backend = linux_appimage_wayland_backend_override(appimage, wayland_display, gdk_backend);
-    gdk_backend.or_else(|| automatic_backend.map(std::ffi::OsStr::new)).is_none_or(|backends| {
+    gdk_backend.is_none_or(|backends| {
         backends
             .to_string_lossy()
             .split(',')
@@ -537,7 +520,6 @@ fn apply_linux_webkit_rendering_workarounds() {
     let has_hardware_render_device =
         render_devices.iter().any(|device| !linux_drm_driver_is_software_only(device.driver.as_deref()));
     let uses_native_wayland = linux_uses_native_wayland(
-        appimage.as_deref(),
         std::env::var_os("WAYLAND_DISPLAY").as_deref(),
         std::env::var_os("XDG_SESSION_TYPE").as_deref(),
         std::env::var_os("GDK_BACKEND").as_deref(),
@@ -561,13 +543,6 @@ fn apply_linux_webkit_rendering_workarounds() {
         if let Some(value) = linux_webkit_environment_override(std::env::var_os(key).as_deref(), value) {
             std::env::set_var(key, value);
         }
-    }
-    if let Some(gdk_backend) = linux_appimage_wayland_backend_override(
-        appimage.as_deref(),
-        std::env::var_os("WAYLAND_DISPLAY").as_deref(),
-        std::env::var_os("GDK_BACKEND").as_deref(),
-    ) {
-        std::env::set_var("GDK_BACKEND", gdk_backend);
     }
 }
 
@@ -987,14 +962,13 @@ pub(crate) fn apply_desktop_settings(app: &tauri::AppHandle, desktop_settings: &
 mod tests {
     use super::{
         app_menu_copy_support_info_label, app_menu_quit_label, linux_appimage_requires_dmabuf_workaround,
-        linux_appimage_wayland_backend_override, linux_drm_driver_is_software_only,
-        linux_drm_render_devices_from_paths, linux_nvidia_driver_from_state, linux_pci_id_from_sysfs_value,
-        linux_selected_drm_render_device, linux_uses_native_wayland, linux_webkit_environment_override,
-        linux_webkit_rendering_workarounds, native_window_decorations_override, should_confirm_app_exit_request,
-        should_enable_single_instance, should_fallback_to_native_quit, should_hide_window_before_exit,
-        should_hide_window_on_close, should_setup_desktop_tray, should_show_main_window_after_setup,
-        should_show_main_window_before_setup_tasks, startup_data_dir_mode, tray_menu_labels_for_locale,
-        uses_application_level_icon, LinuxDrmRenderDevice, LinuxNvidiaDriver,
+        linux_drm_driver_is_software_only, linux_drm_render_devices_from_paths, linux_nvidia_driver_from_state,
+        linux_pci_id_from_sysfs_value, linux_selected_drm_render_device, linux_uses_native_wayland,
+        linux_webkit_environment_override, linux_webkit_rendering_workarounds, native_window_decorations_override,
+        should_confirm_app_exit_request, should_enable_single_instance, should_fallback_to_native_quit,
+        should_hide_window_before_exit, should_hide_window_on_close, should_setup_desktop_tray,
+        should_show_main_window_after_setup, should_show_main_window_before_setup_tasks, startup_data_dir_mode,
+        tray_menu_labels_for_locale, uses_application_level_icon, LinuxDrmRenderDevice, LinuxNvidiaDriver,
     };
     use crate::data_dir::DataDirMode;
     use std::ffi::OsStr;
@@ -1324,7 +1298,7 @@ mod tests {
         strix_halo_without_driver.driver = None;
         let adjacent_amd = drm_pci_render_device("/dev/dri/renderD128", "amdgpu", true, 0x1002, 0x1587);
         let native_wayland =
-            linux_uses_native_wayland(None, Some(OsStr::new("wayland-0")), Some(OsStr::new("wayland")), None);
+            linux_uses_native_wayland(Some(OsStr::new("wayland-0")), Some(OsStr::new("wayland")), None);
         assert!(native_wayland);
         assert_eq!(
             linux_webkit_rendering_workarounds(LinuxNvidiaDriver::None, true, Some(&strix_halo), native_wayland),
@@ -1346,14 +1320,13 @@ mod tests {
 
         for native_wayland in [
             linux_uses_native_wayland(
-                None,
                 Some(OsStr::new("wayland-0")),
                 Some(OsStr::new("wayland")),
                 Some(OsStr::new("x11")),
             ),
-            linux_uses_native_wayland(None, None, Some(OsStr::new("wayland")), None),
-            linux_uses_native_wayland(None, Some(OsStr::new("wayland-0")), None, None),
-            linux_uses_native_wayland(None, Some(OsStr::new("wayland-0")), Some(OsStr::new("x11")), None),
+            linux_uses_native_wayland(None, Some(OsStr::new("wayland")), None),
+            linux_uses_native_wayland(Some(OsStr::new("wayland-0")), None, None),
+            linux_uses_native_wayland(Some(OsStr::new("wayland-0")), Some(OsStr::new("x11")), None),
         ] {
             assert!(!native_wayland);
             assert_eq!(
@@ -1384,14 +1357,13 @@ mod tests {
     }
 
     #[test]
-    fn appimage_linux_webkit_quirk_respects_x11_first_and_explicit_wayland() {
-        let appimage = Some(OsStr::new("/opt/DBX.AppImage"));
+    fn linux_webkit_quirk_respects_explicit_gdk_backend() {
         let display = Some(OsStr::new("wayland-0"));
         let session = Some(OsStr::new("wayland"));
 
-        assert!(!linux_uses_native_wayland(appimage, display, session, None));
-        assert!(linux_uses_native_wayland(appimage, display, session, Some(OsStr::new("wayland"))));
-        assert!(!linux_uses_native_wayland(appimage, display, session, Some(OsStr::new("x11,wayland,*"))));
+        assert!(linux_uses_native_wayland(display, session, None));
+        assert!(linux_uses_native_wayland(display, session, Some(OsStr::new("wayland"))));
+        assert!(!linux_uses_native_wayland(display, session, Some(OsStr::new("x11,wayland,*"))));
     }
 
     #[test]
@@ -1412,28 +1384,6 @@ mod tests {
         assert!(!linux_drm_driver_is_software_only(Some("amdgpu")));
         assert!(!linux_drm_driver_is_software_only(Some("i915")));
         assert!(!linux_drm_driver_is_software_only(Some("nouveau")));
-    }
-
-    #[test]
-    fn prefers_x11_for_appimage_wayland_when_backend_is_not_user_configured() {
-        assert_eq!(
-            linux_appimage_wayland_backend_override(
-                Some(OsStr::new("/tmp/DBX.AppImage")),
-                Some(OsStr::new("wayland-0")),
-                None
-            ),
-            Some("x11,wayland,*")
-        );
-        assert_eq!(
-            linux_appimage_wayland_backend_override(
-                Some(OsStr::new("/tmp/DBX.AppImage")),
-                Some(OsStr::new("wayland-0")),
-                Some(OsStr::new("wayland"))
-            ),
-            None
-        );
-        assert_eq!(linux_appimage_wayland_backend_override(Some(OsStr::new("/tmp/DBX.AppImage")), None, None), None);
-        assert_eq!(linux_appimage_wayland_backend_override(None, Some(OsStr::new("wayland-0")), None), None);
     }
 }
 
