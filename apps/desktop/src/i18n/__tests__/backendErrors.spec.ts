@@ -385,9 +385,7 @@ describe("backend error translation", () => {
     };
     const summary = t("backendErrors.legacy");
 
-    expect(translateBackendError(t, error, `${summary}\n\nrelation missing_table does not exist`)).toBe(
-      `${summary}\n\nrelation missing_table does not exist`,
-    );
+    expect(translateBackendError(t, error, `${summary}\n\nrelation missing_table does not exist`)).toBe(`${summary}\n\nrelation missing_table does not exist`);
   });
 
   test("preserves JSON envelopes carried by strings and Error messages", () => {
