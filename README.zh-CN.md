@@ -121,6 +121,17 @@
       <a href="https://www.trustasia.com/ssl/trustasia/code-signing" target="_blank">访问 TrustAsia</a>
     </td>
   </tr>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://www.jalapeno-cloud.ai/DBX" target="_blank">
+        <img src="docs/public/sponsors/jalapeno-card.png" alt="Jalapeño Cloud" width="175" />
+      </a>
+    </td>
+    <td>
+      Jalapeño Cloud 是 AI 基础设施与 Token 算力平台，通过 DBX 专属入口可享新用户免费额度与充值加赠。
+      <a href="https://www.jalapeno-cloud.ai/DBX" target="_blank">访问 Jalapeño Cloud</a>
+    </td>
+  </tr>
 </table>
 
 ## 为什么选择 DBX？
