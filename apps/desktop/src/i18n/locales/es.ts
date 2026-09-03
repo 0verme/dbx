@@ -2002,6 +2002,7 @@ export default withEnglishFallback({
     columnRegularIndex: "Índice normal",
     tableInfoForeignKeys: "Claves foráneas",
     foreignKeyNavigate: "Ir a {table}",
+    openUrl: "Abrir URL en el navegador",
     tableInfoConstraints: "Restricciones",
     tableInfoConstraintDisabled: "Deshabilitada",
     tableInfoConstraintNotValidated: "Sin validar",

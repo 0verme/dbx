@@ -2143,6 +2143,7 @@ export default {
     columnRegularIndex: "Regular index",
     tableInfoForeignKeys: "Foreign Keys",
     foreignKeyNavigate: "Go to {table}",
+    openUrl: "Open URL in browser",
     tableInfoConstraints: "Constraints",
     tableInfoConstraintDisabled: "Disabled",
     tableInfoConstraintNotValidated: "Not validated",

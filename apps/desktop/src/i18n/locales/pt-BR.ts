@@ -1991,6 +1991,7 @@ export default withEnglishFallback({
     columnRegularIndex: "Índice comum",
     tableInfoForeignKeys: "Chaves Estrangeiras",
     foreignKeyNavigate: "Ir para {table}",
+    openUrl: "Abrir URL no navegador",
     tableInfoConstraints: "Restrições",
     tableInfoConstraintDisabled: "Desabilitada",
     tableInfoConstraintNotValidated: "Não validada",

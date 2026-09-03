@@ -2067,6 +2067,7 @@ export default withEnglishFallback({
     columnRegularIndex: "普通索引",
     tableInfoForeignKeys: "外键",
     foreignKeyNavigate: "跳转到 {table}",
+    openUrl: "在浏览器中打开 URL",
     tableInfoConstraints: "约束",
     tableInfoConstraintDisabled: "已禁用",
     tableInfoConstraintNotValidated: "未验证",

@@ -1994,6 +1994,7 @@ export default withEnglishFallback({
     columnRegularIndex: "一般索引",
     tableInfoForeignKeys: "外鍵",
     foreignKeyNavigate: "跳轉到 {table}",
+    openUrl: "在瀏覽器中開啟 URL",
     tableInfoConstraints: "約束",
     tableInfoConstraintDisabled: "已停用",
     tableInfoConstraintNotValidated: "未驗證",

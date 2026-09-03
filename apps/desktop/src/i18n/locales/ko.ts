@@ -1965,6 +1965,7 @@ export default withEnglishFallback({
     columnRegularIndex: "일반 인덱스",
     tableInfoForeignKeys: "외래 키",
     foreignKeyNavigate: "{table}(으)로 이동",
+    openUrl: "브라우저에서 URL 열기",
     tableInfoConstraints: "제약 조건",
     tableInfoConstraintDisabled: "비활성화됨",
     tableInfoConstraintNotValidated: "검증 안 됨",

@@ -2001,6 +2001,7 @@ export default withEnglishFallback({
     columnRegularIndex: "通常インデックス",
     tableInfoForeignKeys: "外部キー",
     foreignKeyNavigate: "{table} へ移動",
+    openUrl: "URLをブラウザで開く",
     tableInfoConstraints: "制約",
     tableInfoConstraintDisabled: "無効",
     tableInfoConstraintNotValidated: "未検証",
