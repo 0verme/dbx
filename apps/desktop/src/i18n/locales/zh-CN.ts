@@ -4336,6 +4336,9 @@ export default withEnglishFallback({
     relationshipUpdated: "关系已更新",
   },
   etcd: {
+    adminPermissionRequired: "此 etcd 页面仅对 root 角色开放。",
+    targetKeyWriteDenied: "目标连接没有此 Key 的写权限。",
+    selectedKeysWriteDenied: "目标连接没有所选 Key 的写权限，未执行任何写入。",
     prefixPlaceholder: "搜索 Key 路径，例如 /app/ 或 service",
     newKey: "新建键（Key）",
     loadingKeys: "正在加载 Key...",

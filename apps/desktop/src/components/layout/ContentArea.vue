@@ -217,6 +217,15 @@ const emit = defineEmits<ContentAreaSurfaceEmits>();
 const { t, locale } = useI18n();
 const queryStore = useQueryStore();
 const connectionStore = useConnectionStore();
+const canAccessEtcdAdmin = computed(() => connectionStore.getEtcdAccessCapabilities(props.activeTab.connectionId).admin);
+watch(
+  () => [props.activeTab.connectionId, props.activeTab.mode] as const,
+  ([connectionId, mode]) => {
+    if (mode !== "etcd-dashboard" && mode !== "etcd-access-control") return;
+    void connectionStore.ensureEtcdAccessCapabilities(connectionId, { force: true, verifyHealth: false }).catch(() => undefined);
+  },
+  { immediate: true },
+);
 
 function groupedQueryReadonlyColumnIndexes(tab: QueryTab): number[] | undefined {
   if (!tab.queryAnalysis?.groupByColumns?.length || !tab.querySourceColumns || !tab.tableMeta?.primaryKeys.length) return undefined;
@@ -2308,13 +2317,15 @@ defineExpose({
     <!-- etcd Dashboard: cluster observation -->
     <template v-else-if="activeTab.mode === 'etcd-dashboard'">
       <div class="flex-1 min-h-0">
-        <EtcdDashboard ref="etcdDashboardRef" :key="activeTab.id" :connection-id="activeTab.connectionId" />
+        <EtcdDashboard v-if="canAccessEtcdAdmin" ref="etcdDashboardRef" :key="activeTab.id" :connection-id="activeTab.connectionId" />
+        <div v-else class="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"><ShieldAlert class="h-4 w-4" />{{ t("etcd.adminPermissionRequired") }}</div>
       </div>
     </template>
 
     <template v-else-if="activeTab.mode === 'etcd-access-control'">
       <div class="flex-1 min-h-0">
-        <EtcdAccessControl :key="activeTab.id" :connection-id="activeTab.connectionId" />
+        <EtcdAccessControl v-if="canAccessEtcdAdmin" :key="activeTab.id" :connection-id="activeTab.connectionId" />
+        <div v-else class="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"><ShieldAlert class="h-4 w-4" />{{ t("etcd.adminPermissionRequired") }}</div>
       </div>
     </template>
 

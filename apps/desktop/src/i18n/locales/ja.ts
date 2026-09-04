@@ -4595,6 +4595,9 @@ export default withEnglishFallback({
       leaseGrantCancelled: "待機をキャンセルしました。etcdがまだこの付与リクエストを処理している可能性があります。リースが作成されたかどうかリフレッシュして確認してください。",
       leaseCreated: "リース {id} を作成しました",
     },
+    adminPermissionRequired: "この etcd ページは root ロールのみに開放されています。",
+    targetKeyWriteDenied: "対象の接続にはこの Key への書き込み権限がありません。",
+    selectedKeysWriteDenied: "対象の接続には選択した Key への書き込み権限がないため、変更は実行されませんでした。",
   },
   redis: {
     setDatabaseAlias: "データベースの別名を設定",

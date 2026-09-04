@@ -4352,6 +4352,9 @@ export default {
     relationshipUpdated: "Relationship updated",
   },
   etcd: {
+    adminPermissionRequired: "This etcd view requires the root role.",
+    targetKeyWriteDenied: "The target connection does not have permission to write this Key.",
+    selectedKeysWriteDenied: "The target connection does not have permission to write the selected Keys; no changes were made.",
     prefixPlaceholder: "Search Key path, e.g. /app/ or service",
     newKey: "New Key",
     loadingKeys: "Loading keys...",
