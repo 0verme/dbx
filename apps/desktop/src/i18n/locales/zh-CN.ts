@@ -67,6 +67,7 @@ export default withEnglishFallback({
     changePasswordDescription: "输入当前密码并设置新密码",
   },
   toolbar: {
+    moreActions: "更多操作",
     newConnection: "新建连接",
     newQuery: "新建查询",
     execute: "执行",
@@ -1349,6 +1350,7 @@ export default withEnglishFallback({
   },
   tabs: {
     sql: "SQL",
+    emptyGroup: "暂无打开的页签",
     table: "表",
     tableData: "数据表",
     redis: "Redis",
@@ -2964,6 +2966,10 @@ export default withEnglishFallback({
     refreshTab: "刷新数据",
     renameTab: "重命名标签页",
     duplicateTab: "复制标签页",
+    splitRight: "拆分并右移",
+    splitDown: "拆分并下移",
+    changeOrientation: "更改拆分器方向",
+    unsplit: "取消拆分",
     compactTabTitle: "缩短标签标题",
     fullTabTitle: "完整标签标题",
     closeTab: "关闭标签页",

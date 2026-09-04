@@ -142,6 +142,7 @@ export default {
     changePasswordDescription: "Enter your current password and choose a new one",
   },
   toolbar: {
+    moreActions: "More actions",
     newConnection: "New Connection",
     newQuery: "New Query",
     execute: "Execute",
@@ -1425,6 +1426,7 @@ export default {
   },
   tabs: {
     sql: "SQL",
+    emptyGroup: "No open tabs",
     table: "Table",
     tableData: "Table Data",
     redis: "Redis",
@@ -3041,6 +3043,10 @@ export default {
     refreshTab: "Refresh Data",
     renameTab: "Rename Tab",
     duplicateTab: "Duplicate Tab",
+    splitRight: "Split Right",
+    splitDown: "Split Down",
+    changeOrientation: "Change Split Direction",
+    unsplit: "Unsplit",
     compactTabTitle: "Shorten Tab Titles",
     fullTabTitle: "Show Full Tab Titles",
     closeTab: "Close Tab",

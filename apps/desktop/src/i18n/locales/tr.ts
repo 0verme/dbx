@@ -143,6 +143,7 @@ export default withEnglishFallback({
     changePasswordDescription: "Mevcut parolanızı girin ve yeni bir parola seçin",
   },
   toolbar: {
+    moreActions: "Diğer İşlemler",
     newConnection: "Yeni Bağlantı",
     newQuery: "Yeni Sorgu",
     execute: "Çalıştır",
@@ -1426,6 +1427,7 @@ export default withEnglishFallback({
   },
   tabs: {
     sql: "SQL",
+    emptyGroup: "Açık Sekme Yok",
     table: "Tablo",
     tableData: "Tablo Verisi",
     redis: "Redis",
@@ -3042,6 +3044,10 @@ export default withEnglishFallback({
     refreshTab: "Verileri Yenile",
     renameTab: "Sekmeyi Yeniden Adlandır",
     duplicateTab: "Sekmeyi Çoğalt",
+    splitRight: "Sağa Böl",
+    splitDown: "Aşağı Böl",
+    changeOrientation: "Bölme Yönünü Değiştir",
+    unsplit: "Bölmeyi Kaldır",
     compactTabTitle: "Sekme Başlıklarını Kısalt",
     fullTabTitle: "Tam Sekme Başlıklarını Göster",
     closeTab: "Sekmeyi Kapat",
