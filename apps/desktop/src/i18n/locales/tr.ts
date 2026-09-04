@@ -1476,7 +1476,7 @@ export default withEnglishFallback({
     startAutoRefresh: "Otomatik yenilemeyi başlat",
     stopAutoRefresh: "Otomatik yenilemeyi durdur",
     missingResultRun: "Bu sonuç artık kullanılamıyor",
-    exportResultArchive: "Sonuç Arşivini Kaydet",
+    exportResultArchive: "Sonuçları Kaydet",
     importResultArchive: "Sonuç Arşivini İçe Aktar",
     importedResultArchive: "İçe aktarılan sonuçlar",
     resultArchiveExported: "Sonuçlar dışa aktarıldı",

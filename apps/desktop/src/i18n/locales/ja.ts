@@ -1470,7 +1470,7 @@ export default withEnglishFallback({
     startAutoRefresh: "自動更新を開始",
     stopAutoRefresh: "自動更新を停止",
     missingResultRun: "この結果は利用できなくなりました",
-    exportResultArchive: "結果アーカイブを保存",
+    exportResultArchive: "結果を保存",
     importResultArchive: "結果アーカイブをインポート",
     importedResultArchive: "結果をインポートしました",
     resultArchiveExported: "結果をエクスポートしました",
