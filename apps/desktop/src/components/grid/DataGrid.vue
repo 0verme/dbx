@@ -6469,13 +6469,6 @@ const activeBinaryHexBytes = computed(() => {
 const activeBinaryHexRows = computed(() => (activeBinaryHexBytes.value ? buildBinaryHexViewRows(activeBinaryHexBytes.value) : []));
 const activeBinaryHexByteCount = computed(() => activeBinaryHexBytes.value?.length ?? 0);
 
-const activeCellDetailTabsGridClass = computed(() => {
-  const count = activeCellDetailTabs.value.length;
-  if (count >= 3) return "grid-cols-3";
-  if (count === 2) return "grid-cols-2";
-  return "grid-cols-1";
-});
-
 watch(activeCellDetailTabs, (tabs) => {
   if (!tabs.includes(activeCellDetailTab.value)) {
     activeCellDetailTab.value = defaultCellDetailTab();
@@ -14476,8 +14469,8 @@ function openGridSnapshot() {
           >
             <div v-if="!cellDetailPanelIsBottom" class="absolute left-0 top-0 bottom-0 z-20 w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-primary/30" @mousedown.prevent="onDetailResizeStart" />
             <div v-else class="data-grid-detail-resize-handle data-grid-detail-resize-handle--bottom absolute left-0 right-0 top-0 z-20 h-2 -translate-y-1/2 cursor-row-resize" @mousedown.prevent="onDetailResizeStart" />
-            <Tabs v-model="activeCellDetailTab" class="flex-1 min-h-0 gap-0">
-              <div class="h-9 flex items-center gap-2 px-3 border-b shrink-0 bg-muted/20">
+            <Tabs v-model="activeCellDetailTab" class="min-w-0 flex-1 min-h-0 gap-0">
+              <div class="h-9 flex min-w-0 items-center gap-2 overflow-hidden border-b bg-muted/20 px-3 shrink-0">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -14490,15 +14483,17 @@ function openGridSnapshot() {
                   <ChevronRight v-if="cellDetailMetadataCollapsed" class="w-3 h-3" />
                   <ChevronDown v-else class="w-3 h-3" />
                 </Button>
-                <TabsList class="grid h-7 min-w-0 flex-1 p-0.5" :class="activeCellDetailTabsGridClass">
-                  <TabsTrigger value="details" class="h-6 text-xs">{{ t("grid.cellDetails") }}</TabsTrigger>
-                  <TabsTrigger v-if="activeCellDetailTabs.includes('hexViewer')" value="hexViewer" class="h-6 text-xs">
-                    {{ t("grid.hexViewer") }}
-                  </TabsTrigger>
-                  <TabsTrigger v-if="activeCellDetailTabs.includes('valueEditor')" value="valueEditor" class="h-6 text-xs">
-                    {{ t("grid.valueEditor") }}
-                  </TabsTrigger>
-                </TabsList>
+                <div class="min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+                  <TabsList class="flex h-7 w-max min-w-full justify-start p-0.5">
+                    <TabsTrigger value="details" class="h-6 min-w-max flex-1 shrink-0 text-xs">{{ t("grid.cellDetails") }}</TabsTrigger>
+                    <TabsTrigger v-if="activeCellDetailTabs.includes('hexViewer')" value="hexViewer" class="h-6 min-w-max flex-1 shrink-0 text-xs">
+                      {{ t("grid.hexViewer") }}
+                    </TabsTrigger>
+                    <TabsTrigger v-if="activeCellDetailTabs.includes('valueEditor')" value="valueEditor" class="h-6 min-w-max flex-1 shrink-0 text-xs">
+                      {{ t("grid.valueEditor") }}
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
                 <div class="ml-auto flex shrink-0 items-center gap-1">
                   <Button variant="ghost" size="icon" class="h-5 w-5" :title="cellDetailPanelIsBottom ? t('grid.cellDetailLayoutRight') : t('grid.cellDetailLayoutBottom')" @click="toggleCellDetailPanelLayout">
                     <PanelRight v-if="cellDetailPanelIsBottom" class="w-3 h-3" />
@@ -14554,7 +14549,7 @@ function openGridSnapshot() {
                 @copy-column-name="copyDetailColumnName"
                 @copy-sql-condition="copyDetailSqlCondition"
               />
-              <TabsContent v-if="activeCellDetailTabs.includes('hexViewer')" value="hexViewer" class="m-0 min-h-0 flex-1 flex flex-col p-3 text-xs">
+              <TabsContent v-if="activeCellDetailTabs.includes('hexViewer')" value="hexViewer" class="m-0 min-h-0 min-w-0 flex-1 flex flex-col p-3 text-xs">
                 <div class="mb-2 min-w-0 shrink-0">
                   <div class="font-medium">{{ t("grid.hexViewer") }}</div>
                   <div class="text-[11px] text-muted-foreground">
@@ -14584,8 +14579,8 @@ function openGridSnapshot() {
                 </div>
               </TabsContent>
 
-              <TabsContent v-if="activeCellDetailTabs.includes('valueEditor')" value="valueEditor" class="m-0 min-h-0 flex-1 flex flex-col p-3 text-xs">
-                <div class="flex min-h-0 flex-1 flex-col">
+              <TabsContent v-if="activeCellDetailTabs.includes('valueEditor')" value="valueEditor" class="m-0 min-h-0 min-w-0 flex-1 flex flex-col p-3 text-xs">
+                <div class="min-w-0 flex min-h-0 flex-1 flex-col">
                   <TemporalCellEditor
                     v-if="detailTemporalEditorConfig"
                     v-model="detailEditValue"
@@ -14596,9 +14591,9 @@ function openGridSnapshot() {
                     @cancel="cancelValueEditorEdit"
                     @commit="commitValueEditorEdit"
                   />
-                  <div v-else ref="valueEditorContainer" data-cell-detail-editor-root class="min-h-0 flex-1 w-full rounded border overflow-auto" />
+                  <div v-else ref="valueEditorContainer" data-cell-detail-editor-root class="min-h-0 min-w-0 flex-1 w-full rounded border overflow-auto" />
                 </div>
-                <div class="flex gap-1 mt-2 shrink-0">
+                <div class="min-w-0 flex flex-wrap gap-1 mt-2 shrink-0">
                   <DropdownMenu v-if="activeCellDetail?.isEditable">
                     <DropdownMenuTrigger as-child>
                       <Button variant="outline" size="sm" class="h-6 gap-1 text-xs" @mousedown.prevent>
