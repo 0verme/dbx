@@ -1694,6 +1694,7 @@ mod tests {
             filter: String::new(),
             index_type: String::new(),
             included_columns: Vec::new(),
+            column_opclasses: Vec::new(),
             comment: String::new(),
             concurrently: false,
             original: None,
@@ -2013,6 +2014,7 @@ mod tests {
             filter: String::new(),
             index_type: String::new(),
             included_columns: Vec::new(),
+            column_opclasses: Vec::new(),
             comment: String::new(),
             concurrently: false,
             original: Some(IndexInfo {
@@ -2025,6 +2027,7 @@ mod tests {
                 included_columns: None,
                 comment: None,
                 key_is_expression: Vec::new(),
+                column_opclasses: vec![],
             }),
             marked_for_drop: true,
         });

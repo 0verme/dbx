@@ -120,6 +120,7 @@ fn index(name: &str, columns: &[&str]) -> EditableStructureIndex {
         filter: String::new(),
         index_type: String::new(),
         included_columns: Vec::new(),
+        column_opclasses: Vec::new(),
         comment: String::new(),
         concurrently: false,
         original: None,
@@ -140,6 +141,7 @@ fn existing_index(name: &str, columns: &[&str], is_unique: bool) -> EditableStru
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
     index
 }
@@ -231,6 +233,7 @@ fn builds_mysql_column_and_index_changes() {
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
     let mut email_index = index("uniq_users_email", &["email"]);
     email_index.is_unique = true;
@@ -870,6 +873,7 @@ fn builds_informix_column_and_index_changes() {
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
     let mut email_index = index("uniq_users_email", &["email"]);
     email_index.is_unique = true;
@@ -1305,6 +1309,7 @@ fn iris_drop_index_includes_table_name() {
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
 
     let result = build_table_structure_change_sql(TableStructureSqlOptions {
@@ -1609,6 +1614,7 @@ fn gbase8a_uses_limited_mysql_ddl() {
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
 
     let result = build_table_structure_change_sql(TableStructureSqlOptions {
@@ -2226,6 +2232,7 @@ fn qualifies_attached_sqlite_table_and_index_changes() {
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
     let email_index = index("idx_users_email", &["email"]);
 
@@ -6728,6 +6735,7 @@ fn oscar_drop_index_with_schema_qualifier() {
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
 
     let result = build_table_structure_change_sql(TableStructureSqlOptions {
@@ -7184,6 +7192,7 @@ fn gaussdb_m_index(name: &str, columns: &[&str]) -> EditableStructureIndex {
         filter: String::new(),
         index_type: String::new(),
         included_columns: Vec::new(),
+        column_opclasses: Vec::new(),
         comment: String::new(),
         concurrently: false,
         original: None,
@@ -7210,6 +7219,7 @@ fn gaussdb_m_existing_index(
         included_columns: None,
         comment: None,
         key_is_expression: Vec::new(),
+        column_opclasses: vec![],
     });
     idx
 }
@@ -7541,4 +7551,245 @@ fn mysql_add_column_nullable_timestamp_without_default_gets_explicit_null() {
 
     assert_eq!(result.warnings, Vec::<String>::new());
     assert_eq!(result.statements, vec!["ALTER TABLE `u7_game_order_step` ADD COLUMN `updated_at` timestamp NULL;"]);
+}
+
+// ── PostgreSQL operator class tests ──
+
+#[test]
+fn postgres_gin_index_with_explicit_opclass_generates_opclass_in_ddl() {
+    let mut idx = index("idx_name_trgm", &["name"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![Some("gin_trgm_ops".to_string())];
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert!(result.warnings.is_empty());
+    let sql = result.statements.join("\n");
+    assert!(sql.contains(r#""name" gin_trgm_ops"#), "Expected opclass in DDL, got: {sql}");
+    assert!(sql.contains("USING GIN"), "Expected USING GIN, got: {sql}");
+}
+
+#[test]
+fn postgres_index_opclass_from_original_when_editable_empty() {
+    // When the editable side has no opclass, fall back to original matching.
+    let mut idx = index("idx_name_trgm", &["name"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![]; // empty: fall back to original
+    idx.original = Some(IndexInfo {
+        name: "idx_name_trgm".to_string(),
+        columns: vec!["name".to_string()],
+        is_unique: false,
+        is_primary: false,
+        filter: None,
+        index_type: Some("gin".to_string()),
+        included_columns: None,
+        comment: None,
+        key_is_expression: vec![false],
+        column_opclasses: vec![Some("gin_trgm_ops".to_string())],
+    });
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert!(result.warnings.is_empty());
+    let sql = result.statements.join("\n");
+    assert!(sql.contains(r#""name" gin_trgm_ops"#), "Expected opclass from original, got: {sql}");
+}
+
+#[test]
+fn postgres_index_no_rebuild_when_original_has_opclass_and_edit_is_identical() {
+    // When the edited index matches the original (including opclass), no rebuild.
+    let mut idx = index("idx_name_trgm", &["name"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![Some("gin_trgm_ops".to_string())];
+    idx.original = Some(IndexInfo {
+        name: "idx_name_trgm".to_string(),
+        columns: vec!["name".to_string()],
+        is_unique: false,
+        is_primary: false,
+        filter: None,
+        index_type: Some("gin".to_string()),
+        included_columns: None,
+        comment: None,
+        key_is_expression: vec![false],
+        column_opclasses: vec![Some("gin_trgm_ops".to_string())],
+    });
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert!(result.warnings.is_empty());
+    assert!(result.statements.is_empty(), "Expected no rebuild for unchanged index, got: {:?}", result.statements);
+}
+
+#[test]
+fn postgres_index_rebuild_when_opclass_changed() {
+    // When opclass changes, the index should be rebuilt.
+    let mut idx = index("idx_name_trgm", &["name"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![Some("gin_trgm_ops".to_string())];
+    idx.original = Some(IndexInfo {
+        name: "idx_name_trgm".to_string(),
+        columns: vec!["name".to_string()],
+        is_unique: false,
+        is_primary: false,
+        filter: None,
+        index_type: Some("gin".to_string()),
+        included_columns: None,
+        comment: None,
+        key_is_expression: vec![false],
+        column_opclasses: vec![None], // was default, now gin_trgm_ops
+    });
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert!(result.warnings.is_empty());
+    assert!(!result.statements.is_empty(), "Expected rebuild when opclass changes");
+    let sql = result.statements.join("\n");
+    assert!(sql.contains("DROP INDEX"), "Expected DROP INDEX, got: {sql}");
+    assert!(sql.contains("gin_trgm_ops"), "Expected new opclass in DDL, got: {sql}");
+}
+
+#[test]
+fn postgres_gin_varchar_no_opclass_warns() {
+    let mut idx = index("idx_name_search", &["name"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![];
+
+    let mut options = index_change_options(DatabaseType::Postgres, Some("public"), idx);
+    // Add a varchar column for the warning to match against.
+    options.columns.push(EditableStructureColumn {
+        id: "col_name".to_string(),
+        name: "name".to_string(),
+        data_type: "character varying(255)".to_string(),
+        is_nullable: true,
+        default_value: String::new(),
+        comment: String::new(),
+        is_primary_key: false,
+        extra: None,
+        original: None,
+        original_position: None,
+        marked_for_drop: false,
+        character_set: String::new(),
+        collation: String::new(),
+    });
+
+    let result = build_table_structure_change_sql(options);
+
+    assert!(
+        result.warnings.iter().any(|w| w.contains("operator class") && w.contains("idx_name_search")),
+        "Expected opclass warning for GIN+varchar, got: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn postgres_gin_text_column_with_explicit_opclass_no_warning() {
+    let mut idx = index("idx_body_search", &["body"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![Some("gin_trgm_ops".to_string())];
+
+    let mut options = index_change_options(DatabaseType::Postgres, Some("public"), idx);
+    options.columns.push(EditableStructureColumn {
+        id: "col_body".to_string(),
+        name: "body".to_string(),
+        data_type: "text".to_string(),
+        is_nullable: true,
+        default_value: String::new(),
+        comment: String::new(),
+        is_primary_key: false,
+        extra: None,
+        original: None,
+        original_position: None,
+        marked_for_drop: false,
+        character_set: String::new(),
+        collation: String::new(),
+    });
+
+    let result = build_table_structure_change_sql(options);
+
+    assert!(
+        !result.warnings.iter().any(|w| w.contains("operator class")),
+        "Expected NO warning when opclass is set, got: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn postgres_expression_index_appends_opclass() {
+    // The per-column `pg_get_indexdef(indexrelid, colno, pretty)` returns only the
+    // bare expression (PostgreSQL sets `attrsOnly = (colno != 0)`, so the
+    // opclass/COLLATE/DESC block is skipped — see `ruleutils.c` and the note on
+    // `list_indexes_with_sql`). The opclass is read separately from `indclass`
+    // into `column_opclasses`, so the generator must append it to an expression
+    // key just like a real column.
+    let mut idx = index("idx_lower_email", &["lower(email)"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![Some("gin_trgm_ops".to_string())];
+    idx.original = Some(IndexInfo {
+        name: "idx_lower_email".to_string(),
+        columns: vec!["lower(email)".to_string()],
+        is_unique: false,
+        is_primary: false,
+        filter: None,
+        index_type: Some("gin".to_string()),
+        included_columns: None,
+        comment: None,
+        key_is_expression: vec![true],
+        column_opclasses: vec![None],
+    });
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert!(result.warnings.is_empty());
+    let sql = result.statements.join("\n");
+    assert!(sql.contains("lower(email) gin_trgm_ops"), "Expression should have opclass appended, got: {sql}");
+}
+
+#[test]
+fn postgres_jsonb_gin_with_jsonb_path_ops() {
+    let mut idx = index("idx_metadata", &["metadata"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![Some("jsonb_path_ops".to_string())];
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert!(result.warnings.is_empty());
+    let sql = result.statements.join("\n");
+    assert!(sql.contains(r#""metadata" jsonb_path_ops"#), "Expected jsonb_path_ops in DDL, got: {sql}");
+    assert!(sql.contains("USING GIN"), "Expected USING GIN, got: {sql}");
+}
+
+#[test]
+fn postgres_expression_index_opclass_round_trips_from_indclass() {
+    // Real PostgreSQL introspection: the expression text from
+    // `pg_get_indexdef(indexrelid, colno, false)` is the BARE expression
+    // (`attrsOnly = (colno != 0)` drops the opclass block — see `ruleutils.c`).
+    // The opclass is read separately from `pg_index.indclass` (schema-qualified)
+    // into `column_opclasses`, so the generator appends it to the bare expression
+    // rather than expecting it to be embedded in the text.
+    let mut idx = index("idx_lower_email_trgm", &["lower(email)"]);
+    idx.index_type = "GIN".to_string();
+    idx.column_opclasses = vec![Some("public.gin_trgm_ops".to_string())];
+    idx.original = Some(IndexInfo {
+        name: "idx_lower_email_trgm_old".to_string(), // different name → forces rebuild
+        columns: vec!["lower(email)".to_string()],
+        is_unique: false,
+        is_primary: false,
+        filter: None,
+        index_type: Some("gin".to_string()),
+        included_columns: None,
+        comment: None,
+        key_is_expression: vec![true],
+        column_opclasses: vec![Some("public.gin_trgm_ops".to_string())],
+    });
+
+    let result = build_table_structure_change_sql(index_change_options(DatabaseType::Postgres, Some("public"), idx));
+
+    assert!(result.warnings.is_empty());
+    let sql = result.statements.join("\n");
+    assert!(
+        sql.contains("lower(email) public.gin_trgm_ops"),
+        "Expected bare expression + schema-qualified opclass, got: {sql}"
+    );
+    // The bare expression text no longer carries the opclass, so it cannot be duplicated.
+    assert!(!sql.contains("gin_trgm_ops gin_trgm_ops"), "Opclass must not be duplicated, got: {sql}");
 }

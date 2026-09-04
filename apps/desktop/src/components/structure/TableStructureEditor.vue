@@ -3173,6 +3173,7 @@ function addIndex() {
     includedColumns: [],
     comment: "",
     concurrently: false,
+    columnOpclasses: [],
     markedForDrop: false,
   });
   void nextTick(() => {

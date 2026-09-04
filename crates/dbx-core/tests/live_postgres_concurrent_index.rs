@@ -25,6 +25,7 @@ fn concurrent_index(columns: Vec<&str>) -> EditableStructureIndex {
         filter: String::new(),
         index_type: String::new(),
         included_columns: Vec::new(),
+        column_opclasses: Vec::new(),
         comment: String::new(),
         concurrently: true,
         original: None,
