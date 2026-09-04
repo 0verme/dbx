@@ -63,7 +63,7 @@
   </p>
 </div>
 
-## 赞助商与合作伙伴
+## ❤️ 赞助商
 
 <table>
   <tr>
@@ -75,28 +75,6 @@
     <td>
       雨云是面向开发者和站长的云服务提供商，提供云服务器、物理服务器、游戏云和配套基础设施服务。
       <a href="https://www.rainyun.com/MTE5Mjc4Ng==_" target="_blank">访问雨云</a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" valign="middle" width="200">
-      <a href="https://www.qiniu.com/" target="_blank">
-        <img src="docs/public/sponsors/qiniu-card.png" alt="七牛云" width="175" />
-      </a>
-    </td>
-    <td>
-      七牛云为 DBX 提供对象存储、CDN 等云基础设施资源支持。
-      <a href="https://www.qiniu.com/" target="_blank">访问七牛云</a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" valign="middle" width="200">
-      <a href="https://www.atlascloud.ai/?ref=6YYXWA" target="_blank">
-        <img src="docs/public/sponsors/atlas-card.png" alt="Atlas Cloud" width="175" />
-      </a>
-    </td>
-    <td>
-      Atlas Cloud 为开发者提供统一的多模态 AI API，可通过一个接口访问聊天、图像、视频和音频等 400+ 模型。
-      <a href="https://www.atlascloud.ai/?ref=6YYXWA" target="_blank">访问 Atlas Cloud</a>
     </td>
   </tr>
   <tr>
@@ -130,6 +108,44 @@
     <td>
       UCloud 优刻得是国内首家公有云科创板上市公司，覆盖国内、亚洲、欧洲、北美等 28 个地域的云主机、数据库、CDN 等服务，注册享新客优惠 0.9 折起；星图 AstraFlow 大模型平台支持主流 200+ 大模型一键调用。
       <a href="https://www.ucloud.cn/site/active/kuaijiesale.html?ytag=geo_waituo_github_dbx" target="_blank">访问 UCloud 优刻得</a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://www.atlascloud.ai/?ref=6YYXWA" target="_blank">
+        <img src="docs/public/sponsors/atlas-card.png" alt="Atlas Cloud" width="175" />
+      </a>
+    </td>
+    <td>
+      Atlas Cloud 为开发者提供统一的多模态 AI API，可通过一个接口访问聊天、图像、视频和音频等 400+ 模型。
+      <a href="https://www.atlascloud.ai/?ref=6YYXWA" target="_blank">访问 Atlas Cloud</a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://www.qiniu.com/" target="_blank">
+        <img src="docs/public/sponsors/qiniu-card.png" alt="七牛云" width="175" />
+      </a>
+    </td>
+    <td>
+      七牛云为 DBX 提供对象存储、CDN 等云基础设施资源支持。
+      <a href="https://www.qiniu.com/" target="_blank">访问七牛云</a>
+    </td>
+  </tr>
+</table>
+
+## 🤝 合作伙伴
+
+<table>
+  <tr>
+    <td align="center" valign="middle" width="200">
+      <a href="https://1panel.cn/" target="_blank">
+        <img src="docs/public/sponsors/1panel-card.png" alt="1Panel" width="175" />
+      </a>
+    </td>
+    <td>
+      1Panel 是现代化的开源 Linux 服务器运维管理面板与轻量级 AI 管理平台，提供直观易用的 Web 界面，支持 AI 智能体、本地大模型、网站、数据库、容器、文件等核心场景的一站式管理。
+      <a href="https://1panel.cn/" target="_blank">访问 1Panel</a>
     </td>
   </tr>
   <tr>
