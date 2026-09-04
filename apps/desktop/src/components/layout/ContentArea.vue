@@ -633,7 +633,10 @@ const mongoQueryResultSaveHandler = computed<CustomSaveHandler | undefined>(() =
 });
 const resultsPaneOpen = ref(false);
 const resultsPaneSize = ref(Number(safeLocalStorageGet("dbx-results-pane-size")) || DEFAULT_QUERY_RESULTS_PANE_SIZE);
-const editorPaneSize = computed(() => (resultsPaneOpen.value ? 100 - resultsPaneSize.value : 100));
+// In editor-only mode the results pane is never mounted in this splitpanes,
+// so the editor pane must stay at 100%: a reactive size update alone does not
+// re-normalize a single pane, and shrinking it would leave a blank dead zone.
+const editorPaneSize = computed(() => (props.editorOnly || !resultsPaneOpen.value ? 100 : 100 - resultsPaneSize.value));
 const queryRunningElapsed = ref(0);
 
 function toggleResultsPane(): boolean {
