@@ -1436,7 +1436,7 @@ fn normalize_opengauss_comment_statement(statement: &str) -> Option<String> {
     let value = &value[value_leading..];
     let quote_offset = match value.as_bytes() {
         [b'\'', ..] => 0,
-        [prefix, b'\'', ..] if matches!(prefix, b'e' | b'E') => 1,
+        [b'e' | b'E', b'\'', ..] => 1,
         _ => return None,
     };
     let opening_quote = value_start + value_leading + quote_offset;
@@ -5269,7 +5269,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_export_table_ddl(&ddl, Some(DatabaseType::OpenGauss), DdlNormalizeOptions::default()),
+            format_export_table_ddl(ddl, Some(DatabaseType::OpenGauss), DdlNormalizeOptions::default()),
             concat!(
                 "CREATE TABLE \"public\".\"dbx_issue_comment\" (\"flag\" varchar(8));\n",
                 "COMMENT ON COLUMN \"public\".\"dbx_issue_comment\".\"flag\" IS '逻辑删除标志：''0''-未删除，''1''-已删除';"
@@ -5284,7 +5284,7 @@ mod tests {
             "COMMENT ON COLUMN \"public\".\"notes\".\"body\" IS 'owner''s note';"
         );
 
-        assert_eq!(format_export_table_ddl(&ddl, Some(DatabaseType::OpenGauss), DdlNormalizeOptions::default()), ddl);
+        assert_eq!(format_export_table_ddl(ddl, Some(DatabaseType::OpenGauss), DdlNormalizeOptions::default()), ddl);
     }
 
     #[test]
