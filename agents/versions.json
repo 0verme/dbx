@@ -1,6 +1,7 @@
 {
   "access": "0.1.52",
   "bigquery": "0.1.56",
+  "cache": "0.1.0",
   "cassandra": "0.1.47",
   "dameng": "0.1.62",
   "databend": "0.1.43",
