@@ -6974,6 +6974,7 @@ async function applyOrderBySearch() {
       primaryKeys: tableMeta.primaryKeys,
       ...tableDataLargeValuePreviewOptions(resolvedDatabaseType.value, tableMeta.columns, tableMeta.primaryKeys, pageSize.value),
       orderBy: orderByClause,
+      injectDefaultTimeSeriesWhere: true,
       limit: pageSize.value,
       whereInput: currentWhereInput(),
       includeRowId: usesSyntheticRowIdKey(resolvedDatabaseType.value, tableMeta.primaryKeys, tableMeta.tableType),
@@ -7013,6 +7014,7 @@ async function applyWhereFilter() {
       ...tableDataLargeValuePreviewOptions(resolvedDatabaseType.value, tableMeta.columns, tableMeta.primaryKeys, pageSize.value),
       orderBy: orderByInput.value.trim() || (sortCol.value ? `${queryColumnRef(sortCol.value)} ${sortDir.value.toUpperCase()}` : undefined),
       limit: pageSize.value,
+      injectDefaultTimeSeriesWhere: true,
       whereInput,
       includeRowId: usesSyntheticRowIdKey(resolvedDatabaseType.value, tableMeta.primaryKeys, tableMeta.tableType),
     });
@@ -8198,6 +8200,7 @@ async function syncUserFacingSql() {
       tableName: props.tableMeta.tableName,
       tableType: props.tableMeta.tableType,
       includeDatabaseName,
+      injectDefaultTimeSeriesWhere: true,
       whereInput: currentWhereInput(),
       orderBy: currentOrderBy(),
       limit: props.pageLimit ?? pageSize.value,
