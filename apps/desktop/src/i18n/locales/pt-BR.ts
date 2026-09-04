@@ -5331,6 +5331,8 @@ export default withEnglishFallback({
     status_done: "Import complete",
     status_error: "Import failed",
     status_cancelled: "Import cancelled",
+    targetColumnsTimeout: "Tempo esgotado ao carregar os campos da tabela de destino. Verifique a conexão e tente novamente.",
+    retry: "Tentar novamente",
   },
   dataGenerate: {
     title: "Geração de dados",
