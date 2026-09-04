@@ -2252,6 +2252,9 @@ export default {
     hideFailureDetails: "Hide failure details",
     failureDetailTruncated: "Error details were truncated",
     failureDetailsOmitted: "{count} additional failure detail(s) not shown",
+    copyFailureDetail: "Copy failure details",
+    failureDetailCopied: "Failure details copied",
+    failureDetailCopyFailed: "Failed to copy failure details: {message}",
   },
   welcome: {
     title: "Database Workspace",
