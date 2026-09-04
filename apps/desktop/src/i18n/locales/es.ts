@@ -1357,6 +1357,7 @@ export default withEnglishFallback({
       cutSelection: "Cortar selección",
       pasteFromClipboard: "Pegar",
       pasteClipboardReadFailed: "Error al leer el portapapeles: {message}",
+      convertNamingStyle: "Cambiar estilo de nomenclatura",
     },
     search: {
       find: "Buscar",
@@ -6966,6 +6967,7 @@ export default withEnglishFallback({
     customUiPrimary: "Color principal",
     customUiBorder: "Borde",
     customUiSidebar: "Barra lateral",
+    shortcutConvertNamingStyle: "Cambiar estilo de nomenclatura",
   },
   driverStore: {
     jreDirRemoveFailed: "No se pudo eliminar el directorio JRE antiguo: {path} (error original: {error})",

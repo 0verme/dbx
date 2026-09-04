@@ -1375,6 +1375,7 @@ export default {
       sendToAi: "Send to AI",
       uppercaseSelection: "Convert to uppercase",
       lowercaseSelection: "Convert to lowercase",
+      convertNamingStyle: "Toggle naming style",
       delimitedList: "Convert to delimited list",
       addNextSelectionOccurrence: "Add next occurrence",
       selectAllSelectionOccurrences: "Select all occurrences",
@@ -7311,6 +7312,7 @@ export default {
     changelogSectionRemoved: "Removed",
     shortcutUppercaseSelection: "Convert selection to uppercase",
     shortcutLowercaseSelection: "Convert selection to lowercase",
+    shortcutConvertNamingStyle: "Toggle naming style",
     shortcutExPasteSqlInCondition: "ExPaste: paste as IN condition",
   },
   driverStore: {
