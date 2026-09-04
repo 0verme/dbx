@@ -14,6 +14,7 @@ import {
   Columns3Cog,
   Copy,
   EyeOff,
+  Gauge,
   Loader2,
   Search,
   TableProperties,
@@ -100,6 +101,7 @@ const MongoBucketBrowser = defineAsyncComponent(() => import("@/components/docum
 const VectorBrowser = defineAsyncComponent(() => import("@/components/vector/VectorBrowser.vue"));
 const HBaseBrowser = defineAsyncComponent(() => import("@/components/hbase/HBaseBrowser.vue"));
 const ElasticsearchJsonResponsePanel = defineAsyncComponent(() => import("@/components/common/ElasticsearchJsonResponsePanel.vue"));
+const ElasticsearchProfilePanel = defineAsyncComponent(() => import("@/components/common/ElasticsearchProfilePanel.vue"));
 const MqAdminConsole = defineAsyncComponent(() => import("@/components/mq/MqAdminConsole.vue"));
 const MqttAdminConsole = defineAsyncComponent(() => import("@/components/mqtt/MqttAdminConsole.vue"));
 const NacosAdminConsole = defineAsyncComponent(() => import("@/components/nacos/NacosAdminConsole.vue"));
@@ -150,6 +152,7 @@ import type { CodeMirrorSqlDialectName } from "@/lib/editor/codemirrorSqlDialect
 import { codeMirrorSqlDialect, codeMirrorSqlDialectForConnection, effectiveDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { chartableColumnIndexes } from "@/lib/dataGrid/chartData";
 import { elasticsearchJsonResponseForResult } from "@/lib/elasticsearch/elasticsearchJsonResponse";
+import { elasticsearchProfileBodyForResult, parseElasticsearchProfile } from "@/lib/elasticsearch/elasticsearchProfile";
 import * as api from "@/lib/backend/api";
 import { applyMongoGridChangesToDocument, applyMongoGridChangesToDocumentBaseline, buildMongoUpdateDocument, formatMongoShellLiteral, serializeMongoDocumentId, type MongoInputValue } from "@/lib/mongo/mongoDocumentValues";
 import type { DataGridSortMode } from "@/lib/dataGrid/dataGridSort";
@@ -468,6 +471,13 @@ const activeElasticsearchJsonResponse = computed(() => elasticsearchJsonResponse
 const activeElasticsearchRawBody = computed(() => {
   if (activeEffectiveDatabaseType.value !== "elasticsearch" && activeEffectiveDatabaseType.value !== "easysearch") return undefined;
   return props.activeTab.result?.elasticsearch_raw_body;
+});
+/** ES `_search?profile=true` body extracted from the active result, when present. */
+const activeElasticsearchProfileBody = computed(() => elasticsearchProfileBodyForResult(activeEffectiveDatabaseType.value, props.activeTab.result));
+/** Only surfaces the "Profile" entry when the response actually carries a profile section. */
+const canShowProfile = computed(() => {
+  const body = activeElasticsearchProfileBody.value;
+  return body !== null && parseElasticsearchProfile(body) !== null;
 });
 /** Toggle between the _source table and the raw JSON panel for Elasticsearch REST results. */
 const showElasticsearchRawJson = ref(false);
@@ -1675,10 +1685,12 @@ defineExpose({
                 class="ml-auto"
                 :active-view="activeOutputView"
                 :can-show-explain="canShowExplainOutput"
+                :can-show-profile="canShowProfile"
                 :can-export-archive="canExportResultArchive"
                 :archive-exporting="resultArchiveExporting"
                 :compact="standaloneResultToolbarCompact"
                 @select-explain="emit('update:activeOutputView', activeTab.id, 'explain')"
+                @select-profile="emit('update:activeOutputView', activeTab.id, 'profile')"
                 @export-archive="exportResultArchive"
               />
             </div>
@@ -1694,6 +1706,8 @@ defineExpose({
               :table-result="activeTab.explainTableResult"
               :table-error="activeTab.explainTableError"
             />
+
+            <ElasticsearchProfilePanel v-else-if="activeOutputView === 'profile' && canShowProfile" class="flex-1 min-h-0" :body="activeElasticsearchProfileBody ?? ''" />
 
             <QueryChart v-else-if="activeOutputView === 'chart' && activeTab.result && !activeElasticsearchJsonResponse" class="flex-1 min-h-0" :result="activeTab.result" />
 
@@ -1885,16 +1899,31 @@ defineExpose({
                       {{ showElasticsearchRawJson ? t("tabs.tableData") : t("redis.jsonView") }}
                     </button>
                   </template>
+                  <template v-else-if="canShowProfile">
+                    <div class="mx-1 h-4 w-px bg-border" />
+                    <button
+                      type="button"
+                      class="inline-flex h-5 shrink-0 items-center gap-1 rounded-sm border border-transparent px-2 text-xs leading-none transition-colors"
+                      :class="activeOutputView === 'profile' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'"
+                      :aria-pressed="activeOutputView === 'profile'"
+                      @click="emit('update:activeOutputView', activeTab.id, activeOutputView === 'profile' ? 'result' : 'profile')"
+                    >
+                      <Gauge class="h-3.5 w-3.5" />
+                      {{ t("profile.title") }}
+                    </button>
+                  </template>
                 </template>
                 <template #result-toolbar-actions="{ compact }">
                   <DataGridColumnLayoutPopover :grid="dataGridRef" :compact="compact" />
                   <QueryResultToolbarActions
                     :active-view="activeOutputView"
                     :can-show-explain="canShowExplainOutput"
+                    :can-show-profile="canShowProfile"
                     :can-export-archive="canExportResultArchive"
                     :archive-exporting="resultArchiveExporting"
                     :compact="compact"
                     @select-explain="emit('update:activeOutputView', activeTab.id, 'explain')"
+                    @select-profile="emit('update:activeOutputView', activeTab.id, 'profile')"
                     @export-archive="exportResultArchive"
                   />
                 </template>

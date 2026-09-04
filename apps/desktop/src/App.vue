@@ -293,7 +293,7 @@ const cursorPos = ref(0);
 const previewChangesAvailable = ref(false);
 const formatSqlRequest = ref<{ id: number; tabId: string } | null>(null);
 const compressSqlRequest = ref<{ id: number; tabId: string } | null>(null);
-const activeOutputView = ref<"result" | "summary" | "explain" | "chart" | "messages">("result");
+const activeOutputView = ref<"result" | "summary" | "explain" | "chart" | "messages" | "profile">("result");
 const newQueryContextSource = ref<"tab" | "sidebar">("tab");
 const queryEditorDdlTarget = ref<{ connectionId: string; database: string; catalog?: string; schema?: string; tableName: string; objectType?: ObjectSourceKind } | null>(null);
 const queryEditorObjectSourceTarget = ref<{
@@ -3512,7 +3512,7 @@ onUnmounted(() => {
                     :block-dangerous-redis-commands="blockDangerousRedisCommands"
                     :zen-mode="isZenMode"
                     @update:active-output-view="
-                      (tabId: string, view: 'result' | 'summary' | 'explain' | 'chart' | 'messages') => {
+                      (tabId: string, view: 'result' | 'summary' | 'explain' | 'chart' | 'messages' | 'profile') => {
                         if (tabId === queryStore.activeTabId) activeOutputView = view;
                       }
                     "
