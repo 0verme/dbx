@@ -22,7 +22,7 @@ import { loadSchemaDetails } from "@/lib/schema/schemaDiffMetadataLoad";
 import { getSchemaDiffNextProgressStep, isSchemaDiffPostgresLike, shouldLoadSchemaDiffExtraObjects, type SchemaDiffProgressPhase } from "@/lib/schema/schemaDiffProgress";
 import { createSchemaDiffTableListLoader, type SchemaDiffTableIdentity } from "@/lib/schema/schemaDiffTableList";
 import { normalizeSchemaDiffCompareOptions } from "@/types/schemaDiff";
-import type { SchemaDiffCompareOptions, SchemaDiffConfig, FieldMappingEntry } from "@/types/schemaDiff";
+import type { SchemaDiffCompareOptions, SchemaDiffConfig, FieldMappingEntry, SchemaDiffTableMapping } from "@/types/schemaDiff";
 import type { DatabaseType, ObjectSourceKind } from "@/types/database";
 import {
   convertToSchemaDiffObjects,
@@ -54,6 +54,7 @@ import {
   normalizeSchemaDiffDependencyGraph,
 } from "@/lib/schema/schemaDiff";
 import { compileSchemaDiffTableFilter, filterSchemaDiffTables } from "@/lib/schema/schemaDiffTableFilter";
+import { swapSchemaDiffTableMappings } from "@/lib/schema/schemaDiffTableMapping";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
 
@@ -409,6 +410,22 @@ function getDbType(): DatabaseType {
 }
 
 function handleSwap() {
+  const currentOptions = normalizeSchemaDiffCompareOptions(activeConfig.value?.options, getDbType());
+  const swappedMappings = swapSchemaDiffTableMappings(currentOptions.tableMappings ?? []);
+  const swappedSelectedTables = Array.isArray(currentOptions.selectedTables) ? swappedMappings.map((mapping) => mapping.sourceTable) : undefined;
+  if (activeConfig.value) {
+    updateActiveConfigOptions(
+      normalizeSchemaDiffCompareOptions(
+        {
+          ...currentOptions,
+          selectedTables: swappedSelectedTables,
+          tableMappings: swappedMappings,
+        },
+        getDbType(),
+      ),
+    );
+  }
+
   const tempConn = sourceConnectionId.value;
   const tempDb = sourceDatabase.value;
   const tempSchema = sourceSchema.value;
@@ -429,6 +446,12 @@ function handleOptionsUpdate(options: SchemaDiffCompareOptions) {
 function handleSelectedTablesUpdate(value?: string[]) {
   if (activeConfig.value) {
     updateActiveConfigOptions(normalizeSchemaDiffCompareOptions({ ...activeConfig.value.options, selectedTables: value }, getDbType()));
+  }
+}
+
+function handleTableMappingsUpdate(value: SchemaDiffTableMapping[]) {
+  if (activeConfig.value) {
+    updateActiveConfigOptions(normalizeSchemaDiffCompareOptions({ ...activeConfig.value.options, tableMappings: value }, getDbType()));
   }
 }
 
@@ -559,6 +582,7 @@ async function handleCompare() {
       targetRules: tgtRules,
       sourceOwners: srcOwners,
       targetOwners: tgtOwners,
+      tableMappings: opts.tableMappings,
       databaseType: dbType,
       targetSchema: schemaDiffDeployTargetSchema(dbType, targetDatabase.value, targetSchema.value),
       ignoreComments: ignoreComments.value,
@@ -915,7 +939,7 @@ function handleLoadHistoryConfig(config: SchemaDiffConfig) {
   targetDatabase.value = config.targetDatabase;
   targetSchema.value = config.targetSchema;
   if (config.options) {
-    updateActiveConfigOptions(config.options);
+    updateActiveConfigOptions(normalizeSchemaDiffCompareOptions(config.options, getDbType()));
   }
 }
 
@@ -1057,8 +1081,8 @@ const targetConnectionInfo = computed(() => {
           v-model:ignore-comments="ignoreComments"
           :configs="configs"
           :active-config-id="activeConfigId"
-          :options="activeConfig?.options"
-          :selected-tables="activeConfig?.options?.selectedTables"
+          :options="schemaDiffPanelOptions"
+          :selected-tables="schemaDiffPanelOptions.selectedTables"
           :table-list-loader="schemaDiffTableListLoader"
           :loading="loading"
           :recent-configs="recentConfigs"
@@ -1069,6 +1093,7 @@ const targetConnectionInfo = computed(() => {
           @load-history-config="handleLoadHistoryConfig"
           @delete-history-config="handleDeleteHistoryConfig"
           @update:field-mappings="handleFieldMappingsUpdate"
+          @update:table-mappings="handleTableMappingsUpdate"
           @update:selected-tables="handleSelectedTablesUpdate"
           @open-field-mapping="showFieldMappingDialog = true"
         />
