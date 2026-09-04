@@ -5105,6 +5105,7 @@ export default withEnglishFallback({
     execute: "Executar",
     clearValues: "Limpar valores",
     useRawForAll: "Usar SQL bruto para todos",
+    ignore: "Ignorar",
     kind: {
       string: "Texto",
       number: "Número",
