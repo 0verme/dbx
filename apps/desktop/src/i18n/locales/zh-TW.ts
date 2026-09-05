@@ -1162,6 +1162,8 @@ export default withEnglishFallback({
     mqttNewSubscription: "新增訂閱",
     mqttEditSubscription: "編輯訂閱",
     mqttSearchSubscriptionsPlaceholder: "搜尋訂閱篩選器...",
+    mqttSearchPayloadPlaceholder: "搜尋訊息 Payload...",
+    mqttNoMatchingMessages: "沒有已載入訊息符合目前 Payload 篩選條件",
     mqttNoSavedSubscriptions: "尚無訂閱設定，請點擊「新增訂閱」加入。",
     mqttTopicFilter: "Topic Filter",
     mqttTopicFilterPlaceholder: "例如 device/+/status",

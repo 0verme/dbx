@@ -902,6 +902,8 @@ export default withEnglishFallback({
     mqttNewSubscription: "Yeni abonelik",
     mqttEditSubscription: "Aboneliği düzenle",
     mqttSearchSubscriptionsPlaceholder: "Abonelik filtrelerinde ara...",
+    mqttSearchPayloadPlaceholder: "Mesaj payload'unda ara...",
+    mqttNoMatchingMessages: "Bu payload filtresiyle eşleşen yüklenmiş mesaj yok",
     mqttNoSavedSubscriptions: 'Kayıtlı abonelik yok. Eklemek için "Yeni abonelik" düğmesine tıklayın.',
     mqttTopicFilter: "Konu Filtresi",
     mqttTopicFilterPlaceholder: "örn. device/+/status",

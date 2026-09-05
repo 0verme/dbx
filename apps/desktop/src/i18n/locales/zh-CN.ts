@@ -825,6 +825,8 @@ export default withEnglishFallback({
     mqttNewSubscription: "新建订阅",
     mqttEditSubscription: "编辑订阅",
     mqttSearchSubscriptionsPlaceholder: "搜索订阅过滤器...",
+    mqttSearchPayloadPlaceholder: "搜索消息 Payload...",
+    mqttNoMatchingMessages: "没有已加载消息符合当前 Payload 筛选条件",
     mqttNoSavedSubscriptions: "暂无订阅配置，请点击“新建订阅”添加。",
     mqttTopicFilter: "Topic Filter",
     mqttTopicFilterPlaceholder: "例如 device/+/status",

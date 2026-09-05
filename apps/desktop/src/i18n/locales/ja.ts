@@ -1160,6 +1160,8 @@ export default withEnglishFallback({
     mqttNewSubscription: "購読を新規作成",
     mqttEditSubscription: "購読を編集",
     mqttSearchSubscriptionsPlaceholder: "購読フィルターを検索...",
+    mqttSearchPayloadPlaceholder: "メッセージのペイロードを検索...",
+    mqttNoMatchingMessages: "このペイロードフィルターに一致する読み込み済みメッセージはありません",
     mqttNoSavedSubscriptions: "保存された購読はありません。「購読を新規作成」をクリックしてください。",
     mqttTopicFilter: "Topic Filter",
     mqttTopicFilterPlaceholder: "例: device/+/status",

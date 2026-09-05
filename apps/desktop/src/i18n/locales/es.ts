@@ -1162,6 +1162,8 @@ export default withEnglishFallback({
     mqttNewSubscription: "Nueva suscripción",
     mqttEditSubscription: "Editar suscripción",
     mqttSearchSubscriptionsPlaceholder: "Buscar filtros de suscripción...",
+    mqttSearchPayloadPlaceholder: "Buscar en el payload del mensaje...",
+    mqttNoMatchingMessages: "Ningún mensaje cargado coincide con este filtro de payload",
     mqttNoSavedSubscriptions: "No hay suscripciones guardadas. Haz clic en «Nueva suscripción» para añadir una.",
     mqttTopicFilter: "Filtro de Topic",
     mqttTopicFilterPlaceholder: "p. ej. device/+/status",

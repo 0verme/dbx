@@ -901,6 +901,8 @@ export default {
     mqttNewSubscription: "New subscription",
     mqttEditSubscription: "Edit subscription",
     mqttSearchSubscriptionsPlaceholder: "Search subscription filters...",
+    mqttSearchPayloadPlaceholder: "Search message payload...",
+    mqttNoMatchingMessages: "No loaded messages match this payload filter",
     mqttNoSavedSubscriptions: 'No saved subscriptions. Click "New subscription" to add one.',
     mqttTopicFilter: "Topic Filter",
     mqttTopicFilterPlaceholder: "e.g. device/+/status",
