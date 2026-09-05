@@ -219,17 +219,92 @@ pub struct FieldMapping {
     pub custom_params: Option<String>,
 }
 
+/// Canonicalizes a handful of ANSI-SQL type synonyms that name the same
+/// underlying type across dialects (e.g. Postgres/Kingbase report the base
+/// type as `character varying` via `format_type()`, while the field-mapping
+/// UI's type catalog lists the shorter `varchar`). Without this, a user
+/// mapping configured against one spelling silently never matches a column
+/// reported under the other.
+fn canonical_type_name(base: &str) -> std::borrow::Cow<'_, str> {
+    match base.trim().to_ascii_uppercase().as_str() {
+        "CHARACTER VARYING" => std::borrow::Cow::Borrowed("VARCHAR"),
+        "CHARACTER" => std::borrow::Cow::Borrowed("CHAR"),
+        _ => std::borrow::Cow::Owned(base.trim().to_ascii_uppercase()),
+    }
+}
+
+/// Finds the mapping for `base_type`, preferring an exact (case-insensitive)
+/// match over an alias match. The field-mapping panel auto-generates one row
+/// per catalog type — `char`, `character`, `varchar` and `character varying`
+/// commonly coexist as separate rows with independently chosen targets — so
+/// treating aliases as interchangeable on the first hit alone would let an
+/// earlier row (e.g. `char`) silently shadow a later exact row (e.g.
+/// `character`) that shares the same canonical name. Alias matching is only
+/// a fallback for when no row exactly names the reported type.
+fn find_mapping<'a>(mappings: &'a [FieldMapping], base_type: &str) -> Option<&'a FieldMapping> {
+    mappings
+        .iter()
+        .find(|m| m.source_type.eq_ignore_ascii_case(base_type))
+        .or_else(|| mappings.iter().find(|m| canonical_type_name(&m.source_type) == canonical_type_name(base_type)))
+}
+
+/// Splices a driver-reported column length back into its type string when
+/// the type name itself omits it. Postgres/Kingbase can report a varying
+/// column as bare `character varying` (no length) via `format_type()` while
+/// still exposing the real length separately as `character_maximum_length`.
+/// Without this, the cross-dialect rewrite below has no way to tell "no
+/// length was ever declared" (safe to default) apart from "the length just
+/// isn't embedded in this dialect's type string" (issue #8011) — silently
+/// falling back to a generic default in the latter case would replace a
+/// known-correct length with a possibly wrong one.
+fn with_known_length(source_type: &str, character_maximum_length: Option<i32>) -> String {
+    let trimmed = source_type.trim();
+    if trimmed.contains('(') {
+        return trimmed.to_string();
+    }
+    // `character_maximum_length` is populated by several drivers for types
+    // where it does NOT mean "declared length in this position" — MySQL's
+    // information_schema fills it in for TEXT/BLOB family columns (e.g.
+    // TEXT -> 65535), and Oracle's DATA_LENGTH is filled in for every
+    // column, including DATE (byte length, e.g. 7) and NUMBER. Splicing
+    // those in verbatim is wrong twice over: `TEXT(65535)` is silently
+    // *reinterpreted* as MEDIUMTEXT by MySQL (real DB verified), and
+    // `DATE(7)` sent to a MySQL target is a straight syntax error.
+    //
+    // CHAR/CHARACTER/NCHAR belong on this whitelist alongside the VARCHAR
+    // family, unlike in type_rewrite's *default*-to-255 list: that list
+    // invents a length out of thin air (where CHAR must be excluded — a
+    // bare CHAR is already valid MySQL, meaning CHAR(1)), whereas this
+    // function only *restores* a length the driver already reported
+    // separately. MySQL's own information_schema does this for CHAR too
+    // (DATA_TYPE="char", CHARACTER_MAXIMUM_LENGTH=10 for a CHAR(10) column,
+    // real DB verified) — excluding CHAR here would silently truncate a
+    // real CHAR(10) column down to CHAR(1). Mirrors the same whitelist
+    // `columnDDLDataType` uses in agents/drivers/kingbase-go/kingbase_metadata.go.
+    let base_upper = trimmed.to_ascii_uppercase();
+    if !matches!(
+        base_upper.as_str(),
+        "VARCHAR" | "CHARACTER VARYING" | "NVARCHAR" | "CHAR" | "CHARACTER" | "NCHAR" | "VARCHAR2" | "NVARCHAR2"
+    ) {
+        return trimmed.to_string();
+    }
+    match character_maximum_length {
+        Some(len) if len > 0 => format!("{trimmed}({len})"),
+        _ => trimmed.to_string(),
+    }
+}
+
 impl FieldMapping {
     pub fn apply<'a>(mappings: &'a [FieldMapping], source_type: &str) -> Option<&'a str> {
         let base_type = source_type.split('(').next().unwrap_or(source_type).trim();
-        mappings.iter().find(|m| m.source_type.eq_ignore_ascii_case(base_type)).map(|m| m.target_type.as_str())
+        find_mapping(mappings, base_type).map(|m| m.target_type.as_str())
     }
 
     pub fn apply_with_params(mappings: &[FieldMapping], source_type: &str, target_kind: DialectKind) -> Option<String> {
         let trimmed = source_type.trim();
         let base_type = trimmed.split('(').next().unwrap_or(trimmed);
         let source_params = &trimmed[base_type.len()..];
-        let matched = mappings.iter().find(|m| m.source_type.eq_ignore_ascii_case(base_type))?;
+        let matched = find_mapping(mappings, base_type)?;
 
         let result = match matched.param_strategy {
             ParamStrategy::Strip => Some(matched.target_type.clone()),
@@ -4727,11 +4802,12 @@ fn generate_create_table_sql(
     let profile = profile_for(db_type);
     // Type rewrite: user mappings → profile type_map → DialectKind matrix → normalize.
     // Call sites must not branch on individual DatabaseType values.
-    let map_type = |source_type: &str| -> String {
-        if let Some(user_target) = FieldMapping::apply_with_params(field_mappings, source_type, target_dialect) {
+    let map_type = |col: &ColumnInfo| -> String {
+        let source_type = with_known_length(&col.data_type, col.character_maximum_length);
+        if let Some(user_target) = FieldMapping::apply_with_params(field_mappings, &source_type, target_dialect) {
             return user_target;
         }
-        rewrite_column_type(source_type, db_type, source_dialect)
+        rewrite_column_type(&source_type, db_type, source_dialect)
     };
     let table = qualified_name(name, db_type, schema);
 
@@ -4746,7 +4822,7 @@ fn generate_create_table_sql(
             continue;
         };
         let col_name = quote_id(&col.name, db_type);
-        let mapped_type = map_type(&col.data_type);
+        let mapped_type = map_type(col);
         if db_type == DatabaseType::SqlServer {
             col_defs.push(sqlserver_column_definition(col, &mapped_type, source_dialect, schema));
             if col.is_primary_key {
@@ -5182,12 +5258,13 @@ fn generate_schema_sync_sql_inner(
     // explicitly by the comparison plan instead of appending an invalid clause.
     let cascade = if cascade_delete && db_type != DatabaseType::SqlServer { " CASCADE" } else { "" };
 
-    let map_type = |source_type: &str| -> String {
+    let map_type = |col: &ColumnInfo| -> String {
         let tgt = DialectKind::from_database_type(db_type);
-        if let Some(user_target) = FieldMapping::apply_with_params(field_mappings, source_type, tgt) {
+        let source_type = with_known_length(&col.data_type, col.character_maximum_length);
+        if let Some(user_target) = FieldMapping::apply_with_params(field_mappings, &source_type, tgt) {
             return user_target;
         }
-        rewrite_column_type(source_type, db_type, source_dialect)
+        rewrite_column_type(&source_type, db_type, source_dialect)
     };
     let is_same_dialect =
         source_dialect.map(|source| DialectKind::from_database_type(db_type) == source).unwrap_or(false);
@@ -5359,7 +5436,7 @@ fn generate_schema_sync_sql_inner(
 
         if let Some(columns) = &diff.columns {
             let convert_col =
-                |col: &ColumnInfo| -> ColumnInfo { ColumnInfo { data_type: map_type(&col.data_type), ..col.clone() } };
+                |col: &ColumnInfo| -> ColumnInfo { ColumnInfo { data_type: map_type(col), ..col.clone() } };
             for column in columns {
                 match column.diff_type.as_str() {
                     "added" => {
@@ -12965,6 +13042,167 @@ mod tests {
             result,
             Some("character(100)".to_string()),
             "Custom params already wrapped in parentheses should be kept as-is"
+        );
+    }
+
+    #[test]
+    fn field_mapping_matches_character_varying_alias() {
+        // Kingbase/Postgres report a varchar column's base type as
+        // `character varying` (via format_type()), not `varchar`. A user who
+        // configures a mapping using the shorter, more common `varchar`
+        // spelling must still match it (issue #8011) — previously an exact
+        // string comparison meant such a mapping silently never fired
+        // against the real `character varying` column, dropping the user's
+        // chosen param strategy.
+        let mappings = vec![FieldMapping {
+            source_type: "varchar".into(),
+            target_type: "varchar".into(),
+            param_strategy: ParamStrategy::Custom,
+            custom_params: Some("255".to_string()),
+        }];
+        let result = FieldMapping::apply_with_params(&mappings, "character varying", DialectKind::Mysql);
+        assert_eq!(result, Some("varchar(255)".to_string()));
+
+        let result = FieldMapping::apply_with_params(&mappings, "character varying(50)", DialectKind::Mysql);
+        assert_eq!(result, Some("varchar(255)".to_string()));
+
+        assert_eq!(FieldMapping::apply(&mappings, "character varying"), Some("varchar"));
+    }
+
+    #[test]
+    fn field_mapping_exact_match_is_not_shadowed_by_an_alias() {
+        // char/character/varchar/character varying commonly coexist as
+        // separate auto-generated rows with independently chosen targets.
+        // An exact match must win over an alias match picked up from an
+        // earlier, unrelated row that merely shares the same canonical name
+        // (issue #8011 review: aliasing broke this without a two-pass find).
+        let mappings = vec![
+            FieldMapping {
+                source_type: "char".into(),
+                target_type: "binary".into(),
+                param_strategy: ParamStrategy::Preserve,
+                custom_params: None,
+            },
+            FieldMapping {
+                source_type: "character".into(),
+                target_type: "text".into(),
+                param_strategy: ParamStrategy::Preserve,
+                custom_params: None,
+            },
+        ];
+        assert_eq!(FieldMapping::apply(&mappings, "character"), Some("text"), "exact row must win over the char alias");
+        assert_eq!(
+            FieldMapping::apply(&mappings, "char"),
+            Some("binary"),
+            "exact row must win over the character alias"
+        );
+    }
+
+    #[test]
+    fn with_known_length_splices_reported_length_into_bare_type() {
+        assert_eq!(with_known_length("varchar", Some(1000)), "varchar(1000)");
+        assert_eq!(with_known_length("character varying", None), "character varying");
+        assert_eq!(with_known_length("varchar(50)", Some(1000)), "varchar(50)", "explicit params are never overridden");
+        assert_eq!(with_known_length("varchar", Some(0)), "varchar", "non-positive length is ignored");
+        assert_eq!(with_known_length("varchar", Some(-1)), "varchar", "negative length (unbounded marker) is ignored");
+    }
+
+    #[test]
+    fn with_known_length_ignores_non_length_bearing_types() {
+        // `character_maximum_length` is populated by several drivers for
+        // columns where it does not mean "declared length here" — MySQL's
+        // information_schema fills it in for TEXT/BLOB (byte capacity, e.g.
+        // TEXT -> 65535), and Oracle's DATA_LENGTH is filled in for every
+        // column, DATE and NUMBER included (issue #8011 review round 2).
+        // Splicing those in would silently reinterpret the type (MySQL turns
+        // `TEXT(65535)` into MEDIUMTEXT) or produce invalid DDL (`DATE(7)`).
+        assert_eq!(with_known_length("text", Some(65535)), "text");
+        assert_eq!(with_known_length("date", Some(7)), "date");
+        assert_eq!(with_known_length("number", Some(22)), "number");
+    }
+
+    #[test]
+    fn with_known_length_restores_a_real_char_length() {
+        // Unlike type_rewrite's *default*-to-255 list (which must exclude
+        // CHAR — a bare CHAR is already valid, meaning CHAR(1)), this
+        // function *restores* a length the driver already knows: MySQL's
+        // information_schema reports a CHAR(10) column as DATA_TYPE="char"
+        // with CHARACTER_MAXIMUM_LENGTH=10 (real DB verified). Using
+        // length 1 here would make this assertion pass even with CHAR
+        // wrongly excluded — CHAR(1) and bare CHAR mean the same thing — so
+        // this deliberately uses a length where truncation would show up
+        // (issue #8011 review round 3).
+        assert_eq!(with_known_length("char", Some(10)), "char(10)");
+        assert_eq!(with_known_length("character", Some(10)), "character(10)");
+        assert_eq!(with_known_length("char", None), "char", "no known length means no invented one either");
+    }
+
+    #[test]
+    fn mysql_same_dialect_add_column_keeps_text_type_when_length_metadata_is_present() {
+        // MySQL's own information_schema reports a real character_maximum_length
+        // for TEXT (65535) even though COLUMN_TYPE never carries it in
+        // parentheses. Splicing it in verbatim would have this same-dialect
+        // ADD COLUMN silently reinterpreted as MEDIUMTEXT by the server (real
+        // MySQL 8.4.6 verified) instead of staying TEXT.
+        let mut source_col = column("notes", "text", None);
+        source_col.character_maximum_length = Some(65535);
+        let diff = ColumnDiff {
+            diff_type: "added".to_string(),
+            name: "notes".to_string(),
+            source: Some(source_col),
+            target: None,
+            changes: vec![],
+            add_position: None,
+        };
+        let sql = gen_sql(wrap_table_diff("t", vec![diff]), DatabaseType::Mysql, Some(DialectKind::Mysql));
+        assert!(sql.contains("text"), "expected the column to stay TEXT: {sql}");
+        assert!(!sql.contains("(65535)"), "must not splice TEXT's byte capacity in as a length: {sql}");
+    }
+
+    #[test]
+    fn oracle_to_mysql_date_column_does_not_gain_an_invalid_length() {
+        // Oracle's DATA_LENGTH is populated for every column, DATE included
+        // (byte length, e.g. 7) — not just character types. Splicing it in
+        // would send `DATE(7)` to MySQL, which is a syntax error there (real
+        // MySQL 8.4.6 verified); the pre-fix behavior of passing `DATE`
+        // through untouched was already correct.
+        let mut source_col = column("created_on", "DATE", None);
+        source_col.character_maximum_length = Some(7);
+        let diff = ColumnDiff {
+            diff_type: "added".to_string(),
+            name: "created_on".to_string(),
+            source: Some(source_col),
+            target: None,
+            changes: vec![],
+            add_position: None,
+        };
+        let sql = gen_sql(wrap_table_diff("t", vec![diff]), DatabaseType::Mysql, Some(DialectKind::Oracle));
+        assert!(!sql.contains("DATE(7)"), "must not turn a valid DATE column into invalid DDL: {sql}");
+    }
+
+    #[test]
+    fn cross_dialect_add_column_uses_known_character_maximum_length_not_a_generic_default() {
+        // Kingbase's MySQL-compatible introspection can report a bare
+        // `varchar`/`character varying` (no length in the type string)
+        // while still exposing the real length via `character_maximum_length`
+        // on the same ColumnInfo. Silently defaulting to 255 in that case
+        // would trade a loud syntax error for a quiet wrong-schema bug
+        // (issue #8011 review).
+        let mut source_col = column("bio", "character varying", None);
+        source_col.character_maximum_length = Some(1000);
+        let diff = ColumnDiff {
+            diff_type: "added".to_string(),
+            name: "bio".to_string(),
+            source: Some(source_col),
+            target: None,
+            changes: vec![],
+            add_position: None,
+        };
+        let sql = gen_sql(wrap_table_diff("t", vec![diff]), DatabaseType::Mysql, Some(DialectKind::Postgres));
+        assert!(sql.contains("(1000)"), "expected the real reported length to be preserved: {sql}");
+        assert!(
+            !sql.contains("(255)"),
+            "must not silently fall back to the generic default when the real length is known: {sql}"
         );
     }
 
