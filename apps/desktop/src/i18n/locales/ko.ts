@@ -1110,6 +1110,8 @@ export default withEnglishFallback({
     cancelConnecting: "연결 취소",
     connectCancelled: "연결이 취소되었습니다",
     sshTotpCancelled: "일회용 코드 입력이 취소되었습니다",
+    mqttSearchPayloadPlaceholder: "메시지 Payload 검색...",
+    mqttNoMatchingMessages: "현재 Payload 필터 조건과 일치하는 로드된 메시지가 없습니다.",
   },
   editor: {
     duckdbDraining: "이전 DuckDB 쿼리가 아직 중지 중입니다. 잠시 후 다시 시도해 주세요.",
