@@ -76,6 +76,25 @@ describe("codemirrorSqlDialect", () => {
     }
   });
 
+  it("highlights core keywords for StandardSQL-based dialects (#8123)", () => {
+    // IRIS/Caché (and every other StandardSQL-based type) previously resolved
+    // with an empty keyword set, so SELECT/FROM/WHERE/AND rendered as plain
+    // identifiers — exactly the highlighting the #8123 report shows.
+    const reporterStatement = "select di.MR_ADM\nfrom SQLUser.DHCMRInfo di\nwhere di.MR_BAH = 1942487\n  and di.MR_RYRQ >= '2023-01-01'";
+    for (const databaseType of ["iris", "jdbc", "h2", "db2", "hive"] as DatabaseType[]) {
+      const dialect = createDbxCodeMirrorSqlDialect(langSql, "mysql", databaseType);
+      for (const keyword of ["select", "from", "where", "and"]) {
+        expect(nodeNameAt(dialect, reporterStatement, keyword), `${databaseType}:${keyword}`).toBe("Keyword");
+      }
+    }
+
+    // Standard-SQL types gain a vocabulary too, while ClickHouse keeps its
+    // pre-existing standard-vocabulary treatment unchanged.
+    expect(createDbxCodeMirrorSqlDialect(langSql, "mysql", "iris").spec.types).toBe("array binary bit boolean char character clob date decimal double float int integer interval large national nchar nclob numeric object precision real smallint time timestamp varchar varying");
+    const clickhouseDialect = createDbxCodeMirrorSqlDialect(langSql, "mysql", "clickhouse");
+    expect(nodeNameAt(clickhouseDialect, "SELECT x FROM t WHERE y > 1", "WHERE")).toBe("Keyword");
+  });
+
   it("enables backslashEscapes for MySQL-family dialects and ClickHouse while keeping it disabled for standard dialects", () => {
     const backslashEscapesTypes: DatabaseType[] = ["mysql", "doris", "starrocks", "manticoresearch", "goldendb", "gbase", "clickhouse", "hive", "spark", "impala", "argo", "databend"];
     for (const databaseType of backslashEscapesTypes) {

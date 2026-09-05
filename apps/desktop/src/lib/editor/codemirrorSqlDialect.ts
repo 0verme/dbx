@@ -233,8 +233,12 @@ export function createDbxCodeMirrorSqlDialect(langSql: CodeMirrorSqlLanguageModu
   const isSqlServer = baseDialect === langSql.MSSQL;
   const isPlsql = baseDialect === langSql.PLSQL;
   const isClickHouse = databaseType === "clickhouse" || dialectName === "clickhouse";
-  const baseKeywords = isClickHouse ? standardSqlKeywordSyntaxTerms(langSql) : isPostgres ? postgresKeywordSyntaxTerms(baseDialect.spec.keywords || "") : baseDialect.spec.keywords || "";
-  const baseTypes = isClickHouse ? STANDARD_SQL_TYPES : baseDialect.spec.types || "";
+  // StandardSQL.spec exposes no vocabulary, so every StandardSQL-based dialect
+  // (generic JDBC, IRIS/Caché, H2, DB2, …) needs the reconstructed standard
+  // keyword set — without it SELECT/WHERE/AND highlight as plain identifiers.
+  const isStandardSql = isClickHouse || baseDialect === langSql.StandardSQL;
+  const baseKeywords = isStandardSql ? standardSqlKeywordSyntaxTerms(langSql) : isPostgres ? postgresKeywordSyntaxTerms(baseDialect.spec.keywords || "") : baseDialect.spec.keywords || "";
+  const baseTypes = isStandardSql ? STANDARD_SQL_TYPES : baseDialect.spec.types || "";
   const commonKeywords = isClickHouse ? DBX_COMMON_SQL_KEYWORDS.toLowerCase() : DBX_COMMON_SQL_KEYWORDS;
   const baseBuiltin = isSqlServer ? sqlServerBuiltinSyntaxTerms(baseDialect.spec.builtin || "") : baseDialect.spec.builtin || "";
 
