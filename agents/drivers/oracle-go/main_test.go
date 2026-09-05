@@ -2971,13 +2971,15 @@ func contains(values []string, target string) bool {
 }
 
 type oracleViewSourceQueryStep struct {
-	queryContains string
-	args          []driver.Value
-	columns       []string
-	rows          [][]driver.Value
-	err           error
-	exec          bool
-	panicText     string
+	queryContains    string
+	args             []driver.Value
+	columns          []string
+	rows             [][]driver.Value
+	err              error
+	exec             bool
+	panicText        string
+	nextPanicText    string
+	columnsPanicText string
 }
 
 type oracleViewSourceDriver struct {
@@ -3038,7 +3040,12 @@ func (c *oracleViewSourceConn) QueryContext(
 	if len(columns) == 0 {
 		columns = []string{"SOURCE"}
 	}
-	return &oracleViewSourceRows{columns: columns, values: step.rows}, nil
+	return &oracleViewSourceRows{
+		columns:          columns,
+		values:           step.rows,
+		nextPanicText:    step.nextPanicText,
+		columnsPanicText: step.columnsPanicText,
+	}, nil
 }
 
 func (c *oracleViewSourceConn) ExecContext(
@@ -3068,12 +3075,17 @@ func (c *oracleViewSourceConn) ExecContext(
 }
 
 type oracleViewSourceRows struct {
-	columns []string
-	values  [][]driver.Value
-	next    int
+	columns          []string
+	values           [][]driver.Value
+	next             int
+	nextPanicText    string
+	columnsPanicText string
 }
 
 func (r *oracleViewSourceRows) Columns() []string {
+	if r.columnsPanicText != "" {
+		panic(r.columnsPanicText)
+	}
 	return r.columns
 }
 
@@ -3082,6 +3094,9 @@ func (r *oracleViewSourceRows) Close() error {
 }
 
 func (r *oracleViewSourceRows) Next(dest []driver.Value) error {
+	if r.nextPanicText != "" {
+		panic(r.nextPanicText)
+	}
 	if r.next >= len(r.values) {
 		return io.EOF
 	}
@@ -3371,6 +3386,131 @@ func TestOracleQueryRowsKeepsSTAsTextErrorWhenPlaceholderAlsoFails(t *testing.T)
 	}
 	if err == nil || !strings.Contains(err.Error(), "ORA-28595") {
 		t.Fatalf("expected the original ST_AsText ORA-28595 error, got %v", err)
+	}
+}
+
+func TestReadQuerySessionPageConvertsPanicToError(t *testing.T) {
+	// A nil *sql.Rows makes rows.Next() panic with a nil pointer dereference,
+	// which stands in for go-ora panicking while decoding an unknown type.
+	session := &querySession{rows: nil, columns: []string{"A"}, columnTypes: []string{"NUMBER"}, remaining: 1}
+	result, err := readQuerySessionPage(session, 10)
+	var panicErr oracleDriverPanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("expected oracle driver panic error, got %v", err)
+	}
+	if len(result.Rows) != 0 {
+		t.Fatalf("panic path must not return rows, got %v", result.Rows)
+	}
+}
+
+func TestExecuteQueryPageRetriesWithPlaceholderOnRowIterationPanic(t *testing.T) {
+	db, scripted := openOracleViewSourceTestDB(t, []oracleViewSourceQueryStep{
+		{
+			queryContains: "SELECT * FROM SDE.TEST_GEOM",
+			args:          []driver.Value{},
+			columns:       []string{"ID", "GEOM"},
+			rows:          [][]driver.Value{{int64(1), "raw geometry bytes"}},
+			nextPanicText: "simulated go-ora decode panic on custom type column",
+		},
+		{
+			queryContains: "ALL_TAB_COLUMNS",
+			args:          []driver.Value{"SDE", "TEST_GEOM"},
+			columns:       []string{"COLUMN_NAME", "DATA_TYPE", "DATA_TYPE_OWNER"},
+			rows: [][]driver.Value{
+				{"ID", "NUMBER", nil},
+				{"GEOM", "ST_GEOMETRY", "SDE"},
+			},
+		},
+		{
+			queryContains: "'<ST_GEOMETRY>'",
+			args:          []driver.Value{},
+			columns:       []string{"ID", "GEOM", "__DBX_LARGE_VALUE_BYTES_C_1"},
+			rows:          [][]driver.Value{{int64(1), "<ST_GEOMETRY>", "D:1"}},
+		},
+	})
+	s := newServer()
+	s.db = db
+	result, err := s.executeQueryPage(queryOptions{SQL: "SELECT * FROM SDE.TEST_GEOM"}, 10)
+	if err != nil {
+		t.Fatalf("expected placeholder retry to serve the first page, got %v", err)
+	}
+	if scripted.next != len(scripted.steps) {
+		t.Fatalf("expected %d queries, got %d", len(scripted.steps), scripted.next)
+	}
+	if len(result.Rows) != 1 {
+		t.Fatalf("expected one placeholder row, got %v", result.Rows)
+	}
+	want := []any{int64(1), "<ST_GEOMETRY>", "D:1"}
+	if !reflect.DeepEqual(result.Rows[0], want) {
+		t.Fatalf("unexpected row: %v, want %v", result.Rows[0], want)
+	}
+	if result.SessionID != nil || result.HasMore {
+		t.Fatalf("fully drained page must not keep a session: %v %v", result.SessionID, result.HasMore)
+	}
+}
+
+func TestExecuteQueryPageSurfacesPanicWhenPlaceholderNotApplicable(t *testing.T) {
+	db, scripted := openOracleViewSourceTestDB(t, []oracleViewSourceQueryStep{
+		{
+			queryContains: "SELECT * FROM SDE.TEST_GEOM",
+			args:          []driver.Value{},
+			columns:       []string{"ID"},
+			rows:          [][]driver.Value{{int64(1)}},
+			nextPanicText: "simulated go-ora decode panic on custom type column",
+		},
+		{
+			queryContains: "ALL_TAB_COLUMNS",
+			args:          []driver.Value{"SDE", "TEST_GEOM"},
+			columns:       []string{"COLUMN_NAME", "DATA_TYPE", "DATA_TYPE_OWNER"},
+			rows:          [][]driver.Value{{"ID", "NUMBER", nil}},
+		},
+	})
+	s := newServer()
+	s.db = db
+	result, err := s.executeQueryPage(queryOptions{SQL: "SELECT * FROM SDE.TEST_GEOM"}, 10)
+	var panicErr oracleDriverPanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("expected oracle driver panic error, got %v", err)
+	}
+	if scripted.next != len(scripted.steps) {
+		t.Fatalf("expected %d queries, got %d", len(scripted.steps), scripted.next)
+	}
+	if len(result.Rows) != 0 {
+		t.Fatalf("failed query must not return rows, got %v", result.Rows)
+	}
+}
+
+func TestRuntimeHandleLineRecoversRequestPanic(t *testing.T) {
+	db, _ := openOracleViewSourceTestDB(t, []oracleViewSourceQueryStep{
+		{
+			queryContains:    "SELECT * FROM SDE.TEST_GEOM",
+			args:             []driver.Value{},
+			columnsPanicText: "simulated go-ora panic while describing columns",
+		},
+	})
+	runtime := newRuntimeServer()
+	session := newServer()
+	session.db = db
+	runtime.sessions["agent-session-1"] = &agentSession{server: session}
+
+	resp, shutdown := runtime.handleLine(`{"jsonrpc":"2.0","id":5,"method":"execute_query_page","params":{"agentSessionId":"agent-session-1","sql":"SELECT * FROM SDE.TEST_GEOM","pageSize":10}}`)
+	if shutdown {
+		t.Fatal("recovered panic must not shut down the agent")
+	}
+	if resp.Error == nil {
+		t.Fatalf("expected panic error response, got %+v", resp)
+	}
+	if !strings.Contains(resp.Error.Message, "agent request panic") {
+		t.Fatalf("unexpected error message: %s", resp.Error.Message)
+	}
+	if string(resp.ID) != "5" {
+		t.Fatalf("panic response must keep the request id, got %s", resp.ID)
+	}
+
+	// The RPC stream must survive the panic and keep serving requests.
+	followUp, shutdown := runtime.handleLine(`{"jsonrpc":"2.0","id":6,"method":"handshake","params":{}}`)
+	if shutdown || followUp.Error != nil {
+		t.Fatalf("handshake after recovered panic failed: shutdown=%v error=%v", shutdown, followUp.Error)
 	}
 }
 
