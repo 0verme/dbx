@@ -582,7 +582,10 @@ async function handleCompare() {
       targetRules: tgtRules,
       sourceOwners: srcOwners,
       targetOwners: tgtOwners,
-      tableMappings: opts.tableMappings,
+      // Mappings only apply to an explicit table selection; the all-tables path
+      // (selectedTables === undefined) must stay mapping-free so the Rust side
+      // cannot reclassify added/removed tables from stale persisted mappings.
+      tableMappings: opts.selectedTables === undefined ? undefined : opts.tableMappings,
       databaseType: dbType,
       targetSchema: schemaDiffDeployTargetSchema(dbType, targetDatabase.value, targetSchema.value),
       ignoreComments: ignoreComments.value,

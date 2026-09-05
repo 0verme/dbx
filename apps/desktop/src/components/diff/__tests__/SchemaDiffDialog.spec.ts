@@ -111,7 +111,7 @@ describe("SchemaDiffDialog fullscreen layout", () => {
     expect(configStepSource).toContain('@update:model-value="(value: string) => handleTableMappingUpdate(match.sourceTable, value)"');
     expect(configStepSource).toContain("tableMatchStatus.${match.kind}");
     expect(dialogSource).toContain('@update:table-mappings="handleTableMappingsUpdate"');
-    expect(dialogSource).toContain("tableMappings: opts.tableMappings");
+    expect(dialogSource).toContain("tableMappings: opts.selectedTables === undefined ? undefined : opts.tableMappings");
     expect(dialogSource).toContain("const swappedMappings = swapSchemaDiffTableMappings(currentOptions.tableMappings ?? []);");
   });
 

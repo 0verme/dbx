@@ -86,7 +86,7 @@ const activeTableMappings = computed(() => props.options?.tableMappings ?? []);
 const tableMatches = computed<SchemaDiffTableMatch[]>(() => buildSchemaDiffTableMatches(localSelectedTables.value, targetTableList.value, activeTableMappings.value));
 const matchedTableCount = computed(() => tableMatches.value.filter((match) => match.targetTable).length);
 const missingTargetTables = computed(() => tableMatches.value.filter((match) => !match.targetTable).map((match) => match.sourceTable));
-const hasCompleteTableMappings = computed(() => tableMatches.value.length === 0 || tableMatches.value.every((match) => !!match.targetTable));
+const tableMappingConflictSource = ref<string | null>(null);
 
 function targetTableOptions(sourceTable: string): string[] {
   return availableSchemaDiffTargetTables(sourceTable, targetTableList.value, activeTableMappings.value);
@@ -94,7 +94,12 @@ function targetTableOptions(sourceTable: string): string[] {
 
 function handleTableMappingUpdate(sourceTable: string, targetTable: string) {
   const update = updateSchemaDiffTableMapping(activeTableMappings.value, sourceTable, targetTable);
-  if (update.accepted) emitTableMappings(update.mappings);
+  if (update.accepted) {
+    tableMappingConflictSource.value = null;
+    emitTableMappings(update.mappings);
+  } else {
+    tableMappingConflictSource.value = update.conflictSource ?? sourceTable;
+  }
 }
 
 function emitTableMappings(nextMappings: SchemaDiffTableMapping[]) {
@@ -223,7 +228,9 @@ const canConfigureTableSelection = computed(() => isTableIdentityReady("source")
 
 const canCompare = computed(() => {
   const hasSelectedTables = props.selectedTables === undefined || props.selectedTables.length > 0;
-  const hasValidTableMappings = !restrictTables.value || localSelectedTables.value.length === 0 || (isTableIdentityReady("target") && hasCompleteTableMappings.value);
+  // Unmapped source tables are not a blocker: they flow through the comparison as
+  // source-only tables (CREATE TABLE in the target), matching the pre-mapping behavior.
+  const hasValidTableMappings = !restrictTables.value || localSelectedTables.value.length === 0 || isTableIdentityReady("target");
   return props.sourceConnectionId && props.targetConnectionId && props.sourceDatabase && props.targetDatabase && hasSelectedTables && hasValidTableMappings && (!isSchemaAware(sourceConfig.value?.db_type) || props.sourceSchema) && (!isSchemaAware(targetConfig.value?.db_type) || props.targetSchema);
 });
 
@@ -654,8 +661,11 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
             </tbody>
           </table>
         </div>
-        <div v-if="targetTableListLoaded && missingTargetTables.length" class="text-destructive">
+        <div v-if="targetTableListLoaded && missingTargetTables.length" class="text-muted-foreground">
           {{ t("diff.unmatchedTableWarning", { count: missingTargetTables.length }) }}
+        </div>
+        <div v-if="tableMappingConflictSource" class="text-destructive">
+          {{ t("diff.targetTableInUse") }}
         </div>
       </div>
     </div>
