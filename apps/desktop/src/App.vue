@@ -2491,7 +2491,7 @@ function onQueryEditorObjectSourceSaved() {
   contentAreaRef.value?.refreshQueryEditorCompletionCache();
 }
 
-async function changeActiveConnection(connectionId: string, tabId?: string) {
+async function changeActiveConnection(tabId: string, connectionId: string) {
   const tab = resolveToolbarTab(tabId);
   if (!tab) return;
   const connection = connectionStore.getConfig(connectionId);
@@ -2530,7 +2530,7 @@ async function changeActiveConnection(connectionId: string, tabId?: string) {
   }
 }
 
-function changeActiveDatabase(database: string, tabId?: string) {
+function changeActiveDatabase(tabId: string, database: string) {
   const tab = resolveToolbarTab(tabId);
   if (tab) {
     queryStore.updateDatabase(tab.id, database);
@@ -2541,7 +2541,7 @@ function changeActiveDatabase(database: string, tabId?: string) {
   }
 }
 
-function changeActiveCatalog(catalog: string | undefined, database: string, tabId?: string) {
+function changeActiveCatalog(tabId: string, catalog: string | undefined, database: string) {
   const tab = resolveToolbarTab(tabId);
   if (tab) {
     queryStore.updateCatalog(tab.id, catalog, database);
@@ -2561,7 +2561,7 @@ async function clearActiveDefaultDatabase(tabId?: string) {
   await connectionStore.clearDefaultDatabase(tab.connectionId);
 }
 
-function changeActiveSchema(schema: string | undefined, tabId?: string) {
+function changeActiveSchema(tabId: string, schema: string | undefined) {
   const tab = resolveToolbarTab(tabId);
   if (!tab) return;
   queryStore.updateSchema(tab.id, schema);
