@@ -781,6 +781,15 @@ function requestActiveEditorExecuteInNewResultTab() {
 // Per-group editor toolbars call back into this App-owned orchestration. The
 // group focuses itself on pointerdown/focusin before any toolbar event, so the
 // acting tab is passed explicitly instead of relying on the focused group.
+// Declared above the provide: the object references the variable itself, while
+// the lazy getter safely reads later-declared update-count refs at render time.
+const specialPageTabs = computed(() => ({
+  settingsOpen: settingsPageTabOpen.value,
+  settingsActive: settingsStore.settingsPageActive,
+  driverStoreOpen: driverStoreTabOpen.value,
+  driverStoreActive: driverStoreActive.value,
+  driverUpdateCount: toolbarAgentDriverUpdateCount.value,
+}));
 provide(EDITOR_TOOLBAR_ACTIONS, {
   explainMode,
   blockDangerousRedisCommands,
@@ -804,6 +813,11 @@ provide(EDITOR_TOOLBAR_ACTIONS, {
   changeSchema: changeActiveSchema,
   setDefaultDatabase: setActiveDatabaseAsDefault,
   clearDefaultDatabase: clearActiveDefaultDatabase,
+  specialPageTabs,
+  activateSettingsPage,
+  closeSettingsPage,
+  activateDriverStore: () => openDriverStorePage(),
+  closeDriverStore: closeDriverStorePage,
 });
 
 // Upstream "preview changes" entry: dormant until the group toolbar wires the
@@ -3445,6 +3459,7 @@ onUnmounted(() => {
                 :can-detach-tabs="isDesktop"
                 @activate-driver-store="openDriverStorePage"
                 @activate-settings-page="activateSettingsPage"
+                @activate-tab="activateQueryTab"
                 @close-driver-store="closeDriverStorePage"
                 @close-settings-page="closeSettingsPage"
                 @save-tab="handleSaveTab"
@@ -3495,12 +3510,9 @@ onUnmounted(() => {
                   @update:open="(open: boolean) => (open ? activateSettingsPage() : closeSettingsPage())"
                   @check-updates="checkUpdates()"
                 />
-                <!-- Keep the workspace mounted with its group tab strips visible while a special page is active:
-                     the strips are the mouse path back to the editors (clicking a tab deactivates the page). -->
-                <div v-if="queryStore.tabs.length > 0" class="flex flex-col flex-1 min-h-0">
+                <div v-if="queryStore.tabs.length > 0" v-show="!driverStoreActive && !settingsStore.settingsPageActive" class="flex flex-col flex-1 min-h-0">
                   <SqlEditorWorkspace
                     ref="contentAreaRef"
-                    :special-surface-active="driverStoreActive || settingsStore.settingsPageActive"
                     @locate-tab="locateTabInSidebar"
                     @toggle-zen-mode="toggleZenMode"
                     @start-resize="startTabBarResize"

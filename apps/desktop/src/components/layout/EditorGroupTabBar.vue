@@ -48,6 +48,7 @@ import {
   Maximize2,
   Minimize2,
   Network,
+  Package,
   PanelTop,
   Pencil,
   PencilRuler,
@@ -55,6 +56,7 @@ import {
   RotateCcw,
   RotateCw,
   Search,
+  Settings,
   ShieldCheck,
   Table2,
   TableProperties,
@@ -97,6 +99,8 @@ const props = defineProps<{
   canDetachTabs?: boolean;
   /** A detached tab is being dragged over this bar — highlight it as the drop target. */
   detachedDropTarget?: boolean;
+  /** App-level special pages (settings / driver store) appended after the tabs. */
+  specialPageTabs?: { settingsOpen: boolean; settingsActive: boolean; driverStoreOpen: boolean; driverStoreActive: boolean; driverUpdateCount: number };
 }>();
 
 const emit = defineEmits<{
@@ -106,6 +110,10 @@ const emit = defineEmits<{
   "start-resize": [event: MouseEvent];
   "toggle-collapse": [];
   "detach-tab": [tab: QueryTab];
+  "activate-settings": [];
+  "close-settings": [];
+  "activate-driver-store": [];
+  "close-driver-store": [];
 }>();
 
 const { t } = useI18n();
@@ -122,6 +130,21 @@ const editingTitle = ref("");
 // with the drag state. A fresh pointerdown always resets it.
 const suppressNextTabClick = ref(false);
 const isClassicLayout = computed(() => settingsStore.editorSettings.appLayout === "classic");
+// Special pages append to the focused group's strip only: one instance at a
+// time, in the pane the user is working in (v0.6.2 kept them in the single strip).
+const showSpecialPageTabs = computed(() => !!props.specialPageTabs && (props.specialPageTabs.settingsOpen || props.specialPageTabs.driverStoreOpen) && queryStore.focusedGroupId === props.groupId);
+
+function specialPageTabClass(active: boolean): string[] {
+  if (isClassicLayout.value) {
+    return ["h-full border-r border-border/80 font-medium dark:border-border/45", active ? "bg-background text-foreground" : "text-foreground/70 hover:text-foreground/90"];
+  }
+  return ["h-7 rounded-md border", active ? "border-ring font-medium text-foreground" : "border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90"];
+}
+
+function specialPageTabStyle(active: boolean) {
+  if (!isClassicLayout.value) return undefined;
+  return active ? { boxShadow: "inset 0 -2px 0 var(--ring)" } : undefined;
+}
 const isVerticalLayout = computed(() => settingsStore.editorSettings.tabPlacement === "left" || settingsStore.editorSettings.tabPlacement === "right");
 const isWrapLayout = computed(() => !isVerticalLayout.value && settingsStore.editorSettings.tabLayout === "wrap");
 // The icon-only collapse only exists in the vertical toolbar; horizontal
@@ -1249,6 +1272,47 @@ watch(
                 </Tooltip>
               </div>
             </CustomContextMenu>
+          </template>
+          <!-- Settings / driver store append to the focused strip like v0.6.2
+               (vertical strips get them with the #8213 column-mode redesign) -->
+          <template v-if="showSpecialPageTabs && !isVerticalLayout">
+            <div
+              v-if="specialPageTabs?.settingsOpen"
+              data-settings-page-tab
+              class="app-tab-pill group flex shrink-0 cursor-default items-center gap-1 px-2 text-xs transition-colors whitespace-nowrap select-none"
+              :class="specialPageTabClass(!!specialPageTabs?.settingsActive)"
+              :style="specialPageTabStyle(!!specialPageTabs?.settingsActive)"
+              :data-active-tab="specialPageTabs?.settingsActive"
+              :title="t('settings.title')"
+              @click="emit('activate-settings')"
+              @mousedown.middle.prevent="emit('close-settings')"
+            >
+              <Settings class="h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+              <span class="min-w-0 flex-1 truncate">{{ t("settings.title") }}</span>
+              <button class="shrink-0 rounded p-0.5 hover:bg-muted-foreground/20" :aria-label="t('common.close')" :title="t('common.close')" @click.stop="emit('close-settings')">
+                <X class="h-3 w-3" />
+              </button>
+            </div>
+            <div
+              v-if="specialPageTabs?.driverStoreOpen"
+              data-driver-store-tab
+              class="app-tab-pill group flex shrink-0 cursor-default items-center gap-1 px-2 text-xs transition-colors whitespace-nowrap select-none"
+              :class="specialPageTabClass(!!specialPageTabs?.driverStoreActive)"
+              :style="specialPageTabStyle(!!specialPageTabs?.driverStoreActive)"
+              :data-active-tab="specialPageTabs?.driverStoreActive"
+              :title="t('toolbar.driverManager')"
+              @click="emit('activate-driver-store')"
+              @mousedown.middle.prevent="emit('close-driver-store')"
+            >
+              <Package class="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span class="min-w-0 flex-1 truncate">{{ t("toolbar.driverManager") }}</span>
+              <span v-if="(specialPageTabs?.driverUpdateCount ?? 0) > 0" class="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white" :aria-label="t('toolbar.updatableDriverCount')">
+                {{ (specialPageTabs?.driverUpdateCount ?? 0) > 99 ? "99+" : specialPageTabs?.driverUpdateCount }}
+              </span>
+              <button class="shrink-0 rounded p-0.5 hover:bg-muted-foreground/20" :aria-label="t('common.close')" :title="t('common.close')" @click.stop="emit('close-driver-store')">
+                <X class="h-3 w-3" />
+              </button>
+            </div>
           </template>
           <div :class="tabTailDragRegionClass" data-tauri-drag-region />
         </div>

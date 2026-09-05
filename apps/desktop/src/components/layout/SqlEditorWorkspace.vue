@@ -19,8 +19,6 @@ const props = defineProps<
     tabBarCollapsed?: boolean;
     canDetachTabs?: boolean;
     detachedDropTarget?: boolean;
-    /** While an App-level special page (settings / driver store) is active, keep only the group tab strips visible. */
-    specialSurfaceActive?: boolean;
   }
 >();
 const emit = defineEmits<
@@ -124,9 +122,7 @@ const showResultPane = ref(true);
 // split and 0, so collapsing/expanding glides instead of jumping: the pane
 // transition for this outer split is re-enabled in sqlEditorWorkspace.css
 // (globals.css kills it for horizontal splitpanes).
-// Special pages own the main area: the shared result pane collapses so only
-// the per-group tab strips remain clickable as the way back to the workspace.
-const resultPaneTargetSize = computed(() => (showSharedResult.value && showResultPane.value && !props.specialSurfaceActive ? resultPaneSize.value : 0));
+const resultPaneTargetSize = computed(() => (showSharedResult.value && showResultPane.value ? resultPaneSize.value : 0));
 const editorPaneSize = computed(() => 100 - resultPaneTargetSize.value);
 // Entrance choreography is hydration-gated: groups present at first render
 // never animate (no load choreography); only groups created later — by a
@@ -221,7 +217,6 @@ function handleFocusStatement(tabId: string, range: StatementRange | null): bool
               :tab-bar-collapsed="tabBarCollapsed"
               :can-detach-tabs="canDetachTabs"
               :detached-drop-target="detachedDropTarget"
-              :content-hidden="specialSurfaceActive"
               class="h-full"
               v-bind="editorGroupBindings"
               @focus-group="queryStore.focusGroup($event)"

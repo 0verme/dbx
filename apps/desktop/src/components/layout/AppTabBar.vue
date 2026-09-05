@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch, type CSSProperties } from "vue";
 import { useI18n } from "vue-i18n";
 import { X, Minimize2, Maximize2, Settings, Package, AlertTriangle } from "@lucide/vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { tabDisplayTitle } from "@/lib/tabs/tabPresentation";
+import TabModeIcon from "./TabModeIcon.vue";
+import { tabColorStyle, tabDisplayTitle, tabIconClass } from "@/lib/tabs/tabPresentation";
 import "./appTabBar.css";
 
 const props = defineProps<{
@@ -26,6 +27,7 @@ const emit = defineEmits<{
   "close-driver-store": [];
   "activate-settings-page": [];
   "close-settings-page": [];
+  "activate-tab": [tabId: string];
   "save-tab": [tabId: string];
   "discard-tab-close": [];
   "save-all-tab-close": [];
@@ -114,12 +116,25 @@ const specialStripRowClass = computed(() => (isClassicLayout.value ? "h-9 items-
 const specialStripScrollClass = computed(() => (isClassicLayout.value ? "h-full items-center overflow-x-auto" : "h-full items-center gap-1.5 overflow-x-auto py-1.5"));
 const specialStripBarClass = computed(() => (isClassicLayout.value ? "bg-muted" : `bg-background ${settingsStore.editorSettings.tabPlacement === "bottom" ? "border-t" : "border-b"}`));
 
-function specialTabClass(active: boolean, widthClass: string): string[] {
+function specialTabClass(active: boolean, widthClass = ""): string[] {
   if (isClassicLayout.value) {
     return ["h-full border-r border-border/80 font-medium dark:border-border/45", active ? "bg-background text-foreground" : "text-foreground/70 hover:text-foreground/90"];
   }
   return [`h-7 ${widthClass} rounded-md border`, active ? "border-ring font-medium text-foreground" : "border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90"];
 }
+
+function specialTabColorStyle(active: boolean): CSSProperties | undefined {
+  // Special pages carry no connection color; mirror tabColorStyle's classic
+  // active underline so they read as selected like every other tab.
+  if (!isClassicLayout.value) return undefined;
+  return active ? { boxShadow: "inset 0 -2px 0 var(--ring)" } : undefined;
+}
+
+// While a special page hides the workspace, the group tab strips disappear
+// with it. Re-render the open tabs here so a click is the way back to the
+// editors (v0.6.2 kept everything in one strip; the split-pane refactor moved
+// regular tabs into the hidden workspace and left no mouse path back).
+const overlayReturnTabs = computed(() => (props.settingsPageActive || props.driverStoreActive ? queryStore.tabs : []));
 
 type SpecialRegularSurface = "driverStore" | "settings";
 
@@ -212,10 +227,36 @@ function handleCancelClose() {
 </script>
 
 <template>
-  <div v-if="driverStoreOpen || settingsPageOpen" class="app-tab-bar relative flex w-full min-w-0 shrink-0 overflow-hidden" :class="[specialStripBarClass, { 'ring-2 ring-primary ring-inset': detachedDropTarget }]" data-main-tab-bar>
+  <!-- Renders only while a special page owns the main area (the workspace and
+       its group strips are hidden then); open-but-inactive special pages
+       append to the focused group's tab strip instead of a row of their own. -->
+  <div v-if="driverStoreActive || settingsPageActive" class="app-tab-bar relative flex w-full min-w-0 shrink-0 overflow-hidden" :class="[specialStripBarClass, { 'ring-2 ring-primary ring-inset': detachedDropTarget }]" data-main-tab-bar>
     <div class="flex w-full min-w-0 shrink-0 overflow-hidden" :class="specialStripRowClass">
       <div class="app-tab-strip relative h-full min-w-0 flex-1 overflow-hidden">
         <div class="app-tab-scroll flex h-full w-full min-w-0 flex-1" :class="specialStripScrollClass">
+          <!-- Open tabs as the mouse path back while a special page owns the main area -->
+          <div
+            v-for="tab in overlayReturnTabs"
+            :key="tab.id"
+            data-return-tab
+            class="app-tab-pill group flex cursor-default items-center gap-1 px-2 text-xs transition-colors whitespace-nowrap select-none"
+            :class="specialTabClass(false)"
+            :style="tabColorStyle(tab, false, isClassicLayout)"
+            :title="tabDisplayTitle(tab, t)"
+            data-active-tab="false"
+            @click="emit('activate-tab', tab.id)"
+            @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
+          >
+            <span class="shrink-0" :class="tabIconClass(tab)">
+              <TabModeIcon :tab="tab" class="h-3.5 w-3.5" />
+            </span>
+            <span class="min-w-0 flex-1 truncate">{{ tabDisplayTitle(tab, t) }}</span>
+            <span v-if="queryStore.isTabDirty(tab)" aria-hidden="true" class="dirty-tab-marker">*</span>
+            <button class="shrink-0 rounded p-0.5 hover:bg-muted-foreground/20" :aria-label="t('contextMenu.closeTab')" :title="t('contextMenu.closeTab')" @pointerdown.stop @click.stop="queryStore.closeTab(tab.id)">
+              <X class="h-3 w-3" />
+            </button>
+          </div>
+
           <!-- Settings Page Tab -->
           <CustomContextMenu v-if="settingsPageOpen" :items="getSpecialRegularTabMenuItems('settings')" v-slot="{ onContextMenu }">
             <div :class="isClassicLayout ? 'h-full' : ''" @contextmenu="onContextMenu">
@@ -223,6 +264,7 @@ function handleCancelClose() {
                 data-settings-page-tab
                 class="app-tab-pill group flex cursor-default items-center gap-1 px-2 text-xs transition-colors whitespace-nowrap select-none"
                 :class="specialTabClass(!!settingsPageActive, 'min-w-36')"
+                :style="specialTabColorStyle(!!settingsPageActive)"
                 :data-active-tab="settingsPageActive"
                 @click="emit('activate-settings-page')"
                 @mousedown.middle.prevent="emit('close-settings-page')"
@@ -245,6 +287,7 @@ function handleCancelClose() {
                 data-driver-store-tab
                 class="app-tab-pill group flex cursor-default items-center gap-1 px-2 text-xs transition-colors whitespace-nowrap select-none"
                 :class="specialTabClass(!!driverStoreActive, 'min-w-38')"
+                :style="specialTabColorStyle(!!driverStoreActive)"
                 :data-active-tab="driverStoreActive"
                 @click="emit('activate-driver-store')"
                 @mousedown.middle.prevent="emit('close-driver-store')"

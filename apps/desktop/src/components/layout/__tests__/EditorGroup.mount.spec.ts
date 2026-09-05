@@ -182,48 +182,4 @@ describe("EditorGroup mount contract", () => {
     app2.unmount();
     host.remove();
   });
-
-  it("keeps the tab strip mounted while special pages hide the pane content", async () => {
-    const store = useQueryStore();
-    const queryId = store.createTab("pg-1", "app", "Query 1", "query");
-
-    const mountGroup = async (contentHidden: boolean) => {
-      const host = createHost();
-      const app = createApp(EditorGroup, {
-        groupId: "group-1",
-        tabIds: [queryId],
-        activeTabId: queryId,
-        activeTab: tab(queryId),
-        activeConnection: undefined,
-        executableSql: "SELECT 1",
-        activeOutputView: "result",
-        formatSqlRequest: null,
-        compressSqlRequest: null,
-        selectedSql: "",
-        cursorPos: 0,
-        blockDangerousRedisCommands: false,
-        contentHidden,
-      });
-      app.use(pinia);
-      app.use(i18n);
-      app.mount(host);
-      await nextTick();
-      return { host, app };
-    };
-
-    // 设置/驱动管理等 App 级页面接管主区域时，分组内容隐藏但标签条必须保留，
-    // 否则用户没有任何鼠标路径切回编辑器（v0.6.3 分栏重构把整个工作区藏掉的回归）。
-    const hidden = await mountGroup(true);
-    expect(hidden.host.querySelector('[data-test="group-tabbar"]')).not.toBeNull();
-    const hiddenContent = hidden.host.querySelector<HTMLElement>("[data-group-content]");
-    expect(hiddenContent?.style.display).toBe("none");
-    hidden.app.unmount();
-    hidden.host.remove();
-
-    const visible = await mountGroup(false);
-    const visibleContent = visible.host.querySelector<HTMLElement>("[data-group-content]");
-    expect(visibleContent?.style.display).not.toBe("none");
-    visible.app.unmount();
-    visible.host.remove();
-  });
 });
