@@ -3411,6 +3411,12 @@ fn generate_create_table_ddl_with_column_quoting(
     ddl
 }
 
+/// Dialects that apply table/column comments via `COMMENT ON` statements:
+/// PostgreSQL/Kingbase plus Oracle-compatible Dameng.
+fn supports_comment_on_transfer_ddl(target_db: &DatabaseType) -> bool {
+    is_postgres_transfer_dialect(target_db) || matches!(target_db, DatabaseType::Oracle | DatabaseType::Dameng)
+}
+
 /// Generate COMMENT ON COLUMN / ALTER TABLE COMMENT COLUMN / COMMENT ON TABLE
 /// statements for databases that don't support inline comments in CREATE TABLE.
 /// MySQL family uses inline syntax (handled in generate_create_table_ddl).
@@ -3432,17 +3438,15 @@ fn generate_comment_ddl_with_column_quoting(
     table_comment: Option<&str>,
     quote_target_column_names: bool,
 ) -> Vec<String> {
-    if !(is_postgres_transfer_dialect(target_db)
-        || matches!(target_db, DatabaseType::Oracle | DatabaseType::ClickHouse))
-    {
+    if !(supports_comment_on_transfer_ddl(target_db) || matches!(target_db, DatabaseType::ClickHouse)) {
         return Vec::new();
     }
 
     let full_table = qualified_table(table, schema, target_db, None);
     let mut statements = Vec::new();
 
-    // Table-level comment first (PostgreSQL/Oracle only; ClickHouse doesn't support COMMENT ON TABLE)
-    if is_postgres_transfer_dialect(target_db) || matches!(target_db, DatabaseType::Oracle) {
+    // Table-level comment first (ClickHouse doesn't support COMMENT ON TABLE)
+    if supports_comment_on_transfer_ddl(target_db) {
         if let Some(comment) = table_comment {
             let trimmed = comment.trim();
             if !trimmed.is_empty() {
@@ -3462,7 +3466,7 @@ fn generate_comment_ddl_with_column_quoting(
             let qcol = transfer_column_identifier(&c.name, target_db, quote_target_column_names);
 
             match target_db {
-                target_db if is_postgres_transfer_dialect(target_db) || matches!(target_db, DatabaseType::Oracle) => {
+                target_db if supports_comment_on_transfer_ddl(target_db) => {
                     statements.push(format!("COMMENT ON COLUMN {full_table}.{qcol} IS '{escaped}'"));
                 }
                 DatabaseType::ClickHouse => {
@@ -10606,6 +10610,46 @@ mod tests {
         ];
 
         let stmts = generate_comment_ddl(&cols, "items", "public", &DatabaseType::Kingbase, Some("  "));
+
+        assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn dameng_comment_ddl_generates_column_and_table_comments() {
+        let cols = vec![
+            db::ColumnInfo { comment: Some("主键's".to_string()), ..test_column("id", "int") },
+            db::ColumnInfo { comment: Some("名称".to_string()), ..test_column("name", "varchar(100)") },
+        ];
+
+        let stmts = generate_comment_ddl(&cols, "items", "APP", &DatabaseType::Dameng, Some("项目表"));
+
+        assert_eq!(
+            stmts,
+            vec![
+                "COMMENT ON TABLE \"APP\".\"items\" IS '项目表'".to_string(),
+                "COMMENT ON COLUMN \"APP\".\"items\".\"id\" IS '主键''s'".to_string(),
+                "COMMENT ON COLUMN \"APP\".\"items\".\"name\" IS '名称'".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn dameng_comment_ddl_skips_empty_comments() {
+        let cols = vec![
+            db::ColumnInfo { comment: None, ..test_column("id", "int") },
+            db::ColumnInfo { comment: Some("  ".to_string()), ..test_column("name", "varchar(100)") },
+        ];
+
+        let stmts = generate_comment_ddl(&cols, "items", "APP", &DatabaseType::Dameng, Some("  "));
+
+        assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn mysql_comment_ddl_stays_empty_inline_only() {
+        let cols = vec![db::ColumnInfo { comment: Some("主键".to_string()), ..test_column("id", "int") }];
+
+        let stmts = generate_comment_ddl(&cols, "items", "db", &DatabaseType::Mysql, Some("项目表"));
 
         assert!(stmts.is_empty());
     }
