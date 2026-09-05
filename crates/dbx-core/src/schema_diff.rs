@@ -154,6 +154,10 @@ pub struct TableDiff {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_type: Option<String>,
     pub name: String,
+    /// Source-side display/key name. `target_name` is set for an explicit
+    /// source→target table mapping and is the physical target used by DDL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub columns: Option<Vec<ColumnDiff>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -279,6 +283,13 @@ fn type_supports_params(kind: DialectKind, type_name: &str) -> bool {
     })
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDiffTableMapping {
+    pub source_table: String,
+    pub target_table: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaDiffPreparationOptions {
@@ -341,6 +352,8 @@ pub struct SchemaDiffPreparationOptions {
     pub resource_constraint: Option<ResourceConstraint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub field_mappings: Vec<FieldMapping>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub table_mappings: Vec<SchemaDiffTableMapping>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1257,6 +1270,7 @@ impl RollbackGraph {
         TableDiff {
             diff_type: inverted_type,
             object_type: diff.object_type.clone(),
+            target_name: diff.target_name.clone(),
             name: diff.name.clone(),
             columns: inverted_columns,
             indexes: inverted_indexes,
@@ -1404,7 +1418,12 @@ pub fn shard_diff(options: &SchemaDiffPreparationOptions, shard_strategy: &Shard
                 target_tables: options
                     .target_tables
                     .iter()
-                    .filter(|t| shard_set.contains(t.name.as_str()))
+                    .filter(|t| {
+                        shard_set.contains(t.name.as_str())
+                            || options.table_mappings.iter().any(|mapping| {
+                                shard_set.contains(mapping.source_table.as_str()) && mapping.target_table == t.name
+                            })
+                    })
                     .cloned()
                     .collect(),
                 source_details: options
@@ -1416,7 +1435,12 @@ pub fn shard_diff(options: &SchemaDiffPreparationOptions, shard_strategy: &Shard
                 target_details: options
                     .target_details
                     .iter()
-                    .filter(|d| shard_set.contains(d.name.as_str()))
+                    .filter(|d| {
+                        shard_set.contains(d.name.as_str())
+                            || options.table_mappings.iter().any(|mapping| {
+                                shard_set.contains(mapping.source_table.as_str()) && mapping.target_table == d.name
+                            })
+                    })
                     .cloned()
                     .collect(),
                 source_functions: options.source_functions.clone(),
@@ -1434,6 +1458,7 @@ pub fn shard_diff(options: &SchemaDiffPreparationOptions, shard_strategy: &Shard
                 compare_column_order: options.compare_column_order,
                 source_dialect: options.source_dialect,
                 target_dialect: options.target_dialect,
+                table_mappings: options.table_mappings.clone(),
                 ..Default::default()
             };
             diff_schema(&shard_options)
@@ -1715,6 +1740,7 @@ impl Default for SchemaDiffPreparationOptions {
             shard_strategy: None,
             resource_constraint: None,
             field_mappings: Vec::new(),
+            table_mappings: Vec::new(),
         }
     }
 }
@@ -1767,6 +1793,11 @@ impl SchemaDiffPreparationOptions {
 
     pub fn with_field_mappings(mut self, mappings: Vec<FieldMapping>) -> Self {
         self.field_mappings = mappings;
+        self
+    }
+
+    pub fn with_table_mappings(mut self, mappings: Vec<SchemaDiffTableMapping>) -> Self {
+        self.table_mappings = mappings;
         self
     }
 }
@@ -1822,6 +1853,7 @@ pub fn prepare_schema_diff(options: SchemaDiffPreparationOptions) -> SchemaDiffP
             diffs.push(TableDiff {
                 diff_type: "renamed".to_string(),
                 object_type: Some("table".to_string()),
+                target_name: Some(c.target_name.clone()),
                 name: c.source_name.clone(),
                 columns: None,
                 indexes: None,
@@ -1847,7 +1879,8 @@ pub fn prepare_schema_diff(options: SchemaDiffPreparationOptions) -> SchemaDiffP
         for diff in &diffs {
             if diff.diff_type == "modified" {
                 if let Some(source_detail) = options.source_details.iter().find(|d| d.name == diff.name) {
-                    if let Some(target_detail) = options.target_details.iter().find(|d| d.name == diff.name) {
+                    let target_name = diff.target_name.as_deref().unwrap_or(&diff.name);
+                    if let Some(target_detail) = options.target_details.iter().find(|d| d.name == target_name) {
                         let (_, warnings) = diff_columns_with_compatibility(
                             &source_detail.columns,
                             &target_detail.columns,
@@ -1961,6 +1994,53 @@ pub fn prepare_schema_diff(options: SchemaDiffPreparationOptions) -> SchemaDiffP
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SchemaDiffTableNameResolution {
+    pairs: Vec<(String, String)>,
+    source_only: Vec<String>,
+    target_only: Vec<String>,
+}
+
+fn resolve_schema_diff_table_names(
+    source_names: &[String],
+    target_names: &[String],
+    mappings: &[SchemaDiffTableMapping],
+) -> SchemaDiffTableNameResolution {
+    let target_set: HashSet<&str> = target_names.iter().map(String::as_str).collect();
+    let mut explicit_by_source: HashMap<&str, &str> = HashMap::new();
+    for mapping in mappings {
+        if !mapping.source_table.is_empty() && !mapping.target_table.is_empty() {
+            explicit_by_source.entry(mapping.source_table.as_str()).or_insert(mapping.target_table.as_str());
+        }
+    }
+
+    let mut used_targets = HashSet::new();
+    let mut pairs = Vec::new();
+    let mut source_only = Vec::new();
+    for source_name in source_names {
+        let explicit_target = explicit_by_source
+            .get(source_name.as_str())
+            .copied()
+            .filter(|target_name| target_set.contains(target_name) && !used_targets.contains(target_name));
+        let target_name = explicit_target.or_else(|| {
+            target_set
+                .contains(source_name.as_str())
+                .then_some(source_name.as_str())
+                .filter(|target_name| !used_targets.contains(target_name))
+        });
+
+        if let Some(target_name) = target_name {
+            used_targets.insert(target_name);
+            pairs.push((source_name.clone(), target_name.to_string()));
+        } else {
+            source_only.push(source_name.clone());
+        }
+    }
+
+    let target_only = target_names.iter().filter(|name| !used_targets.contains(name.as_str())).cloned().collect();
+    SchemaDiffTableNameResolution { pairs, source_only, target_only }
+}
+
 fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
     let source_details: HashMap<&str, &TableSchemaDetail> =
         options.source_details.iter().map(|detail| (detail.name.as_str(), detail)).collect();
@@ -1996,8 +2076,10 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
         .map(|table| table.name.clone())
         .collect();
 
-    let (added, removed, common) = diff_names(&source_table_names, &target_table_names);
-    let (added_views, removed_views, common_views) = diff_names(&source_view_names, &target_view_names);
+    let table_resolution =
+        resolve_schema_diff_table_names(&source_table_names, &target_table_names, &options.table_mappings);
+    let view_resolution =
+        resolve_schema_diff_table_names(&source_view_names, &target_view_names, &options.table_mappings);
     let mut result = Vec::new();
 
     // A foreign key whose `ref_table` is itself one of the tables being compared is a
@@ -2011,11 +2093,12 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
     let source_table_name_set: HashSet<&str> = source_table_names.iter().map(String::as_str).collect();
     let target_table_name_set: HashSet<&str> = target_table_names.iter().map(String::as_str).collect();
 
-    for name in added {
+    for name in table_resolution.source_only {
         let source_detail = source_details.get(name.as_str());
         result.push(TableDiff {
             diff_type: "added".to_string(),
             object_type: Some("table".to_string()),
+            target_name: None,
             name,
             ddl: source_detail.and_then(|detail| detail.ddl.clone()),
             target_ddl: None,
@@ -2052,7 +2135,12 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
                     .foreign_keys
                     .iter()
                     .map(|fk| {
-                        let fk = normalize_self_referencing_fk(fk, &source_table_name_set);
+                        let fk = normalize_mapped_foreign_key(
+                            fk,
+                            &source_table_name_set,
+                            &target_table_name_set,
+                            &options.table_mappings,
+                        );
                         ForeignKeyDiff {
                             diff_type: "added".to_string(),
                             name: fk.name.clone(),
@@ -2088,12 +2176,13 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
         });
     }
 
-    for name in removed {
+    for name in table_resolution.target_only {
         let name_clone = name.clone();
         let target_detail = target_details.get(name_clone.as_str()).copied();
         result.push(TableDiff {
             diff_type: "removed".to_string(),
             object_type: Some("table".to_string()),
+            target_name: None,
             name,
             columns: target_detail.map(|detail| {
                 detail
@@ -2157,11 +2246,12 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
         });
     }
 
-    for name in added_views {
+    for name in view_resolution.source_only {
         let name_clone = name.clone();
         result.push(TableDiff {
             diff_type: "added".to_string(),
             object_type: Some("view".to_string()),
+            target_name: None,
             name,
             columns: None,
             indexes: None,
@@ -2175,11 +2265,12 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
         });
     }
 
-    for name in removed_views {
+    for name in view_resolution.target_only {
         let name_clone = name.clone();
         result.push(TableDiff {
             diff_type: "removed".to_string(),
             object_type: Some("view".to_string()),
+            target_name: None,
             name,
             columns: None,
             indexes: None,
@@ -2193,11 +2284,11 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
         });
     }
 
-    for name in common_views {
+    for (name, target_name) in view_resolution.pairs {
         let Some(source_ddl) = source_details.get(name.as_str()).and_then(|detail| detail.ddl.as_ref()) else {
             continue;
         };
-        let Some(target_ddl) = target_details.get(name.as_str()).and_then(|detail| detail.ddl.as_ref()) else {
+        let Some(target_ddl) = target_details.get(target_name.as_str()).and_then(|detail| detail.ddl.as_ref()) else {
             continue;
         };
         if !mysql_view_definitions_differ(source_ddl, target_ddl, options.source_dialect, options.target_dialect) {
@@ -2207,6 +2298,7 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
         result.push(TableDiff {
             diff_type: "modified".to_string(),
             object_type: Some("view".to_string()),
+            target_name: (name != target_name).then_some(target_name),
             name,
             columns: None,
             indexes: None,
@@ -2220,9 +2312,9 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
         });
     }
 
-    for name in common {
+    for (name, target_name) in table_resolution.pairs {
         let Some(source) = source_details.get(name.as_str()) else { continue };
-        let Some(target) = target_details.get(name.as_str()) else { continue };
+        let Some(target) = target_details.get(target_name.as_str()) else { continue };
         let column_diffs = diff_columns_with_dialect_options(
             &source.columns,
             &target.columns,
@@ -2234,14 +2326,24 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
             options.target_dialect,
         );
         let index_diffs = diff_indexes(&source.indexes, &target.indexes);
-        let normalized_source_fks: Vec<ForeignKeyInfo> =
-            source.foreign_keys.iter().map(|fk| normalize_self_referencing_fk(fk, &source_table_name_set)).collect();
+        let normalized_source_fks: Vec<ForeignKeyInfo> = source
+            .foreign_keys
+            .iter()
+            .map(|fk| {
+                normalize_mapped_foreign_key(
+                    fk,
+                    &source_table_name_set,
+                    &target_table_name_set,
+                    &options.table_mappings,
+                )
+            })
+            .collect();
         let normalized_target_fks: Vec<ForeignKeyInfo> =
             target.foreign_keys.iter().map(|fk| normalize_self_referencing_fk(fk, &target_table_name_set)).collect();
         let foreign_key_diffs = diff_foreign_keys(&normalized_source_fks, &normalized_target_fks);
         let trigger_diffs = diff_triggers(&source.triggers, &target.triggers);
         let source_comment = source_table_comments.get(name.as_str()).cloned().unwrap_or(None);
-        let target_comment = target_table_comments.get(name.as_str()).cloned().unwrap_or(None);
+        let target_comment = target_table_comments.get(target_name.as_str()).cloned().unwrap_or(None);
         let comment_changed = !options.ignore_comments
             && source_comment.clone().unwrap_or_default() != target_comment.clone().unwrap_or_default();
 
@@ -2251,17 +2353,17 @@ fn diff_schema(options: &SchemaDiffPreparationOptions) -> Vec<TableDiff> {
             || !trigger_diffs.is_empty()
             || comment_changed;
 
-        let name_clone = name.clone();
         result.push(TableDiff {
             diff_type: if has_diff { "modified".to_string() } else { "none".to_string() },
             object_type: Some("table".to_string()),
+            target_name: (name != target_name).then_some(target_name.clone()),
             name,
             columns: if has_diff { (!column_diffs.is_empty()).then_some(column_diffs) } else { None },
             indexes: if has_diff { (!index_diffs.is_empty()).then_some(index_diffs) } else { None },
             foreign_keys: if has_diff { (!foreign_key_diffs.is_empty()).then_some(foreign_key_diffs) } else { None },
             triggers: if has_diff { (!trigger_diffs.is_empty()).then_some(trigger_diffs) } else { None },
-            ddl: source_details.get(name_clone.as_str()).and_then(|detail| detail.ddl.clone()),
-            target_ddl: target_details.get(name_clone.as_str()).and_then(|detail| detail.ddl.clone()),
+            ddl: source.ddl.clone(),
+            target_ddl: target.ddl.clone(),
             source_table_comment: if has_diff { comment_changed.then_some(source_comment) } else { None },
             target_table_comment: if has_diff { comment_changed.then_some(target_comment) } else { None },
             sync_sql: None,
@@ -2912,6 +3014,22 @@ fn normalized_foreign_key_action(action: Option<&str>) -> Option<String> {
 fn normalize_self_referencing_fk(fk: &ForeignKeyInfo, own_table_names: &HashSet<&str>) -> ForeignKeyInfo {
     let mut normalized = fk.clone();
     if fk.ref_schema.is_some() && own_table_names.contains(fk.ref_table.as_str()) {
+        normalized.ref_schema = None;
+    }
+    normalized
+}
+
+fn normalize_mapped_foreign_key(
+    fk: &ForeignKeyInfo,
+    source_table_names: &HashSet<&str>,
+    target_table_names: &HashSet<&str>,
+    mappings: &[SchemaDiffTableMapping],
+) -> ForeignKeyInfo {
+    let mut normalized = normalize_self_referencing_fk(fk, source_table_names);
+    if let Some(mapping) = mappings.iter().find(|mapping| {
+        mapping.source_table == normalized.ref_table && target_table_names.contains(mapping.target_table.as_str())
+    }) {
+        normalized.ref_table = mapping.target_table.clone();
         normalized.ref_schema = None;
     }
     normalized
@@ -3696,9 +3814,13 @@ fn add_foreign_key_sql_with_reference_separator(
     )
 }
 
+fn target_table_name(diff: &TableDiff) -> &str {
+    diff.target_name.as_deref().unwrap_or(&diff.name)
+}
+
 fn drop_object_sql(diff: &TableDiff, db_type: DatabaseType, schema: Option<&str>, cascade: &str) -> String {
     let object_type = if diff.object_type.as_deref() == Some("view") { "VIEW" } else { "TABLE" };
-    let name = qualified_name(&diff.name, db_type, schema);
+    let name = qualified_name(target_table_name(diff), db_type, schema);
     if db_type == DatabaseType::SqlServer {
         let object_id_type = if object_type == "VIEW" { "V" } else { "U" };
         return format!(
@@ -5047,7 +5169,8 @@ fn generate_schema_sync_sql_inner(
     });
 
     for diff in diffs {
-        let table = qualified_name(&diff.name, db_type, schema);
+        let target_name = target_table_name(diff);
+        let table = qualified_name(target_name, db_type, schema);
 
         if diff.diff_type == "added" && diff.object_type.as_deref() == Some("view") {
             if let Some(ddl) = &diff.ddl {
@@ -5080,7 +5203,7 @@ fn generate_schema_sync_sql_inner(
                         .as_ref()
                         .map_or_else(Vec::new, |triggers| triggers.iter().filter_map(|t| t.source.clone()).collect());
                     let (generated, missing) = generate_create_table_sql(
-                        &diff.name,
+                        target_name,
                         diff.columns.as_ref().map_or(&[] as &[ColumnDiff], |columns| columns.as_slice()),
                         diff.indexes.as_ref().map_or(&[] as &[IndexDiff], |indexes| indexes.as_slice()),
                         diff.foreign_keys
@@ -5127,7 +5250,7 @@ fn generate_schema_sync_sql_inner(
                         .as_ref()
                         .map_or_else(Vec::new, |triggers| triggers.iter().filter_map(|t| t.source.clone()).collect());
                     let (gen, missing) = generate_create_table_sql(
-                        &diff.name,
+                        target_name,
                         cols,
                         diff.indexes.as_ref().map_or(&[] as &[IndexDiff], |v| v.as_slice()),
                         diff.foreign_keys.as_ref().map_or(&[] as &[ForeignKeyDiff], |v| v.as_slice()),
@@ -5154,7 +5277,7 @@ fn generate_schema_sync_sql_inner(
                     .as_ref()
                     .map_or_else(Vec::new, |triggers| triggers.iter().filter_map(|t| t.source.clone()).collect());
                 let (gen, missing) = generate_create_table_sql(
-                    &diff.name,
+                    target_name,
                     diff.columns.as_ref().map_or(&[] as &[ColumnDiff], |v| v.as_slice()),
                     diff.indexes.as_ref().map_or(&[] as &[IndexDiff], |v| v.as_slice()),
                     diff.foreign_keys.as_ref().map_or(&[] as &[ForeignKeyDiff], |v| v.as_slice()),
@@ -5189,7 +5312,7 @@ fn generate_schema_sync_sql_inner(
         if let Some(foreign_keys) = &diff.foreign_keys {
             for fk in foreign_keys {
                 if fk.diff_type == "removed" || fk.diff_type == "modified" {
-                    lines.push(drop_foreign_key_sql(&diff.name, &fk.name, db_type, schema));
+                    lines.push(drop_foreign_key_sql(target_name, &fk.name, db_type, schema));
                 }
             }
         }
@@ -5200,7 +5323,7 @@ fn generate_schema_sync_sql_inner(
                         // SQL Server will reject DROP/ALTER COLUMN while a changed
                         // index still depends on it. Drop changed indexes before
                         // applying column DDL, then recreate modified ones below.
-                        lines.push(drop_index_sql(&diff.name, &index.name, db_type, schema));
+                        lines.push(drop_index_sql(target_name, &index.name, db_type, schema));
                     }
                 }
             }
@@ -5341,7 +5464,7 @@ fn generate_schema_sync_sql_inner(
                                     }
                                 }
                                 RenameColumnSyntax::SqlServerSpRename => {
-                                    let target_table = qualified_name(&diff.name, db_type, schema);
+                                    let target_table = qualified_name(target_name, db_type, schema);
                                     let full_obj_path =
                                         format!("{target_table}.{}", quote_id(&target_col.name, db_type));
                                     standalone_statements.push(format!(
@@ -5389,7 +5512,7 @@ fn generate_schema_sync_sql_inner(
                     if let Some(source) = &column.source {
                         if column.changes.iter().any(|change| change.starts_with("comment:")) {
                             lines.extend(column_comment_sql(
-                                &diff.name,
+                                target_name,
                                 &column.name,
                                 source.comment.as_deref().unwrap_or_default(),
                                 db_type,
@@ -5398,12 +5521,12 @@ fn generate_schema_sync_sql_inner(
                         }
                         if column.diff_type == "added" {
                             if let Some(comment) = &source.comment {
-                                lines.extend(column_comment_sql(&diff.name, &column.name, comment, db_type, schema));
+                                lines.extend(column_comment_sql(target_name, &column.name, comment, db_type, schema));
                             }
                         }
                         if column.diff_type == "renamed" {
                             if let Some(comment) = &source.comment {
-                                lines.extend(column_comment_sql(&diff.name, &column.name, comment, db_type, schema));
+                                lines.extend(column_comment_sql(target_name, &column.name, comment, db_type, schema));
                             }
                         }
                     }
@@ -5413,7 +5536,7 @@ fn generate_schema_sync_sql_inner(
 
         if diff.source_table_comment.is_some() && diff.source_table_comment != diff.target_table_comment {
             let comment = diff.source_table_comment.as_ref().and_then(|comment| comment.as_deref()).unwrap_or_default();
-            lines.extend(table_comment_sql(&diff.name, comment, db_type, schema));
+            lines.extend(table_comment_sql(target_name, comment, db_type, schema));
         }
 
         if let Some(indexes) = &diff.indexes {
@@ -5421,20 +5544,20 @@ fn generate_schema_sync_sql_inner(
                 match index.diff_type.as_str() {
                     "added" => {
                         if let Some(source) = &index.source {
-                            lines.push(create_index_sql(&diff.name, source, db_type, schema));
+                            lines.push(create_index_sql(target_name, source, db_type, schema));
                         }
                     }
                     "removed" => {
                         if db_type != DatabaseType::SqlServer {
-                            lines.push(drop_index_sql(&diff.name, &index.name, db_type, schema));
+                            lines.push(drop_index_sql(target_name, &index.name, db_type, schema));
                         }
                     }
                     "modified" => {
                         if let Some(source) = &index.source {
                             if db_type != DatabaseType::SqlServer {
-                                lines.push(drop_index_sql(&diff.name, &index.name, db_type, schema));
+                                lines.push(drop_index_sql(target_name, &index.name, db_type, schema));
                             }
-                            lines.push(create_index_sql(&diff.name, source, db_type, schema));
+                            lines.push(create_index_sql(target_name, source, db_type, schema));
                         }
                     }
                     _ => {}
@@ -5446,7 +5569,7 @@ fn generate_schema_sync_sql_inner(
             for fk in foreign_keys {
                 if fk.diff_type == "added" || fk.diff_type == "modified" {
                     if let Some(source) = &fk.source {
-                        lines.push(add_foreign_key_sql(&diff.name, source, db_type, schema));
+                        lines.push(add_foreign_key_sql(target_name, source, db_type, schema));
                     }
                 }
             }
@@ -5724,6 +5847,48 @@ mod tests {
     }
 
     #[test]
+    fn manual_table_mapping_compares_source_with_target_metadata_and_uses_target_ddl_name() {
+        let result = prepare_schema_diff(SchemaDiffPreparationOptions {
+            source_tables: vec![table_info("charge_records", "TABLE")],
+            target_tables: vec![table_info("charge_record", "TABLE")],
+            source_details: vec![TableSchemaDetail {
+                name: "charge_records".to_string(),
+                columns: vec![column("id", "int", None), column("amount", "decimal(12,2)", None)],
+                indexes: Vec::new(),
+                foreign_keys: Vec::new(),
+                triggers: Vec::new(),
+                ddl: Some("CREATE TABLE charge_records (id int, amount decimal(12,2));".to_string()),
+            }],
+            target_details: vec![TableSchemaDetail {
+                name: "charge_record".to_string(),
+                columns: vec![column("id", "int", None), column("amount", "decimal(10,2)", None)],
+                indexes: Vec::new(),
+                foreign_keys: Vec::new(),
+                triggers: Vec::new(),
+                ddl: Some("CREATE TABLE charge_record (id int, amount decimal(10,2));".to_string()),
+            }],
+            database_type: DatabaseType::Mysql,
+            table_mappings: vec![SchemaDiffTableMapping {
+                source_table: "charge_records".to_string(),
+                target_table: "charge_record".to_string(),
+            }],
+            ..Default::default()
+        });
+
+        assert_eq!(result.diffs.len(), 1);
+        let table_diff = &result.diffs[0];
+        assert_eq!(table_diff.diff_type, "modified");
+        assert_eq!(table_diff.name, "charge_records");
+        assert_eq!(table_diff.target_name.as_deref(), Some("charge_record"));
+        assert!(table_diff
+            .columns
+            .as_ref()
+            .is_some_and(|columns| columns.iter().any(|column| column.name == "amount")));
+        assert!(result.sync_sql.contains("ALTER TABLE `charge_record`"), "sync SQL: {}", result.sync_sql);
+        assert!(!result.sync_sql.contains("ALTER TABLE `charge_records`"), "sync SQL: {}", result.sync_sql);
+    }
+
+    #[test]
     fn ignores_column_order_when_option_is_disabled() {
         let diffs = diff_columns_with_options(
             &[column("id", "int", None), column("name", "varchar(64)", None), column("status", "varchar(16)", None)],
@@ -5834,6 +5999,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: name.to_string(),
+            target_name: None,
             columns: Some(columns),
             indexes: None,
             foreign_keys: None,
@@ -6398,6 +6564,7 @@ mod tests {
             diff_type: "modified".into(),
             object_type: Some("table".into()),
             name: "events".into(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "modified".into(),
                 name: "payload".into(),
@@ -6444,6 +6611,7 @@ mod tests {
             diff_type: "removed".into(),
             object_type: Some("table".into()),
             name: "events".into(),
+            target_name: None,
             ..Default::default()
         };
         let drop_sql = generate_schema_sync_sql(
@@ -6474,6 +6642,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("table".into()),
             name: "accounts".into(),
+            target_name: None,
             columns: Some(vec![
                 ColumnDiff {
                     diff_type: "added".into(),
@@ -6606,6 +6775,7 @@ mod tests {
             diff_type: "modified".into(),
             object_type: Some("table".into()),
             name: "events".into(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "removed".into(),
                 name: "legacy_status".into(),
@@ -7812,6 +7982,7 @@ mod tests {
                 diff_type: "modified".to_string(),
                 object_type: Some("table".to_string()),
                 name: "test".to_string(),
+                target_name: None,
                 columns: None,
                 indexes: Some(diffs),
                 foreign_keys: None,
@@ -7869,6 +8040,7 @@ mod tests {
                 diff_type: "modified".to_string(),
                 object_type: Some("table".to_string()),
                 name: "tankong_data".to_string(),
+                target_name: None,
                 columns: None,
                 indexes: Some(vec![IndexDiff {
                     diff_type: "added".to_string(),
@@ -7935,6 +8107,7 @@ mod tests {
                 diff_type: "modified".to_string(),
                 object_type: Some("table".to_string()),
                 name: "tankong_data".to_string(),
+                target_name: None,
                 columns: None,
                 indexes: Some(vec![IndexDiff {
                     diff_type: "added".to_string(),
@@ -8002,6 +8175,7 @@ mod tests {
                     diff_type: "modified".to_string(),
                     object_type: Some("table".to_string()),
                     name: "tankong_data".to_string(),
+                    target_name: None,
                     columns: None,
                     indexes: Some(vec![IndexDiff {
                         diff_type: "added".to_string(),
@@ -8160,6 +8334,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: None,
             name: "orders".to_string(),
+            target_name: None,
             columns: None,
             indexes: Some(vec![IndexDiff {
                 diff_type: "modified".to_string(),
@@ -8220,6 +8395,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: None,
             name: "users".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "modified".to_string(),
                 name: "name".to_string(),
@@ -8257,6 +8433,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: None,
             name: "notify_channel_config".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "modified".to_string(),
                 name: "config_json".to_string(),
@@ -8303,6 +8480,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: None,
             name: "notify_channel_config".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "modified".to_string(),
                 name: "config_json".to_string(),
@@ -8444,6 +8622,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "users".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "added".to_string(),
                 name: "nickname".to_string(),
@@ -8481,6 +8660,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: None,
             name: "orders".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "added".to_string(),
                 name: "status".to_string(),
@@ -9146,6 +9326,7 @@ mod tests {
             diff_type: diff_type.to_string(),
             object_type: Some("table".to_string()),
             name: name.to_string(),
+            target_name: None,
             columns: None,
             indexes: None,
             foreign_keys: None,
@@ -9489,6 +9670,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "users".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "modified".to_string(),
                 name: "name".to_string(),
@@ -10418,6 +10600,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "t".to_string(),
+            target_name: None,
             columns: Some(col_diffs),
             indexes: Some(vec![IndexDiff {
                 diff_type: "added".to_string(),
@@ -10459,6 +10642,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "t".to_string(),
+            target_name: None,
             columns: Some(col_diffs),
             indexes: Some(vec![IndexDiff {
                 diff_type: "removed".to_string(),
@@ -10566,6 +10750,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "t".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "renamed".to_string(),
                 name: "new_name".to_string(),
@@ -10598,6 +10783,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "t".to_string(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "added".to_string(),
                 name: "id".to_string(),
@@ -10666,6 +10852,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "t".to_string(),
+            target_name: None,
             columns: None,
             indexes: None,
             foreign_keys: None,
@@ -10802,6 +10989,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "t".to_string(),
+            target_name: None,
             columns: None,
             indexes: None,
             foreign_keys: None,
@@ -11227,6 +11415,7 @@ mod tests {
             diff_type: "modified".into(),
             object_type: Some("table".into()),
             name: "orders".into(),
+            target_name: None,
             columns: None,
             indexes: None,
             foreign_keys: Some(vec![ForeignKeyDiff {
@@ -11460,6 +11649,7 @@ mod tests {
             diff_type: "modified".to_string(),
             object_type: Some("table".to_string()),
             name: "t".to_string(),
+            target_name: None,
             columns: Some(col_diffs),
             indexes: Some(vec![
                 IndexDiff {
@@ -11791,6 +11981,7 @@ mod tests {
             shard_strategy: None,
             resource_constraint: None,
             field_mappings: vec![],
+            table_mappings: vec![],
         };
         let result = prepare_schema_diff(options);
         result.sync_sql
@@ -12022,6 +12213,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("table".into()),
             name: "t".into(),
+            target_name: None,
             columns: Some(s1_diffs()),
             indexes: None,
             foreign_keys: None,
@@ -12163,6 +12355,7 @@ mod tests {
                     diff_type: "added".into(),
                     object_type: Some("table".into()),
                     name: "t".into(),
+                    target_name: None,
                     columns: Some(cols),
                     indexes: Some(idxs),
                     foreign_keys: None,
@@ -12246,6 +12439,7 @@ mod tests {
                     diff_type: "added".into(),
                     object_type: Some("table".into()),
                     name: "t".into(),
+                    target_name: None,
                     columns: Some(cols),
                     indexes: None,
                     foreign_keys: Some(fks),
@@ -12303,6 +12497,7 @@ mod tests {
                 diff_type: "added".into(),
                 object_type: Some("table".into()),
                 name: "t".into(),
+                target_name: None,
                 columns: Some(s1_diffs()),
                 indexes: None,
                 foreign_keys: None,
@@ -12356,6 +12551,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("table".into()),
             name: "t".into(),
+            target_name: None,
             columns: Some(cols),
             indexes: None,
             foreign_keys: None,
@@ -12406,6 +12602,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("table".into()),
             name: "t".into(),
+            target_name: None,
             columns: Some(cols),
             indexes: None,
             foreign_keys: None,
@@ -12455,6 +12652,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("table".into()),
             name: "t".into(),
+            target_name: None,
             columns: Some(cols),
             indexes: None,
             foreign_keys: None,
@@ -12502,6 +12700,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("table".into()),
             name: "t".into(),
+            target_name: None,
             columns: Some(diffs),
             indexes: None,
             foreign_keys: None,
@@ -12663,6 +12862,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("table".into()),
             name: "events".into(),
+            target_name: None,
             ddl: Some(
                 "CREATE TABLE public.events (id bigint NOT NULL DEFAULT nextval('public.events_id_seq'::regclass))"
                     .into(),
@@ -12710,6 +12910,7 @@ mod tests {
             diff_type: "removed".into(),
             object_type: Some("table".into()),
             name: "events".into(),
+            target_name: None,
             ..TableDiff::default()
         };
         let sequence_diff = SequenceDiff {
@@ -12744,6 +12945,7 @@ mod tests {
             diff_type: "modified".into(),
             object_type: Some("table".into()),
             name: "events".into(),
+            target_name: None,
             columns: Some(vec![ColumnDiff {
                 diff_type: "modified".into(),
                 name: "created_at".into(),
@@ -12917,6 +13119,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("view".into()),
             name: "active_users".into(),
+            target_name: None,
             ddl: Some("CREATE VIEW `active_users` AS SELECT `id` FROM `users` WHERE `active` = 1;".into()),
             ..TableDiff::default()
         };
@@ -12945,6 +13148,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("view".into()),
             name: "active_users".into(),
+            target_name: None,
             ddl: Some("CREATE VIEW `active_users` AS SELECT `id` FROM `users`".into()),
             ..TableDiff::default()
         };
@@ -12972,6 +13176,7 @@ mod tests {
             diff_type: "added".into(),
             object_type: Some("view".into()),
             name: "active_users".into(),
+            target_name: None,
             ..TableDiff::default()
         };
 
