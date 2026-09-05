@@ -3071,19 +3071,47 @@ fn is_timezone_suffix(value: &str) -> bool {
     )
 }
 
-fn transfer_length_params(source_type: &str, target_db: &DatabaseType) -> String {
+fn transfer_length_params(source_type: &str, source_db: &DatabaseType, target_db: &DatabaseType) -> String {
     let params = &source_type[source_type.find('(').expect("caller checked length parameters")..];
     if matches!(target_db, DatabaseType::Oracle | DatabaseType::OceanbaseOracle | DatabaseType::Dameng) {
-        params.to_string()
-    } else {
-        // Oracle length-unit qualifiers are invalid for non-Oracle-family
-        // targets, which only accept the numeric length.
-        normalize_len_params(params)
+        if matches!(source_db, DatabaseType::Oracle | DatabaseType::OceanbaseOracle | DatabaseType::Dameng) {
+            // Oracle-family sources carry their own qualifier (or default to
+            // the source's BYTE/CHAR semantics); copy verbatim so the unit
+            // intent survives the transfer.
+            return params.to_string();
+        }
+        // Character-counting sources (MySQL/Postgres/SQLite/SQL Server …)
+        // must pin the unit: a bare length is read in bytes when the target
+        // runs byte semantics (Oracle NLS_LENGTH_SEMANTICS=BYTE, Dameng
+        // LENGTH_IN_CHAR=0), so multi-byte text that fit the source column
+        // would overflow the target byte length (#8101).
+        return oracle_char_length_params(params);
     }
+    // Oracle length-unit qualifiers are invalid for non-Oracle-family
+    // targets, which only accept the numeric length.
+    normalize_len_params(params)
 }
 
-pub fn map_column_type(source_type: &str, _source_db: &DatabaseType, target_db: &DatabaseType) -> String {
-    if _source_db == target_db {
+/// Pins a numeric length as characters for Oracle-family targets:
+/// `(20)` becomes `(20 CHAR)`. Params that already carry a qualifier, a
+/// precision/scale pair, or anything non-numeric pass through unchanged.
+fn oracle_char_length_params(params: &str) -> String {
+    let trimmed = params.trim();
+    let Some(inner) = trimmed.strip_prefix('(') else {
+        return params.to_string();
+    };
+    let Some(digits) = inner.strip_suffix(')') else {
+        return params.to_string();
+    };
+    let digits = digits.trim();
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return params.to_string();
+    }
+    format!("({digits} CHAR)")
+}
+
+pub fn map_column_type(source_type: &str, source_db: &DatabaseType, target_db: &DatabaseType) -> String {
+    if source_db == target_db {
         return source_type.to_string();
     }
     let t = source_type.to_lowercase();
@@ -3165,7 +3193,7 @@ pub fn map_column_type(source_type: &str, _source_db: &DatabaseType, target_db: 
         }
         "varchar" | "nvarchar" | "character varying" | "varchar2" => {
             if t.contains('(') {
-                let len_part = transfer_length_params(&t, target_db);
+                let len_part = transfer_length_params(&t, source_db, target_db);
                 match target_db {
                     target_db if is_postgres_transfer_dialect(target_db) => format!("VARCHAR{len_part}"),
                     DatabaseType::Mysql => format!("VARCHAR{len_part}"),
@@ -3178,7 +3206,7 @@ pub fn map_column_type(source_type: &str, _source_db: &DatabaseType, target_db: 
         }
         "char" | "nchar" | "character" => {
             if t.contains('(') {
-                let len_part = transfer_length_params(&t, target_db);
+                let len_part = transfer_length_params(&t, source_db, target_db);
                 format!("CHAR{len_part}")
             } else {
                 "CHAR(1)".into()
@@ -13283,7 +13311,41 @@ SELECT 1 FROM dual"#
                 if target == DatabaseType::Oracle { DatabaseType::OceanbaseOracle } else { DatabaseType::Oracle };
             assert_eq!(map_column_type("VARCHAR2(50 CHAR)", &source, &target), "VARCHAR(50 char)");
             assert_eq!(map_column_type("CHAR(20 BYTE)", &source, &target), "CHAR(20 byte)");
+            // Oracle-family bare lengths keep their own default semantics; they
+            // pass through verbatim between Oracle-family databases.
+            assert_eq!(map_column_type("VARCHAR2(20)", &source, &target), "VARCHAR(20)");
         }
+    }
+
+    #[test]
+    fn map_column_type_pins_char_unit_for_character_counting_sources() {
+        // MySQL/Postgres/… count VARCHAR(n) in characters; an Oracle-family
+        // target running byte semantics (Oracle NLS_LENGTH_SEMANTICS=BYTE,
+        // Dameng LENGTH_IN_CHAR=0) would read the bare length in bytes and
+        // reject multi-byte text that fit the source column (#8101).
+        for target in [DatabaseType::Oracle, DatabaseType::OceanbaseOracle, DatabaseType::Dameng] {
+            assert_eq!(map_column_type("varchar(20)", &DatabaseType::Mysql, &target), "VARCHAR(20 CHAR)");
+            assert_eq!(map_column_type("varchar(30)", &DatabaseType::Postgres, &target), "VARCHAR(30 CHAR)");
+            assert_eq!(map_column_type("nvarchar(40)", &DatabaseType::SqlServer, &target), "VARCHAR(40 CHAR)");
+            assert_eq!(map_column_type("char(10)", &DatabaseType::Mysql, &target), "CHAR(10 CHAR)");
+        }
+
+        // Non-Oracle-family targets keep the plain numeric length.
+        assert_eq!(map_column_type("varchar(20)", &DatabaseType::Mysql, &DatabaseType::Postgres), "VARCHAR(20)");
+        assert_eq!(map_column_type("varchar(20)", &DatabaseType::Postgres, &DatabaseType::Mysql), "VARCHAR(20)");
+        assert_eq!(map_column_type("char(10)", &DatabaseType::Mysql, &DatabaseType::Postgres), "CHAR(10)");
+
+        // Params that already carry a qualifier or are not a plain numeric
+        // length pass through unchanged instead of being double-qualified.
+        assert_eq!(
+            map_column_type("varchar(20 char)", &DatabaseType::Mysql, &DatabaseType::Oracle),
+            "VARCHAR(20 char)"
+        );
+        assert_eq!(
+            map_column_type("varchar(20 byte)", &DatabaseType::Mysql, &DatabaseType::Oracle),
+            "VARCHAR(20 byte)"
+        );
+        assert_eq!(map_column_type("nvarchar(max)", &DatabaseType::SqlServer, &DatabaseType::Dameng), "VARCHAR(max)");
     }
 
     #[test]
