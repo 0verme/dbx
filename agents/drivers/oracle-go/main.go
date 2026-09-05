@@ -4124,7 +4124,20 @@ func (s *server) queryRowsWithOracleValueRewriteIfNeeded(sqlText string, timeout
 		if errors.As(err, &panicErr) {
 			rewritten, rewriteErr := rewriteOracleSelectSQL(sqlText, s.loadOracleColumnMeta, false)
 			if rewriteErr == nil && rewritten != sqlText {
-				return s.queryRowsWithTimeout(rewritten, nil, timeoutSecs)
+				rewrittenRows, rewrittenErr := s.queryRowsWithTimeout(rewritten, nil, timeoutSecs)
+				if rewrittenErr == nil {
+					return rewrittenRows, nil
+				}
+				// When the server's ArcSDE extproc agent is broken, the
+				// SDE.ST_AsText rewrite itself fails with ORA-28595 and would
+				// hide the remaining columns; retry once with the placeholder
+				// projection so the query stays readable.
+				if placeholder, ok := oracleExtprocFallbackSQL(sqlText, s.loadOracleColumnMeta, rewrittenErr); ok {
+					if placeholderRows, placeholderErr := s.queryRowsWithTimeout(placeholder, nil, timeoutSecs); placeholderErr == nil {
+						return placeholderRows, nil
+					}
+				}
+				return nil, rewrittenErr
 			}
 		}
 		return nil, err
@@ -4154,6 +4167,34 @@ func oracleColumnTypeNamesContainXMLType(typeNames []string) bool {
 		}
 	}
 	return false
+}
+
+// isOracleExtprocAgentFailure reports whether err is an Oracle extproc agent
+// failure (ORA-28595, typically raised through SDE.ST_GEOMETRY_SHAPELIB_PKG or
+// SDE.ST_GEOMETRY_OPERATORS) that makes every SDE.ST_GEOMETRY function call
+// unusable on the server. Matching stays deliberately narrow: the ORA code
+// must be present; SDE package names alone never trigger it.
+func isOracleExtprocAgentFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Accept both the "ORA-28595" form and a bare "28595" code.
+	return strings.Contains(strings.ToUpper(err.Error()), "28595")
+}
+
+// oracleExtprocFallbackSQL returns the placeholder projection to retry with
+// when the panic-fallback SDE.ST_AsText rewrite failed because of a broken
+// extproc agent (ORA-28595). It reports false when the error is unrelated or
+// no placeholder rewrite applies.
+func oracleExtprocFallbackSQL(sqlText string, loadColumns oracleColumnMetaLoader, rewriteErr error) (string, bool) {
+	if !isOracleExtprocAgentFailure(rewriteErr) {
+		return "", false
+	}
+	placeholder, err := rewriteOracleSelectSQL(sqlText, loadColumns, true)
+	if err != nil || placeholder == sqlText {
+		return "", false
+	}
+	return placeholder, true
 }
 
 func (s *server) rewriteXMLTypeSelectSQL(sqlText string) (string, error) {

@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/url"
@@ -2361,6 +2362,126 @@ func TestRewriteOracleSTGeometrySkipsSetQueries(t *testing.T) {
 	}
 }
 
+func TestIsOracleExtprocAgentFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "ORA-28595 with SDE package context",
+			err:  errors.New(`ORA-28595: Extproc agent: Invalid DLL Path SDE.ST_GEOMETRY_SHAPELIB_PKG`),
+			want: true,
+		},
+		{
+			name: "ORA-28595 with operator package context",
+			err:  errors.New(`ORA-28595: Extproc agent: Invalid DLL Path SDE.ST_GEOMETRY_OPERATORS`),
+			want: true,
+		},
+		{
+			name: "lowercase ORA-28595",
+			err:  errors.New("ora-28595: extproc agent: invalid dll path"),
+			want: true,
+		},
+		{
+			name: "bare ORA code",
+			err:  errors.New("28595: Extproc agent: Invalid DLL Path"),
+			want: true,
+		},
+		{
+			name: "wrapped ORA-28595",
+			err:  fmt.Errorf("query failed: %w", errors.New("ORA-28595: Extproc agent: Invalid DLL Path")),
+			want: true,
+		},
+		{
+			name: "unrelated ORA error",
+			err:  errors.New("ORA-00942: table or view does not exist"),
+			want: false,
+		},
+		{
+			name: "connection error",
+			err:  errors.New("ORA-12170: TNS:Connect timeout occurred"),
+			want: false,
+		},
+		{
+			name: "SDE package without ORA-28595",
+			err:  errors.New("SDE.ST_GEOMETRY_SHAPELIB_PKG raised an error"),
+			want: false,
+		},
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isOracleExtprocAgentFailure(tc.err); got != tc.want {
+				t.Fatalf("isOracleExtprocAgentFailure(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestOracleExtprocFallbackSQL(t *testing.T) {
+	sdeColumns := func(schema, table string) ([]oracleColumnMeta, error) {
+		return []oracleColumnMeta{
+			{Name: "ID", DataType: "NUMBER"},
+			{Name: "GEOM", DataType: "ST_GEOMETRY", DataTypeOwner: "SDE"},
+		}, nil
+	}
+	t.Run("returns placeholder projection for extproc failure", func(t *testing.T) {
+		sqlText, ok := oracleExtprocFallbackSQL(
+			`SELECT * FROM SDE.TEST_GEOM`,
+			sdeColumns,
+			errors.New("ORA-28595: Extproc agent: Invalid DLL Path"),
+		)
+		if !ok {
+			t.Fatal("expected placeholder fallback SQL")
+		}
+		if !strings.Contains(sqlText, "'<ST_GEOMETRY>'") {
+			t.Fatalf("expected placeholder expression, got %s", sqlText)
+		}
+		if strings.Contains(sqlText, "SDE.ST_AsText") {
+			t.Fatalf("placeholder projection must not call SDE.ST_AsText, got %s", sqlText)
+		}
+	})
+	t.Run("keeps ST_AsText error for unrelated failures", func(t *testing.T) {
+		sqlText, ok := oracleExtprocFallbackSQL(
+			`SELECT * FROM SDE.TEST_GEOM`,
+			sdeColumns,
+			errors.New("ORA-12170: TNS:Connect timeout occurred"),
+		)
+		if ok {
+			t.Fatalf("unexpected fallback SQL: %s", sqlText)
+		}
+	})
+	t.Run("no fallback without rewriteable columns", func(t *testing.T) {
+		sqlText, ok := oracleExtprocFallbackSQL(
+			`SELECT * FROM SDE.TEST_GEOM`,
+			func(schema, table string) ([]oracleColumnMeta, error) {
+				return []oracleColumnMeta{{Name: "ID", DataType: "NUMBER"}}, nil
+			},
+			errors.New("ORA-28595: Extproc agent: Invalid DLL Path"),
+		)
+		if ok {
+			t.Fatalf("unexpected fallback SQL: %s", sqlText)
+		}
+	})
+	t.Run("no fallback when column metadata fails", func(t *testing.T) {
+		sqlText, ok := oracleExtprocFallbackSQL(
+			`SELECT * FROM SDE.TEST_GEOM`,
+			func(schema, table string) ([]oracleColumnMeta, error) {
+				return nil, errors.New("ORA-00942: table or view does not exist")
+			},
+			errors.New("ORA-28595: Extproc agent: Invalid DLL Path"),
+		)
+		if ok {
+			t.Fatalf("unexpected fallback SQL: %s", sqlText)
+		}
+	})
+}
+
 func TestRewriteOracleXMLTypeSkipsJoins(t *testing.T) {
 	called := false
 	sqlText, err := rewriteOracleXMLTypeSelectSQL(
@@ -2856,6 +2977,7 @@ type oracleViewSourceQueryStep struct {
 	rows          [][]driver.Value
 	err           error
 	exec          bool
+	panicText     string
 }
 
 type oracleViewSourceDriver struct {
@@ -2898,6 +3020,9 @@ func (c *oracleViewSourceConn) QueryContext(
 	}
 	if !strings.Contains(query, step.queryContains) {
 		return nil, errors.New("unexpected query: " + query)
+	}
+	if step.panicText != "" {
+		panic(step.panicText)
 	}
 	values := make([]driver.Value, len(args))
 	for index, arg := range args {
@@ -3169,6 +3294,83 @@ func TestOracleQueryRowsRecoversDriverPanic(t *testing.T) {
 	defer s.activeCancelMu.Unlock()
 	if s.activeCancel != nil || s.activeTimer != nil || len(s.activeRows) != 0 {
 		t.Fatalf("panic cleanup left active query state: cancel=%v timer=%v rows=%d", s.activeCancel != nil, s.activeTimer != nil, len(s.activeRows))
+	}
+}
+
+func TestOracleQueryRowsFallsBackToPlaceholderOnExtprocFailure(t *testing.T) {
+	metadataStep := oracleViewSourceQueryStep{
+		queryContains: "ALL_TAB_COLUMNS",
+		args:          []driver.Value{"SDE", "TEST_GEOM"},
+		columns:       []string{"COLUMN_NAME", "DATA_TYPE", "DATA_TYPE_OWNER"},
+		rows: [][]driver.Value{
+			{"ID", "NUMBER", nil},
+			{"GEOM", "ST_GEOMETRY", "SDE"},
+		},
+	}
+	db, _ := openOracleViewSourceTestDB(t, []oracleViewSourceQueryStep{
+		{queryContains: "SELECT * FROM SDE.TEST_GEOM", args: []driver.Value{}, panicText: "simulated go-ora panic on SDE object column"},
+		metadataStep,
+		{queryContains: "SDE.ST_AsText", args: []driver.Value{}, err: errors.New("ORA-28595: Extproc agent: Invalid DLL Path")},
+		metadataStep,
+		{
+			queryContains: "'<ST_GEOMETRY>'",
+			args:          []driver.Value{},
+			columns:       []string{"ID", "GEOM", "__DBX_LARGE_VALUE_BYTES_C_1"},
+			rows:          [][]driver.Value{{int64(1), "<ST_GEOMETRY>", "D:1"}},
+		},
+	})
+	s := newServer()
+	s.db = db
+	rows, err := s.queryRowsWithOracleValueRewriteIfNeeded("SELECT * FROM SDE.TEST_GEOM", 0, false)
+	if err != nil {
+		t.Fatalf("expected placeholder fallback to serve rows, got %v", err)
+	}
+	defer rows.Close()
+	columns, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(columns, []string{"ID", "GEOM", "__DBX_LARGE_VALUE_BYTES_C_1"}) {
+		t.Fatalf("unexpected placeholder columns: %v", columns)
+	}
+	if !rows.Next() {
+		t.Fatalf("expected one placeholder row, got %v", rows.Err())
+	}
+	var id int64
+	var geom, marker string
+	if err := rows.Scan(&id, &geom, &marker); err != nil {
+		t.Fatal(err)
+	}
+	if id != 1 || geom != "<ST_GEOMETRY>" || marker != "D:1" {
+		t.Fatalf("unexpected placeholder row: %v %v %v", id, geom, marker)
+	}
+}
+
+func TestOracleQueryRowsKeepsSTAsTextErrorWhenPlaceholderAlsoFails(t *testing.T) {
+	metadataStep := oracleViewSourceQueryStep{
+		queryContains: "ALL_TAB_COLUMNS",
+		args:          []driver.Value{"SDE", "TEST_GEOM"},
+		columns:       []string{"COLUMN_NAME", "DATA_TYPE", "DATA_TYPE_OWNER"},
+		rows: [][]driver.Value{
+			{"ID", "NUMBER", nil},
+			{"GEOM", "ST_GEOMETRY", "SDE"},
+		},
+	}
+	db, _ := openOracleViewSourceTestDB(t, []oracleViewSourceQueryStep{
+		{queryContains: "SELECT * FROM SDE.TEST_GEOM", args: []driver.Value{}, panicText: "simulated go-ora panic on SDE object column"},
+		metadataStep,
+		{queryContains: "SDE.ST_AsText", args: []driver.Value{}, err: errors.New("ORA-28595: Extproc agent: Invalid DLL Path")},
+		metadataStep,
+		{queryContains: "'<ST_GEOMETRY>'", args: []driver.Value{}, err: errors.New("ORA-01013: user requested cancel of current operation")},
+	})
+	s := newServer()
+	s.db = db
+	rows, err := s.queryRowsWithOracleValueRewriteIfNeeded("SELECT * FROM SDE.TEST_GEOM", 0, false)
+	if rows != nil {
+		t.Fatal("failed fallback path must not return rows")
+	}
+	if err == nil || !strings.Contains(err.Error(), "ORA-28595") {
+		t.Fatalf("expected the original ST_AsText ORA-28595 error, got %v", err)
 	}
 }
 
