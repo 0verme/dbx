@@ -664,6 +664,21 @@ function toggleResultsPane(): boolean {
   return true;
 }
 
+/**
+ * The "hide results" chevron. In the shared result surface (result-only) the
+ * local resultsPaneOpen ref is inert — the pane is always rendered there and
+ * the real collapse state lives in SqlEditorWorkspace.showResultPane — so the
+ * chevron bubbles a toggle event up instead. Per-tab surfaces (data tabs)
+ * keep the local collapse behavior.
+ */
+function handleHideResultsPane() {
+  if (props.resultOnly) {
+    emit("toggleResultsPane");
+  } else {
+    resultsPaneOpen.value = false;
+  }
+}
+
 function onResultsResized(payload: { panes: { size: number }[] }) {
   const resultsPane = payload.panes[1];
   if (resultsPane?.size != null && resultsPane.size >= 20 && resultsPane.size <= 85) {
@@ -1664,7 +1679,7 @@ defineExpose({
                   </PopoverContent>
                 </Popover>
                 <LightTooltip :text="t('editor.hideResultsPane')" side="bottom" :delay="0" :close-delay="0" nowrap>
-                  <Button variant="ghost" size="icon" class="h-6 w-7 shrink-0 text-muted-foreground hover:text-foreground" :title="t('editor.hideResultsPane')" :aria-label="t('editor.hideResultsPane')" @click="resultsPaneOpen = false">
+                  <Button variant="ghost" size="icon" class="h-6 w-7 shrink-0 text-muted-foreground hover:text-foreground" :title="t('editor.hideResultsPane')" :aria-label="t('editor.hideResultsPane')" @click="handleHideResultsPane">
                     <ChevronDown class="h-3.5 w-3.5" />
                   </Button>
                 </LightTooltip>

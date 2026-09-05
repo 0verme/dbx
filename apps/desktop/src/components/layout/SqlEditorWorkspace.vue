@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useAttrs } from "vue";
+import { computed, nextTick, onMounted, ref, useAttrs, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
 import "./sqlEditorWorkspace.css";
 import { useQueryStore } from "@/stores/queryStore";
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
+import { Button } from "@/components/ui/button";
 import EditorGroup from "./EditorGroup.vue";
 import QueryResultSurface from "./QueryResultSurface.vue";
 import { createContentSurfaceEventForwarders } from "@/lib/tabs/contentSurfaceEvents";
@@ -71,13 +73,7 @@ defineExpose({
     const group = groupForElement(element) ?? activeEditorGroup();
     return group?.refreshData() ?? resultSurfaceRef.value?.refreshData() ?? false;
   },
-  toggleResultsPane: () => {
-    if (!showSharedResult.value) {
-      return activeEditorGroup()?.toggleResultsPane() ?? false;
-    }
-    showResultPane.value = !showResultPane.value;
-    return true;
-  },
+  toggleResultsPane: () => toggleSharedResultsPane(),
   refreshQueryEditorCompletionCache: () => activeEditorGroup()?.refreshQueryEditorCompletionCache() ?? false,
   handleModRTarget: (target: Element) => {
     // DataGrid, Elasticsearch JSON, and the cell-detail editor (Teleported
@@ -107,6 +103,7 @@ defineExpose({
   executeRedisCommand: (command: string) => (groupForElement(commandTargetElement(null)) ?? activeEditorGroup())?.executeRedisCommand(command) ?? Promise.resolve(false),
 });
 
+const { t } = useI18n();
 const queryStore = useQueryStore();
 const activeTab = computed(() => queryStore.tabs.find((tab) => tab.id === queryStore.activeTabId));
 const showSharedResult = computed(() => activeTab.value?.mode === "query");
@@ -124,6 +121,31 @@ const showResultPane = ref(true);
 // (globals.css kills it for horizontal splitpanes).
 const resultPaneTargetSize = computed(() => (showSharedResult.value && showResultPane.value ? resultPaneSize.value : 0));
 const editorPaneSize = computed(() => 100 - resultPaneTargetSize.value);
+
+/**
+ * Single toggle entry point for the shared result pane. Reached from the
+ * keyboard shortcut (exposed toggleResultsPane) and from the shared surface's
+ * "hide results" chevron, which bubbles a toggleResultsPane event up through
+ * ContentArea → QueryResultSurface. Non-query tabs (data etc.) render a plain
+ * ContentArea and keep their own per-tab resultsPaneOpen collapse behavior.
+ */
+function toggleSharedResultsPane(): boolean {
+  if (!showSharedResult.value) {
+    return activeEditorGroup()?.toggleResultsPane() ?? false;
+  }
+  showResultPane.value = !showResultPane.value;
+  return true;
+}
+
+// Restores the pre-split "running a query re-expands the results pane"
+// behavior (see issue #6193): a collapsed shared pane comes back when the
+// active tab starts executing.
+watch(
+  () => activeTab.value?.isExecuting,
+  (isExecuting) => {
+    if (isExecuting) showResultPane.value = true;
+  },
+);
 // Entrance choreography is hydration-gated: groups present at first render
 // never animate (no load choreography); only groups created later — by a
 // split — materialize from their owner's side of the divider.
@@ -195,7 +217,7 @@ function handleFocusStatement(tabId: string, range: StatementRange | null): bool
 </script>
 
 <template>
-  <div class="sql-editor-workspace flex h-full min-h-0 flex-1 flex-col overflow-hidden" :class="workspaceClass">
+  <div class="sql-editor-workspace relative flex h-full min-h-0 flex-1 flex-col overflow-hidden" :class="workspaceClass">
     <Splitpanes horizontal class="sql-editor-workspace-split flex-1 min-h-0" :class="{ 'result-pane-collapsed': resultPaneTargetSize === 0 }" @resized="onSharedResultResized">
       <Pane class="min-h-0 min-w-0" :size="editorPaneSize" :min-size="100 - SHARED_RESULT_PANE_MAX_SIZE">
         <Splitpanes
@@ -237,6 +259,7 @@ function handleFocusStatement(tabId: string, range: StatementRange | null): bool
               ref="resultSurfaceRef"
               v-bind="resultSurfaceBindings"
               class="h-full"
+              @toggle-results-pane="toggleSharedResultsPane"
               @preview-statement="
                 (tabId: string, range: { from: number; to: number } | null) => {
                   handlePreviewStatement(tabId, range);
@@ -252,5 +275,19 @@ function handleFocusStatement(tabId: string, range: StatementRange | null): bool
         </Transition>
       </Pane>
     </Splitpanes>
+    <!-- The shared surface unmounts when collapsed, so the mouse re-show
+         affordance lives here, outside the collapsible pane. -->
+    <Button
+      v-if="showSharedResult && !showResultPane"
+      type="button"
+      variant="secondary"
+      size="sm"
+      class="absolute bottom-3 right-3 z-20 h-7 gap-1.5 rounded-full border bg-background/95 px-3 text-xs shadow-lg hover:bg-accent"
+      :title="t('editor.showResultsPane')"
+      :aria-label="t('editor.showResultsPane')"
+      @click="showResultPane = true"
+    >
+      {{ t("editor.showResultsPane") }}
+    </Button>
   </div>
 </template>

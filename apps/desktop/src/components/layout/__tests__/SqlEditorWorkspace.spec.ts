@@ -9,6 +9,7 @@ const editorSurfaceSource = readFileSync(new URL("../QueryEditorSurface.vue", im
 const resultSurfaceSource = readFileSync(new URL("../QueryResultSurface.vue", import.meta.url), "utf8");
 const contentAreaSource = readFileSync(new URL("../ContentArea.vue", import.meta.url), "utf8");
 const surfaceContractSource = readFileSync(new URL("../querySurfaces.ts", import.meta.url), "utf8");
+const surfaceEventsSource = readFileSync(new URL("../../../lib/tabs/contentSurfaceEvents.ts", import.meta.url), "utf8");
 
 describe("SQL editor workspace single-group tracer bullet", () => {
   it("composes splitpanes editor groups and one shared result surface", () => {
@@ -79,6 +80,26 @@ describe("SQL editor workspace single-group tracer bullet", () => {
     expect(groupSource).toContain("activeTab: activeTab.value!");
     expect(editorSurfaceSource).toContain('v-bind="bindings"');
     expect(resultSurfaceSource).toContain('v-bind="bindings"');
+  });
+
+  it("lets the mouse hide and re-show the shared query results pane", () => {
+    // Regression (#8076 refactor): the shared result surface's "hide results"
+    // chevron wrote the inert per-instance resultsPaneOpen ref, so query-tab
+    // results could no longer be collapsed by mouse — the pane was pinned
+    // open. The chevron must bubble a toggleResultsPane event up through the
+    // surface contract to the workspace, which owns the real collapse state.
+    expect(surfaceContractSource).toContain("toggleResultsPane: []");
+    expect(surfaceEventsSource).toContain('"toggleResultsPane",');
+    expect(contentAreaSource).toContain('emit("toggleResultsPane")');
+    expect(contentAreaSource).toContain('@click="handleHideResultsPane"');
+    expect(workspaceSource).toContain('@toggle-results-pane="toggleSharedResultsPane"');
+    expect(workspaceSource).toContain("showResultPane.value = !showResultPane.value");
+    // Collapsing unmounts the shared surface, so the mouse re-show affordance
+    // must live at the workspace level, not inside the collapsible pane.
+    expect(workspaceSource).toContain("editor.showResultsPane");
+    expect(workspaceSource).toContain("showSharedResult && !showResultPane");
+    // Running a query re-expands a collapsed pane (issue #6193 promise).
+    expect(workspaceSource).toContain("if (isExecuting) showResultPane.value = true;");
   });
 
   it("animates layout transitions for split groups and the shared result surface", () => {
