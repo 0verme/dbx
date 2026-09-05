@@ -6924,6 +6924,8 @@ export default withEnglishFallback({
     allRowsExported: "총 내보낸 행: {count}",
     exportSuccess: "데이터베이스를 성공적으로 내보냈습니다",
     exportAllSuccess: "데이터베이스 {count}개를 성공적으로 내보냈습니다",
+    exportSuccessWithErrors: "내보내기가 완료되었지만 {count}개 객체가 실패했습니다: {firstError}… 자세한 내용은 내보낸 파일의 -- ERROR 주석을 참조하세요.",
+    exportAllSuccessWithErrors: "데이터베이스 {count}개를 내보냈지만 {errorCount}개 객체가 실패했습니다: {firstError}… 자세한 내용은 파일의 -- ERROR 주석을 참조하세요.",
     allDatabasesTask: "모든 데이터베이스 ({count})",
     exportError: "내보내기 실패: {error}",
     exportCancelled: "내보내기 취소됨",

@@ -7560,6 +7560,8 @@ export default {
     allRowsExported: "Total rows exported: {count}",
     exportSuccess: "Database exported successfully",
     exportAllSuccess: "{count} databases exported successfully",
+    exportSuccessWithErrors: "Export finished with {count} failed object(s): {firstError}… See the -- ERROR comments inside the exported file for details.",
+    exportAllSuccessWithErrors: "{count} databases exported, but {errorCount} object(s) failed: {firstError}… See the -- ERROR comments inside the exported files.",
     allDatabasesTask: "All databases ({count})",
     exportError: "Export failed: {error}",
     exportCancelled: "Export cancelled",

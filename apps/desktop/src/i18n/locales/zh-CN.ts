@@ -7541,6 +7541,8 @@ export default withEnglishFallback({
     allRowsExported: "累计已导出 {count} 行",
     exportSuccess: "数据库导出成功",
     exportAllSuccess: "已成功导出 {count} 个数据库",
+    exportSuccessWithErrors: "导出完成，但有 {count} 个对象失败：{firstError}……详情见导出文件中的 -- ERROR 注释。",
+    exportAllSuccessWithErrors: "已导出 {count} 个数据库，但有 {errorCount} 个对象失败：{firstError}……详情见导出文件中的 -- ERROR 注释。",
     allDatabasesTask: "全部数据库（{count}）",
     exportError: "导出失败: {error}",
     exportCancelled: "导出已取消",

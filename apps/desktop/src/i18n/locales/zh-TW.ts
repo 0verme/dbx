@@ -6531,6 +6531,8 @@ export default withEnglishFallback({
     allRowsExported: "累計已匯出 {count} 列",
     exportSuccess: "資料庫匯出成功",
     exportAllSuccess: "已成功匯出 {count} 個資料庫",
+    exportSuccessWithErrors: "匯出完成，但有 {count} 個物件失敗：{firstError}……詳情見匯出檔案中的 -- ERROR 註解。",
+    exportAllSuccessWithErrors: "已匯出 {count} 個資料庫，但有 {errorCount} 個物件失敗：{firstError}……詳情見匯出檔案中的 -- ERROR 註解。",
     allDatabasesTask: "全部資料庫（{count}）",
     exportError: "匯出失敗： {error}",
     exportCancelled: "匯出已取消",

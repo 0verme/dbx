@@ -7214,6 +7214,8 @@ export default withEnglishFallback({
     allRowsExported: "Total de filas exportadas: {count}",
     exportSuccess: "Base de datos exportada exitosamente",
     exportAllSuccess: "{count} bases de datos exportadas exitosamente",
+    exportSuccessWithErrors: "La exportación terminó con {count} objeto(s) fallidos: {firstError}… Consulta los comentarios -- ERROR en el archivo exportado.",
+    exportAllSuccessWithErrors: "Se exportaron {count} bases de datos, pero {errorCount} objeto(s) fallaron: {firstError}… Consulta los comentarios -- ERROR en los archivos.",
     allDatabasesTask: "Todas las bases de datos ({count})",
     exportError: "Error al exportar: {error}",
     exportCancelled: "Exportación cancelada",

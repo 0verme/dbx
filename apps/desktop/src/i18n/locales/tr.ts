@@ -7550,6 +7550,8 @@ export default withEnglishFallback({
     allRowsExported: "Dışa aktarılan toplam satır: {count}",
     exportSuccess: "Veritabanı başarıyla dışa aktarıldı",
     exportAllSuccess: "{count} veritabanı başarıyla dışa aktarıldı",
+    exportSuccessWithErrors: "Dışa aktarma tamamlandı ancak {count} nesne başarısız oldu: {firstError}… Ayrıntılar için dışa aktarılan dosyadaki -- ERROR yorumlarına bakın.",
+    exportAllSuccessWithErrors: "{count} veritabanı dışa aktarıldı ancak {errorCount} nesne başarısız oldu: {firstError}… Ayrıntılar için dosyalardaki -- ERROR yorumlarına bakın.",
     allDatabasesTask: "Tüm veritabanları ({count})",
     exportError: "Dışa aktarma başarısız: {error}",
     exportCancelled: "Dışa aktarma iptal edildi",
