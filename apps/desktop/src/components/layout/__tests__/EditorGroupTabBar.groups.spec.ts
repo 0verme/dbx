@@ -29,7 +29,7 @@ const sharedStyles = readFileSync(resolve(specDir, "../appTabBar.css"), "utf8");
 describe("EditorGroupTabBar semantic tab groups", () => {
   it("keeps separate collapsed state for pinned and regular clusters under the same key", () => {
     expect(source).toContain("const collapsedTabGroups = ref<Set<string>>(new Set());");
-    expect(source).toContain('return `${tab.pinned ? "fixed" : "regular"}:${tabGroupKey(tab)}`;');
+    expect(source).toContain('return `${tab.pinned ? "fixed" : "regular"}:${settingsStore.editorSettings.tabGroupMode}:${tabGroupKey(tab)}`;');
     expect(source).toContain("function toggleTabGroup(tab: QueryTab)");
     expect(source).toContain(':aria-expanded="!isTabGroupCollapsed(entry.tab)"');
   });
@@ -180,7 +180,7 @@ describe("EditorGroupTabBar vertical placement", () => {
     expect(sharedStyles).toContain('.vertical-tab-layout .app-tab-pill[data-active-tab="true"]');
     expect(sharedStyles).toContain("inset 0 0 0 1px color-mix");
     expect(sharedStyles).toContain(".vertical-tab-layout .tab-group-header:not(.tab-group-header--collapsed)::after");
-    expect(sharedStyles).toContain("margin-inline: 2.5rem 0.5rem;");
+    expect(sharedStyles).toContain("margin-inline: var(--tab-group-tab-inset) 0.5rem;");
   });
 });
 
@@ -310,6 +310,32 @@ describe("EditorGroupTabBar group behavior", () => {
     pgHeader.click();
     await settle();
     expect(host.querySelectorAll("[data-tab-id]").length).toBe(3);
+
+    app.unmount();
+    host.remove();
+  });
+
+  it("groups by database identity, disambiguating same-name databases across connections", async () => {
+    const store = useQueryStore();
+    const settings = useSettingsStore();
+    settings.editorSettings.tabGroupMode = "database";
+    const pgApp = store.createTab("pg-1", "app", "PG app", "query");
+    store.createTab("mysql-1", "app", "MY app", "query");
+    const pgConn = store.createTab("pg-1", "", "PG conn", "query");
+    const mainGroup = store.groups[0];
+    const { app, host } = mountBar(mainGroup.id, store.tabs.slice(), pgApp, pinia);
+    await settle();
+
+    const headers = Array.from(host.querySelectorAll<HTMLButtonElement>(".tab-group-header"));
+    // Sorted by group key: the same-name "app" databases stay separate clusters
+    // disambiguated by connection label, and the database-less tab clusters by connection.
+    expect(headers.map((header) => header.title)).toEqual(["app · mysql-1", "pg-1", "app · pg-1"]);
+    expect(host.querySelectorAll("[data-tab-id]").length).toBe(3);
+
+    // Collapsing one "app" cluster leaves the other same-name cluster expanded.
+    headers[0]!.click();
+    await settle();
+    expect(Array.from(host.querySelectorAll("[data-tab-id]")).map((pill) => pill.getAttribute("data-tab-id"))).toEqual([pgConn, pgApp]);
 
     app.unmount();
     host.remove();

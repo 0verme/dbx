@@ -5509,6 +5509,7 @@ export default withEnglishFallback({
     tabGroup: "分組方式",
     tabGroupNone: "不分組",
     tabGroupDatabaseType: "依資料庫類型分組",
+    tabGroupDatabase: "依資料庫分組",
     tabGroupConnection: "依連線分組",
     tabSort: "排序方式",
     tabSortManual: "手動排序",

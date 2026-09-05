@@ -221,6 +221,7 @@ watch(
 const tabGroupItems = computed(() => [
   { value: "none", label: t("settings.tabGroupNone") },
   { value: "database-type", label: t("settings.tabGroupDatabaseType") },
+  { value: "database", label: t("settings.tabGroupDatabase") },
   { value: "connection", label: t("settings.tabGroupConnection") },
 ]);
 const tabSortItems = computed(() => [
@@ -246,7 +247,7 @@ async function persistTabPreferences(partial: TabPreferencePatch) {
 }
 
 function updateTabGroupMode(value: string) {
-  if (value === "none" || value === "database-type" || value === "connection") void persistTabPreferences({ tabGroupMode: value });
+  if (value === "none" || value === "database-type" || value === "database" || value === "connection") void persistTabPreferences({ tabGroupMode: value });
 }
 
 function updateTabSortMode(value: string) {
@@ -257,15 +258,58 @@ function updateTabPlacement(value: string) {
   if (value === "top" || value === "bottom" || value === "left" || value === "right") void persistTabPreferences({ tabPlacement: value });
 }
 
+function databaseTabGroupKey(tab: QueryTab) {
+  const database = tab.database || "";
+  // A connection-level tab has no database scope, so its catalog cannot split the group.
+  return JSON.stringify([tab.connectionId, database ? tab.catalog || "" : "", database]);
+}
+
 function tabGroupKey(tab: QueryTab) {
   const connection = connectionStore.getConfig(tab.connectionId);
   if (settingsStore.editorSettings.tabGroupMode === "connection") return tab.connectionId;
+  if (settingsStore.editorSettings.tabGroupMode === "database") return databaseTabGroupKey(tab);
   return connection?.driver_profile || connection?.db_type || tab.connectionId || "unknown";
+}
+
+function compareTabGroupKeys(left: string, right: string) {
+  if (left === right) return 0;
+  const localized = left.localeCompare(right, undefined, { sensitivity: "base", numeric: true });
+  // Collation may consider case-distinct identities equal; the raw tie-break keeps clusters contiguous.
+  return localized || (left < right ? -1 : 1);
 }
 
 function tabTitleText(tab: QueryTab) {
   return tabDisplayTitle(tab, t);
 }
+
+function tabConnectionLabel(tab: QueryTab) {
+  return connectionStore.getConfig(tab.connectionId)?.name || tab.connectionId;
+}
+
+function tabConnectionTargetLabel(tab: QueryTab) {
+  const connection = connectionStore.getConfig(tab.connectionId);
+  const host = connection?.host.trim();
+  return connection && host ? `${host}:${connection.port}` : tab.connectionId;
+}
+
+function databaseTabGroupBaseLabel(tab: QueryTab) {
+  if (!tab.database) return tabConnectionLabel(tab);
+  return [tab.database, ...(tab.catalog ? [tab.catalog] : [])].join(" · ");
+}
+
+const databaseTabGroupIdentityDisplaysByLabel = computed(() => {
+  const identitiesByLabel = new Map<string, Map<string, { connectionLabel: string; connectionTargetLabel: string }>>();
+  for (const tab of props.tabs) {
+    const label = databaseTabGroupBaseLabel(tab);
+    const identities = identitiesByLabel.get(label) ?? new Map<string, { connectionLabel: string; connectionTargetLabel: string }>();
+    identities.set(databaseTabGroupKey(tab), {
+      connectionLabel: tabConnectionLabel(tab),
+      connectionTargetLabel: tabConnectionTargetLabel(tab),
+    });
+    identitiesByLabel.set(label, identities);
+  }
+  return identitiesByLabel;
+});
 
 /**
  * Sorts a section of this pane's tabs for display. With a group mode active,
@@ -279,7 +323,7 @@ function sortDisplayedTabs(tabs: QueryTab[]) {
     .map((tab, index) => ({ tab, index }))
     .sort((left, right) => {
       if (groupMode !== "none") {
-        const group = tabGroupKey(left.tab).localeCompare(tabGroupKey(right.tab), undefined, { sensitivity: "base", numeric: true });
+        const group = compareTabGroupKeys(tabGroupKey(left.tab), tabGroupKey(right.tab));
         if (group) return group;
       }
       if (sortMode === "manual") return left.index - right.index;
@@ -310,6 +354,17 @@ const editingTabGroupFallbackColor = ref(tabGroupPalette[0]!);
 function tabGroupDefaultLabel(tab: QueryTab) {
   const connection = connectionStore.getConfig(tab.connectionId);
   if (settingsStore.editorSettings.tabGroupMode === "connection") return connection?.name || tab.connectionId;
+  if (settingsStore.editorSettings.tabGroupMode === "database") {
+    const baseLabel = databaseTabGroupBaseLabel(tab);
+    const identityDisplays = databaseTabGroupIdentityDisplaysByLabel.value.get(baseLabel);
+    if ((identityDisplays?.size ?? 0) <= 1) return baseLabel;
+    const connectionLabel = tabConnectionLabel(tab);
+    const sameNameDisplays = [...identityDisplays!.values()].filter((display) => display.connectionLabel === connectionLabel);
+    if (sameNameDisplays.length <= 1) return `${baseLabel} · ${connectionLabel}`;
+    const connectionTargetLabel = tabConnectionTargetLabel(tab);
+    if (sameNameDisplays.filter((display) => display.connectionTargetLabel === connectionTargetLabel).length <= 1) return `${baseLabel} · ${connectionLabel} · ${connectionTargetLabel}`;
+    return `${baseLabel} · ${connectionLabel} · ${connectionTargetLabel} · ${tab.connectionId}`;
+  }
   return connection?.driver_label || connection?.driver_profile || connection?.db_type || tab.connectionId;
 }
 
@@ -327,7 +382,7 @@ function tabGroupLabel(tab: QueryTab) {
 
 // Pinned and regular tabs form separate clusters even under the same key.
 function tabGroupId(tab: QueryTab) {
-  return `${tab.pinned ? "fixed" : "regular"}:${tabGroupKey(tab)}`;
+  return `${tab.pinned ? "fixed" : "regular"}:${settingsStore.editorSettings.tabGroupMode}:${tabGroupKey(tab)}`;
 }
 
 function isTabGroupCollapsed(tab: QueryTab) {
@@ -376,7 +431,6 @@ function groupColorStyle(color: string): CSSProperties {
   return {
     "--tab-group-color": color,
     "--tab-group-soft": hexToRgba(color, 0.12),
-    "--tab-group-rail": hexToRgba(color, 0.3),
   } as CSSProperties;
 }
 

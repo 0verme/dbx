@@ -6190,6 +6190,7 @@ export default withEnglishFallback({
     tabGroup: "Raggruppa per",
     tabGroupNone: "Nessun raggruppamento",
     tabGroupDatabaseType: "Raggruppa per tipo di database",
+    tabGroupDatabase: "Raggruppa per database",
     tabGroupConnection: "Raggruppa per connessione",
     tabSort: "Ordina per",
     tabSortManual: "Ordine manuale",

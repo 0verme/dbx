@@ -6192,6 +6192,7 @@ export default withEnglishFallback({
     tabGroup: "Agrupar por",
     tabGroupNone: "Sem agrupamento",
     tabGroupDatabaseType: "Agrupar por tipo de banco de dados",
+    tabGroupDatabase: "Agrupar por banco de dados",
     tabGroupConnection: "Agrupar por conexão",
     tabSort: "Ordenar por",
     tabSortManual: "Ordem manual",
