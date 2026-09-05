@@ -3495,9 +3495,12 @@ onUnmounted(() => {
                   @update:open="(open: boolean) => (open ? activateSettingsPage() : closeSettingsPage())"
                   @check-updates="checkUpdates()"
                 />
-                <div v-if="queryStore.tabs.length > 0" v-show="!driverStoreActive && !settingsStore.settingsPageActive" class="flex flex-col flex-1 min-h-0">
+                <!-- Keep the workspace mounted with its group tab strips visible while a special page is active:
+                     the strips are the mouse path back to the editors (clicking a tab deactivates the page). -->
+                <div v-if="queryStore.tabs.length > 0" class="flex flex-col flex-1 min-h-0">
                   <SqlEditorWorkspace
                     ref="contentAreaRef"
+                    :special-surface-active="driverStoreActive || settingsStore.settingsPageActive"
                     @locate-tab="locateTabInSidebar"
                     @toggle-zen-mode="toggleZenMode"
                     @start-resize="startTabBarResize"

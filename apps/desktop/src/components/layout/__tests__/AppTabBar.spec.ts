@@ -69,6 +69,24 @@ describe("AppTabBar special page selection", () => {
   });
 });
 
+describe("AppTabBar layout-aware special tabs", () => {
+  it("mirrors the classic flat tab presentation instead of pills in the classic layout", () => {
+    // 经典布局下普通标签是全高 + 右边框分隔的扁平段；特殊标签必须跟随同一呈现，
+    // 不能永远是分离布局的圆角 pill（v0.6.3 分栏重构后的样式漂移）。
+    expect(tabBarSource).toMatch(/isClassicLayout = computed\(\(\) => settingsStore\.editorSettings\.appLayout === "classic"\)/);
+    expect(tabBarSource).toContain('isClassicLayout.value ? "h-9 items-stretch" : "h-10 items-center px-2"');
+    expect(tabBarSource).toContain('isClassicLayout.value ? "h-full items-center overflow-x-auto" : "h-full items-center gap-1.5 overflow-x-auto py-1.5"');
+    expect(tabBarSource).toContain('isClassicLayout.value ? "bg-muted" : `bg-background ${settingsStore.editorSettings.tabPlacement === "bottom" ? "border-t" : "border-b"}`');
+    expect(tabBarSource).toContain('["h-full border-r border-border/80 font-medium dark:border-border/45", active ? "bg-background text-foreground" : "text-foreground/70 hover:text-foreground/90"]');
+    expect(tabBarSource).toMatch(/h-7 \$\{widthClass\} rounded-md border/);
+  });
+
+  it("keeps both special tabs on the shared presentation helper", () => {
+    expect(tabBarSource).toContain("specialTabClass(!!settingsPageActive, 'min-w-36')");
+    expect(tabBarSource).toContain("specialTabClass(!!driverStoreActive, 'min-w-38')");
+  });
+});
+
 describe("Group tabbar inherited presentation", () => {
   it("imports the shared tab bar stylesheet so pills, scrollbar, and wrap styles apply", () => {
     expect(groupTabBarSource).toContain('import "./appTabBar.css"');

@@ -36,6 +36,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
+const isClassicLayout = computed(() => settingsStore.editorSettings.appLayout === "classic");
 const closeConfirmDirtyCount = computed(() => queryStore.closeConfirmDirtyTabIds.length);
 const showCloseConfirmBulkActions = computed(() => closeConfirmDirtyCount.value > 1);
 const closeConfirmDirtyTabs = computed(() => queryStore.closeConfirmDirtyTabIds.map((id) => queryStore.tabs.find((tab) => tab.id === id)).filter((tab): tab is NonNullable<ReturnType<typeof queryStore.tabs.find>> => !!tab));
@@ -104,6 +105,20 @@ watch(
 
 function toggleCompactTabTitle() {
   compactTabTitle.value = !compactTabTitle.value;
+}
+
+// Special-page tabs share the regular tabs' presentation: flat full-height
+// segments with right borders in the classic layout, floating pills in the
+// separated layout (mirrors EditorGroupTabBar's strip classes).
+const specialStripRowClass = computed(() => (isClassicLayout.value ? "h-9 items-stretch" : "h-10 items-center px-2"));
+const specialStripScrollClass = computed(() => (isClassicLayout.value ? "h-full items-center overflow-x-auto" : "h-full items-center gap-1.5 overflow-x-auto py-1.5"));
+const specialStripBarClass = computed(() => (isClassicLayout.value ? "bg-muted" : `bg-background ${settingsStore.editorSettings.tabPlacement === "bottom" ? "border-t" : "border-b"}`));
+
+function specialTabClass(active: boolean, widthClass: string): string[] {
+  if (isClassicLayout.value) {
+    return ["h-full border-r border-border/80 font-medium dark:border-border/45", active ? "bg-background text-foreground" : "text-foreground/70 hover:text-foreground/90"];
+  }
+  return [`h-7 ${widthClass} rounded-md border`, active ? "border-ring font-medium text-foreground" : "border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90"];
 }
 
 type SpecialRegularSurface = "driverStore" | "settings";
@@ -197,17 +212,17 @@ function handleCancelClose() {
 </script>
 
 <template>
-  <div v-if="driverStoreOpen || settingsPageOpen" class="app-tab-bar relative flex w-full min-w-0 shrink-0 overflow-hidden border-b bg-background" data-main-tab-bar :class="{ 'ring-2 ring-primary ring-inset': detachedDropTarget }">
-    <div class="flex h-10 w-full min-w-0 shrink-0 items-center overflow-hidden px-2">
+  <div v-if="driverStoreOpen || settingsPageOpen" class="app-tab-bar relative flex w-full min-w-0 shrink-0 overflow-hidden" :class="[specialStripBarClass, { 'ring-2 ring-primary ring-inset': detachedDropTarget }]" data-main-tab-bar>
+    <div class="flex w-full min-w-0 shrink-0 overflow-hidden" :class="specialStripRowClass">
       <div class="app-tab-strip relative h-full min-w-0 flex-1 overflow-hidden">
-        <div class="app-tab-scroll flex h-full w-full min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1.5">
+        <div class="app-tab-scroll flex h-full w-full min-w-0 flex-1" :class="specialStripScrollClass">
           <!-- Settings Page Tab -->
           <CustomContextMenu v-if="settingsPageOpen" :items="getSpecialRegularTabMenuItems('settings')" v-slot="{ onContextMenu }">
-            <div @contextmenu="onContextMenu">
+            <div :class="isClassicLayout ? 'h-full' : ''" @contextmenu="onContextMenu">
               <div
                 data-settings-page-tab
-                class="app-tab-pill group flex h-7 min-w-36 cursor-default items-center gap-1 rounded-md border px-2 text-xs transition-colors whitespace-nowrap"
-                :class="settingsPageActive ? 'border-ring font-medium text-foreground' : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90'"
+                class="app-tab-pill group flex cursor-default items-center gap-1 px-2 text-xs transition-colors whitespace-nowrap select-none"
+                :class="specialTabClass(!!settingsPageActive, 'min-w-36')"
                 :data-active-tab="settingsPageActive"
                 @click="emit('activate-settings-page')"
                 @mousedown.middle.prevent="emit('close-settings-page')"
@@ -225,11 +240,11 @@ function handleCancelClose() {
 
           <!-- Driver Store Tab -->
           <CustomContextMenu v-if="driverStoreOpen" :items="getSpecialRegularTabMenuItems('driverStore')" v-slot="{ onContextMenu }">
-            <div @contextmenu="onContextMenu">
+            <div :class="isClassicLayout ? 'h-full' : ''" @contextmenu="onContextMenu">
               <div
                 data-driver-store-tab
-                class="app-tab-pill group flex h-7 min-w-38 cursor-default items-center gap-1 rounded-md border px-2 text-xs transition-colors whitespace-nowrap"
-                :class="driverStoreActive ? 'border-ring font-medium text-foreground' : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90'"
+                class="app-tab-pill group flex cursor-default items-center gap-1 px-2 text-xs transition-colors whitespace-nowrap select-none"
+                :class="specialTabClass(!!driverStoreActive, 'min-w-38')"
                 :data-active-tab="driverStoreActive"
                 @click="emit('activate-driver-store')"
                 @mousedown.middle.prevent="emit('close-driver-store')"
