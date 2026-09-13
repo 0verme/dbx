@@ -40,6 +40,15 @@ describe("dataGridTemporalEditor", () => {
     expect(stepTemporalInputValue(value, "datetime", "second", 1)).toBe("2026-07-09 12:34:57.123456");
   });
 
+  it("preserves timezone offsets when parsing or stepping temporal values", () => {
+    const datetime = "2026-07-09 12:34:56.123456+12:00";
+    const time = "12:34:56.123456-05:30";
+
+    expect(parseTemporalInputValue(time, "time")).toBe(time);
+    expect(stepTemporalInputValue(datetime, "datetime", "hour", 1)).toBe("2026-07-09 13:34:56.123456+12:00");
+    expect(stepTemporalInputValue(time, "time", "minute", 1)).toBe("12:35:56.123456-05:30");
+  });
+
   it("keeps ordinary datetime values at second precision", () => {
     expect(temporalCellEditorConfig("datetime")).toEqual({ kind: "datetime", fractionPrecision: 0 });
     expect(formatTemporalInputValue("2026-07-09 12:34:56", "datetime")).toBe("2026-07-09T12:34:56");

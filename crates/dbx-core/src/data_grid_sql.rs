@@ -7333,6 +7333,25 @@ mod tests {
     }
 
     #[test]
+    fn postgres_temporal_literals_preserve_session_formatted_values_for_grid_writes() {
+        let timestamp = column("created_at", "timestamp without time zone", false, None);
+        let timestamptz = column("created_at", "timestamp with time zone", false, None);
+
+        assert_eq!(
+            format_grid_sql_literal(&json!("2026-09-13 01:00:00"), Some(DatabaseType::Postgres), Some(&timestamp),),
+            "'2026-09-13 01:00:00'"
+        );
+        assert_eq!(
+            format_grid_sql_literal(
+                &json!("2026-09-13T13:00:00+12:00"),
+                Some(DatabaseType::Postgres),
+                Some(&timestamptz),
+            ),
+            "'2026-09-13T13:00:00+12:00'"
+        );
+    }
+
+    #[test]
     fn postgres_bytea_literals_decode_prefixed_hex_values() {
         let bytea = column("payload", "bytea", true, None);
         let text = column("label", "text", true, None);

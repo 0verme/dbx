@@ -2097,7 +2097,6 @@ dependencies = [
  "font-kit",
  "futures",
  "httpdate",
- "iana-time-zone",
  "insta",
  "json5",
  "jsonwebtoken",
