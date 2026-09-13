@@ -4,7 +4,7 @@ import type { FocusOutsideEvent, PointerDownOutsideEvent } from "reka-ui";
 import { CalendarClock, ChevronDown, ChevronUp, CircleSlash } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatTemporalInputValue, parseTemporalInputValue, stepTemporalInputValue, temporalOffsetSuffix, type TemporalCellEditorKind } from "@/lib/dataGrid/dataGridTemporalEditor";
+import { formatTemporalInputValue, hostTimezoneOffsetSuffix, parseTemporalInputValue, stepTemporalInputValue, temporalOffsetSuffix, type TemporalCellEditorKind } from "@/lib/dataGrid/dataGridTemporalEditor";
 
 const props = withDefaults(
   defineProps<{
@@ -192,9 +192,12 @@ function setNow() {
   const now = new Date();
   const dateText = [String(now.getFullYear()).padStart(4, "0"), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
   const nextTime = [String(now.getHours()).padStart(2, "0"), String(now.getMinutes()).padStart(2, "0"), String(now.getSeconds()).padStart(2, "0")].join(":") + nowFractionSuffix(now);
+  // tz-aware columns must carry an explicit offset, otherwise the server parses
+  // the host wall clock in its own session timezone
+  const offsetSuffix = temporalOffsetSuffix(localValue.value, props.kind) ? hostTimezoneOffsetSuffix(now) : "";
   if (props.kind === "date") setModelValue(dateText, true);
-  else if (props.kind === "time") setModelValue(nextTime, true);
-  else setModelValue(`${dateText} ${nextTime}`, true);
+  else if (props.kind === "time") setModelValue(`${nextTime}${offsetSuffix}`, true);
+  else setModelValue(`${dateText} ${nextTime}${offsetSuffix}`, true);
 }
 
 function finishCommit() {

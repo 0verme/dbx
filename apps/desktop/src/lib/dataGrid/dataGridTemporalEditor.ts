@@ -78,6 +78,13 @@ export function temporalOffsetSuffix(value: string, kind: TemporalCellEditorKind
   return basePattern.test(withoutOffset) ? offset : "";
 }
 
+export function hostTimezoneOffsetSuffix(now: Date): string {
+  const minutes = -now.getTimezoneOffset();
+  const sign = minutes >= 0 ? "+" : "-";
+  const abs = Math.abs(minutes);
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+}
+
 export function stepTemporalInputValue(value: string, kind: TemporalCellEditorKind, part: TemporalCellEditorPart, delta: number): string {
   const dateParts = temporalDateParts(value);
   const timeParts = temporalTimeParts(value, kind);

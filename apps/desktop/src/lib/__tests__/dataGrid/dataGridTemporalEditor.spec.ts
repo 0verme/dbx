@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { formatTemporalInputValue, parseTemporalInputValue, stepTemporalInputValue, temporalCellEditorConfig, temporalCellEditorKind } from "@/lib/dataGrid/dataGridTemporalEditor";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatTemporalInputValue, hostTimezoneOffsetSuffix, parseTemporalInputValue, stepTemporalInputValue, temporalCellEditorConfig, temporalCellEditorKind } from "@/lib/dataGrid/dataGridTemporalEditor";
 
 describe("dataGridTemporalEditor", () => {
   it("resolves temporal editor configs with fractional precision", () => {
@@ -53,5 +53,27 @@ describe("dataGridTemporalEditor", () => {
     expect(temporalCellEditorConfig("datetime")).toEqual({ kind: "datetime", fractionPrecision: 0 });
     expect(formatTemporalInputValue("2026-07-09 12:34:56", "datetime")).toBe("2026-07-09T12:34:56");
     expect(parseTemporalInputValue("2026-07-09T12:34:56", "datetime")).toBe("2026-07-09 12:34:56");
+  });
+
+  it("formats the host timezone offset for tz-aware Now values", () => {
+    const now = new Date("2026-09-13T12:00:00Z");
+    const spy = vi.spyOn(Date.prototype, "getTimezoneOffset");
+
+    try {
+      spy.mockReturnValue(-480);
+      expect(hostTimezoneOffsetSuffix(now)).toBe("+08:00");
+
+      spy.mockReturnValue(330);
+      expect(hostTimezoneOffsetSuffix(now)).toBe("-05:30");
+
+      spy.mockReturnValue(0);
+      expect(hostTimezoneOffsetSuffix(now)).toBe("+00:00");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 });
