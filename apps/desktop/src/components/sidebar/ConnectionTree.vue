@@ -21,6 +21,7 @@ import {
   resolveSidebarObjectSearchFilter,
   type SidebarRegexIndexScope,
   type SidebarRegexScopeIdentity,
+  localTableSearchParentTypes,
 } from "@/lib/sidebar/sidebarSearchTree";
 import { createSidebarLabelMatcher } from "@/lib/sidebar/sidebarSearch";
 import { collectSidebarRegexIndexScopes, resolveSidebarRemoteSearchQuery, resolveSidebarSearchDispatchMode } from "@/lib/sidebar/sidebarRegexSearchIndex";
@@ -1410,7 +1411,38 @@ provide(sidebarTreeContextKey, {
       scheduleLocalSidebarTableSearchRefresh(parentNodeId, focusRestore);
     } else scheduleSidebarTableSearchRefresh(parentNodeId, { focusRestore });
   },
-  refreshTableSearchIndex: (parentNodeId) => void loadLocalTableSearchResults(parentNodeId, true),
+  refreshTableSearchIndex: (parentNodeId) => {
+    // Re-fetch the live object list before rebuilding the local index. The
+    // index refresh used to scan the database correctly, but the tree itself
+    // still contained the old first page, so newly-created tables could not
+    // be rendered even though they were present in the refreshed index.
+    const findNode = (nodes: TreeNode[]): TreeNode | undefined => {
+      for (const node of nodes) {
+        if (node.id === parentNodeId) return node;
+        const found = node.children ? findNode(node.children) : undefined;
+        if (found) return found;
+      }
+      return undefined;
+    };
+    void (async () => {
+      const parent = findNode(store.treeNodes);
+      if (parent?.connectionId && parent.database && (parent.type === "database" || parent.type === "schema" || parent.type === "linked-server-schema" || parent.type === "group-tables")) {
+        // Refresh only the tables group. Refreshing the database/schema node
+        // also reloads views, routines, triggers, etc., causing a visible
+        // redraw of the whole sidebar for a table-only operation.
+        if (parent.type === "group-tables") {
+          await store.loadObjectGroupChildren(parent, { force: true });
+        } else if (localTableSearchParentTypes.has(parent.type)) {
+          await store.loadTables(parent.connectionId, parent.database, parent.schema, { force: true });
+        }
+      }
+      await loadLocalTableSearchResults(parentNodeId, true);
+    })().catch((error) => {
+      // Keep refresh failures inside the UI action boundary instead of
+      // leaving an unhandled Promise rejection when metadata loading fails.
+      toast(error instanceof Error ? error.message : String(error), 5000);
+    });
+  },
   registerPasteHandler: pasteHandlerRegistry.register,
 });
 provide(sidebarTreeRuntimeKey, sidebarTreeRuntime);

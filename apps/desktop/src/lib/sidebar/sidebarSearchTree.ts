@@ -72,7 +72,7 @@ export function reuseLiveSidebarTreeNodes(indexedNodes: TreeNode[], liveNodes: r
   return indexedNodes.map((node) => liveNodesById.get(node.id) ?? node);
 }
 
-const localTableSearchParentTypes = new Set<TreeNodeType>(["database", "schema", "linked-server-schema", "group-tables"]);
+export const localTableSearchParentTypes = new Set<TreeNodeType>(["database", "schema", "linked-server-schema", "group-tables"]);
 const localTableSearchChildTypes = new Set<TreeNodeType>(["table", "view", "materialized_view"]);
 
 export function filterLocallySearchedTables(nodes: TreeNode[], options: { enabled: boolean; queries: Readonly<Record<string, string>>; indexedResults: Readonly<Record<string, TableInfo[] | null>> }): TreeNode[] {
