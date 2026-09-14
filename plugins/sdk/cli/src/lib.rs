@@ -1139,25 +1139,34 @@ fn build_go_backend(
         return Err(format!("Go backend is missing {}/go.mod", backend_directory.display()));
     }
     let mut command = Command::new("go");
-    command.current_dir(&backend_directory).arg("build").arg("-trimpath").arg("-o").arg(staged_executable).arg(".");
+    command.current_dir(&backend_directory).arg("build").arg("-trimpath");
     if let Some(sdk_root) = sdk_root_from_environment()? {
         let sdk = sdk_root.join("plugins/sdk/go/dbx-plugin-sdk");
         if !sdk.join("go.mod").is_file() {
             return Err(format!("Go plugin SDK was not found at {}", sdk.display()));
         }
         fs::create_dir_all(build_directory).map_err(|error| error.to_string())?;
-        let work_file = build_directory.join("go.work");
-        fs::write(
-            &work_file,
-            format!(
-                "go 1.22\n\nuse (\n\t{}\n\t{}\n)\n",
-                serde_json::to_string(&go_work_path(&backend_directory)).map_err(|error| error.to_string())?,
-                serde_json::to_string(&go_work_path(&sdk)).map_err(|error| error.to_string())?
-            ),
-        )
-        .map_err(|error| error.to_string())?;
-        command.env("GOWORK", work_file);
+        let mod_file = build_directory.join("go.mod");
+        fs::copy(backend_directory.join("go.mod"), &mod_file).map_err(|error| error.to_string())?;
+        let source_sum = backend_directory.join("go.sum");
+        if source_sum.is_file() {
+            fs::copy(source_sum, build_directory.join("go.sum")).map_err(|error| error.to_string())?;
+        }
+        let mut replace = Command::new("go");
+        replace
+            .current_dir(&backend_directory)
+            .arg("mod")
+            .arg("edit")
+            .arg("-modfile")
+            .arg(&mod_file)
+            .arg(format!(
+                "-replace=github.com/t8y2/dbx/plugins/sdk/go/dbx-plugin-sdk={}",
+                go_work_path(&sdk)
+            ));
+        run_command(&mut replace, "Go module setup")?;
+        command.env("GOWORK", "off").arg("-modfile").arg(&mod_file);
     }
+    command.arg("-o").arg(staged_executable).arg(".");
     run_command(&mut command, "Go backend build")
 }
 
@@ -1834,7 +1843,7 @@ mod tests {
             let workflow = std::fs::read_to_string(directory.join(".github/workflows/plugin-release.yml")).unwrap();
             assert!(!workflow.contains("signing-key-id"));
             assert!(!workflow.contains("DBX_PLUGIN_SIGNING_KEY"));
-            assert!(workflow.contains("plugin-cli-version: 0.1.5"));
+            assert!(workflow.contains("plugin-cli-version: 0.1.6"));
             assert!(!workflow.contains("sdk-ref:"));
 
             match template {
