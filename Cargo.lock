@@ -2063,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "dbx-cli"
-version = "0.4.86"
+version = "0.4.87"
 dependencies = [
  "async-trait",
  "dbx-core",
@@ -2161,7 +2161,7 @@ dependencies = [
 
 [[package]]
 name = "dbx-mcp"
-version = "0.4.86"
+version = "0.4.87"
 dependencies = [
  "async-trait",
  "axum",
