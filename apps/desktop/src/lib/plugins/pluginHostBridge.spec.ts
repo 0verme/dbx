@@ -325,6 +325,7 @@ describe("PluginHostBridge", () => {
 
     const closed = pluginSandboxDocument("<html><head></head><body></body></html>", ["host.events"]);
     expect(closed).toContain("connect-src 'none';");
+    expect(closed).toContain("host.stream.chunk");
   });
 
   it("sends the theme in init and pushes theme updates through env messages", () => {
