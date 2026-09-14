@@ -190,6 +190,7 @@ describe("EditorGroupTabBar semantic tab groups", () => {
     expect(sharedStyles).toMatch(/\.horizontal-fixed-tabs-scroll\.wrap-mode\.classic-wrap\s*\{[^}]*row-gap:\s*0\.25rem !important;/s);
     expect(sharedStyles).toMatch(/\.app-tab-bar\.classic-tab-layout:not\(\.vertical-tab-layout\):not\(:has\(\.wrap-mode\)\) \.tab-group-entry\s*\{[^}]*height:\s*100%;[^}]*max-height:\s*none;/s);
     expect(sharedStyles).toMatch(/\.app-tab-bar:not\(\.vertical-tab-layout\):has\(\.wrap-mode\) \.tab-group-entry:has\(\.tab-group-tab\)::after\s*\{[^}]*bottom:\s*0;/s);
+    expect(sharedStyles).toMatch(/\.app-tab-bar\.classic-tab-layout:not\(\.vertical-tab-layout\):not\(:has\(\.wrap-mode\)\)\[data-placement="top"\] \.app-tab-pill\s*\{[^}]*border-top-width:\s*0;/s);
     expect(sharedStyles).toContain("scroll-margin-inline-end: 1px;");
   });
 
