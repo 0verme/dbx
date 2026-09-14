@@ -28,7 +28,7 @@ import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/backend/api";
 import { isSchemaAware } from "@/lib/database/databaseCapabilities";
 import { fetchNamespaceOptionsForConnection } from "@/composables/useDatabaseOptions";
-import { ArrowLeftRight, GitCompareArrows, Save, FolderOpen, Settings, X } from "@lucide/vue";
+import { ArrowLeftRight, GitCompareArrows, Save, FolderOpen, Settings, Trash2, X } from "@lucide/vue";
 import type { SchemaDiffConfig, SchemaDiffCompareOptions, FieldMappingEntry, SchemaDiffTableMapping, SchemaDiffRoutineMapping } from "@/types/schemaDiff";
 import type { DatabaseType } from "@/types/database";
 
@@ -164,6 +164,16 @@ function handleUpdateSelectedTables(value: string[]) {
   if (!restrictTables.value) return;
   emit("update:selectedTables", [...value]);
   reconcileTableMappings(value);
+}
+
+function handleRemoveSelectedTable(sourceTable: string) {
+  handleUpdateSelectedTables(localSelectedTables.value.filter((table) => table !== sourceTable));
+}
+
+function matchStatusClass(kind: SchemaDiffTableMatch["kind"]): string {
+  if (kind === "unmatched") return "text-destructive";
+  if (kind === "manual") return "text-amber-600 dark:text-amber-400";
+  return "text-muted-foreground";
 }
 
 function clearUnavailableTableSelection() {
@@ -305,6 +315,10 @@ function handleUpdateSelectedRoutines(value: string[]) {
   if (!restrictRoutines.value) return;
   emit("update:selectedRoutines", [...value]);
   reconcileRoutineMappings(value);
+}
+
+function handleRemoveSelectedRoutine(sourceRoutine: string) {
+  handleUpdateSelectedRoutines(localSelectedRoutines.value.filter((routine) => routine !== sourceRoutine));
 }
 
 function clearUnavailableRoutineSelection() {
@@ -861,6 +875,7 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
                 <th class="px-2 py-1.5 text-left font-medium">{{ t("diff.sourceTables") }}</th>
                 <th class="px-2 py-1.5 text-left font-medium">{{ t("diff.targetTable") }}</th>
                 <th class="w-28 px-2 py-1.5 text-left font-medium">{{ t("diff.status") }}</th>
+                <th class="w-16 px-2 py-1.5 text-right font-medium">{{ t("common.actions") }}</th>
               </tr>
             </thead>
             <tbody>
@@ -881,8 +896,13 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
                     content-class="w-[var(--reka-popover-trigger-width)]"
                   />
                 </td>
-                <td class="px-2 py-1.5" :class="match.kind === 'unmatched' ? 'text-destructive' : match.kind === 'manual' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'">
+                <td class="px-2 py-1.5" :class="matchStatusClass(match.kind)">
                   {{ t(`diff.tableMatchStatus.${match.kind}`) }}
+                </td>
+                <td class="px-2 py-1.5 text-right">
+                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" :aria-label="t('common.delete')" @click="handleRemoveSelectedTable(match.sourceTable)">
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </Button>
                 </td>
               </tr>
             </tbody>
@@ -926,6 +946,7 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
             @update:model-value="handleUpdateSelectedRoutines"
             :tables="sourceRoutineList"
             :title="t('diff.sourceRoutines')"
+            :search-placeholder="t('diff.searchSourceRoutines')"
             :empty-text="t('diff.noRoutines')"
           />
         </template>
@@ -946,6 +967,7 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
                 <th class="px-2 py-1.5 text-left font-medium">{{ t("diff.sourceRoutines") }}</th>
                 <th class="px-2 py-1.5 text-left font-medium">{{ t("diff.targetRoutine") }}</th>
                 <th class="w-28 px-2 py-1.5 text-left font-medium">{{ t("diff.status") }}</th>
+                <th class="w-16 px-2 py-1.5 text-right font-medium">{{ t("common.actions") }}</th>
               </tr>
             </thead>
             <tbody>
@@ -955,8 +977,13 @@ async function fetchDbVersion(connectionId: string, database: string, schema: st
                   <span v-if="match.targetRoutine">{{ match.targetRoutine }}</span>
                   <span v-else class="text-muted-foreground">—</span>
                 </td>
-                <td class="px-2 py-1.5" :class="match.kind === 'unmatched' ? 'text-destructive' : 'text-muted-foreground'">
+                <td class="px-2 py-1.5" :class="matchStatusClass(match.kind)">
                   {{ t(`diff.tableMatchStatus.${match.kind}`) }}
+                </td>
+                <td class="px-2 py-1.5 text-right">
+                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" :aria-label="t('common.delete')" @click="handleRemoveSelectedRoutine(match.sourceRoutine)">
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </Button>
                 </td>
               </tr>
             </tbody>
