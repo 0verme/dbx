@@ -1151,14 +1151,18 @@ fn build_go_backend(
             &work_file,
             format!(
                 "go 1.22\n\nuse (\n\t{}\n\t{}\n)\n",
-                serde_json::to_string(&backend_directory.to_string_lossy()).map_err(|error| error.to_string())?,
-                serde_json::to_string(&sdk.to_string_lossy()).map_err(|error| error.to_string())?
+                serde_json::to_string(&go_work_path(&backend_directory)).map_err(|error| error.to_string())?,
+                serde_json::to_string(&go_work_path(&sdk)).map_err(|error| error.to_string())?
             ),
         )
         .map_err(|error| error.to_string())?;
         command.env("GOWORK", work_file);
     }
     run_command(&mut command, "Go backend build")
+}
+
+fn go_work_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn run_command(command: &mut Command, label: &str) -> Result<(), String> {
@@ -1565,7 +1569,7 @@ fn keygen_usage() -> String {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use super::{
         color_enabled_with, create_project, generate_signing_key_file, package_manifest, package_project,
@@ -1582,6 +1586,11 @@ mod tests {
         let output = root.path().join("stage");
         assert!(super::copy_path(&input, &output).unwrap_err().contains(".dbx-dev"));
         assert!(!output.join(".dbx-dev/connections.json").exists());
+    }
+
+    #[test]
+    fn normalizes_go_work_paths_for_windows() {
+        assert_eq!(super::go_work_path(Path::new(r"C:\workspace\backend")), "C:/workspace/backend");
     }
 
     #[test]
@@ -1825,7 +1834,7 @@ mod tests {
             let workflow = std::fs::read_to_string(directory.join(".github/workflows/plugin-release.yml")).unwrap();
             assert!(!workflow.contains("signing-key-id"));
             assert!(!workflow.contains("DBX_PLUGIN_SIGNING_KEY"));
-            assert!(workflow.contains("plugin-cli-version: 0.1.4"));
+            assert!(workflow.contains("plugin-cli-version: 0.1.5"));
             assert!(!workflow.contains("sdk-ref:"));
 
             match template {
