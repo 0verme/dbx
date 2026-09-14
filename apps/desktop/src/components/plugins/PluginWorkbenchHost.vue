@@ -124,7 +124,7 @@ async function loadWorkbench() {
     const bytes = Uint8Array.from(atob(asset.dataBase64), (character) => character.charCodeAt(0));
     const html = await inlineLocalUiAssets(new TextDecoder().decode(bytes), props.plugin.manifest.id);
     if (disposed || generation !== loadGeneration) return;
-    source.value = pluginSandboxDocument(html, props.plugin.manifest.permissions);
+    source.value = pluginSandboxDocument(html, props.plugin.manifest.permissions, currentBridgeTheme());
     await nextTick();
     if (disposed || generation !== loadGeneration) return;
     createBridge();

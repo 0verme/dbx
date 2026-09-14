@@ -297,6 +297,18 @@ describe("PluginHostBridge", () => {
     expect(document).toContain("var(--color-background");
   });
 
+  it("bootstraps the initial theme before the plugin document paints", () => {
+    const document = pluginSandboxDocument("<html><head></head><body></body></html>", [], {
+      appearance: "dark",
+      tokens: { "--color-background": "rgb(19 20 22)", "--color-destructive": "rgb(243 98 95)" },
+    });
+
+    expect(document).toContain('root.dataset.dbxTheme = theme.appearance === "dark" ? "dark" : "light"');
+    expect(document).toContain('root.style.colorScheme = theme.appearance === "dark" ? "dark" : "light"');
+    expect(document).toContain('"--color-background":"rgb(19 20 22)"');
+    expect(document).toContain('"--color-destructive":"rgb(243 98 95)"');
+  });
+
   it("forwards the plugin close-tab shortcut to the host", () => {
     const target = { postMessage: vi.fn() } as unknown as Window;
     const closeTab = vi.fn();

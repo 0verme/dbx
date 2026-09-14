@@ -217,15 +217,22 @@ export function pluginNetworkOrigins(permissions: readonly string[] | undefined)
   return [...origins];
 }
 
-export function pluginSandboxDocument(html: string, permissions?: readonly string[]): string {
+export function pluginSandboxDocument(html: string, permissions?: readonly string[], theme?: PluginBridgeTheme): string {
   const networkOrigins = pluginNetworkOrigins(permissions);
   const connectSrc = networkOrigins.length > 0 ? `connect-src ${networkOrigins.join(" ")};` : "connect-src 'none';";
   const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data: blob:; ${connectSrc} media-src data: blob:;">`;
   const sdk = `<script>${pluginSdkSource()}</script>`;
   const uiKit = `<style>${pluginUiKitCss()}</style>`;
-  const injection = `${csp}${uiKit}${sdk}`;
+  const themeBootstrap = pluginThemeBootstrap(theme);
+  const injection = `${csp}${uiKit}${themeBootstrap}${sdk}`;
   if (/<head(?:\s[^>]*)?>/i.test(html)) return html.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${injection}`);
   return `<!doctype html><html><head>${injection}</head><body>${html}</body></html>`;
+}
+
+function pluginThemeBootstrap(theme?: PluginBridgeTheme): string {
+  if (!theme) return "";
+  const serializedTheme = JSON.stringify(theme).replace(/</g, "\\u003c");
+  return `<script>(() => { const theme = ${serializedTheme}; const root = document.documentElement; root.dataset.dbxTheme = theme.appearance === "dark" ? "dark" : "light"; root.style.colorScheme = theme.appearance === "dark" ? "dark" : "light"; for (const [name, value] of Object.entries(theme.tokens || {})) { if (/^--[a-z0-9-]+$/i.test(name) && typeof value === "string") root.style.setProperty(name, value); } })();</script>`;
 }
 
 /**
