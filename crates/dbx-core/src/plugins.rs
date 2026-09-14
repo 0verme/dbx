@@ -29,10 +29,11 @@ pub use installer::{
     MAX_PLUGIN_PACKAGE_BYTES, PLUGIN_CHECKSUMS_FILE, PLUGIN_SIGNATURE_FILE,
 };
 pub use marketplace::{
-    PluginMarketplace, PluginMarketplaceArtifact, PluginMarketplaceCatalog, PluginMarketplaceInstallRequest,
-    PluginMarketplaceLocalization, PluginMarketplacePlugin, PluginMarketplaceRepositoryMetadata,
-    PluginMarketplaceVersion, PluginRepository, PluginRepositoryCatalogResult, PluginRepositoryKind,
-    PluginRepositoryStore, MAX_PLUGIN_CATALOG_BYTES, OFFICIAL_PLUGIN_REPOSITORY_ID, SUPPORTED_PLUGIN_CATALOG_VERSION,
+    url_install_trust_store, PluginMarketplace, PluginMarketplaceArtifact, PluginMarketplaceCatalog,
+    PluginMarketplaceInstallRequest, PluginMarketplaceLocalization, PluginMarketplacePlugin,
+    PluginMarketplaceRepositoryMetadata, PluginMarketplaceVersion, PluginRepository, PluginRepositoryCatalogResult,
+    PluginRepositoryKind, PluginRepositoryStore, MAX_PLUGIN_CATALOG_BYTES, OFFICIAL_PLUGIN_REPOSITORY_ID,
+    SUPPORTED_PLUGIN_CATALOG_VERSION,
 };
 
 pub use manifest::{

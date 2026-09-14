@@ -88,6 +88,7 @@ export const removePluginRepository = forward("removePluginRepository");
 export const fetchPluginMarketplaceCatalogs = forward("fetchPluginMarketplaceCatalogs");
 export const installMarketplacePlugin = forward("installMarketplacePlugin");
 export const installPluginPackage = forward("installPluginPackage");
+export const installPluginPackageFromUrl = forward("installPluginPackageFromUrl");
 export const rollbackPlugin = forward("rollbackPlugin");
 export const uninstallPlugin = forward("uninstallPlugin");
 export const activatePlugin = forward("activatePlugin");

@@ -1850,6 +1850,7 @@ pub fn run() {
             commands::plugins::fetch_plugin_marketplace_catalogs,
             commands::plugins::install_marketplace_plugin,
             commands::plugins::install_plugin_package,
+            commands::plugins::install_plugin_package_from_url,
             commands::plugins::rollback_plugin,
             commands::plugins::uninstall_plugin,
             commands::plugins::activate_plugin,

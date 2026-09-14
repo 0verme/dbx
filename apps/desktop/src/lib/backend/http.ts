@@ -590,6 +590,22 @@ export async function installPluginPackage(pathOrFile: string | File, allowUnsig
   return response.json();
 }
 
+export async function installPluginPackageFromUrl(url: string, allowUnsigned = false): Promise<PluginInstallResult> {
+  let blob: Blob;
+  let fileName: string;
+  try {
+    fileName = new URL(url).pathname.split("/").pop() || "plugin.dbxp";
+  } catch {
+    fileName = "plugin.dbxp";
+  }
+  blob = await (await fetch(url)).blob();
+  const formData = new FormData();
+  formData.append("file", blob, fileName);
+  const response = await fetch(apiUrl(`/api/plugins/install?allow_unsigned=${allowUnsigned}&from_url=true`), { method: "POST", body: formData });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 export async function rollbackPlugin(pluginId: string): Promise<PluginRollbackResult> {
   return post("/api/plugins/rollback", { plugin_id: pluginId });
 }

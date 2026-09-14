@@ -2294,6 +2294,10 @@ export async function installPluginPackage(pathOrFile: string | File, allowUnsig
   return invoke("install_plugin_package", { path: pathOrFile, allowUnsigned });
 }
 
+export async function installPluginPackageFromUrl(url: string, allowUnsigned = false): Promise<PluginInstallResult> {
+  return invoke("install_plugin_package_from_url", { url, allowUnsigned });
+}
+
 export async function rollbackPlugin(pluginId: string): Promise<PluginRollbackResult> {
   return invoke("rollback_plugin", { pluginId });
 }

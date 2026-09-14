@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Check, ChevronRight, CircleAlert, Download, ExternalLink, FileUp, FolderTree, Globe, LayoutGrid, List, Loader2, PackageCheck, Pencil, Plus, RefreshCw, RotateCcw, Search, Settings2, ShieldCheck, Store, Trash2 } from "@lucide/vue";
+import { Check, ChevronRight, CircleAlert, Download, ExternalLink, FileUp, FolderTree, Globe, LayoutGrid, Link2, List, Loader2, PackageCheck, Pencil, Plus, RefreshCw, RotateCcw, Search, Settings2, ShieldCheck, Store, Trash2 } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,10 +16,11 @@ import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { physicalDropPositionInsideRect } from "@/lib/ai/aiAttachments";
 import { createFrontendPluginRegistry, pluginConnectionProviderIcon } from "@/lib/plugins/frontendPlugin";
 import { buildMarketplacePluginListings, filterMarketplacePluginListings, type MarketplacePluginListing } from "@/lib/plugins/pluginMarketplace";
+import { formatBytes } from "@/lib/database/serverMetrics";
 import type { PluginCenterFocus } from "@/lib/plugins/pluginCenterNavigation";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
-import type { InstalledPlugin, PluginRepository, PluginRepositoryCatalogResult, PluginTrustedKey } from "@/types/database";
+import type { InstalledPlugin, PluginInstallResult, PluginRepository, PluginRepositoryCatalogResult, PluginTrustedKey } from "@/types/database";
 import { useI18n } from "vue-i18n";
 
 const props = defineProps<{
@@ -57,6 +58,9 @@ const catalogResults = ref<PluginRepositoryCatalogResult[]>([]);
 const loading = ref(false);
 const marketplaceLoading = ref(false);
 const installing = ref(false);
+const installUrl = ref("");
+const urlInstalling = ref(false);
+const urlDownloadProgress = ref<{ downloaded: number; total: number | null } | null>(null);
 const marketplaceInstallingKey = ref("");
 const operating = ref(false);
 const error = ref("");
@@ -339,21 +343,73 @@ async function handleWebPackage(event: Event) {
   if (file) await installPlugin(file);
 }
 
+async function finishInstall(result: PluginInstallResult) {
+  toast(t("pluginPlatform.installSuccess", { name: result.plugin.manifest.name, version: result.plugin.manifest.version }));
+  clearPluginIconCache();
+  installedPlugins.value = await api.listPlugins();
+  selectPlugin(result.plugin.manifest.id);
+  activeSection.value = "installed";
+}
+
 async function installPlugin(source: string | File) {
   installing.value = true;
   try {
     const result = await api.installPluginPackage(source, allowUnsigned.value);
-    toast(t("pluginPlatform.installSuccess", { name: result.plugin.manifest.name, version: result.plugin.manifest.version }));
-    clearPluginIconCache();
-    installedPlugins.value = await api.listPlugins();
-    selectPlugin(result.plugin.manifest.id);
-    activeSection.value = "installed";
+    await finishInstall(result);
   } catch (cause) {
     toast(cause instanceof Error ? cause.message : String(cause), 8000);
   } finally {
     installing.value = false;
   }
 }
+
+function isHttpPackageUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function installPluginFromUrl() {
+  const url = installUrl.value.trim();
+  if (!url || installing.value || urlInstalling.value) return;
+  if (!isHttpPackageUrl(url)) return toast(t("pluginPlatform.invalidPackageUrl"));
+  urlInstalling.value = true;
+  urlDownloadProgress.value = { downloaded: 0, total: null };
+  let unlisten: (() => void) | undefined;
+  try {
+    if (isTauriRuntime()) {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<{ downloaded: number; total: number | null }>("plugin-url-download-progress", ({ payload }) => {
+        urlDownloadProgress.value = payload;
+      });
+    }
+    const result = await api.installPluginPackageFromUrl(url, allowUnsigned.value);
+    installUrl.value = "";
+    await finishInstall(result);
+  } catch (cause) {
+    toast(cause instanceof Error ? cause.message : String(cause), 8000);
+  } finally {
+    unlisten?.();
+    urlInstalling.value = false;
+    urlDownloadProgress.value = null;
+  }
+}
+
+const urlProgressPercent = computed(() => {
+  const progress = urlDownloadProgress.value;
+  if (!progress?.total) return null;
+  return Math.min(100, Math.round((progress.downloaded / progress.total) * 100));
+});
+
+const urlProgressLabel = computed(() => {
+  const progress = urlDownloadProgress.value;
+  if (!progress) return "";
+  const downloaded = formatBytes(progress.downloaded);
+  return progress.total ? t("pluginPlatform.downloadProgress", { downloaded, total: formatBytes(progress.total) }) : t("pluginPlatform.downloadProgressUnknown", { downloaded });
+});
 
 function isPluginPackagePath(path: string): boolean {
   return /\.dbxp$/i.test(path);
@@ -395,7 +451,7 @@ function onWebDrop(event: DragEvent) {
   }
   event.preventDefault();
   event.stopPropagation();
-  if (installing.value) return;
+  if (installing.value || urlInstalling.value) return;
   void installPlugin(file);
 }
 
@@ -422,7 +478,7 @@ function onTauriPluginDrop(event: Event) {
   }
   draggingPackage.value = false;
   const path = payload.paths.find(isPluginPackagePath);
-  if (!inside || !path || installing.value) return;
+  if (!inside || !path || installing.value || urlInstalling.value) return;
   routedEvent.preventDefault();
   void installPlugin(path);
 }
@@ -782,9 +838,24 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-3">
-              <Button variant="outline" size="sm" class="h-8 gap-1.5" :disabled="installing" @click="choosePluginPackage"><Loader2 v-if="installing" class="size-3.5 animate-spin" /><FileUp v-else class="size-3.5" />{{ t("pluginPlatform.installPackage") }}</Button>
+              <Button variant="outline" size="sm" class="h-8 gap-1.5" :disabled="installing || urlInstalling" @click="choosePluginPackage"><Loader2 v-if="installing" class="size-3.5 animate-spin" /><FileUp v-else class="size-3.5" />{{ t("pluginPlatform.installPackage") }}</Button>
               <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground"><ShieldCheck class="size-3.5 text-emerald-600 dark:text-emerald-400" />{{ t("pluginPlatform.signedPackagesVerifiedAutomatically") }}</div>
               <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground"><FileUp class="size-3.5" />{{ t("pluginPlatform.dropInstallHint") }}</div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="relative min-w-0 flex-1 sm:max-w-md">
+                <Link2 class="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                <Input v-model="installUrl" class="h-8 pl-8 font-mono text-xs" type="url" :disabled="urlInstalling" :placeholder="t('pluginPlatform.installUrlPlaceholder')" @keyup.enter="installPluginFromUrl" />
+              </div>
+              <Button variant="outline" size="sm" class="h-8 gap-1.5" :disabled="installing || urlInstalling || !installUrl.trim()" @click="installPluginFromUrl"
+                ><Loader2 v-if="urlInstalling" class="size-3.5 animate-spin" /><Download v-else class="size-3.5" />{{ t("pluginPlatform.installFromUrl") }}</Button
+              >
+            </div>
+            <div v-if="urlInstalling" class="space-y-1.5">
+              <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div class="h-full rounded-full bg-primary transition-[width]" :class="urlProgressPercent === null ? 'w-1/3 animate-pulse' : ''" :style="{ width: urlProgressPercent === null ? undefined : `${urlProgressPercent}%` }" />
+              </div>
+              <div class="text-[10px] text-muted-foreground">{{ urlProgressLabel }}</div>
             </div>
           </section>
 
