@@ -587,6 +587,7 @@ export async function aiAgentStream(
   confirmedDatabase?: string,
   confirmedSchema?: string,
   _signal?: AbortSignal,
+  selectedDatabases?: string[],
 ): Promise<string> {
   const unlisten: UnlistenFn = await listen<TauriAgentEvent>("ai-agent-event", (event) => {
     const payload = event.payload;
@@ -610,6 +611,7 @@ export async function aiAgentStream(
       confirmedConnectionId,
       confirmedDatabase,
       confirmedSchema,
+      selectedDatabases,
     });
   } catch (e) {
     unlisten();

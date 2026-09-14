@@ -1873,6 +1873,7 @@ export async function aiAgentStream(
   confirmedDatabase?: string,
   confirmedSchema?: string,
   signal?: AbortSignal,
+  selectedDatabases?: string[],
 ): Promise<string> {
   const res = await fetch(apiUrl("/api/ai/agent-stream"), {
     method: "POST",
@@ -1890,6 +1891,7 @@ export async function aiAgentStream(
       confirmedConnectionId,
       confirmedDatabase,
       confirmedSchema,
+      selectedDatabases,
     }),
     signal,
   });
