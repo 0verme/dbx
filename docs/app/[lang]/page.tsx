@@ -32,19 +32,19 @@ function formatStars(count: number) {
 function metrics(starLabel: string) {
   return {
     tr: [
-      { value: "~20 MB", label: "masaüstü yükleyici" },
+      { value: "~25 MB", label: "masaüstü yükleyici" },
       { value: "90+", label: "veritabanı motoru" },
       { value: "2 mod", label: "masaüstü ve Docker" },
       { value: starLabel, label: "GitHub yıldızı, tümüyle açık kaynak" },
     ],
     en: [
-      { value: "~20 MB", label: "desktop installer" },
+      { value: "~25 MB", label: "desktop installer" },
       { value: "90+", label: "database engines" },
       { value: "2 modes", label: "desktop and Docker" },
       { value: starLabel, label: "GitHub stars, fully open-source" },
     ],
     cn: [
-      { value: "~20 MB", label: "桌面安装包" },
+      { value: "~25 MB", label: "桌面安装包" },
       { value: "90+", label: "数据库引擎" },
       { value: "2 种模式", label: "桌面与 Docker" },
       { value: starLabel, label: "GitHub Star，完全开源" },
@@ -335,7 +335,7 @@ const localizedTestimonials = { ...testimonials, tr: testimonials.en };
 
 const i18nText = {
   tr: {
-    heroTitle: "90+ veritabanını 20 MB ile yönetin!",
+    heroTitle: "90+ veritabanını 25 MB ile yönetin!",
     heroSubtitle: "DBX; bağlantı yönetimini, SQL düzenlemeyi, veri tablolarını, şema araçlarını, yapay zekâ desteğini ve kendi sunucunuzda barındırmayı tek bir hafif üründe toplar.",
     download: "DBX'i indir",
     downloadName: "DBX'i indir",
@@ -378,7 +378,7 @@ const i18nText = {
     docker: "Docker kurulumu",
   },
   en: {
-    heroTitle: "20 MB to manage 90+ databases!",
+    heroTitle: "25 MB to manage 90+ databases!",
     heroSubtitle: "DBX brings connections, SQL editing, data grids, schema tools, AI assistance, and self-hosted access into one lightweight product.",
     download: "Download DBX",
     downloadName: "Download DBX",
@@ -421,7 +421,7 @@ const i18nText = {
     docker: "Docker setup",
   },
   cn: {
-    heroTitle: "20MB，管理90+种数据库！",
+    heroTitle: "25MB，管理90+种数据库！",
     heroSubtitle: "DBX 将连接管理、SQL 编辑、数据表格、结构工具、AI 助手和自托管访问放进一个轻量产品里。",
     download: "下载 DBX",
     downloadName: "下载 DBX",
@@ -467,15 +467,15 @@ const i18nText = {
 
 const landingMeta = {
   tr: {
-    title: "DBX - 90+ veritabanını 20 MB ile yönetin!",
+    title: "DBX - 90+ veritabanını 25 MB ile yönetin!",
     description: "DBX; bağlantı yönetimini, SQL düzenlemeyi, veri tablolarını, şema araçlarını, yapay zekâ desteğini ve kendi sunucunuzda barındırmayı tek bir hafif üründe toplar.",
   },
   en: {
-    title: "DBX - 20 MB to manage 90+ databases!",
+    title: "DBX - 25 MB to manage 90+ databases!",
     description: "DBX brings connections, SQL editing, data grids, schema tools, AI assistance, and self-hosted access into one lightweight product.",
   },
   cn: {
-    title: "DBX - 20MB，管理90+种数据库！",
+    title: "DBX - 25MB，管理90+种数据库！",
     description: "DBX 将连接管理、SQL 编辑、数据表格、结构工具、AI 助手和自托管访问放进一个轻量产品里。",
   },
 };

@@ -3,8 +3,8 @@ import type { DocsLang } from "./i18n";
 
 const localizedDescription = {
   en: DEFAULT_DESCRIPTION,
-  cn: "90+ 种数据库，仅 20 MB。支持桌面端、Docker 自托管、AI 助手与 MCP Server。",
-  tr: "90+ veritabanı, yalnızca 20 MB. Masaüstü uygulamaları, Docker ile kendi sunucunuzda barındırma, yapay zekâ asistanı ve MCP Server.",
+  cn: "90+ 种数据库，仅 25 MB。支持桌面端、Docker 自托管、AI 助手与 MCP Server。",
+  tr: "90+ veritabanı, yalnızca 25 MB. Masaüstü uygulamaları, Docker ile kendi sunucunuzda barındırma, yapay zekâ asistanı ve MCP Server.",
 } as const;
 
 const localizedFeatureList = {
