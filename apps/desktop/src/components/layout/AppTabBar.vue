@@ -28,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "activate-driver-store": [];
   "close-driver-store": [];
+  "activate-plugin-center": [];
   "close-plugin-center": [];
   "activate-settings-page": [];
   "close-settings-page": [];
@@ -130,6 +131,9 @@ function closeSpecialRegularSurfaces(keep?: SpecialRegularSurface) {
   if (keep !== "driverStore" && props.driverStoreOpen) {
     emit("close-driver-store");
   }
+  if (keep !== "pluginCenter" && props.pluginCenterOpen) {
+    emit("close-plugin-center");
+  }
   if (keep !== "settings" && props.settingsPageOpen) {
     emit("close-settings-page");
   }
@@ -201,6 +205,9 @@ function handleCancelClose() {
   <div v-show="driverStoreActive || pluginCenterActive || settingsPageActive" data-special-page-workspace class="flex min-h-0 min-w-0 flex-1 overflow-hidden" :class="layoutClass">
     <div data-special-page-navigation class="flex min-h-0 min-w-0 shrink-0 flex-col overflow-auto" :style="navigationStyle">
       <div v-for="group in queryStore.groups" :key="group.id" :ref="(element) => setTabBarTarget(group.id, element)" :data-special-page-tab-target="group.id" class="flex min-h-0 min-w-0" :class="isVerticalLayout ? 'flex-1' : 'shrink-0'" />
+      <button v-if="pluginCenterOpen" type="button" data-plugin-center-tab class="shrink-0 rounded-md px-2 py-1 text-left text-sm" :class="pluginCenterActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'" @click="emit('activate-plugin-center')">
+        {{ t("toolbar.pluginCenter") }}
+      </button>
     </div>
     <div data-special-page-content class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <slot />

@@ -1409,6 +1409,9 @@ export default withEnglishFallback({
     doltShowSystemTables: "Dolt 組み込みテーブルを表示",
     doltShowSystemTablesHint: "現在の接続のテーブルリストに Dolt 組み込みのバージョン管理テーブルを表示します。",
     clientCertHint: "mTLS が要求される場合、クライアント証明書と秘密鍵は一緒に入力する必要があります。",
+    pluginSshKeyPickerPlaceholder: "ローカルの SSH キーを選択…",
+    pluginSshKeyPickerEmpty: "キーが見つかりません",
+    pluginSshKeyEncrypted: "暗号化済み",
   },
   editor: {
     duckdbDraining: "前回の DuckDB クエリはまだ停止処理中です。しばらくしてから再試行してください。",

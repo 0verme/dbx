@@ -1307,6 +1307,9 @@ export default withEnglishFallback({
     databaseCategoryPlugins: "플러그인",
     pluginProviderUnavailable: "이 플러그인 연결 제공자를 사용할 수 없습니다. 플러그인을 다시 설치하거나 활성화한 후 다시 시도하세요.",
     pluginRequiredField: "{field}을(를) 입력하세요.",
+    pluginSshKeyPickerPlaceholder: "로컬 SSH 키 선택…",
+    pluginSshKeyPickerEmpty: "키를 찾을 수 없음",
+    pluginSshKeyEncrypted: "암호화됨",
   },
   editor: {
     duckdbDraining: "이전 DuckDB 쿼리가 아직 중지 중입니다. 잠시 후 다시 시도해 주세요.",

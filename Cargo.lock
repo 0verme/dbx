@@ -2050,6 +2050,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "tempfile",
  "tiberius",
  "tokio",
  "tokio-postgres",

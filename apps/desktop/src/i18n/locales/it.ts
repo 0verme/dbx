@@ -1388,6 +1388,9 @@ export default withEnglishFallback({
     doltShowSystemTables: "Mostra le tabelle integrate di Dolt",
     doltShowSystemTablesHint: "Mostra le tabelle di controllo versione integrate di Dolt nell'elenco delle tabelle della connessione corrente.",
     clientCertHint: "Quando è richiesto mTLS, il certificato client e la chiave privata devono essere inseriti insieme.",
+    pluginSshKeyPickerPlaceholder: "Seleziona chiave SSH locale…",
+    pluginSshKeyPickerEmpty: "Nessuna chiave trovata",
+    pluginSshKeyEncrypted: "Crittografata",
   },
   editor: {
     duckdbDraining: "La query DuckDB precedente è ancora in fase di arresto. Riprova a breve.",

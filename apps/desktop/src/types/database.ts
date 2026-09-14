@@ -269,9 +269,27 @@ export type PluginFormFieldBinding = "config" | "secret" | "name" | "host" | "po
 
 export type PluginFormFieldValue = string | number | boolean | undefined;
 
+export interface LocalSshKey {
+  /** Absolute path to the private key file. */
+  path: string;
+  /** SSH algorithm name (e.g. `ssh-ed25519`); empty when undetectable. */
+  algorithm: string;
+  /** SHA-256 fingerprint (`SHA256:...`); empty when the key could not be decoded. */
+  fingerprint: string;
+  /** Heuristic: the key looks passphrase-protected. */
+  hasPassphrase: boolean;
+}
+
 export interface PluginFormFieldOption {
   label: string;
   value: string;
+}
+
+export interface PluginFieldCondition {
+  /** Key of another plugin form field whose current value drives the condition. */
+  field: string;
+  /** The condition matches when the referenced field's value is in this list. */
+  one_of: string[];
 }
 
 export interface PluginFormField {
@@ -283,7 +301,12 @@ export interface PluginFormField {
   required?: boolean;
   default?: PluginFormFieldValue;
   options?: PluginFormFieldOption[];
+  /** Plugin method returning `{ options: [{ value, label }] }` for dynamic
+   * select rendering; falls back to the declared type when unavailable. */
+  options_action?: string;
   binding?: PluginFormFieldBinding;
+  visible_when?: PluginFieldCondition;
+  required_when?: PluginFieldCondition;
 }
 
 export type PluginConnectionCapability = "test" | "connect" | "disconnect";

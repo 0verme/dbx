@@ -24,6 +24,16 @@ vi.mock("@/components/ui/popover", () => ({
   PopoverTrigger: { name: "PopoverTriggerStub", template: `<div><slot /></div>` },
 }));
 
+vi.mock("@/lib/plugins/pluginIconResolver", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/plugins/pluginIconResolver")>()),
+  resolvePluginIcon: vi.fn(() => Promise.resolve("assets/plugin.svg")),
+}));
+
+vi.mock("@/lib/backend/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/backend/api")>()),
+  readPluginAsset: vi.fn(() => Promise.resolve({ contentType: "image/svg+xml", dataBase64: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=" })),
+}));
+
 const specDir = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(specDir, "../EditorGroupTabBar.vue"), "utf8");
 const sharedStyles = readFileSync(resolve(specDir, "../appTabBar.css"), "utf8");
@@ -709,6 +719,30 @@ describe("EditorGroupTabBar group behavior", () => {
     // Non-query/data tab: the entry is not rendered at all.
     const mongoItems = await openMenu(mongoId);
     expect(mongoItems.find((button) => button.textContent?.includes("Open in new window"))).toBeUndefined();
+
+    app.unmount();
+    host.remove();
+  });
+
+  it("renders plugin workbench tabs with the plugin icon instead of the code fallback", async () => {
+    const store = useQueryStore();
+    const pluginTabId = store.openPluginWorkbench("io.dbx.ssh", "io.dbx.ssh.workbench", { title: "SSH server", connectionId: "ssh-1", forceNew: true });
+    const { app, host } = mountBar(store.groups[0].id, store.tabs.slice(), pluginTabId, pinia);
+    await settle();
+    // PluginIcon loads the asset asynchronously; wait for the blob <img> to appear.
+    for (let i = 0; i < 20 && !host.querySelector(`[data-tab-id="${pluginTabId}"] img`); i += 1) {
+      await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 5));
+    }
+
+    const pill = host.querySelector<HTMLElement>(`[data-tab-id="${pluginTabId}"]`);
+    expect(pill).toBeTruthy();
+    expect(pill!.querySelector("img")).toBeTruthy();
+    // The pill and the overflow popup list both render via TabModeIcon, whose
+    // per-mode chain must keep the plugin-workbench plugin icon branch.
+    const tabModeIconSource = readFileSync(resolve(specDir, "../TabModeIcon.vue"), "utf8");
+    expect(tabModeIconSource).toContain("tab.mode === 'plugin-workbench' && tab.pluginWorkbench");
+    expect(tabModeIconSource).toContain(':contribution-id="tab.pluginWorkbench.contributionId"');
+    expect(source).toContain('<TabModeIcon :tab="entry.tab"');
 
     app.unmount();
     host.remove();

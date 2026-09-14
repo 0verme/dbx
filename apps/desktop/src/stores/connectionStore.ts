@@ -148,7 +148,8 @@ import { normalizeRedisDatabaseAliases, redisDatabaseAlias, redisDatabaseLabel }
 import { normalizeRedisKeyTemplates } from "@/lib/redis/redisKeyTemplates";
 import { appendAgentDriverUpdateHint, connectionUsesSsh, hasAgentDriverUpdate, hasInstalledAgentVersion, type AgentDriverInstallState } from "@/lib/connection/agentDriverInstallHint";
 import { appendConnectionErrorHints, isMysqlMissingPasswordFailure, isSqliteMissingEncryptionPasswordFailure } from "@/lib/connection/connectionErrorHints";
-import { connectionNeedsPasswordPrompt } from "@/lib/connection/connectionPassword";
+import { connectionNeedsPasswordPrompt, pluginConnectionNeedsPasswordPrompt } from "@/lib/connection/connectionPassword";
+import { createFrontendPluginRegistry } from "@/lib/plugins/frontendPlugin";
 import { appendVisibleDatabaseSelection } from "@/lib/connection/connectionVisibleDatabases";
 import { buildXuguTypeMemberNodes, isXuguTypeMemberContainer } from "@/lib/sidebar/xuguTypeMembers";
 import { isXuguPublicSynonymScope, isXuguSchedulerJobScope, isXuguSyntheticScope, sortXuguSchemaInfos, xuguSchemaDisplayName, XUGU_PUBLIC_SYNONYM_SCOPE, XUGU_SCHEDULER_JOB_SCOPE } from "@/lib/sidebar/xuguPublicSynonyms";
@@ -168,7 +169,7 @@ import { MetadataTaskLimiter } from "@/lib/metadata/metadataTaskLimiter";
 import { buildCustomTypeTreeChildren } from "@/lib/sidebar/customTypeTree";
 import { TreeNodeLoadRegistry, type TreeNodeLoadHandle } from "@/lib/metadata/treeNodeLoadHandle";
 import { buildXuguTablespaceChildren } from "@/lib/sidebar/xuguTablespaces";
-import i18n from "@/i18n";
+import i18n, { currentLocale } from "@/i18n";
 import type { MqAdminConfig } from "@/types/mq";
 import { RABBITMQ_MQ_TENANT, resolveMqSystemKindFromConnection } from "@/lib/mq/mqConsoleDefaults";
 import { applySidebarDatabaseStorage, applySidebarTableStorage, sidebarDatabaseNames, supportsSidebarDatabaseStorage, supportsSidebarTableStorage, type SidebarTableStorageScope } from "@/lib/sidebar/sidebarDatabaseStorage";
@@ -1022,6 +1023,11 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function getBlockingDisconnectInFlight(connectionId: string): Promise<void> | undefined {
     return disconnectInFlightScoped.get(connectionId) ? undefined : disconnectInFlight.get(connectionId);
+  }
+
+  /** True while any disconnect for the connection is in flight (full or scoped). */
+  function hasDisconnectInFlight(connectionId: string): boolean {
+    return disconnectInFlight.has(connectionId);
   }
 
   async function waitForBlockingDisconnectInFlight(connectionId: string): Promise<void> {
@@ -4035,6 +4041,31 @@ export const useConnectionStore = defineStore("connection", () => {
     return { config: { ...config, password: result.password }, rememberPassword: result.rememberPassword };
   }
 
+  /**
+   * Manifest re-check for plugin connections that the save_password heuristic
+   * already flagged. The prompt can only fill the `password`-bound field, so
+   * when the manifest does not require it for the connection's external_config
+   * (SSH private-key / agent auth), connecting proceeds without prompting
+   * instead of failing with "Password is required". Non-plugin configs always
+   * prompt (the heuristic decided already). Callers must evaluate
+   * `connectionNeedsPasswordPrompt` synchronously first so the common
+   * no-prompt path keeps its microtask cadence.
+   */
+  async function pluginConnectionPasswordPromptNeeded(config: ConnectionConfig): Promise<boolean> {
+    if (config.db_type !== "plugin") return true;
+    if (!config.plugin_id || !config.plugin_connection_provider) return false;
+    try {
+      const registry = createFrontendPluginRegistry(await api.listPlugins(), currentLocale());
+      const provider = registry.listConnectionProviders().find((entry) => entry.plugin.manifest.id === config.plugin_id && entry.contribution.id === config.plugin_connection_provider);
+      if (!provider) return false;
+      return pluginConnectionNeedsPasswordPrompt(provider.contribution.fields, config.external_config);
+    } catch {
+      // Manifest unavailable: keep the pre-manifest behavior (prompt) instead of
+      // silently connecting a connection that may genuinely need a password.
+      return true;
+    }
+  }
+
   async function persistRememberedConnectionPassword(config: ConnectionConfig, rememberPassword: boolean, expectedConfigFingerprint: string): Promise<void> {
     if (!rememberPassword) return;
     const index = connections.value.findIndex((connection) => connection.id === config.id);
@@ -4073,7 +4104,7 @@ export const useConnectionStore = defineStore("connection", () => {
     const localAttempt = beginLocalConnectionAttempt(config.id);
     try {
       let rememberPassword = false;
-      if (connectionNeedsPasswordPrompt(config) && !(await hasSessionCredential(config.id))) {
+      if (connectionNeedsPasswordPrompt(config) && (await pluginConnectionPasswordPromptNeeded(config)) && !(await hasSessionCredential(config.id))) {
         const prompted = await ensureConnectionPassword(config);
         config = prompted.config;
         rememberPassword = prompted.rememberPassword;
@@ -4166,6 +4197,21 @@ export const useConnectionStore = defineStore("connection", () => {
     cancelObjectMetadataLoadsForConnection(connectionId);
     await disconnectRequest;
     return true;
+  }
+
+  /**
+   * Marks a connection offline in the sidebar without the full teardown that
+   * `disconnect` performs (no tab closing, no pool teardown). Used when a
+   * plugin reports its live session died (e.g. `ssh/session/state
+   * disconnected`) so the tree reflects the real transport state.
+   */
+  function markConnectionOffline(connectionId: string) {
+    connectedIds.value.delete(connectionId);
+    const node = findConnectionNode(connectionId);
+    if (node) {
+      node.isLoading = false;
+    }
+    clearConnectionHealthCheck(connectionId);
   }
 
   async function disconnect(connectionId: string) {
@@ -4336,7 +4382,7 @@ export const useConnectionStore = defineStore("connection", () => {
       // Fast-path the common case (password saved or no password needed) so the
       // in-flight dedup above keeps its exact microtask cadence; only await the
       // interactive prompt when the connection actually needs a typed password.
-      if (connectionNeedsPasswordPrompt(config) && !(await hasSessionCredential(connectionId))) {
+      if (connectionNeedsPasswordPrompt(config) && (await pluginConnectionPasswordPromptNeeded(config)) && !(await hasSessionCredential(connectionId))) {
         const prompted = await ensureConnectionPassword(config);
         config = prompted.config;
         rememberPassword = prompted.rememberPassword;
@@ -9243,6 +9289,8 @@ export const useConnectionStore = defineStore("connection", () => {
     connect,
     cancelConnecting,
     disconnect,
+    hasDisconnectInFlight,
+    markConnectionOffline,
     metadataGenerationFor,
     disconnectAndForgetConnectionPassword,
     hasSessionCredential,

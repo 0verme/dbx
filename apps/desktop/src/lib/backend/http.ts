@@ -46,6 +46,7 @@ import type {
   SavedSqlFolder,
   SavedSqlLibrary,
   SshConfigHostEntry,
+  LocalSshKey,
   TunnelProfile,
 } from "@/types/database";
 import type { DetachedTabHandoff } from "@/lib/app/detachedTabHandoff";
@@ -529,6 +530,11 @@ export async function listSystemFonts(): Promise<string[]> {
 
 export async function listSshConfigHosts(): Promise<SshConfigHostEntry[]> {
   return get("/api/ssh/config-hosts");
+}
+
+export async function listLocalSshKeys(): Promise<LocalSshKey[]> {
+  console.warn("listLocalSshKeys: local SSH key discovery is not available in the web backend");
+  return [];
 }
 
 export async function listPlugins(): Promise<InstalledPlugin[]> {
