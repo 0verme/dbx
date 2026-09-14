@@ -349,7 +349,6 @@ export function pluginSdkSource(initialTheme?: PluginBridgeTheme): string {
     const applyTheme = (value) => {
       if (!value || typeof value !== 'object') return;
       theme = value;
-      const theme = value;
       const root = document.documentElement;
       root.dataset.dbxTheme = theme.appearance === "dark" ? "dark" : "light";
       root.style.colorScheme = theme.appearance === "dark" ? "dark" : "light";

@@ -421,6 +421,8 @@ const activeTab = computed(() => queryStore.tabs.find((t) => t.id === queryStore
 // iframe moved out of the DOM reloads from scratch, so KeepAlive/ContentArea
 // remounts flash the whole webview and drop its live session state.
 const mountedPluginWorkbenchTabs = computed(() => queryStore.tabs.filter((tab) => tab.mode === "plugin-workbench" && tab.pluginWorkbench));
+type PluginWorkbenchTabHandle = { refresh: () => Promise<unknown> };
+const pluginWorkbenchTabRefs = new Map<string, PluginWorkbenchTabHandle>();
 const tabNavigationHistory = ref(createTabNavigationHistory());
 let pendingTabHistoryNavigationId: string | null = null;
 let detachedEventUnlisteners: Array<() => void> = [];
@@ -3144,6 +3146,23 @@ function handleNativeSelectAll(e: KeyboardEvent) {
   if (shouldBlockAppNativeSelectAll(e)) e.preventDefault();
 }
 
+function setPluginWorkbenchTabRef(tabId: string, element: unknown) {
+  if (element && typeof element === "object" && "refresh" in element && typeof element.refresh === "function") {
+    pluginWorkbenchTabRefs.set(tabId, element as PluginWorkbenchTabHandle);
+  } else {
+    pluginWorkbenchTabRefs.delete(tabId);
+  }
+}
+
+function refreshActivePluginWorkbench(): boolean {
+  const tab = activeTab.value;
+  if (tab?.mode !== "plugin-workbench") return false;
+  const pluginWorkbench = pluginWorkbenchTabRefs.get(tab.id);
+  if (!pluginWorkbench) return false;
+  void pluginWorkbench.refresh();
+  return true;
+}
+
 async function closeActiveSurface() {
   if (showSettingsPage.value) {
     closeSettingsPage();
@@ -3301,6 +3320,11 @@ async function handleKeydown(e: KeyboardEvent) {
     e.preventDefault();
     e.stopPropagation();
     if (selectedSql.value.trim()) sendSelectionToAi(selectedSql.value);
+    return;
+  }
+  if (isModRShortcut(e) && refreshActivePluginWorkbench()) {
+    e.preventDefault();
+    e.stopPropagation();
     return;
   }
   if (isModRShortcut(e) && e.target instanceof Element && contentAreaRef.value?.handleModRTarget(e.target)) {
@@ -3876,7 +3900,13 @@ onUnmounted(() => {
                        yields the layout (display:none) while a plugin tab is
                        active, or both flex-1 siblings would split the column. -->
                 <div v-for="workbenchTab in mountedPluginWorkbenchTabs" :key="workbenchTab.id" v-show="activeTab && workbenchTab.id === activeTab.id" class="flex min-h-0 flex-1 flex-col">
-                  <PluginWorkbenchTab :plugin-id="workbenchTab.pluginWorkbench!.pluginId" :contribution-id="workbenchTab.pluginWorkbench!.contributionId" :context="workbenchTab.pluginWorkbench!.context" @close-tab="queryStore.closeTab(workbenchTab.id)" />
+                  <PluginWorkbenchTab
+                    :ref="(element) => setPluginWorkbenchTabRef(workbenchTab.id, element)"
+                    :plugin-id="workbenchTab.pluginWorkbench!.pluginId"
+                    :contribution-id="workbenchTab.pluginWorkbench!.contributionId"
+                    :context="workbenchTab.pluginWorkbench!.context"
+                    @close-tab="queryStore.closeTab(workbenchTab.id)"
+                  />
                 </div>
               </div>
             </div>

@@ -384,12 +384,19 @@ describe("plugin SDK source", () => {
     dbxPlugin?: { invoke: (method: string, params?: unknown, options?: { timeoutMs?: number }) => Promise<unknown> };
   }
 
-  function loadSdk(posted: unknown[]): SdkWindow {
+  function loadSdk(posted: unknown[], initialTheme?: { appearance: "dark" | "light"; tokens: Record<string, string> }): SdkWindow {
     const sandbox = {} as SdkWindow;
+    const document = {
+      documentElement: {
+        dataset: {} as Record<string, string>,
+        style: { colorScheme: "", setProperty: vi.fn() },
+      },
+      dispatchEvent: vi.fn(),
+    } as unknown as Document;
     // The SDK IIFE only touches window and the bare-global addEventListener at
     // boot; parent.postMessage is captured for later request() calls, so a
     // stub window/parent is enough here.
-    new Function("window", "parent", "addEventListener", pluginSdkSource())(sandbox, { postMessage: (message: unknown) => posted.push(message) }, () => {});
+    new Function("window", "parent", "addEventListener", "document", pluginSdkSource(initialTheme))(sandbox, { postMessage: (message: unknown) => posted.push(message) }, () => {}, document);
     return sandbox;
   }
 
@@ -419,6 +426,14 @@ describe("plugin SDK source", () => {
     // The posted sessionIds must not be the incoming Proxy itself.
     expect(message.params.params.sessionIds).not.toBe(proxy);
     expect(JSON.stringify(message.params.params.sessionIds)).toBe(JSON.stringify(["session-a", "session-b"]));
+  });
+
+  it("boots successfully when the host provides the initial theme", () => {
+    const posted: unknown[] = [];
+    const { dbxPlugin } = loadSdk(posted, { appearance: "dark", tokens: { "--color-background": "#131416" } });
+
+    expect(dbxPlugin).toBeDefined();
+    expect(posted[0]).toMatchObject({ source: "dbx-plugin", type: "ready" });
   });
 
   it("keeps cloneable values intact and plain scalars by reference", () => {
