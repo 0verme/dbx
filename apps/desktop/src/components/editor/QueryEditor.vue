@@ -294,7 +294,11 @@ const settingsStore = useSettingsStore();
 
 function sqlStatementParameterOptions() {
   const toggles = resolveSqlVariableSyntaxToggles(settingsStore.editorSettings.sqlVariableSyntaxOverrides, props.databaseType, settingsStore.editorSettings.sqlVariableSubstitutionEnabled);
-  return { databaseType: props.databaseType, enabledSyntaxes: enabledSqlParameterSyntaxes(toggles) };
+  return {
+    databaseType: props.databaseType,
+    compatibilityMode: props.databaseType === "opengauss" ? connectionStore.databaseCompatibilityMode(props.connectionId, props.database) : undefined,
+    enabledSyntaxes: enabledSqlParameterSyntaxes(toggles),
+  };
 }
 const { isDark, themePalette, activeCustomUiColors } = useTheme();
 const { t } = useI18n();
@@ -3473,7 +3477,7 @@ async function refreshSemanticDiagnostics(options: { preserveOutsideRanges?: boo
   if (props.databaseType !== "sqlserver") {
     executableStatementRangeCache = executableStatementRangeCacheForDoc(executableStatementRangeCache, currentView.state.doc, props.databaseType, sqlStatementParameterOptions());
   }
-  const diagnosticRanges = sqlSemanticDiagnosticRangesForViewport(sql, visibleRanges, props.databaseType, props.databaseType === "sqlserver" ? undefined : executableStatementRangeCache?.ranges);
+  const diagnosticRanges = sqlSemanticDiagnosticRangesForViewport(sql, visibleRanges, props.databaseType, props.databaseType === "sqlserver" ? undefined : executableStatementRangeCache?.ranges, sqlStatementParameterOptions());
   if (diagnosticRanges.length === 0) {
     if (!options.preserveOutsideRanges) setSemanticDiagnostics([]);
     return;
@@ -5334,9 +5338,31 @@ function shouldLoadCompletionObjects(completionContext: ReturnType<typeof getSql
   return routineContext && !isReferencedTableQualifier(completionContext);
 }
 
+/**
+ * Databases whose qualified routine completion treats the first qualifier as a
+ * package (Oracle) or as a package-or-schema in A compatibility mode
+ * (openGauss). The backend re-validates: non-package parents fall through to
+ * the ordinary routine search, so routing is safe even when the compatibility
+ * map is not yet warm. openGauss keeps the package-aware routing while the
+ * mode is unknown (cold start, so A-mode completion works immediately after
+ * connect) and once the mode is known to be A; a known B/PG mode skips the
+ * extra package-style queries entirely.
+ */
+function usesPackageAwareRoutineCompletion(): boolean {
+  if (props.databaseType === "oracle") return true;
+  if (props.databaseType !== "opengauss") return false;
+  const mode = connectionStore.databaseCompatibilityMode(props.connectionId, props.database)?.trim().toUpperCase();
+  return mode === undefined || mode === "A";
+}
+
 function oracleRoutineCompletionTargets(completionContext: ReturnType<typeof getSqlCompletionContext>): RoutineCompletionTarget[] {
   const parts = (completionContext.qualifierParts?.length ? completionContext.qualifierParts : completionContext.qualifier?.split("."))?.filter(Boolean) ?? [];
-  if (parts.length === 0) return [{ schema: props.schema, globalSearch: true }];
+  if (parts.length === 0) {
+    // Oracle resolves unqualified routines across all schemas (owner semantics).
+    // openGauss keeps the PG search_path scope for the unqualified case.
+    if (props.databaseType === "oracle") return [{ schema: props.schema, globalSearch: true }];
+    return [{ schema: props.schema }];
+  }
   if (parts.length === 1) {
     return [{ schema: props.schema, parentName: parts[0] }, { schema: parts[0] }];
   }
@@ -5353,14 +5379,14 @@ function routineCompletionTargetForContext(completionContext: ReturnType<typeof 
 }
 
 function routineCompletionScopeForContext(completionContext: ReturnType<typeof getSqlCompletionContext>, scope: CompletionMetadataScope): CompletionMetadataScope {
-  if (props.databaseType === "oracle") return scope;
+  if (usesPackageAwareRoutineCompletion()) return scope;
   const target = routineCompletionTargetForContext(completionContext, scope);
   return { database: target.database, schema: target.schema };
 }
 
 function lookupLocalCompletionObjectsForContext(completionContext: ReturnType<typeof getSqlCompletionContext>, scope: CompletionMetadataScope): SqlCompletionObject[] {
   if (!props.connectionId || props.database == null) return [];
-  if (props.databaseType === "oracle") {
+  if (usesPackageAwareRoutineCompletion()) {
     return connectionStore.lookupLocalCompletionObjects(props.connectionId, scope.database, completionContext.prefix, MAX_COMPLETION_TABLES);
   }
   const target = routineCompletionTargetForContext(completionContext, scope);
@@ -5370,7 +5396,7 @@ function lookupLocalCompletionObjectsForContext(completionContext: ReturnType<ty
 async function listCompletionObjectsForContext(completionContext: ReturnType<typeof getSqlCompletionContext>, scope: CompletionMetadataScope): Promise<SqlCompletionObject[]> {
   if (!props.connectionId || props.database == null) return [];
   const objectKinds = completionObjectKindsForContext(completionContext);
-  if (props.databaseType !== "oracle") {
+  if (!usesPackageAwareRoutineCompletion()) {
     const target = routineCompletionTargetForContext(completionContext, scope);
     return connectionStore.listCompletionObjects(props.connectionId, target.database, target.mask, MAX_COMPLETION_TABLES, target.schema, undefined, false, scope.schema, objectKinds);
   }
@@ -7133,6 +7159,23 @@ watch([() => props.databaseType, () => props.dialect, () => props.syntaxDialect,
     effects: [sqlLanguageComp.reconfigure(buildSqlLanguageExtension()), sqlSemanticHighlightComp.reconfigure(buildSqlSemanticHighlightExtension()), sqlSignatureComp.reconfigure(buildSqlSignatureExtension())],
   });
 });
+
+// openGauss compatibility mode is loaded asynchronously from the backend into a
+// dedicated store map (not the sidebar tree). A restored tab may open before the
+// map is warm; when the mode arrives, re-derive statement boundaries and
+// diagnostics so package DDL is parsed with the correct PL/SQL rules.
+watch(
+  () => (props.databaseType === "opengauss" ? connectionStore.databaseCompatibilityMode(props.connectionId, props.database) : undefined),
+  (now, before) => {
+    if (now === before) return;
+    executableStatementRangeCache = null;
+    if (props.databaseType !== "opengauss") return;
+    if (!view.value) return;
+    refreshCompletionCache();
+    setSemanticDiagnostics([]);
+    scheduleSemanticDiagnostics(0);
+  },
+);
 
 watch(
   () => props.forceWordWrap,
