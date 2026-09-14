@@ -352,7 +352,7 @@ const settingsStore = useSettingsStore();
 
 const savedSqlStore = useSavedSqlStore();
 
-const { toast } = useToast();
+const { toast, message: toastMessage, dismissToast } = useToast();
 const installedPlugins = ref<InstalledPlugin[]>([]);
 const sidebarPluginRegistry = computed(() => createFrontendPluginRegistry(installedPlugins.value, appLocale.value));
 
@@ -2528,6 +2528,12 @@ function openObjectSourceDialog(initialEditing: boolean, viewPackageBody = false
   if (!sourceTarget) return;
   const openMode = settingsStore.editorSettings.routineSourceOpenMode;
   if (openMode === "query-tab") {
+    const loadingMessage = t("common.loading");
+    const loadingToastTimer = window.setTimeout(() => toast(loadingMessage, 30000), 350);
+    const finishLoadingToast = () => {
+      window.clearTimeout(loadingToastTimer);
+      if (toastMessage.value === loadingMessage) dismissToast();
+    };
     void connectionStore
       .ensureConnected(connectionId)
       .then(async () => {
@@ -2571,7 +2577,8 @@ function openObjectSourceDialog(initialEditing: boolean, viewPackageBody = false
       })
       .catch((e: any) => {
         toast(e?.message || String(e), 5000);
-      });
+      })
+      .finally(finishLoadingToast);
     return;
   }
   void connectionStore
