@@ -1059,6 +1059,10 @@ function activateOpenSpecialPageFallback() {
   }
   if (driverStoreTabOpen.value) {
     activateMainContentSurface("driverStore");
+    return;
+  }
+  if (pluginCenterTabOpen.value) {
+    activateMainContentSurface("pluginCenter");
   }
 }
 
@@ -1069,6 +1073,14 @@ function closeSettingsPage() {
     return;
   }
   if (settingsReturnSurface.value === "pluginCenter" && pluginCenterTabOpen.value) {
+    activateMainContentSurface("pluginCenter");
+    return;
+  }
+  if (driverStoreTabOpen.value) {
+    activateMainContentSurface("driverStore");
+    return;
+  }
+  if (pluginCenterTabOpen.value) {
     activateMainContentSurface("pluginCenter");
     return;
   }
@@ -1093,7 +1105,17 @@ function openDriverStorePage(target?: "agent" | "jdbc" | "storage" | "runtime" |
 
 function closeDriverStorePage() {
   driverStoreTabOpen.value = false;
-  activateMainContentSurface("query");
+  // Keep another open special page visible when closing the active one. The
+  // previous implementation always switched to the query surface, which
+  // cleared pluginCenterActive and made an already-open Plugin Center tab
+  // disappear together with Driver Manager.
+  if (pluginCenterTabOpen.value) {
+    activateMainContentSurface("pluginCenter");
+  } else if (settingsPageTabOpen.value) {
+    activateMainContentSurface("settings");
+  } else {
+    activateMainContentSurface("query");
+  }
   driverStoreActiveTab.value = "agent";
   driverStoreFocus.value = null;
 }
@@ -1107,7 +1129,13 @@ function openPluginCenterPage(focus?: PluginCenterFocus | null) {
 function closePluginCenterPage() {
   pluginCenterTabOpen.value = false;
   pluginCenterFocus.value = null;
-  activateMainContentSurface("query");
+  if (driverStoreTabOpen.value) {
+    activateMainContentSurface("driverStore");
+  } else if (settingsPageTabOpen.value) {
+    activateMainContentSurface("settings");
+  } else {
+    activateMainContentSurface("query");
+  }
 }
 
 function openPluginConnectionDialog(pluginId: string, providerId: string) {
@@ -3712,7 +3740,7 @@ onUnmounted(() => {
                     @start-resize="startTabBarResize"
                     @toggle-collapse="toggleTabBarCollapsed"
                     :active-tab="activeTab ?? undefined"
-                    :show-tab-navigation="queryStore.tabs.length > 0 || settingsPageTabOpen || driverStoreTabOpen"
+                    :show-tab-navigation="queryStore.tabs.length > 0 || settingsPageTabOpen || driverStoreTabOpen || pluginCenterTabOpen"
                     :active-connection="activeConnection"
                     :tab-bar-width="tabBarWidth"
                     :tab-bar-collapsed="tabBarCollapsed"
