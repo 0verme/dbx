@@ -6,10 +6,6 @@ const i18n = {
     tagline: "25 MB to manage 90+ databases.",
     copyright: `© ${new Date().getFullYear()} DBX. All rights reserved.`,
   },
-  tr: {
-    tagline: "90+ veritabanını 25 MB ile yönetin.",
-    copyright: `© ${new Date().getFullYear()} DBX. Tüm hakları saklıdır.`,
-  },
   cn: {
     tagline: "25MB，管理90+种数据库。",
     copyright: `© ${new Date().getFullYear()} DBX.`,

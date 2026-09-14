@@ -39,7 +39,7 @@ if (violations.length > 0) {
 console.log(`Static export verified: ${files.length} files contain no GitHub API endpoints.`);
 
 // `<html lang>` uses BCP 47, which is not always the route segment.
-const HTML_LANG = { en: "en", cn: "zh-CN", tr: "tr" };
+const HTML_LANG = { en: "en", cn: "zh-CN" };
 
 const requiredContent = [
   ...LANGUAGES.map((language) => ({

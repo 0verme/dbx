@@ -17,11 +17,6 @@ const LOCALE_MAP: Record<string, { locale: string; title: string; description: s
     title: "DBX - 25MB，管理90+种数据库",
     description: "90+ 种数据库，仅 25 MB。支持桌面与 Docker 自托管，内置 AI 助手。",
   },
-  tr: {
-    locale: "tr_TR",
-    title: "DBX - 90+ veritabanını 25 MB ile yönetin",
-    description: "90+ veritabanı, yalnızca 25 MB. Masaüstü ve Docker ile kendi sunucunuzda barındırma, yerleşik yapay zekâ asistanı.",
-  },
 };
 
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
