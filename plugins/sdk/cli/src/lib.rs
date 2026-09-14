@@ -1824,7 +1824,9 @@ mod tests {
             assert!(directory.join(if template == ProjectTemplate::Svelte { "index.html" } else { "ui/index.html" }).is_file());
             assert!(directory.join(".github/workflows/plugin-release.yml").is_file());
             let readme = std::fs::read_to_string(directory.join("README.md")).unwrap();
-            assert!(readme.contains("Plugin submission Issue"));
+            assert!(readme.contains("autoUpdate: true"));
+            assert!(readme.contains("submission Issue is not required"));
+            assert!(readme.contains("https://dbxio.com/en/docs/plugin-development"));
             assert!(readme.contains("t8y2/dbx-store:main"));
             assert!(readme.contains("Do not submit ordinary plugin source to `t8y2/dbx`"));
             assert!(std::fs::read_to_string(directory.join(".gitignore"))
