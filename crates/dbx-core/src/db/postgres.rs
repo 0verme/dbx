@@ -7551,29 +7551,46 @@ pub async fn execute_query_with_max_rows(
     let start = Instant::now();
     let row_limit = query_result_row_limit(max_rows);
 
-    if postgres_statement_returns_rows(sql) {
-        let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
+    let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
+    // Drop stale notices from infrastructure statements so only messages raised
+    // by this statement are attached to its result.
+    let _ = drain_postgres_notices(&client).await;
+
+    let result = if postgres_statement_returns_rows(sql) {
         execute_select_query(&client, sql, start, row_limit).await
     } else {
-        let client = checkout_postgres_client(pool, None, super::connection_timeout()).await?;
-        let affected = client.execute(sql, &[]).await.map_err(pg_error_to_string)?;
-        clear_postgres_caches_after_ddl(pool, Some(&client), sql);
+        client.execute(sql, &[]).await.map_err(pg_error_to_string).map(|affected| {
+            clear_postgres_caches_after_ddl(pool, Some(&client), sql);
 
-        Ok(QueryResult {
-            columns: vec![],
-            column_types: Vec::new(),
-            column_sortables: Vec::new(),
-            spatial_columns: vec![],
-            spatial_values: vec![],
-            rows: vec![],
-            affected_rows: affected,
-            execution_time_ms: start.elapsed().as_millis(),
-            truncated: false,
-            session_id: None,
-            has_more: false,
-            elasticsearch_raw_body: None,
-            messages: Vec::new(),
+            QueryResult {
+                columns: vec![],
+                column_types: Vec::new(),
+                column_sortables: Vec::new(),
+                spatial_columns: vec![],
+                spatial_values: vec![],
+                rows: vec![],
+                affected_rows: affected,
+                execution_time_ms: start.elapsed().as_millis(),
+                truncated: false,
+                session_id: None,
+                has_more: false,
+                elasticsearch_raw_body: None,
+                messages: Vec::new(),
+            }
         })
+    };
+
+    match result {
+        Ok(mut result) => {
+            result.messages = drain_postgres_notices(&client).await;
+            Ok(result)
+        }
+        Err(error) => {
+            // Drop notices so an errored statement's messages cannot leak into
+            // the next query on this pooled connection.
+            let _ = drain_postgres_notices(&client).await;
+            Err(error)
+        }
     }
 }
 
@@ -10046,6 +10063,25 @@ mod tests {
         .expect("execute statement with notice");
 
         assert!(result.messages.iter().any(|message| message.message == "dbx notice identity regression"));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires DBX_TEST_POSTGRES_URL pointing at a PostgreSQL database"]
+    async fn postgres_command_query_preserves_notice_capture() {
+        let url = std::env::var("DBX_TEST_POSTGRES_URL").expect("DBX_TEST_POSTGRES_URL");
+        let pool = connect_with_local_timezone(&url, Duration::from_secs(10), "UTC")
+            .await
+            .expect("connect PostgreSQL database");
+
+        // `execute_query_with_max_rows` is the public command helper (used by
+        // DROP DATABASE and the transfer/export fallback). A statement with no
+        // result set must still attach the notices it raised.
+        let result =
+            execute_query_with_max_rows(&pool, "DO $$ BEGIN RAISE NOTICE 'dbx public notice regression'; END $$", None)
+                .await
+                .expect("execute statement with notice");
+
+        assert!(result.messages.iter().any(|message| message.message == "dbx public notice regression"));
     }
 
     #[test]

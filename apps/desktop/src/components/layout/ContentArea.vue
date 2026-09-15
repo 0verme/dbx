@@ -172,7 +172,7 @@ import ToolbarOverflowMenu from "@/components/ui/ToolbarOverflowMenu.vue";
 import { formatElapsedSeconds } from "@/lib/common/elapsedTime";
 import { copyToClipboard } from "@/lib/common/clipboard";
 import type { CustomSaveHandler } from "@/composables/useDataGridEditor";
-import type { QueryTab, TableInfoTab, TreeNode, VectorCollectionMeta } from "@/types/database";
+import type { QueryMessage, QueryTab, TableInfoTab, TreeNode, VectorCollectionMeta } from "@/types/database";
 import type { SqlObjectNavigationTarget } from "@/lib/sql/sqlNavigation";
 import { sqlFormatDialectForDbType, type SqlFormatDialect } from "@/lib/sql/sqlFormatter";
 import { productionContextForDatabase } from "@/lib/database/productionSafety";
@@ -558,7 +558,16 @@ const hasTabularResult = computed(() => {
 });
 const canShowResultOutput = computed(() => hasTabularResult.value || props.activeTab.isExecuting);
 const canShowExplainOutput = computed(() => !!props.activeTab.explainPlan || !!props.activeTab.explainError || !!props.activeTab.explainTableResult || !!props.activeTab.explainTableError || props.activeTab.isExplaining === true);
-const resultMessageCount = computed(() => props.activeTab.result?.messages?.length ?? 0);
+// A batch can attach server messages to more than one statement result (for
+// example a `DO $$ RAISE NOTICE $$` block followed by a SELECT). The messages
+// view is scoped to the whole run, so collect every result's messages instead
+// of only the active result's — otherwise a statement with no result set
+// silently loses its notices once a later statement owns the active result.
+const resultMessages = computed<QueryMessage[]>(() => {
+  const results = props.activeTab.results?.length ? props.activeTab.results : props.activeTab.result ? [props.activeTab.result] : [];
+  return results.flatMap((result) => result.messages ?? []);
+});
+const resultMessageCount = computed(() => resultMessages.value.length);
 const canShowMessagesOutput = computed(() => resultMessageCount.value > 0);
 const showStandaloneResultToolbar = computed(() => activeElasticsearchJsonResponse.value || props.activeOutputView !== "result" || !props.activeTab.result || !hasTabularResult.value);
 const standaloneResultToolbarCompact = computed(() => isDataGridToolbarCompact(standaloneResultToolbarWidth.value, standaloneResultToolbarViewportWidth.value));
@@ -1900,7 +1909,7 @@ defineExpose({
               </div>
             </div>
 
-            <QueryMessagesView v-else-if="activeOutputView === 'messages'" class="flex-1 min-h-0" :messages="activeTab.result?.messages ?? []" />
+            <QueryMessagesView v-else-if="activeOutputView === 'messages'" class="flex-1 min-h-0" :messages="resultMessages" />
 
             <template v-else>
               <ElasticsearchJsonResponsePanel v-if="activeElasticsearchJsonResponse" ref="elasticsearchJsonResponsePanelRef" class="flex-1 min-h-0" :status="activeElasticsearchJsonResponse.status" :body="activeElasticsearchJsonResponse.body" />
