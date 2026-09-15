@@ -1033,6 +1033,8 @@ export type {
   TableImportProgress,
   MongoImportFormat,
   MongoImportTypeMode,
+  MongoImportInferredType,
+  MongoImportColumn,
   MongoImportIssue,
   MongoImportParseOptions,
   MongoImportPreviewRequest,

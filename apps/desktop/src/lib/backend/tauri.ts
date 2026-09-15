@@ -5047,7 +5047,7 @@ export async function releaseTableImportSource(_sourceRef: string): Promise<bool
 
 export type MongoImportFormat = "csv" | "json" | "ndjson";
 export type MongoImportTypeMode = "string" | "auto" | "extendedJson";
-export type MongoImportInferredType = "boolean" | "integer" | "decimal" | "date" | "object" | "array" | "string";
+export type MongoImportInferredType = "boolean" | "integer" | "decimal" | "date" | "objectId" | "object" | "array" | "mixed" | "string";
 export type MongoImportStatus = "running" | "done" | "error" | "cancelled";
 export type MongoImportPhase = "preparing" | "parsing" | "writing" | "done";
 export type MongoExportFormat = "csv" | "ndjson";
@@ -5072,6 +5072,7 @@ export interface MongoImportParseOptions {
   typeMode?: MongoImportTypeMode | null;
   recognizeObjectIdHex?: boolean | null;
   skipErrorRows?: boolean | null;
+  columnTypes?: Partial<Record<string, MongoImportInferredType>> | null;
 }
 
 export interface MongoImportPreviewRequest {
