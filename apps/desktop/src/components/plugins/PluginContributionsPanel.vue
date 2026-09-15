@@ -664,10 +664,6 @@ onBeforeUnmount(() => {
                   @click="installMarketplaceListing(listing)"
                 >
                   <Loader2 v-if="marketplaceInstallingKey === listing.key" class="size-3.5 animate-spin" />
-                  <Check v-else-if="listing.status === 'installed'" class="size-3.5" />
-                  <CircleAlert v-else-if="listing.status === 'unsupported'" class="size-3.5" />
-                  <RefreshCw v-else-if="listing.status === 'update'" class="size-3.5" />
-                  <Download v-else class="size-3.5" />
                   {{ t(`pluginPlatform.marketplaceStatus.${listing.status}`) }}
                 </button>
               </div>
@@ -704,10 +700,6 @@ onBeforeUnmount(() => {
                 @click="installMarketplaceListing(listing)"
               >
                 <Loader2 v-if="marketplaceInstallingKey === listing.key" class="size-3.5 animate-spin" />
-                <Check v-else-if="listing.status === 'installed'" class="size-3.5" />
-                <CircleAlert v-else-if="listing.status === 'unsupported'" class="size-3.5" />
-                <RefreshCw v-else-if="listing.status === 'update'" class="size-3.5" />
-                <Download v-else class="size-3.5" />
                 <span class="hidden sm:inline">{{ t(`pluginPlatform.marketplaceStatus.${listing.status}`) }}</span>
               </button>
             </article>
