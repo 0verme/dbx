@@ -1007,6 +1007,7 @@ useScheduledDatabaseBackups({ scheduler: true });
 
 const appVersion = ref("");
 const isClassicLayout = computed(() => settingsStore.editorSettings.appLayout === "classic");
+const isVerticalTabPlacement = computed(() => settingsStore.editorSettings.tabPlacement === "left" || settingsStore.editorSettings.tabPlacement === "right");
 
 // Every pane's vertical strip writes back to this shared width/collapse state.
 function startTabBarResize(event: PointerEvent) {
@@ -3748,8 +3749,12 @@ onUnmounted(() => {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              <div v-show="!driverStoreActive && !pluginCenterActive && !settingsStore.settingsPageActive" class="flex min-h-0 min-w-0 flex-1 flex-col">
-                <div class="flex flex-col min-h-0" :class="activeTab?.mode === 'plugin-workbench' ? 'flex-none' : 'flex-1'">
+              <div
+                v-show="!driverStoreActive && !pluginCenterActive && !settingsStore.settingsPageActive"
+                class="flex min-h-0 min-w-0 flex-1"
+                :class="activeTab?.mode === 'plugin-workbench' && isVerticalTabPlacement ? (settingsStore.editorSettings.tabPlacement === 'right' ? 'flex-row-reverse' : 'flex-row') : 'flex-col'"
+              >
+                <div class="flex min-h-0" :class="activeTab?.mode === 'plugin-workbench' ? (isVerticalTabPlacement ? 'h-full flex-none flex-col' : 'flex-none flex-col') : 'flex-1 flex-col'">
                   <SqlEditorWorkspace
                     ref="contentAreaRef"
                     :content-suppressed="activeTab?.mode === 'plugin-workbench'"
