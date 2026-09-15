@@ -978,6 +978,7 @@ export default withEnglishFallback({
     connecting: "正在連線 {name}……",
     connectSuccess: "已連線 {name}",
     connectFailed: "連線失敗：{message}",
+    objectCacheRefreshFailed: "物件快取重新整理失敗：{message}",
     driverNotInstalled: "{driver} 驅動程式未安裝，請在驅動程式管理器中安裝。",
     phoenixDriverNotInstalled: "Apache Phoenix JDBC 驅動程式未安裝，請在驅動程式管理器中安裝後再試。",
     jreNotInstalled: "JRE {jre} 執行環境未安裝，請在驅動程式管理器中安裝。",

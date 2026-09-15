@@ -1204,6 +1204,7 @@ export default {
     connecting: "Connecting to {name}...",
     connectSuccess: "Connected to {name}",
     connectFailed: "Connection failed: {message}",
+    objectCacheRefreshFailed: "Object cache refresh failed: {message}",
     driverNotInstalled: "{driver} driver is not installed. Please install it from the Driver Manager.",
     phoenixDriverNotInstalled: "The Apache Phoenix JDBC driver is not installed. Install it from the Driver Manager, then retry.",
     jreNotInstalled: "JRE {jre} runtime is not installed. Please install it from the Driver Manager.",

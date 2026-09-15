@@ -1401,6 +1401,7 @@ export default withEnglishFallback({
     pluginSshKeyPickerPlaceholder: "Seleziona chiave SSH locale…",
     pluginSshKeyPickerEmpty: "Nessuna chiave trovata",
     pluginSshKeyEncrypted: "Crittografata",
+    objectCacheRefreshFailed: "Aggiornamento della cache degli oggetti non riuscito: {message}",
   },
   editor: {
     duckdbDraining: "La query DuckDB precedente è ancora in fase di arresto. Riprova a breve.",

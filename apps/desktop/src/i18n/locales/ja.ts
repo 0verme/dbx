@@ -1422,6 +1422,7 @@ export default withEnglishFallback({
     pluginSshKeyPickerPlaceholder: "ローカルの SSH キーを選択…",
     pluginSshKeyPickerEmpty: "キーが見つかりません",
     pluginSshKeyEncrypted: "暗号化済み",
+    objectCacheRefreshFailed: "オブジェクトキャッシュの更新に失敗しました：{message}",
   },
   editor: {
     duckdbDraining: "前回の DuckDB クエリはまだ停止処理中です。しばらくしてから再試行してください。",

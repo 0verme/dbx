@@ -1122,6 +1122,7 @@ export default withEnglishFallback({
     sshTotpCancelled: "已取消输入一次性验证码",
     connectSuccess: "已连接 {name}",
     connectFailed: "连接失败：{message}",
+    objectCacheRefreshFailed: "对象缓存刷新失败：{message}",
     driverNotInstalled: "{driver} 驱动未安装，请在驱动管理器中安装。",
     phoenixDriverNotInstalled: "Apache Phoenix JDBC 驱动未安装，请在驱动管理器中安装后重试。",
     jreNotInstalled: "JRE {jre} 运行环境未安装，请在驱动管理器中安装。",
