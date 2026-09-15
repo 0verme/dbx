@@ -25,6 +25,7 @@ import { useI18n } from "vue-i18n";
 
 const props = defineProps<{
   focusTarget?: PluginCenterFocus | null;
+  installUrlRequest?: { id: number; url: string } | null;
 }>();
 
 const emit = defineEmits<{
@@ -533,6 +534,21 @@ watch(
     if (focus && installedPlugins.value.length) applyFocusTarget(focus);
   },
   { deep: true },
+);
+let lastHandledInstallRequestId = 0;
+watch(
+  () => props.installUrlRequest,
+  async (request) => {
+    // immediate so a deep link that just opened the Plugin Center is consumed on
+    // mount; the id guard keeps already-handled requests from replaying.
+    if (!request || request.id <= lastHandledInstallRequestId) return;
+    lastHandledInstallRequestId = request.id;
+    installUrl.value = request.url;
+    if (window.confirm(t("pluginPlatform.deepLinkInstallConfirm", { url: request.url }))) {
+      await installPluginFromUrl();
+    }
+  },
+  { immediate: true },
 );
 watch(allowUnsigned, (value) => {
   try {

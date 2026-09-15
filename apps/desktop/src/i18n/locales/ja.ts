@@ -223,6 +223,8 @@ export default withEnglishFallback({
     installPackage: ".dbxp をインストール",
     installFromUrl: "URL からインストール",
     installUrlPlaceholder: "https://example.com/plugin.dbxp",
+    deepLinkInstallConfirm: "以下のリンクからプラグインをインストールしますか？",
+    deepLinkInvalid: "無効なプラグインインストールリンクです: {message}",
     invalidPackageUrl: "有効な http(s) プラグインパッケージ URL を入力してください",
     downloadProgress: "ダウンロード中 {downloaded} / {total}",
     downloadProgressUnknown: "ダウンロード中 {downloaded}",

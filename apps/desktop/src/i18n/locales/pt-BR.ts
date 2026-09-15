@@ -223,6 +223,8 @@ export default withEnglishFallback({
     installPackage: "Instalar .dbxp",
     installFromUrl: "Instalar de URL",
     installUrlPlaceholder: "https://example.com/plugin.dbxp",
+    deepLinkInstallConfirm: "Instalar este plugin pelo link abaixo?",
+    deepLinkInvalid: "Link de instalação de plugin inválido: {message}",
     invalidPackageUrl: "Insira uma URL http(s) válida do pacote do plugin",
     downloadProgress: "Baixando {downloaded} de {total}",
     downloadProgressUnknown: "Baixando {downloaded}",

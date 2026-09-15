@@ -146,6 +146,8 @@ export default withEnglishFallback({
     installPackage: "安装 .dbxp",
     installFromUrl: "从 URL 安装",
     installUrlPlaceholder: "https://example.com/plugin.dbxp",
+    deepLinkInstallConfirm: "是否从以下链接安装插件？",
+    deepLinkInvalid: "无效的插件安装链接：{message}",
     invalidPackageUrl: "请输入有效的 http(s) 插件包链接",
     downloadProgress: "正在下载 {downloaded} / {total}",
     downloadProgressUnknown: "正在下载 {downloaded}",

@@ -2491,6 +2491,10 @@ export async function pendingOpenAiConfigLinks(): Promise<string[]> {
   return [];
 }
 
+export async function pendingOpenPluginInstallLinks(): Promise<string[]> {
+  return [];
+}
+
 export async function readExternalSqlFile(_path: string, _maxSizeBytes?: number): Promise<string> {
   throw new Error("Opening external SQL file paths is only available in the desktop app");
 }

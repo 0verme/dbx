@@ -223,6 +223,8 @@ export default withEnglishFallback({
     installPackage: "安裝 .dbxp",
     installFromUrl: "從 URL 安裝",
     installUrlPlaceholder: "https://example.com/plugin.dbxp",
+    deepLinkInstallConfirm: "要從以下連結安裝外掛程式嗎？",
+    deepLinkInvalid: "無效的外掛程式安裝連結：{message}",
     invalidPackageUrl: "請輸入有效的 http(s) 外掛套件連結",
     downloadProgress: "正在下載 {downloaded} / {total}",
     downloadProgressUnknown: "正在下載 {downloaded}",

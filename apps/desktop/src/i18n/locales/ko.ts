@@ -231,6 +231,8 @@ export default withEnglishFallback({
     installPackage: ".dbxp 설치",
     installFromUrl: "URL에서 설치",
     installUrlPlaceholder: "https://example.com/plugin.dbxp",
+    deepLinkInstallConfirm: "아래 링크에서 플러그인을 설치하시겠습니까?",
+    deepLinkInvalid: "잘못된 플러그인 설치 링크입니다: {message}",
     invalidPackageUrl: "유효한 http(s) 플러그인 패키지 URL을 입력하세요",
     downloadProgress: "다운로드 중 {downloaded} / {total}",
     downloadProgressUnknown: "다운로드 중 {downloaded}",

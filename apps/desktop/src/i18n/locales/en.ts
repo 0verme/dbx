@@ -230,6 +230,8 @@ export default {
     installPackage: "Install .dbxp",
     installFromUrl: "Install from URL",
     installUrlPlaceholder: "https://example.com/plugin.dbxp",
+    deepLinkInstallConfirm: "Install this plugin from the link below?",
+    deepLinkInvalid: "Invalid plugin install link: {message}",
     invalidPackageUrl: "Enter a valid http:// or https:// plugin package URL",
     downloadProgress: "Downloading {downloaded} of {total}",
     downloadProgressUnknown: "Downloading {downloaded}",
