@@ -584,7 +584,7 @@ const emit = defineEmits<{
 
 const autoRefresh = useDataGridAutoRefresh({
   canRefresh: computed(() => !isSaving.value && !props.loading),
-  refresh: onToolbarRefresh,
+  refresh: () => reloadTableData("auto-refresh"),
 });
 const autoRefreshIntervalSeconds = autoRefresh.intervalSeconds;
 const autoRefreshEnabled = autoRefresh.enabled;
@@ -4130,6 +4130,10 @@ function prepareFullReload() {
 }
 
 async function onToolbarRefresh() {
+  await reloadTableData("refresh");
+}
+
+async function reloadTableData(intent: DataGridReloadIntent) {
   if (transactionActive.value) {
     discardChanges();
   }
@@ -4140,7 +4144,7 @@ async function onToolbarRefresh() {
   }
   markConditionInputsApplied();
   prepareFullReload();
-  emit("reload", props.sql, searchText.value, currentWhereInput(), currentOrderBy(), pageSize.value, resetToFirstPage ? 0 : (currentPage.value - 1) * pageSize.value, "refresh");
+  emit("reload", props.sql, searchText.value, currentWhereInput(), currentOrderBy(), pageSize.value, resetToFirstPage ? 0 : (currentPage.value - 1) * pageSize.value, intent);
 }
 
 function setAutoRefreshInterval(seconds: number) {
