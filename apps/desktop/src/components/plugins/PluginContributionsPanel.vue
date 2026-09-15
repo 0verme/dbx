@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Check, ChevronRight, CircleAlert, Download, ExternalLink, FileUp, FolderTree, Globe, Info, LayoutGrid, Link2, List, Loader2, PackageCheck, Pencil, Plus, RefreshCw, RotateCcw, Search, Settings2, ShieldCheck, Store, Trash2 } from "@lucide/vue";
+import { BadgeCheck, Check, ChevronRight, CircleAlert, Download, ExternalLink, FileUp, FolderTree, Globe, Info, LayoutGrid, Link2, List, Loader2, PackageCheck, Pencil, Plus, RefreshCw, RotateCcw, Search, Settings2, ShieldCheck, Store, Trash2 } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { clearPluginIconCache } from "@/lib/plugins/pluginIconResolver";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { physicalDropPositionInsideRect } from "@/lib/ai/aiAttachments";
 import { createFrontendPluginRegistry, pluginConnectionProviderIcon } from "@/lib/plugins/frontendPlugin";
-import { buildMarketplacePluginListings, filterMarketplacePluginListings, type MarketplacePluginListing } from "@/lib/plugins/pluginMarketplace";
+import { buildMarketplacePluginListings, filterMarketplacePluginListings, listingRepositoryCanVerify, type MarketplacePluginListing } from "@/lib/plugins/pluginMarketplace";
 import { formatBytes } from "@/lib/database/serverMetrics";
 import type { PluginCenterFocus } from "@/lib/plugins/pluginCenterNavigation";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -629,29 +629,43 @@ onBeforeUnmount(() => {
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-1.5">
                     <span class="truncate text-sm font-semibold">{{ listing.name }}</span>
-                    <Badge v-if="listing.verified" variant="secondary" class="h-5 gap-1 px-1.5 text-[10px]"><ShieldCheck class="size-3" />{{ t("pluginPlatform.verified") }}</Badge>
                   </div>
-                  <div class="mt-1 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+                  <div class="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                    <BadgeCheck v-if="listingRepositoryCanVerify(listing.repository)" class="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" :title="t('pluginPlatform.verified')" :aria-label="t('pluginPlatform.verified')" />
                     <span class="truncate">{{ listing.plugin.publisher }} · {{ listing.repository.name }}</span>
                   </div>
                 </div>
                 <div class="flex shrink-0 items-center gap-1">
-                  <button v-if="listing.plugin.source" type="button" class="rounded p-0.5 opacity-60 transition-opacity hover:opacity-100" :title="t('pluginPlatform.sourceRepository')" :aria-label="t('pluginPlatform.sourceRepository')" @click.stop="openExternal(listing.plugin.source)">
+                  <button
+                    v-if="listing.plugin.source"
+                    type="button"
+                    class="rounded p-0.5 opacity-60 transition-opacity [will-change:opacity] hover:opacity-100"
+                    :title="t('pluginPlatform.sourceRepository')"
+                    :aria-label="t('pluginPlatform.sourceRepository')"
+                    @click.stop="openExternal(listing.plugin.source)"
+                  >
                     <GithubIcon icon-class="size-3.5" />
                   </button>
-                  <button v-if="listing.plugin.homepage" type="button" class="rounded p-0.5 opacity-60 transition-opacity hover:opacity-100" :title="t('pluginPlatform.pluginHomepage')" :aria-label="t('pluginPlatform.pluginHomepage')" @click.stop="openExternal(listing.plugin.homepage)">
+                  <button
+                    v-if="listing.plugin.homepage"
+                    type="button"
+                    class="rounded p-0.5 opacity-60 transition-opacity [will-change:opacity] hover:opacity-100"
+                    :title="t('pluginPlatform.pluginHomepage')"
+                    :aria-label="t('pluginPlatform.pluginHomepage')"
+                    @click.stop="openExternal(listing.plugin.homepage)"
+                  >
                     <Globe class="size-3.5" />
                   </button>
                   <Badge variant="outline" class="h-5 px-1.5 text-[10px]">v{{ listing.plugin.latestVersion }}</Badge>
                 </div>
               </div>
-              <p class="mt-3 line-clamp-3 text-xs leading-5 text-muted-foreground">{{ listing.description || t("pluginPlatform.noDescription") }}</p>
               <div class="mt-3 flex flex-wrap gap-1.5">
                 <Badge v-for="tag in listing.plugin.tags.slice(0, 3)" :key="tag" variant="outline" class="h-5 px-1.5 text-[10px]">{{ tag }}</Badge>
                 <Badge v-if="listing.plugin.permissions.length" variant="outline" class="h-5 px-1.5 text-[10px]">{{ t("pluginPlatform.permissionsCount", { count: listing.plugin.permissions.length }) }}</Badge>
               </div>
-              <div class="mt-auto flex items-end justify-between gap-3 pt-4">
-                <div class="text-[10px] text-muted-foreground">
+              <p class="mt-3 line-clamp-3 text-xs leading-5 text-muted-foreground">{{ listing.description || t("pluginPlatform.noDescription") }}</p>
+              <div class="mt-auto flex items-center justify-between gap-3 pt-4">
+                <div class="text-[11px] text-muted-foreground">
                   <span v-if="listing.status === 'unsupported'">{{ t("pluginPlatform.unsupportedTarget", { target: listing.target }) }}</span>
                   <span v-else-if="listing.installed">{{ t("pluginPlatform.installedVersion", { version: listing.installed.manifest.version }) }}</span>
                   <span v-else>{{ listing.plugin.license || t("pluginPlatform.licenseUnknown") }}</span>
@@ -675,16 +689,30 @@ onBeforeUnmount(() => {
               <div class="min-w-0 flex-1">
                 <div class="flex min-w-0 items-center gap-2">
                   <span class="truncate text-sm font-semibold">{{ listing.name }}</span>
-                  <Badge v-if="listing.verified" variant="secondary" class="hidden h-5 shrink-0 gap-1 px-1.5 text-[10px] sm:inline-flex"><ShieldCheck class="size-3" />{{ t("pluginPlatform.verified") }}</Badge>
-                  <button v-if="listing.plugin.source" type="button" class="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:opacity-100" :title="t('pluginPlatform.sourceRepository')" :aria-label="t('pluginPlatform.sourceRepository')" @click.stop="openExternal(listing.plugin.source)">
+                  <button
+                    v-if="listing.plugin.source"
+                    type="button"
+                    class="shrink-0 rounded p-0.5 opacity-60 transition-opacity [will-change:opacity] hover:opacity-100"
+                    :title="t('pluginPlatform.sourceRepository')"
+                    :aria-label="t('pluginPlatform.sourceRepository')"
+                    @click.stop="openExternal(listing.plugin.source)"
+                  >
                     <GithubIcon icon-class="size-3.5" />
                   </button>
-                  <button v-if="listing.plugin.homepage" type="button" class="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:opacity-100" :title="t('pluginPlatform.pluginHomepage')" :aria-label="t('pluginPlatform.pluginHomepage')" @click.stop="openExternal(listing.plugin.homepage)">
+                  <button
+                    v-if="listing.plugin.homepage"
+                    type="button"
+                    class="shrink-0 rounded p-0.5 opacity-60 transition-opacity [will-change:opacity] hover:opacity-100"
+                    :title="t('pluginPlatform.pluginHomepage')"
+                    :aria-label="t('pluginPlatform.pluginHomepage')"
+                    @click.stop="openExternal(listing.plugin.homepage)"
+                  >
                     <Globe class="size-3.5" />
                   </button>
                   <Badge variant="outline" class="h-5 shrink-0 px-1.5 text-[10px]">v{{ listing.plugin.latestVersion }}</Badge>
                 </div>
-                <div class="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+                <div class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                  <BadgeCheck v-if="listingRepositoryCanVerify(listing.repository)" class="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" :title="t('pluginPlatform.verified')" :aria-label="t('pluginPlatform.verified')" />
                   <span class="truncate">{{ listing.plugin.publisher }} · {{ listing.repository.name }}</span>
                 </div>
                 <p class="mt-1 truncate text-xs text-muted-foreground">{{ listing.description || t("pluginPlatform.noDescription") }}</p>

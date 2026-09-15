@@ -48,7 +48,7 @@ export function selectMarketplaceArtifact(artifacts: readonly PluginMarketplaceA
   return artifacts.find((candidate) => candidate.target === target) || artifacts.find((candidate) => candidate.target === UNIVERSAL_PLUGIN_TARGET);
 }
 
-function listingRepositoryCanVerify(repository: PluginRepository): boolean {
+export function listingRepositoryCanVerify(repository: PluginRepository): boolean {
   return repository.kind === "official" || repository.kind === "enterprise";
 }
 
