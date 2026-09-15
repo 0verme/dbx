@@ -4,6 +4,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStor
 import { appendDebugLog, isDebugLoggingEnabled } from "@/lib/backend/debugLog";
 import { canReloadUnavailableDataTab, restoredDataTabReloadFilters } from "@/lib/table/tableDataRefresh";
 import { defaultViewForResult } from "@/lib/query/queryResultDefaultView";
+import { queryResultMessages } from "@/lib/query/queryResultMessages";
 import { isQueryExecutionErrorResult } from "@/lib/query/queryResultError";
 import { hasQueryOutput as tabHasQueryOutput } from "@/lib/query/queryOutput";
 import { batchSqlRecoveryState, type BatchSqlRecoveryAction } from "@/lib/query/batchSqlRecovery";
@@ -555,7 +556,7 @@ const batchExecutionPercent = computed(() => {
   return progress?.total ? Math.round((progress.completed / progress.total) * 100) : 0;
 });
 const hasTabularResult = computed(() => {
-  if (props.activeTab.result?.columns.length) return true;
+  if (props.activeTab.result?.columns.length && props.activeTab.result.server_message !== true) return true;
   return visibleResultItems.value.length > 0;
 });
 const canShowResultOutput = computed(() => hasTabularResult.value || props.activeTab.isExecuting);
@@ -567,7 +568,7 @@ const canShowExplainOutput = computed(() => !!props.activeTab.explainPlan || !!p
 // silently loses its notices once a later statement owns the active result.
 const resultMessages = computed<QueryMessage[]>(() => {
   const results = props.activeTab.results?.length ? props.activeTab.results : props.activeTab.result ? [props.activeTab.result] : [];
-  return results.flatMap((result) => result.messages ?? []);
+  return results.flatMap(queryResultMessages);
 });
 const resultMessageCount = computed(() => resultMessages.value.length);
 const canShowMessagesOutput = computed(() => resultMessageCount.value > 0);
@@ -783,7 +784,7 @@ watch(
     // view when its own tab finishes executing.
     if (props.editorOnly) return;
     if (props.activeTab.isExecuting) return;
-    if (hasExecutionSummary.value && !hasTabularResult.value && props.activeOutputView === "result") {
+    if (hasExecutionSummary.value && (!hasTabularResult.value || props.activeTab.result?.server_message === true) && props.activeOutputView === "result") {
       const result = props.activeTab.result;
       emit("update:activeOutputView", props.activeTab.id, result ? defaultViewForResult(result) : "summary");
     }

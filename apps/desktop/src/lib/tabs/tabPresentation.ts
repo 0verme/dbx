@@ -362,7 +362,7 @@ export function tabularResultItems(results: QueryResult[] | undefined): { result
   if (!results) return [];
   return results
     .map((result, index) => ({ result, index }))
-    .filter((item) => item.result.columns.length > 0)
+    .filter((item) => item.result.columns.length > 0 && item.result.server_message !== true)
     .map((item, ordinal) => {
       const label = queryResultStatementLabel(item.result);
       const displayLabel = label ? middleEllipsis(label) : undefined;
