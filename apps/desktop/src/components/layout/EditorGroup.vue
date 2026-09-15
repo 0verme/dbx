@@ -89,6 +89,7 @@ defineExpose({
   executeRedisCommand: (command: string) => activeSurfaceRef.value?.executeRedisCommand(command) ?? Promise.resolve(false),
   previewStatementRange: (tabId: string, range: StatementRange | null) => (activeTab.value?.id === tabId ? (activeSurfaceRef.value?.previewStatementRange(range) ?? false) : false),
   focusStatementRange: (tabId: string, range: StatementRange | null) => (activeTab.value?.id === tabId ? (activeSurfaceRef.value?.focusStatementRange(range) ?? false) : false),
+  focusErrorPosition: (tabId: string, offset: number) => (activeTab.value?.id === tabId ? (activeSurfaceRef.value?.focusErrorPosition(offset) ?? false) : false),
 });
 
 const { t } = useI18n();

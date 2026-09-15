@@ -214,6 +214,39 @@ describe("queryStore multi-statement errors", () => {
     expect(tab.batchSqlExecution?.items[0]?.error).toContain(originalMessage);
   });
 
+  it("annotates a thrown single-statement error so the locate flow keeps its source", async () => {
+    const position = { line: 1, column: 16, offset: 15 };
+    const structuredError = {
+      ...structuredSqlError('ERROR: relation "no_such_table" does not exist'),
+      errorPosition: position,
+    };
+    mocks.prepareQueryPaginationExecutionPlan.mockImplementationOnce(async (options) => ({
+      sqlToExecute: `${options.sql} LIMIT 100`,
+      pageSql: undefined,
+      pageLimit: undefined,
+      pageOffset: undefined,
+      countSql: undefined,
+      useAgentResultSession: false,
+    }));
+    mocks.executeMulti.mockRejectedValue(
+      new BackendErrorException({
+        backendError: structuredError,
+        message: 'ERROR: relation "no_such_table" does not exist',
+      }),
+    );
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const tabId = store.createTab("mysql-1", "app", "Query");
+
+    await store.executeTabSql(tabId, "SELECT * FROM no_such_table");
+
+    const tab = store.tabs.find((item) => item.id === tabId)!;
+    expect(tab.result?.execution_error).toBe(true);
+    expect(tab.result?.error?.errorPosition).toEqual(position);
+    expect(tab.result?.sourceStatement).toBe("SELECT * FROM no_such_table");
+    expect(tab.result?.executedStatement).toBe("SELECT * FROM no_such_table LIMIT 100");
+  });
+
   it("updates live per-statement progress before the batch promise resolves", async () => {
     const pendingExecution = deferred<any[]>();
     let reportProgress!: (progress: any) => void;

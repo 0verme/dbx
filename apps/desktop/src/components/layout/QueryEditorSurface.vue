@@ -41,6 +41,7 @@ defineExpose<QueryEditorSurfaceHandle>({
   executeRedisCommand: (command: string) => contentAreaRef.value?.executeRedisCommand(command) ?? Promise.resolve(false),
   previewStatementRange: (range: StatementRange | null) => contentAreaRef.value?.previewStatementRange(range) ?? false,
   focusStatementRange: (range: StatementRange | null) => contentAreaRef.value?.focusStatementRange(range) ?? false,
+  focusErrorPosition: (offset: number) => contentAreaRef.value?.focusErrorPosition(offset) ?? false,
 });
 </script>
 

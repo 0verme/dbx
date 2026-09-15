@@ -68,23 +68,43 @@ pub enum PoolErrorAction {
 #[derive(Debug, Clone)]
 pub enum QueryExecutionError {
     Agent(AgentCallError),
-    DuckDb { code: String, message: String },
-    Canceled { stage: AgentErrorStage, operation_outcome: AgentOperationOutcome },
+    DuckDb {
+        code: String,
+        message: String,
+    },
+    Canceled {
+        stage: AgentErrorStage,
+        operation_outcome: AgentOperationOutcome,
+    },
     Timeout(String),
     Sql(String),
+    /// Native PostgreSQL SQL failure whose driver-reported cursor position was
+    /// resolved against the executed statement text. Kept distinct from
+    /// [`Self::Sql`] so the position survives `classify_query_error` and reaches
+    /// [`Self::into_backend_error`] as a typed field instead of being parsed back
+    /// out of a string.
+    SqlWithPosition {
+        message: String,
+        position: crate::sql_error_position::SqlErrorPosition,
+    },
     Legacy(String),
 }
 
 impl QueryExecutionError {
     pub fn into_legacy_string(self) -> String {
-        match self {
+        let mut message = match self {
             Self::Agent(error) => error.into_legacy_string(),
             Self::DuckDb { message, .. } => message,
             Self::Canceled { .. } => canceled_error(),
             Self::Timeout(error) => error,
             Self::Sql(error) => error,
+            Self::SqlWithPosition { message, .. } => message,
             Self::Legacy(error) => error,
-        }
+        };
+        // Defensive: any remaining transport marker (e.g. from a driver error
+        // that never passed through the resolve step) must not reach clients.
+        while crate::sql_error_position::take_marker(&mut message).is_some() {}
+        message
     }
 
     pub fn into_backend_error(self) -> crate::backend_error::BackendError {
@@ -98,6 +118,9 @@ impl QueryExecutionError {
             }
             Self::Timeout(error) => crate::backend_error::BackendError::from_timeout_detail(&error),
             Self::Sql(error) => crate::backend_error::BackendError::from_sql_detail(&error),
+            Self::SqlWithPosition { message, position } => {
+                crate::backend_error::BackendError::from_sql_detail_with_position(&message, position)
+            }
             Self::Legacy(error) => crate::backend_error::BackendError::from_legacy_string(&error),
         }
     }
@@ -111,6 +134,9 @@ impl QueryExecutionError {
             canceled @ Self::Canceled { .. } => canceled,
             Self::Timeout(error) => Self::Timeout(query_error_with_omitted_sql_context(&error, sql)),
             Self::Sql(error) => Self::Sql(append_typed_sql_error_context(&error, sql)),
+            Self::SqlWithPosition { message, position } => {
+                Self::SqlWithPosition { message: append_typed_sql_error_context(&message, sql), position }
+            }
             Self::Legacy(error) => Self::Legacy(query_error_with_omitted_sql_context(&error, sql)),
         }
     }
@@ -122,6 +148,9 @@ impl QueryExecutionError {
             canceled @ Self::Canceled { .. } => canceled,
             Self::Timeout(error) => Self::Timeout(format!("{error}; {context}")),
             Self::Sql(error) => Self::Sql(format!("{error}; {context}")),
+            Self::SqlWithPosition { message, position } => {
+                Self::SqlWithPosition { message: format!("{message}; {context}"), position }
+            }
             Self::Legacy(error) => Self::Legacy(format!("{error}; {context}")),
         }
     }
@@ -129,7 +158,12 @@ impl QueryExecutionError {
     fn as_agent_error(&self) -> Option<&AgentCallError> {
         match self {
             Self::Agent(error) => Some(error),
-            Self::DuckDb { .. } | Self::Canceled { .. } | Self::Timeout(_) | Self::Sql(_) | Self::Legacy(_) => None,
+            Self::DuckDb { .. }
+            | Self::Canceled { .. }
+            | Self::Timeout(_)
+            | Self::Sql(_)
+            | Self::SqlWithPosition { .. }
+            | Self::Legacy(_) => None,
         }
     }
 }
@@ -142,6 +176,7 @@ impl std::fmt::Display for QueryExecutionError {
             Self::Canceled { .. } => formatter.write_str(QUERY_CANCELED),
             Self::Timeout(error) => formatter.write_str(error),
             Self::Sql(error) => formatter.write_str(error),
+            Self::SqlWithPosition { message, .. } => formatter.write_str(message),
             Self::Legacy(error) => formatter.write_str(error),
         }
     }
@@ -1490,6 +1525,7 @@ fn query_execution_error_action(
         QueryExecutionError::DuckDb { message, .. } => query_pool_error_action(db_type, sql, message),
         QueryExecutionError::Timeout(message)
         | QueryExecutionError::Sql(message)
+        | QueryExecutionError::SqlWithPosition { message, .. }
         | QueryExecutionError::Legacy(message) => query_pool_error_action(db_type, sql, message),
         QueryExecutionError::Agent(_) => unreachable!("Agent errors return above"),
     }
@@ -2345,7 +2381,23 @@ async fn do_execute_typed(
             if let Some(duckdb_error) = typed_duckdb_error {
                 return QueryExecutionError::DuckDb { code: duckdb_error.code, message: duckdb_error.message };
             }
-            typed_agent_error.map_or_else(|| QueryExecutionError::Legacy(error), QueryExecutionError::Agent)
+            if let Some(agent_error) = typed_agent_error {
+                return QueryExecutionError::Agent(agent_error);
+            }
+            // PostgreSQL reports a cursor position as a marker suffix on the
+            // driver message. Resolve it here, while the executed statement text
+            // is still available, into a typed field. The marker is stripped even
+            // when it cannot be resolved, so it can never reach a user-facing
+            // message. The PostgreSQL driver also backs Redshift/GaussDB/Kwdb/
+            // QuestDB/openGauss, so this is not gated on `DatabaseType::Postgres`.
+            if error.contains(crate::sql_error_position::SQL_ERROR_POSITION_MARKER) {
+                let (message, position) = crate::sql_error_position::take_message_position(&error, sql);
+                return match position {
+                    Some(position) => QueryExecutionError::SqlWithPosition { message, position },
+                    None => QueryExecutionError::Legacy(message),
+                };
+            }
+            QueryExecutionError::Legacy(error)
         })
         .map_err(|error| classify_query_error(pool_db_type, error))
 }
@@ -8747,6 +8799,46 @@ for line in sys.stdin:
         });
 
         assert_eq!(error.into_backend_error().code(), "DBX-JDBC-1002");
+    }
+
+    #[test]
+    fn postgres_sql_error_with_position_survives_classification_and_legacy_rendering() {
+        let sql = "SELECT *\nFROM no_such_table";
+        let cursor = sql.find("no_such_table").unwrap() as u32 + 1;
+        let raw = format!(
+            "ERROR: relation \"no_such_table\" does not exist{}",
+            crate::sql_error_position::encode_marker(cursor)
+        );
+        let (message, position) = crate::sql_error_position::take_message_position(&raw, sql);
+        let error = QueryExecutionError::SqlWithPosition { message, position: position.unwrap() };
+
+        // The transport marker must never reach the user-facing message.
+        let legacy = error.clone().into_legacy_string();
+        assert!(!legacy.contains(crate::sql_error_position::SQL_ERROR_POSITION_MARKER));
+        assert_eq!(legacy, "ERROR: relation \"no_such_table\" does not exist");
+
+        // Classification must not downgrade the typed variant.
+        let classified = classify_query_error(Some(DatabaseType::Postgres), error.clone());
+        assert!(matches!(classified, QueryExecutionError::SqlWithPosition { .. }));
+
+        let backend_error = classified.into_backend_error();
+        assert_eq!(backend_error.code(), "DBX-JDBC-4001");
+        let position = backend_error.error_position().expect("position must survive into the envelope");
+        assert_eq!((position.line, position.column), (2, 6));
+    }
+
+    #[test]
+    fn legacy_rendering_strips_a_leftover_transport_marker() {
+        // Guards the driver-error path that never went through the resolve step
+        // (e.g. a PostgreSQL-family driver error shown as a legacy string).
+        let error = QueryExecutionError::Legacy(format!(
+            "ERROR: boom{}{}",
+            crate::sql_error_position::encode_marker(9),
+            crate::sql_error_position::encode_marker(2)
+        ));
+        let rendered = error.into_legacy_string();
+        assert_eq!(rendered, "ERROR: boom");
+        assert!(!rendered.contains(crate::sql_error_position::SQL_ERROR_POSITION_MARKER));
     }
 
     #[test]

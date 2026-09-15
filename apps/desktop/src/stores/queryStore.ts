@@ -8,6 +8,7 @@ import { sanitizeTabPageUiState } from "@/lib/tabs/tabUiState";
 import type { BatchSqlExecution, ConnectionConfig, DatabaseType, IndexInfo, NacosConfigEditorViewport, ObjectBrowserFilter, ObjectBrowserViewport, ObjectSource, ObjectSourceKind, QueryResult, QueryResultSourceColumnRef, QueryTab, TableInfoTab, TableStructureEditorTarget } from "@/types/database";
 import { orderPinnedFirst } from "@/lib/app/pinnedItems";
 import { canCancelQueryExecution } from "@/lib/sql/queryExecutionState";
+import { isSqlErrorPositionDebugEnabled, logSqlErrorPosition } from "@/lib/sql/errorPosition";
 import { buildExplainSql, parseExplainResult, parseDamengExplainText, parseOracleExplainText, sqlServerExplainResult, type BuildExplainSqlResult, type ExplainPlanDatabaseType } from "@/lib/diagram/explainPlan";
 import { mysqlExplainCompatibilityHint } from "@/lib/diagram/mysqlExplainCompatibility";
 import { allEditableColumnsWriteable, allPrimaryKeysPresent, analyzeEditableQueryEditability, analyzeSelectStructureForDisplay, resolveMetadataColumnName, resolveSourceColumnsByOrdinal, sourceColumnsForResult, type EditableQueryInfo, type EditableQuerySource } from "@/lib/sql/sqlAnalysis";
@@ -345,8 +346,14 @@ function preservedResultIndex(results: QueryResult[], currentIndex: number | und
   return currentIndex;
 }
 
-function annotateQueryResultSources(results: QueryResult[], sql: string, database: string | undefined, databaseType?: DatabaseType, sourceOffset?: number, parameterOptions?: SqlParameterOptions): { results: QueryResult[]; sqlServerUseDatabase?: string } {
+function annotateQueryResultSources(results: QueryResult[], sql: string, database: string | undefined, databaseType?: DatabaseType, sourceOffset?: number, parameterOptions?: SqlParameterOptions, executedSql?: string): { results: QueryResult[]; sqlServerUseDatabase?: string } {
   const statements = splitSqlStatementRanges(sql, databaseType, parameterOptions);
+  // The backend positions errors against the SQL it actually received. When the
+  // sent SQL was rewritten (pagination wrapper, injected hidden keys…), record
+  // each statement's executed text so the error mapper can project the position
+  // back onto `sourceStatement`.
+  const executedStatements = executedSql && executedSql !== sql ? splitSqlStatementRanges(executedSql, databaseType, parameterOptions) : undefined;
+  const alignedExecutedStatements = executedStatements && executedStatements.length === statements.length ? executedStatements : undefined;
   let statementIndex = 0;
   let sourceDatabase = database;
   let sqlServerUseDatabase: string | undefined;
@@ -357,6 +364,19 @@ function annotateQueryResultSources(results: QueryResult[], sql: string, databas
     const statement = statements[sourceIndex];
     if (!statement) continue;
     annotateQueryResultSource(result, statement.sql, sourceDatabase, databaseType, sourceOffset === undefined ? undefined : { from: sourceOffset + statement.from, to: sourceOffset + statement.to });
+    const executedStatement = alignedExecutedStatements?.[sourceIndex]?.sql;
+    if (executedStatement && executedStatement !== statement.sql) {
+      result.executedStatement = executedStatement;
+      if (isSqlErrorPositionDebugEnabled()) {
+        logSqlErrorPosition("executed-statement-drift", {
+          statementIndex: sourceIndex,
+          sourceStatement: statement.sql,
+          executedStatement,
+          resultIsError: result.execution_error === true,
+          errorPosition: result.error?.errorPosition ?? null,
+        });
+      }
+    }
     const customName = queryResultNameFromPreamble(sql.slice(statement.hitFrom, statement.from));
     if (customName) result.sourceLabel = customName;
     const successfulUseDatabase = databaseType === "sqlserver" && result.execution_error !== true ? sqlServerUseDatabaseFromStatement(statement.sql) : undefined;
@@ -366,6 +386,22 @@ function annotateQueryResultSources(results: QueryResult[], sql: string, databas
     }
   }
   return { results, sqlServerUseDatabase };
+}
+
+/**
+ * Annotate the synthesized error result of a thrown single-statement execution
+ * so the row/column locate flow can map the backend position back to the editor.
+ *
+ * The core returns per-statement error results for batches, but a
+ * single-statement failure aborts the whole execute-multi command, leaving the
+ * frontend to synthesize the error result here. Only annotated when the error
+ * actually carries a position and the submission is a single statement (a
+ * multi-statement thrown error's position cannot be attributed to one statement).
+ */
+function annotateSingleStatementErrorResult(errorResult: QueryResult, sourceSql: string, databaseType: DatabaseType | undefined, sourceOffset: number | undefined, parameterOptions: SqlParameterOptions | undefined, executedSql: string | undefined): void {
+  if (!errorResult.error?.errorPosition) return;
+  if (splitSqlStatementRanges(sourceSql, databaseType, parameterOptions).length !== 1) return;
+  annotateQueryResultSources([errorResult], sourceSql, undefined, databaseType, sourceOffset, parameterOptions, executedSql);
 }
 
 const NON_STREAMING_BATCH_DATABASE_TYPES = new Set<DatabaseType>(["sqlserver", "turso", "cloudflare-d1"]);
@@ -6175,6 +6211,11 @@ export const useQueryStore = defineStore("query", () => {
     let producedResult = false;
     const resumedExecutionTarget = batchResume?.batch.executionTarget;
     const executionConnectionId = resumedExecutionTarget?.connectionId ?? options?.executionTarget?.connectionId ?? tab.connectionId;
+    // Captured for the catch below: a single-statement failure aborts the whole
+    // execute-multi command (the core only returns per-statement error results
+    // for batches), so the synthesized error result must be annotated here for
+    // the row/column locate flow. These locals live inside the try block.
+    let errorLocateContext: { databaseType: DatabaseType | undefined; parameterOptions: SqlParameterOptions | undefined; sourceOffset: number | undefined; executedSql: string | undefined } | undefined;
     try {
       await waitForTabSessionReset(id);
       const connStore = useConnectionStore();
@@ -6880,6 +6921,13 @@ export const useQueryStore = defineStore("query", () => {
         useAgentResultSession = conn?.db_type === "sqlserver" && conn?.driver_profile?.trim().toLowerCase() === "sqlserver-legacy";
       }
 
+      errorLocateContext = {
+        databaseType: effectiveDbType,
+        parameterOptions: sqlStatementParameterOptions,
+        sourceOffset: options?.sourceOffset,
+        executedSql: sqlToExecute,
+      };
+
       const executionSchema = connectionQueryExecutionSchema(conn, targetDatabase, targetSchema, tab.mode === "data");
       // Jumping to a non-zero offset without a live cursor session: the plan
       // could not rewrite the SQL for these engines, so a plain execution
@@ -7051,6 +7099,7 @@ export const useQueryStore = defineStore("query", () => {
         effectiveDbType,
         options?.sourceOffset,
         sqlStatementParameterOptions,
+        sqlToExecute,
       );
       const results = offsetBatchQueryResultIndexes(annotatedResults.results, batchResume?.startStatementIndex ?? 0);
       reconcileBatchSqlResults(tab, executionId, results);
@@ -7319,6 +7368,7 @@ export const useQueryStore = defineStore("query", () => {
           return false;
         }
         const errorResult = toErrorResult(e);
+        annotateSingleStatementErrorResult(errorResult, queryBaseSql, errorLocateContext?.databaseType, errorLocateContext?.sourceOffset, errorLocateContext?.parameterOptions, errorLocateContext?.executedSql);
         const activeGroupIndex = current.activeResultIndex;
         const activeGroupResults = current.results;
         const shouldReplaceActiveResultInGroup = options?.replaceActiveResultInGroup === true && Array.isArray(activeGroupResults) && typeof activeGroupIndex === "number" && activeGroupIndex >= 0 && activeGroupIndex < activeGroupResults.length;

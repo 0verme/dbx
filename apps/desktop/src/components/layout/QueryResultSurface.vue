@@ -33,6 +33,7 @@ defineExpose<QueryResultSurfaceHandle>({
   handleModRTarget: (target: Element) => contentAreaRef.value?.handleModRTarget(target) ?? false,
   previewStatementRange: (range: StatementRange | null) => contentAreaRef.value?.previewStatementRange(range) ?? false,
   focusStatementRange: (range: StatementRange | null) => contentAreaRef.value?.focusStatementRange(range) ?? false,
+  focusErrorPosition: (offset: number) => contentAreaRef.value?.focusErrorPosition(offset) ?? false,
 });
 </script>
 

@@ -45,6 +45,7 @@ import {
   RotateCcw,
   SkipForward,
   ListX,
+  LocateFixed,
 } from "@lucide/vue";
 import { Splitpanes, Pane } from "splitpanes";
 import { DynamicScroller, DynamicScrollerItem } from "vue-virtual-scroller";
@@ -134,6 +135,7 @@ import { TABLE_FONT_SIZE_MAX, TABLE_FONT_SIZE_MIN, useSettingsStore, type DataGr
 import { useToast } from "@/composables/useToast";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { canCancelQueryExecution, isActiveResultLoading, queryExecutionLabelKey } from "@/lib/sql/queryExecutionState";
+import { sqlErrorEditorOffset, logSqlErrorPosition } from "@/lib/sql/errorPosition";
 import {
   databaseDisplayNameForTab,
   executionSummaryItems,
@@ -331,6 +333,9 @@ const activeDataTabTableMeta = computed(() => tableMetaForDataTab(props.activeTa
 const activeResultExecutionTarget = computed(() => queryStore.activeResultExecutionTarget(props.activeTab.id));
 const activeResultConnection = computed(() => (activeResultExecutionTarget.value ? connectionStore.getConfig(activeResultExecutionTarget.value.connectionId) : props.activeConnection));
 const activeResultConnectionId = computed(() => activeResultExecutionTarget.value?.connectionId ?? props.activeTab.connectionId);
+// Row/column locate only makes sense for SQL editor tabs: data/preview tabs have
+// no user statement to map the backend position onto.
+const activeResultErrorPosition = computed(() => (props.activeTab.mode === "query" ? props.activeTab.result?.error?.errorPosition : undefined));
 const activeResultDatabase = computed(() => activeResultExecutionTarget.value?.database ?? props.activeTab.database);
 const activeResultSchema = computed(() => activeResultExecutionTarget.value?.schema ?? props.activeTab.schema);
 const activeEffectiveDatabaseType = computed(() => effectiveDatabaseTypeForConnection(activeResultConnection.value));
@@ -1296,6 +1301,72 @@ function focusStatementRange(range: { from: number; to: number } | null): boolea
   return true;
 }
 
+function focusErrorPosition(offset: number): boolean {
+  if (!queryEditorRef.value) return false;
+  queryEditorRef.value.focusErrorPosition(offset);
+  return true;
+}
+
+/**
+ * Jump to the driver-reported row/column of the active result's error. Falls back
+ * to a cross-surface event when this surface only renders the shared result pane
+ * (the editor lives in another group).
+ */
+function locateActiveResultError() {
+  const result = props.activeTab.result;
+  logSqlErrorPosition("locate:invoke", {
+    tabId: props.activeTab.id,
+    mode: props.activeTab.mode,
+    hasEditorRef: Boolean(queryEditorRef.value),
+    activeResultIndex: props.activeTab.activeResultIndex,
+    statementIndex: result?.statement_index,
+    hasBackendError: Boolean(result?.error),
+    errorPosition: result?.error?.errorPosition ?? null,
+    editorLength: props.activeTab.sql.length,
+    resultIsError: Boolean(result && isQueryExecutionErrorResult(result)),
+  });
+  const mapped = sqlErrorEditorOffset({
+    editorSql: props.activeTab.sql,
+    result,
+    resultIndex: result?.statement_index ?? props.activeTab.activeResultIndex,
+    databaseType: activeEffectiveDatabaseType.value,
+    parameterOptions: activeSqlStatementParameterOptions.value,
+  });
+  if (!mapped) {
+    logSqlErrorPosition("locate:unavailable", {
+      tabId: props.activeTab.id,
+      reason: "sqlErrorEditorOffset returned undefined (see the preceding 'unresolved:result-source-range' log)",
+    });
+    toast(t("editor.errorPositionUnavailable"), 3000);
+    return;
+  }
+  logSqlErrorPosition("locate:focus", { tabId: props.activeTab.id, offset: mapped.offset, line: mapped.line, column: mapped.column });
+  if (queryEditorRef.value) {
+    queryEditorRef.value.focusErrorPosition(mapped.offset);
+  } else {
+    emit("focusErrorOffset", props.activeTab.id, mapped.offset);
+  }
+}
+
+function locateExecutionSummaryError(item: ExecutionSummaryItem) {
+  const mapped = item.result
+    ? sqlErrorEditorOffset({
+        editorSql: props.activeTab.sql,
+        result: item.result,
+        resultIndex: item.statementIndex,
+        databaseType: activeEffectiveDatabaseType.value,
+        parameterOptions: activeSqlStatementParameterOptions.value,
+      })
+    : undefined;
+  if (mapped) {
+    if (!focusErrorPosition(mapped.offset)) {
+      emit("focusErrorOffset", props.activeTab.id, mapped.offset);
+    }
+    return;
+  }
+  focusExecutionSummaryItem(item);
+}
+
 defineExpose({
   focusSearch,
   openGoToColumn,
@@ -1316,6 +1387,8 @@ defineExpose({
   executeRedisCommand,
   previewStatementRange,
   focusStatementRange,
+  focusErrorPosition,
+  locateActiveResultError,
 });
 </script>
 
@@ -1867,14 +1940,26 @@ defineExpose({
                         :title="item.error || item.sql"
                         :aria-label="item.error || item.sql || t('executionSummary.noSql')"
                         @click="previewExecutionSummaryItem(item)"
-                        @dblclick="focusExecutionSummaryItem(item)"
+                        @dblclick="locateExecutionSummaryError(item)"
                         @keydown.enter.prevent="focusExecutionSummaryItem(item)"
                       />
                       <div class="pointer-events-none relative z-[1] font-mono text-muted-foreground">#{{ item.statementIndex + 1 }}</div>
-                      <div class="relative z-[1] min-w-0 cursor-pointer" @click="previewExecutionSummaryItem(item)" @dblclick="focusExecutionSummaryItem(item)">
+                      <div class="relative z-[1] min-w-0 cursor-pointer" @click="previewExecutionSummaryItem(item)" @dblclick="locateExecutionSummaryError(item)">
                         <div class="truncate font-mono text-[11px] text-foreground">{{ item.sql || t("executionSummary.noSql") }}</div>
                         <div v-if="item.error" class="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-destructive">
+                          <span v-if="item.errorPosition" class="shrink-0 rounded border border-destructive/30 bg-destructive/5 px-1 tabular-nums">{{ t("executionSummary.lineColumn", { line: item.errorPosition.line, column: item.errorPosition.column }) }}</span>
                           <span data-native-clipboard class="min-w-0 flex-1 cursor-text select-text truncate" :title="item.error" @mousedown.stop @click.stop @dblclick.stop>{{ item.error }}</span>
+                          <LightTooltip v-if="item.errorPosition" :text="t('editor.locateError', { line: item.errorPosition.line, column: item.errorPosition.column })" side="bottom" :delay="0" :close-delay="0" nowrap>
+                            <button
+                              type="button"
+                              class="pointer-events-auto flex h-5 w-5 shrink-0 items-center justify-center rounded text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
+                              :aria-label="t('editor.locateError', { line: item.errorPosition.line, column: item.errorPosition.column })"
+                              @mousedown.stop
+                              @click.stop="locateExecutionSummaryError(item)"
+                            >
+                              <LocateFixed class="h-3 w-3" />
+                            </button>
+                          </LightTooltip>
                           <LightTooltip :text="t('grid.copy')" side="bottom" :delay="0" :close-delay="0" nowrap>
                             <button type="button" class="pointer-events-auto flex h-5 w-5 shrink-0 items-center justify-center rounded text-destructive/70 hover:bg-destructive/10 hover:text-destructive" :aria-label="t('grid.copy')" @mousedown.stop @click.stop="copyExecutionSummaryError(item.error)">
                               <Copy class="h-3 w-3" />
@@ -2034,6 +2119,8 @@ defineExpose({
                     :error-message="String(errorMessage)"
                     :backend-error="activeTab.result.error"
                     :connection-id="activeResultConnectionId"
+                    :error-position="activeResultErrorPosition"
+                    @locate-error="locateActiveResultError"
                     @change-connection-timeout="activeResultConnectionId && emit('openConnectionSettings', activeResultConnectionId, 'advanced')"
                     @change-query-timeout="activeResultConnectionId && emit('openConnectionSettings', activeResultConnectionId, 'advanced')"
                     @fix-with-ai="(message) => emit('fixWithAi', activeTab.id, message)"
@@ -2392,6 +2479,8 @@ defineExpose({
               :error-message="String(errorMessage)"
               :backend-error="activeTab.result.error"
               :connection-id="activeResultConnectionId"
+              :error-position="activeResultErrorPosition"
+              @locate-error="locateActiveResultError"
               @change-connection-timeout="activeResultConnectionId && emit('openConnectionSettings', activeResultConnectionId, 'advanced')"
               @change-query-timeout="activeResultConnectionId && emit('openConnectionSettings', activeResultConnectionId, 'advanced')"
               @fix-with-ai="(message) => emit('fixWithAi', activeTab.id, message)"
