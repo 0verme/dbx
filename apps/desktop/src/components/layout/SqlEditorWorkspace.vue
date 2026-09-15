@@ -34,7 +34,7 @@ const emit = defineEmits<
   ContentAreaSurfaceEmits & {
     "locate-tab": [tab: QueryTab];
     "toggle-zen-mode": [];
-    "start-resize": [event: MouseEvent];
+    "start-resize": [event: PointerEvent];
     "toggle-collapse": [];
     "detach-tab": [tab: QueryTab];
   }

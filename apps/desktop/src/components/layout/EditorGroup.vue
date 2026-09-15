@@ -43,7 +43,7 @@ const emit = defineEmits<
     "activate-tab": [tabId: string];
     "locate-tab": [tab: QueryTab];
     "toggle-zen-mode": [];
-    "start-resize": [event: MouseEvent];
+    "start-resize": [event: PointerEvent];
     "toggle-collapse": [];
     "detach-tab": [tab: QueryTab];
   }

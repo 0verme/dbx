@@ -23,7 +23,7 @@ defineProps<{
 const emit = defineEmits<{
   import: [source: "dbx" | "navicat" | "dbeaver" | "datagrip"];
   export: [];
-  startResize: [event: MouseEvent];
+  startResize: [event: PointerEvent];
   collapse: [];
   "open-settings": [initialTab: string];
   "add-to-ai": [nodes: TreeNode | TreeNode[]];
@@ -296,7 +296,7 @@ defineExpose({ focusSearch, locateTabInSidebar });
         <ConnectionTree ref="connectionTreeRef" @open-settings="(initialTab) => emit('open-settings', initialTab)" @add-to-ai="(nodes) => emit('add-to-ai', nodes)" />
       </div>
     </div>
-    <div class="panel-resize-handle panel-resize-handle--right" @mousedown="emit('startResize', $event)" />
+    <div class="panel-resize-handle panel-resize-handle--right" @pointerdown="emit('startResize', $event)" />
     <Dialog v-model:open="showDeleteSelectedConfirm">
       <DialogContent class="sm:max-w-[400px]">
         <DialogHeader>
