@@ -1315,7 +1315,6 @@ const {
   applyLocalFilter,
   applyTypedLocalFilterValue,
   clearLocalFilter,
-  rowMatchesLocalColumnFilters,
 } = localColumnFilterRuntime;
 
 function guardHeaderPanelDismiss() {
@@ -4405,7 +4404,9 @@ const displayRowRefs = computed<DisplayRowRef[]>(() => {
     } else {
       const newIndex = entry.newIndex;
       const row = newRows.value[newIndex];
-      if (!row || !rowMatchesLocalColumnFilters(row)) continue;
+      // Pending rows must remain visible while a column filter is active so
+      // users can fill in and review newly inserted records before saving.
+      if (!row) continue;
       const status: RowStatus = "new";
       if (!matchesRowStatusFilter(status, rowStatusFilter.value)) continue;
       refs.push({
