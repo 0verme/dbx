@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check, Copy, Download, Package } from "lucide-react";
+import { ArrowUpRight, Check, Copy, Download, Package, Zap } from "lucide-react";
 import { LandingNav } from "@/components/landing/LandingNav";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import type { DocsLang } from "@/lib/i18n";
@@ -31,11 +31,13 @@ const i18n = {
     permissionsCount: (count: number) => `${count} permission${count === 1 ? "" : "s"}`,
     permissionsNote: "Permission codes are granted at install time and shown verbatim from the manifest.",
     installTitle: "Install in DBX",
-    installSteps: "Open DBX and go to the Plugin Center, choose Install from URL, then paste the link for your platform. Packages are signature-checked before install.",
+    installSteps: "Click Install in DBX and confirm in the app. Prefer manual steps? Open the DBX Plugin Center, choose Install from URL, and paste the link for your platform — packages are signature-checked before install.",
+    deepLinkInstall: "Install in DBX",
+    deepLinkHint: "DBX didn't open? Copy the install URL and paste it in the Plugin Center, or download DBX first.",
+    downloadApp: "Download DBX",
     copyUrl: "Copy install URL",
     copied: "Copied",
     downloadShort: "Download",
-    detectedPlatform: "Detected platform",
     download: "Download .dbxp",
     sha256: "SHA-256",
     size: "Size",
@@ -64,11 +66,13 @@ const i18n = {
     permissionsCount: (count: number) => `${count} 项权限`,
     permissionsNote: "权限代码在安装时授予，此处按 manifest 原文展示。",
     installTitle: "在 DBX 中安装",
-    installSteps: "打开 DBX 进入插件中心，选择“从 URL 安装”，粘贴对应平台的链接即可。安装前会校验制品签名。",
+    installSteps: "点击“在 DBX 中安装”并在应用中确认即可。也可以手动安装：打开 DBX 插件中心，选择“从 URL 安装”，粘贴对应平台的链接——安装前会校验制品签名。",
+    deepLinkInstall: "在 DBX 中安装",
+    deepLinkHint: "没有唤起 DBX？可复制安装 URL 到插件中心手动安装，或先下载安装 DBX。",
+    downloadApp: "下载 DBX",
     copyUrl: "复制安装 URL",
     copied: "已复制",
     downloadShort: "下载",
-    detectedPlatform: "检测到的平台",
     download: "下载 .dbxp",
     sha256: "SHA-256",
     size: "大小",
@@ -116,6 +120,7 @@ export function PluginDetailClient({
   const [status, setStatus] = useState<"loading" | "ready" | "missing">(initialPlugin ? "ready" : "loading");
   const [platformId, setPlatformId] = useState<DownloadPlatformId>("unknown");
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [deepLinkMissed, setDeepLinkMissed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const t = i18n[lang];
 
@@ -168,6 +173,27 @@ export function PluginDetailClient({
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 2000);
     }
+  }
+
+  // The deep link navigates away via the anchor itself; if the scheme launches
+  // (or even just shows the browser's "open app?" prompt) the window loses
+  // focus or hides. If neither happens, surface the manual-install fallback.
+  function handleDeepLinkInstall() {
+    setDeepLinkMissed(false);
+    let launched = false;
+    const markLaunched = () => {
+      launched = true;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") markLaunched();
+    };
+    window.addEventListener("blur", markLaunched, { once: true });
+    document.addEventListener("visibilitychange", onVisibility);
+    window.setTimeout(() => {
+      window.removeEventListener("blur", markLaunched);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (!launched) setDeepLinkMissed(true);
+    }, 2500);
   }
 
   return (
@@ -275,21 +301,33 @@ export function PluginDetailClient({
                     <h2 className="text-xl font-[720]">{t.installTitle}</h2>
                     <p className="mt-2 max-w-[640px] text-sm leading-[1.7] text-landing-muted">{t.installSteps}</p>
                     {preferredArtifact ? (
-                      <div className="mt-4 flex flex-wrap items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={handleCopy}
-                          className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#f0f1f4] px-4 text-[13px] font-[720] text-[#0a0b0e] transition hover:bg-white"
-                        >
-                          {copyState === "copied" ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
-                          {copyState === "copied" ? t.copied : t.copyUrl}
-                        </button>
-                        <a href={preferredArtifact.url} className="inline-flex h-10 items-center rounded-lg border border-landing-line px-4 text-[13px] font-[650] text-landing-muted transition-colors hover:border-landing-blue hover:text-landing-ink">
-                          {t.download}
-                        </a>
-                        <span className="text-[12px] text-landing-muted">
-                          {t.detectedPlatform}: {pluginTargetLabel(preferredArtifact.target, lang)} · {formatPluginSize(preferredArtifact.size)}
-                        </span>
+                      <div className="mt-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <a
+                            href={`dbx://plugins/install?url=${encodeURIComponent(preferredArtifact.url)}`}
+                            onClick={handleDeepLinkInstall}
+                            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#f0f1f4] px-4 text-[13px] font-[720] text-[#0a0b0e] transition hover:bg-white"
+                          >
+                            <Zap size={15} aria-hidden="true" />
+                            {t.deepLinkInstall}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={handleCopy}
+                            className="inline-flex h-10 items-center gap-2 rounded-lg border border-landing-line px-4 text-[13px] font-[650] text-landing-muted transition-colors hover:border-landing-blue hover:text-landing-ink"
+                          >
+                            {copyState === "copied" ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+                            {copyState === "copied" ? t.copied : t.copyUrl}
+                          </button>
+                        </div>
+                        {deepLinkMissed ? (
+                          <p className="mt-3 text-[12px] leading-[1.7] text-landing-muted">
+                            {t.deepLinkHint}{" "}
+                            <Link href={`/${lang}`} prefetch={false} className="text-landing-blue transition-colors hover:text-landing-sky">
+                              {t.downloadApp}
+                            </Link>
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
