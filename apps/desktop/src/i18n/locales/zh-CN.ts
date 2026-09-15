@@ -3197,6 +3197,11 @@ export default withEnglishFallback({
     conversationRoleAssistant: "AI",
     conversationFailedMarker: "此回复生成失败",
     conversationExportEmpty: "暂无可导出的消息",
+    renameConversation: "重命名会话",
+    conversationRenameFailed: "会话重命名失败",
+    clearDatabaseSelection: "清空选择",
+    searchDatabases: "搜索数据库…",
+    noDatabasesFound: "未找到数据库",
   },
   contextMenu: {
     openConnection: "打开连接",

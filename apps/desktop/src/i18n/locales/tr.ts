@@ -3123,6 +3123,11 @@ export default withEnglishFallback({
     conversationRoleAssistant: "AI",
     conversationFailedMarker: "Bu yanıt oluşturulamadı",
     conversationExportEmpty: "Dışa aktarılacak mesaj yok",
+    renameConversation: "Rename conversation",
+    conversationRenameFailed: "Failed to rename conversation",
+    clearDatabaseSelection: "Clear selection",
+    searchDatabases: "Veritabanlarında ara…",
+    noDatabasesFound: "Veritabanı bulunamadı",
   },
   contextMenu: {
     openConnection: "Bağlantıyı Aç",

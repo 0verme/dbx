@@ -3076,6 +3076,11 @@ export default withEnglishFallback({
     conversationRoleAssistant: "AI",
     conversationFailedMarker: "이 응답 생성에 실패했습니다",
     conversationExportEmpty: "내보낼 메시지가 없습니다",
+    renameConversation: "Rename conversation",
+    conversationRenameFailed: "Failed to rename conversation",
+    clearDatabaseSelection: "Clear selection",
+    searchDatabases: "데이터베이스 검색…",
+    noDatabasesFound: "데이터베이스를 찾을 수 없습니다",
   },
   contextMenu: {
     openConnection: "연결 열기",

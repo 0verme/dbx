@@ -3097,6 +3097,11 @@ export default withEnglishFallback({
     conversationRoleAssistant: "AI",
     conversationFailedMarker: "この返信の生成に失敗しました",
     conversationExportEmpty: "エクスポートできるメッセージがありません",
+    renameConversation: "Rename conversation",
+    conversationRenameFailed: "Failed to rename conversation",
+    clearDatabaseSelection: "Clear selection",
+    searchDatabases: "データベースを検索…",
+    noDatabasesFound: "データベースが見つかりません",
     agentSteps: {
       generated: "SQL生成完了",
       noSql: "SQLが見つかりません",

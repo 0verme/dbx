@@ -323,6 +323,10 @@ const conversationSearchInput = ref<HTMLInputElement | null>(null);
 const conversationSearchIndex = computed(() => buildAiConversationSearchIndex(conversations.value));
 const filteredConversations = computed(() => filterAiConversationSearchIndex(conversationSearchIndex.value, conversationSearchQuery.value));
 const showConversationList = ref(false);
+const renamingConversationId = ref<string | null>(null);
+const renamingConversationTitle = ref("");
+const renamingConversationInput = ref<HTMLInputElement | null>(null);
+const renamedConversationTitles = reactive(new Map<string, string>());
 const showTemplateSelector = ref(false);
 const modeActionOpen = ref(false);
 // A normal-send FIFO run recovered at startup as an editable pending draft.
@@ -1407,6 +1411,12 @@ const dbSelectOptions = computed(() => {
 // AI can inspect more than the tab's active database. Keep this selection local
 // to the composer so changing the visible query tab does not rewrite SQL state.
 const selectedDatabases = ref<string[]>([]);
+const databaseSearchQuery = ref("");
+const filteredDbSelectOptions = computed(() => {
+  const query = databaseSearchQuery.value.trim().toLowerCase();
+  if (!query) return dbSelectOptions.value;
+  return dbSelectOptions.value.filter((option) => option.label.toLowerCase().includes(query) || option.database.toLowerCase().includes(query));
+});
 
 const selectedDatabaseValues = computed(() => new Set(selectedDatabases.value));
 const selectedDatabaseLabel = computed(() => {
@@ -3835,9 +3845,10 @@ function clearAttachmentDraftState() {
 function buildConversationSnapshot(targetConversationId: string, targetMessages: ChatMessage[], connectionName: string, database: string, createdAt = new Date().toISOString()): AiConversation | null {
   if (!targetConversationId || !targetMessages.length) return null;
   const first = targetMessages.find((m) => m.role === "user" && m.kind !== "contextSummary");
+  const existingConversation = conversations.value.find((conversation) => conversation.id === targetConversationId);
   return {
     id: targetConversationId,
-    title: first ? messageTitle(first).slice(0, 50) : "Untitled",
+    title: renamedConversationTitles.get(targetConversationId) || existingConversation?.title || (first ? messageTitle(first).slice(0, 50) : "Untitled"),
     connectionName,
     database,
     messages: targetMessages.map((m) => ({
@@ -3989,6 +4000,38 @@ async function setConversationListOpen(open: boolean) {
     await nextTick();
     conversationSearchInput.value?.focus();
     conversations.value = await loadAiConversations().catch(() => []);
+  }
+}
+
+async function startRenameConversation(conv: AiConversation) {
+  renamingConversationId.value = conv.id;
+  renamingConversationTitle.value = conv.title;
+  await nextTick();
+  renamingConversationInput.value?.focus();
+  renamingConversationInput.value?.select();
+}
+function cancelRenameConversation() {
+  renamingConversationId.value = null;
+  renamingConversationTitle.value = "";
+}
+async function commitRenameConversation(conv: AiConversation) {
+  const title = renamingConversationTitle.value.trim().slice(0, 50);
+  if (!title || title === conv.title) return cancelRenameConversation();
+  try {
+    const activeRun = desktopAiRun<ChatMessage>(conv.id);
+    if (activeRun) await runSnapshotScheduler.save(activeRun);
+    const latestConversation = conversations.value.find((item) => item.id === conv.id) ?? conv;
+    const updated = { ...latestConversation, title, updatedAt: new Date().toISOString() };
+    // Claim the title before the async save so a throttled snapshot firing
+    // during the await window cannot persist the previous title over it.
+    renamedConversationTitles.set(conv.id, title);
+    await saveAiConversation(updated);
+    const i = conversations.value.findIndex((item) => item.id === conv.id);
+    if (i >= 0) conversations.value[i] = updated;
+  } catch {
+    toast(t("ai.conversationRenameFailed"), 5000);
+  } finally {
+    cancelRenameConversation();
   }
 }
 
@@ -4580,7 +4623,22 @@ async function openExternalUrl(url: string) {
           </div>
           <div v-else class="max-h-64 overflow-auto p-1">
             <div v-for="conv in filteredConversations" :key="conv.id" class="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted" :class="{ 'bg-muted': conv.id === conversationId }" @click="selectConversation(conv)">
-              <span class="min-w-0 flex-1 truncate" :title="conv.title">{{ conv.title }}</span>
+              <input
+                v-if="renamingConversationId === conv.id"
+                :ref="
+                  (element) => {
+                    renamingConversationInput = element as HTMLInputElement | null;
+                  }
+                "
+                v-model="renamingConversationTitle"
+                class="min-w-0 flex-1 rounded border bg-background px-1 py-0.5 text-xs"
+                @click.stop
+                @keydown.enter.stop.prevent="commitRenameConversation(conv)"
+                @keydown.esc.stop.prevent="cancelRenameConversation"
+                @blur="commitRenameConversation(conv)"
+              />
+              <span v-else class="min-w-0 flex-1 truncate" :title="conv.title">{{ conv.title }}</span>
+              <button v-if="renamingConversationId !== conv.id" type="button" class="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground" :title="t('ai.renameConversation')" @click.stop="startRenameConversation(conv)"><Pencil class="h-3 w-3" /></button>
               <span v-if="conversationRowDetail(conv).hasQueuedInput" class="shrink-0 rounded border border-primary/40 bg-primary/10 px-1 py-px text-[10px] text-primary" :aria-label="t('ai.rowQueuedInput')" :title="t('ai.rowQueuedInput')">{{ t("ai.rowQueuedInput") }}</span>
               <span v-if="conversationRowDetail(conv).status === 'preparing' || conversationRowDetail(conv).status === 'running'" class="flex min-w-0 shrink-0 items-center gap-1 text-muted-foreground" :aria-label="t('ai.runStatusRunning')" :title="t('ai.runStatusRunning')">
                 <Loader2 class="h-3 w-3 shrink-0 animate-spin" />
@@ -5011,11 +5069,18 @@ async function openExternalUrl(url: string) {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="start" class="w-64 p-1">
-                    <button v-for="option in dbSelectOptions" :key="option.value" type="button" class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted" @click="toggleDatabase(option.database)">
-                      <Check :class="['h-4 w-4', selectedDatabaseValues.has(option.database) ? 'opacity-100' : 'opacity-0']" />
-                      <span class="truncate">{{ option.label }}</span>
-                    </button>
-                    <div v-if="!dbSelectOptions.length" class="px-2 py-1.5 text-sm text-muted-foreground">{{ t("editor.selectDatabase") }}</div>
+                    <div class="relative mb-1 flex items-center border-b px-2 py-1">
+                      <Search class="pointer-events-none absolute left-3 h-3 w-3 text-muted-foreground" />
+                      <input v-model="databaseSearchQuery" type="search" class="h-6 w-full bg-transparent pl-5 text-xs outline-none placeholder:text-muted-foreground" :placeholder="t('ai.searchDatabases')" />
+                    </div>
+                    <button v-if="selectedDatabases.length > 1" type="button" class="mb-1 flex w-full items-center justify-end gap-1 border-b px-2 py-1 text-xs" @click.stop="selectedDatabases = []"><X class="h-3 w-3" />{{ t("ai.clearDatabaseSelection") }}</button>
+                    <div class="max-h-64 overflow-y-auto overscroll-contain">
+                      <button v-for="option in filteredDbSelectOptions" :key="option.value" type="button" class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted" @click="toggleDatabase(option.database)">
+                        <Check :class="['h-4 w-4', selectedDatabaseValues.has(option.database) ? 'opacity-100' : 'opacity-0']" />
+                        <span class="truncate">{{ option.label }}</span>
+                      </button>
+                      <div v-if="!filteredDbSelectOptions.length" class="px-2 py-1.5 text-sm text-muted-foreground">{{ t("ai.noDatabasesFound") }}</div>
+                    </div>
                   </PopoverContent>
                 </Popover>
                 <template v-if="showAiSchemaSelector">
