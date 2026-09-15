@@ -52,6 +52,22 @@ export function listingRepositoryCanVerify(repository: PluginRepository): boolea
   return repository.kind === "official" || repository.kind === "enterprise";
 }
 
+const INSTALL_BEACON_URL = "https://dbxio.com/api/plugins/install";
+
+// Fire-and-forget install beacon for marketplace statistics; never blocks or fails the install.
+export function beaconPluginInstall(pluginId: string, version: string): void {
+  try {
+    void fetch(INSTALL_BEACON_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ id: pluginId, version }),
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // Statistics are best-effort.
+  }
+}
+
 export function filterMarketplacePluginListings(listings: readonly MarketplacePluginListing[], query: string, repositoryId: string): MarketplacePluginListing[] {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   return listings.filter((listing) => {

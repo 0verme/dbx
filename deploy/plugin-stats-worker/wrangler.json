@@ -1,0 +1,15 @@
+{
+  "name": "dbx-plugin-stats",
+  "compatibility_date": "2026-05-07",
+  "main": "worker.ts",
+  "routes": [
+    { "pattern": "dl.dbxio.com/plugins/*", "zone_name": "dbxio.com" },
+    { "pattern": "dbxio.com/api/plugins/*", "zone_name": "dbxio.com" }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "PLUGIN_STATS",
+      "id": "483dcc36cd3c4da5af5cdbb4532166f2"
+    }
+  ]
+}

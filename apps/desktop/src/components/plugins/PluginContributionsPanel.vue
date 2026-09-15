@@ -15,7 +15,7 @@ import { clearPluginIconCache } from "@/lib/plugins/pluginIconResolver";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { physicalDropPositionInsideRect } from "@/lib/ai/aiAttachments";
 import { createFrontendPluginRegistry, pluginConnectionProviderIcon } from "@/lib/plugins/frontendPlugin";
-import { buildMarketplacePluginListings, filterMarketplacePluginListings, listingRepositoryCanVerify, type MarketplacePluginListing } from "@/lib/plugins/pluginMarketplace";
+import { beaconPluginInstall, buildMarketplacePluginListings, filterMarketplacePluginListings, listingRepositoryCanVerify, type MarketplacePluginListing } from "@/lib/plugins/pluginMarketplace";
 import { formatBytes } from "@/lib/database/serverMetrics";
 import type { PluginCenterFocus } from "@/lib/plugins/pluginCenterNavigation";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -173,6 +173,7 @@ async function installMarketplaceListing(listing: MarketplacePluginListing) {
       version: listing.plugin.latestVersion,
     });
     toast(t(listing.status === "update" ? "pluginPlatform.updateSuccess" : "pluginPlatform.installSuccess", { name: result.plugin.manifest.name, version: result.plugin.manifest.version }));
+    beaconPluginInstall(listing.plugin.id, listing.plugin.latestVersion);
     installedPlugins.value = await api.listPlugins();
     selectPlugin(result.plugin.manifest.id);
   } catch (cause) {
