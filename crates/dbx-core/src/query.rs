@@ -2073,6 +2073,7 @@ async fn do_execute_typed(
             let cancel_context = state.get_postgres_cancel_context(pool_key).await;
             let result = execute_postgres_pool_statement(
                 &p,
+                pool_db_type,
                 schema.as_deref(),
                 sql,
                 max_rows,
@@ -2092,6 +2093,7 @@ async fn do_execute_typed(
                     );
                     execute_postgres_pool_statement(
                         &p,
+                        pool_db_type,
                         schema.as_deref(),
                         &fallback_sql,
                         max_rows,
@@ -2574,6 +2576,7 @@ fn postgres_preview_fallback_retry_sql(options: &QueryExecutionOptions, error: &
 #[allow(clippy::too_many_arguments)]
 async fn execute_postgres_pool_statement(
     pool: &deadpool_postgres::Pool,
+    db_type: Option<DatabaseType>,
     schema: Option<&str>,
     sql: &str,
     max_rows: Option<usize>,
@@ -2597,6 +2600,7 @@ async fn execute_postgres_pool_statement(
     } else if let Some(schema) = schema {
         db::postgres::execute_query_with_schema_and_max_rows_and_cancel(
             pool,
+            db_type,
             schema,
             sql,
             max_rows,
@@ -4747,7 +4751,7 @@ pub async fn execute_statements_in_transaction_on_pool_typed(
     let result = match path {
         Some(BatchTransactionPath::Pg(pool)) => {
             let cancel_context = state.get_postgres_cancel_context(pool_key).await;
-            exec_tx_pg_inner(pool, statements, schema, start, operation_budget.clone(), cancel_context).await
+            exec_tx_pg_inner(pool, db_type, statements, schema, start, operation_budget.clone(), cancel_context).await
         }
         Some(BatchTransactionPath::Mysql(pool)) => exec_tx_mysql_inner(
             state,
@@ -4870,6 +4874,7 @@ fn batch_transaction_path(pool: &PoolKind) -> BatchTransactionPath {
 
 async fn exec_tx_pg_inner(
     pool: deadpool_postgres::Pool,
+    db_type: Option<DatabaseType>,
     statements: &[String],
     schema: Option<&str>,
     start: std::time::Instant,
@@ -4892,11 +4897,11 @@ async fn exec_tx_pg_inner(
     }
     let tx_result = exec_tx_pg_statements(&mut client, statements, &budget, cancel_context).await;
 
-    // Always reset search_path so the connection is clean when returned to the pool
+    // GaussDB/openGauss reject PostgreSQL's RESET search_path syntax.
     let reset_result = if had_schema {
         db::postgres::execute_postgres_infra_statement(
             &client,
-            "RESET search_path",
+            db::postgres::reset_search_path_sql(db_type),
             budget.cleanup_timeout,
             "schema.reset",
         )
