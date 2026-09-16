@@ -841,6 +841,23 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
 const editEditorSettingsBase = ref<EditorSettingsDraft>(editorSettingsDraftFromSettings(settingsStore.editorSettings));
 const hasEditorDraftChanges = computed(() => editorSettingsDraftChanged(currentEditorSettingsDraft(), editEditorSettingsBase.value));
 
+// Defaults can also be changed from the result-grid menu while this dialog is
+// open. Refresh untouched draft fields so both entry points stay consistent,
+// without overwriting an edit the user is actively making here.
+watch(
+  () => [settingsStore.editorSettings.pageSize, settingsStore.editorSettings.tableOpenPageSize] as const,
+  ([pageSize, tableOpenPageSize]) => {
+    if (editPageSize.value === editEditorSettingsBase.value.pageSize) {
+      editPageSize.value = pageSize;
+      editEditorSettingsBase.value.pageSize = pageSize;
+    }
+    if (editTableOpenPageSize.value === editEditorSettingsBase.value.tableOpenPageSize) {
+      editTableOpenPageSize.value = tableOpenPageSize;
+      editEditorSettingsBase.value.tableOpenPageSize = tableOpenPageSize;
+    }
+  },
+);
+
 // --- Background image draft state ---
 function cloneBackgroundImageDraft(settings: BackgroundImageSettings): BackgroundImageSettings {
   return JSON.parse(JSON.stringify(settings)) as BackgroundImageSettings;
