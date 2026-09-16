@@ -1,7 +1,7 @@
 import http from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
-import { readFile, realpath, watch } from "node:fs/promises";
-import { resolve, relative, isAbsolute, sep } from "node:path";
+import { readFile, realpath, watch, mkdir, writeFile, rename } from "node:fs/promises";
+import { resolve, relative, isAbsolute, sep, join } from "node:path";
 import semver from "semver";
 import { Sidecar, protocolName } from "./sidecar.mjs";
 import { ConnectionStore, lifecyclePayload, providerFor, summary, validateRecord } from "./connections.mjs";
@@ -84,7 +84,25 @@ export async function createMockHost(options) {
     lifecycleQueue = task.catch(() => {});
     return task;
   };
-  let autoReload = false;
+  // Developer preferences such as auto-reload outlive a dev host restart;
+  // persist them next to the connection store with the same atomic pattern.
+  const settingsDirectory = resolve(options.dataDir),
+    settingsFile = join(settingsDirectory, "settings.json");
+  const readSettings = async () => {
+    try {
+      const parsed = JSON.parse(await readFile(settingsFile, "utf8"));
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const writeSettings = async (settings) => {
+    await mkdir(settingsDirectory, { recursive: true, mode: 0o700 });
+    const temporary = join(settingsDirectory, `.settings-${randomUUID()}.tmp`);
+    await writeFile(temporary, JSON.stringify({ version: 1, ...settings }, null, 2), { mode: 0o600, flag: "wx" });
+    await rename(temporary, settingsFile);
+  };
+  let autoReload = (await readSettings()).autoReload === true;
   const backendReload = new AutoReload(async () => {
     try {
       await serialize(async () => {
@@ -94,6 +112,7 @@ export async function createMockHost(options) {
       broadcast("auto-reload-error", {});
     }
   });
+  backendReload.enable(autoReload);
   const broadcast = (type, payload) => {
     const message = `data: ${JSON.stringify({ type, ...payload })}\n\n`;
     for (const stream of streams) {
@@ -250,6 +269,11 @@ export async function createMockHost(options) {
           if (typeof p.enabled !== "boolean") throw new Error("Invalid automatic reload setting");
           autoReload = p.enabled;
           backendReload.enable(autoReload);
+          try {
+            await writeSettings({ autoReload });
+          } catch (error) {
+            diagnostics.record("error", "build", "自动重载设置保存失败", { reason: String(error.message || error) });
+          }
           broadcast("auto-reload", { enabled: autoReload });
           diagnostics.record("info", "build", autoReload ? "自动重载已启用" : "自动重载已关闭");
           return { enabled: autoReload };
