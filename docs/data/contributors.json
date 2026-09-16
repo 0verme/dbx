@@ -1,34 +1,34 @@
 {
   "repository": "t8y2/dbx",
-  "generatedAt": "2026-09-16T15:12:28.458Z",
-  "stars": 19757,
+  "generatedAt": "2026-09-16T18:11:39.837Z",
+  "stars": 19771,
   "contributors": [
     {
       "login": "t8y2",
       "avatarUrl": "https://avatars.githubusercontent.com/u/77960507?v=4",
       "profileUrl": "https://github.com/t8y2",
-      "commits": 3586,
-      "mergedPullRequests": 28,
+      "commits": 3594,
+      "mergedPullRequests": 31,
       "firstContributionAt": "2026-04-30T08:14:51Z",
-      "latestContributionAt": "2026-09-13T02:39:18Z"
+      "latestContributionAt": "2026-09-16T17:38:01Z"
     },
     {
       "login": "zipg",
       "avatarUrl": "https://avatars.githubusercontent.com/u/4047349?v=4",
       "profileUrl": "https://github.com/zipg",
-      "commits": 803,
-      "mergedPullRequests": 804,
+      "commits": 809,
+      "mergedPullRequests": 808,
       "firstContributionAt": "2026-06-22T06:10:59Z",
-      "latestContributionAt": "2026-09-16T14:41:36Z"
+      "latestContributionAt": "2026-09-16T17:38:14Z"
     },
     {
       "login": "eryajf",
       "avatarUrl": "https://avatars.githubusercontent.com/u/33259379?v=4",
       "profileUrl": "https://github.com/eryajf",
-      "commits": 264,
-      "mergedPullRequests": 264,
+      "commits": 266,
+      "mergedPullRequests": 266,
       "firstContributionAt": "2026-06-08T11:45:45Z",
-      "latestContributionAt": "2026-09-16T13:25:01Z"
+      "latestContributionAt": "2026-09-16T15:50:19Z"
     },
     {
       "login": "q396921921",
@@ -697,6 +697,15 @@
       "latestContributionAt": "2026-08-13T14:31:14Z"
     },
     {
+      "login": "HandSonic",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/8078023?v=4",
+      "profileUrl": "https://github.com/HandSonic",
+      "commits": 4,
+      "mergedPullRequests": 4,
+      "firstContributionAt": "2026-07-13T23:36:43Z",
+      "latestContributionAt": "2026-09-16T16:36:12Z"
+    },
+    {
       "login": "James-Leong",
       "avatarUrl": "https://avatars.githubusercontent.com/u/109658865?v=4",
       "profileUrl": "https://github.com/James-Leong",
@@ -983,15 +992,6 @@
       "mergedPullRequests": 2,
       "firstContributionAt": "2026-05-28T11:02:25Z",
       "latestContributionAt": "2026-05-29T04:31:05Z"
-    },
-    {
-      "login": "HandSonic",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/8078023?v=4",
-      "profileUrl": "https://github.com/HandSonic",
-      "commits": 2,
-      "mergedPullRequests": 3,
-      "firstContributionAt": "2026-07-13T23:36:43Z",
-      "latestContributionAt": "2026-09-16T14:46:49Z"
     },
     {
       "login": "ahua8522",
