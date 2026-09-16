@@ -3527,7 +3527,7 @@ export const useQueryStore = defineStore("query", () => {
           connectionId,
           providerId,
           connectionType: connection.plugin_connection_type,
-          workbenchId: crypto.randomUUID(),
+          workbenchId: uuid(),
           connection: {
             id: connection.id,
             name: connection.name,

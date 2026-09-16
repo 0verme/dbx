@@ -7,6 +7,7 @@ import type { UpdateDownloadSource as SettingsUpdateDownloadSource } from "@/sto
 import type { UpdateDownloadProgress } from "@/lib/backend/tauri";
 import { currentLocale } from "@/i18n";
 import { shouldBlockAppUpdate } from "@/lib/app/appUpdateTaskGuard";
+import { uuid } from "@/lib/common/utils";
 
 interface UseAppUpdaterOptions {
   getActiveTaskCount?: () => number;
@@ -266,7 +267,7 @@ export function useAppUpdater(options: UseAppUpdaterOptions = {}) {
     automaticDownload = automatic;
     const version = updateInfo.value!.latest_version;
     const token = ++generation;
-    const attemptId = crypto.randomUUID();
+    const attemptId = uuid();
     phase.value = "downloading";
     downloadProgress.value = null;
     clearError();

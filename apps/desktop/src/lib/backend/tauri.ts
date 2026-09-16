@@ -778,6 +778,7 @@ export async function saveMaxRetries(maxRetries: number): Promise<void> {
 
 export type { OpenTabsStatePayload, PersistedEditorGroup } from "@/lib/app/openTabsPersistence";
 import type { OpenTabsStatePayload } from "@/lib/app/openTabsPersistence";
+import { uuid } from "@/lib/common/utils";
 
 export async function loadEditorSettings(): Promise<unknown | null> {
   return invoke("load_editor_settings");
@@ -1609,7 +1610,7 @@ export async function executeMultiWithProgress(
     executionId?: string;
   },
 ): Promise<QueryResult[]> {
-  const executionId = options?.executionId ?? crypto.randomUUID();
+  const executionId = options?.executionId ?? uuid();
   const { executionId: _executionId, ...invokeOptions } = options ?? {};
   const unlisten = await listen<ExecuteMultiProgress>("query-batch-progress", (event) => {
     if (event.payload.executionId === executionId) onProgress(event.payload);
