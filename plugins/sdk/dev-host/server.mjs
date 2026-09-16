@@ -40,11 +40,16 @@ function localDocumentAssetPath(url, entry) {
 export async function createMockHost(options) {
   const diagnostics = options.diagnostics || new Diagnostics();
   const project = resolve(options.project),
-    manifest = JSON.parse(await readFile(resolve(project, "manifest.json"), "utf8"));
-  for (const contribution of manifest.contributions || [])
-    for (const field of contribution.fields || []) {
-      if (field.type === "password" || ["password", "secret"].includes(field.binding)) diagnostics.secretKeys.add(field.key);
-    }
+    manifestPath = resolve(project, "manifest.json");
+  let manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const refreshSecretKeys = () => {
+    diagnostics.secretKeys.clear();
+    for (const contribution of manifest.contributions || [])
+      for (const field of contribution.fields || []) {
+        if (field.type === "password" || ["password", "secret"].includes(field.binding)) diagnostics.secretKeys.add(field.key);
+      }
+  };
+  refreshSecretKeys();
   if (manifest.manifest_version !== undefined && manifest.manifest_version !== 1) throw new Error("Unsupported manifest version");
   // DBX uses Rust semver requirements, whose comparator separators include commas.
   if (manifest.engines?.host_api && !semver.satisfies("1.0.0", manifest.engines.host_api.replaceAll(",", " "))) throw new Error("Plugin does not support Host API 1.0.0");
@@ -62,7 +67,7 @@ export async function createMockHost(options) {
     throw new Error("Development data directory must be outside the UI resource root");
   }
   if (backendEntry && !options.backend) throw new Error("Backend executable is required");
-  const sidecar = new Sidecar({ executable: backendEntry ? resolve(project, options.backend) : undefined, args: options.backendArgs || [], cwd: project, manifest, transport });
+  const sidecar = new Sidecar({ executable: backendEntry ? resolve(project, options.backend) : undefined, args: options.backendArgs || [], cwd: project, manifest, manifestPath, transport });
   const connected = new Set(),
     frames = new Map(),
     sessions = new Map(),
@@ -497,6 +502,33 @@ export async function createMockHost(options) {
         }
       }
     })();
+  // manifest.json lives at the project root, outside the backend watch tree,
+  // yet edits (version bumps, field changes) must reach this running host —
+  // the sidecar identity check compares against this in-memory copy.
+  let manifestDebounce;
+  void (async () => {
+    try {
+      for await (const event of watch(project, { signal: watchStop.signal })) {
+        if (String(event.filename || "").replaceAll("\\", "/") !== "manifest.json") continue;
+        clearTimeout(manifestDebounce);
+        manifestDebounce = setTimeout(async () => {
+          try {
+            const fresh = JSON.parse(await readFile(manifestPath, "utf8"));
+            if (typeof fresh?.id !== "string" || typeof fresh?.version !== "string") throw new Error("Invalid manifest identity");
+            if (fresh.manifest_version !== undefined && fresh.manifest_version !== 1) throw new Error("Unsupported manifest version");
+            manifest = fresh;
+            sidecar.manifest = fresh;
+            refreshSecretKeys();
+            diagnostics.record("info", "build", "manifest.json 已重新加载", { version: fresh.version });
+          } catch (error) {
+            diagnostics.record("error", "build", "manifest.json 重新加载失败", { reason: String(error.message || error) });
+          }
+        }, 200);
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") diagnostics.record("error", "build", "manifest 监听已停止");
+    }
+  })();
   let debounce;
   void (async () => {
     try {

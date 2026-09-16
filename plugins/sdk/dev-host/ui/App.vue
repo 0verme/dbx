@@ -454,7 +454,19 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="relative min-h-0 flex-1">
-          <iframe v-for="f in frames" v-show="active === f.id" :key="f.id" :ref="(el) => (el ? windows.set(f.id, el) : windows.delete(f.id))" :srcdoc="f.html" sandbox="allow-scripts" allow="clipboard-write" referrerpolicy="no-referrer" :title="frameName(f)" class="absolute inset-0" @load="init(f)" />
+          <iframe
+            v-for="f in frames"
+            v-show="active === f.id"
+            :key="f.id"
+            :ref="(el) => (el ? windows.set(f.id, el) : windows.delete(f.id))"
+            :srcdoc="f.html"
+            sandbox="allow-scripts"
+            allow="clipboard-write"
+            referrerpolicy="no-referrer"
+            :title="frameName(f)"
+            class="absolute inset-0"
+            @load="init(f)"
+          />
           <div v-if="!frames.length" class="grid h-full place-items-center text-sm text-base-content/50">
             <div class="flex items-center gap-2"><Settings2 :size="18" />{{ t("尚未打开工作台") }}</div>
           </div>
