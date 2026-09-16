@@ -257,7 +257,9 @@ function removeFrames(connectionId) {
 }
 async function closeFrame(frame) {
   await run(async () => {
-    if (!(await ask("关闭此页面？未保存修改将丢失；最后一个关联页面关闭后会断开连接。"))) return;
+    // Closing a debug page is cheap — the plugin UI is stateless and rebuilds
+    // on reopen — so it closes immediately instead of behind a modal that
+    // locks the whole shell until answered.
     connections.value = (await api("frames/close", { id: frame.id })).connections;
     windows.delete(frame.id);
     frames.value = frames.value.filter((f) => f.id !== frame.id);
