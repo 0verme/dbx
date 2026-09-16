@@ -304,6 +304,22 @@ async function onMessage(event) {
   }
   if (m.type !== "request") return;
   const channel = f.channel;
+  // The sandboxed plugin iframe cannot write the clipboard; the debug page is
+  // a normal top-level document, so it performs the copy like the DBX host.
+  if (m.method === "host.copy") {
+    const text = m.params?.text;
+    if (typeof text !== "string" || !text) {
+      post(f, { type: "response", id: m.id, error: { message: "host.copy requires text" } });
+      return;
+    }
+    if (text.length > 2 * 1024 * 1024) {
+      post(f, { type: "response", id: m.id, error: { message: "Plugin copy payload exceeds 2097152 characters" } });
+      return;
+    }
+    const ok = await copyTextToClipboard(text);
+    post(f, ok ? { type: "response", id: m.id, result: { success: true } } : { type: "response", id: m.id, error: { message: "Host clipboard is unavailable" } });
+    return;
+  }
   try {
     const result = await api("bridge", { frameId: f.id, channel, method: m.method, params: m.params });
     if (f.channel !== channel || !windows.has(f.id)) return;
@@ -314,6 +330,29 @@ async function onMessage(event) {
   } catch (e) {
     if (f.channel === channel) post(f, { type: "response", id: m.id, error: { message: e.message, code: e.code, data: e.data } });
   }
+}
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Fall through to the legacy path for engines without the async API.
+  }
+  const helper = document.createElement("textarea");
+  helper.value = text;
+  helper.setAttribute("readonly", "");
+  helper.style.position = "fixed";
+  helper.style.opacity = "0";
+  document.body.appendChild(helper);
+  helper.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  helper.remove();
+  return ok;
 }
 onMounted(async () => {
   window.addEventListener("message", onMessage);
@@ -415,7 +454,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="relative min-h-0 flex-1">
-          <iframe v-for="f in frames" v-show="active === f.id" :key="f.id" :ref="(el) => (el ? windows.set(f.id, el) : windows.delete(f.id))" :srcdoc="f.html" sandbox="allow-scripts" referrerpolicy="no-referrer" :title="frameName(f)" class="absolute inset-0" @load="init(f)" />
+          <iframe v-for="f in frames" v-show="active === f.id" :key="f.id" :ref="(el) => (el ? windows.set(f.id, el) : windows.delete(f.id))" :srcdoc="f.html" sandbox="allow-scripts" allow="clipboard-write" referrerpolicy="no-referrer" :title="frameName(f)" class="absolute inset-0" @load="init(f)" />
           <div v-if="!frames.length" class="grid h-full place-items-center text-sm text-base-content/50">
             <div class="flex items-center gap-2"><Settings2 :size="18" />{{ t("尚未打开工作台") }}</div>
           </div>
