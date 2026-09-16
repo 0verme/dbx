@@ -5258,6 +5258,11 @@ export default withEnglishFallback({
       start: "Importa",
       success: "Importati {count} documenti",
       stillRunning: "L'importazione è ancora in esecuzione. Usa Annulla per fermare i nuovi batch.",
+      legacyInsertUnsupported: "Questo driver MongoDB Legacy non può inserire documenti in blocco. Aggiorna o reinstalla il driver MongoDB Legacy.",
+      legacyCursorInvalid: "Il cursore di esportazione MongoDB Legacy non è più disponibile. Riprova l'esportazione.",
+      legacyExportUnsupported: "Questo driver MongoDB Legacy non supporta la conservazione dei tipi BSON durante l'esportazione. Aggiorna o reinstalla il driver MongoDB Legacy.",
+      legacyExportStalled: "Il driver MongoDB Legacy ha restituito due volte la stessa pagina di esportazione. Aggiorna o reinstalla il driver e riprova l'esportazione.",
+      legacyExportMissingId: "Il driver MongoDB Legacy ha restituito un documento senza _id, quindi l'esportazione non può impaginare in modo sicuro.",
       rowsRead: "Righe lette",
       rowsInserted: "Righe inserite",
       rowsFailed: "Righe non riuscite",
@@ -5268,6 +5273,9 @@ export default withEnglishFallback({
         writing: "Scrittura",
         done: "Completato",
       },
+    },
+    insert: {
+      partialFailure: "Il driver MongoDB Legacy ha rifiutato {failed} di {total} documenti: {message}",
     },
   },
   meilisearch: {

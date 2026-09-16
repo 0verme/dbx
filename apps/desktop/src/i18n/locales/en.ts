@@ -5558,6 +5558,11 @@ export default {
       start: "Import",
       success: "Imported {count} documents",
       stillRunning: "Import is still running. Use Cancel to stop new batches.",
+      legacyInsertUnsupported: "This MongoDB Legacy driver cannot insert documents in bulk. Upgrade or reinstall the MongoDB Legacy driver.",
+      legacyCursorInvalid: "The MongoDB Legacy export cursor is no longer available. Retry the export.",
+      legacyExportUnsupported: "This MongoDB Legacy driver cannot preserve BSON types during export. Upgrade or reinstall the MongoDB Legacy driver.",
+      legacyExportStalled: "The MongoDB Legacy driver returned the same export page twice. Upgrade or reinstall the MongoDB Legacy driver and retry the export.",
+      legacyExportMissingId: "The MongoDB Legacy driver returned a document without _id, so the export cannot page safely.",
       rowsRead: "Rows read",
       rowsInserted: "Rows inserted",
       rowsFailed: "Rows failed",
@@ -5568,6 +5573,9 @@ export default {
         writing: "Writing",
         done: "Done",
       },
+    },
+    insert: {
+      partialFailure: "The MongoDB Legacy driver rejected {failed} of {total} documents: {message}",
     },
   },
   meilisearch: {

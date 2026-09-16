@@ -4575,6 +4575,11 @@ export default withEnglishFallback({
       start: "開始匯入",
       success: "已匯入 {count} 個文件",
       stillRunning: "匯入仍在執行。如需停止後續批次，請點取消。",
+      legacyInsertUnsupported: "目前的 MongoDB Legacy 驅動程式不支援批次插入文件。請升級或重新安裝 MongoDB Legacy 驅動程式。",
+      legacyCursorInvalid: "MongoDB Legacy 匯出游標已失效，請重試匯出。",
+      legacyExportUnsupported: "目前的 MongoDB Legacy 驅動程式不支援匯出時保留 BSON 類型。請升級或重新安裝 MongoDB Legacy 驅動程式。",
+      legacyExportStalled: "MongoDB Legacy 驅動程式重複回傳了同一個匯出分頁。請升級或重新安裝 MongoDB Legacy 驅動程式後重試匯出。",
+      legacyExportMissingId: "MongoDB Legacy 驅動程式回傳了缺少 _id 的文件，匯出無法安全分頁。",
       rowsRead: "已讀取",
       rowsInserted: "已插入",
       rowsFailed: "失敗",
@@ -4591,6 +4596,9 @@ export default withEnglishFallback({
     nativeJsonHint: "BSON 值請使用 MongoDB Extended JSON，例如 $oid、$date、$numberLong。",
     invalidNativeJson: "原生 JSON 格式無效：{error}",
     nativeDocumentRequired: "原生 JSON 的最上層必須是文件物件。",
+    insert: {
+      partialFailure: "MongoDB Legacy 驅動程式拒絕了 {total} 個文件中的 {failed} 個：{message}",
+    },
   },
   meilisearch: {
     ...meilisearchManagementZhTW,

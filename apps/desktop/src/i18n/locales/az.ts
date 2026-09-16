@@ -5406,6 +5406,11 @@ export default withEnglishFallback({
       start: "İdxal et",
       success: "{count} sənəd idxal olundu",
       stillRunning: "İdxal hələ işləyir. Yeni paketləri dayandırmaq üçün Ləğv et düyməsini istifadə edin.",
+      legacyInsertUnsupported: "Bu MongoDB Legacy sürücüsü sənədləri toplu daxil edə bilmir. MongoDB Legacy sürücüsünü yeniləyin və ya yenidən quraşdırın.",
+      legacyCursorInvalid: "MongoDB Legacy ixrac kursoru artıq əlçatan deyil. İxracı yenidən cəhd edin.",
+      legacyExportUnsupported: "Bu MongoDB Legacy sürücüsü ixrac zamanı BSON tiplərini qorumağı dəstəkləmir. MongoDB Legacy sürücüsünü yeniləyin və ya yenidən quraşdırın.",
+      legacyExportStalled: "MongoDB Legacy sürücüsü eyni ixrac səhifəsini iki dəfə qaytardı. Sürücünü yeniləyin və ya yenidən quraşdırıb ixracı yenidən cəhd edin.",
+      legacyExportMissingId: "MongoDB Legacy sürücüsü _id olmayan sənəd qaytardı; ixrac təhlükəsiz şəkildə səhifələnə bilmir.",
       rowsRead: "Oxunan sətirlər",
       rowsInserted: "Əlavə olunan sətirlər",
       rowsFailed: "Uğursuz sətirlər",
@@ -5416,6 +5421,9 @@ export default withEnglishFallback({
         writing: "Yazılır",
         done: "Bitdi",
       },
+    },
+    insert: {
+      partialFailure: "MongoDB Legacy drayveri {total} sənədin {failed} hissəsini rədd etdi: {message}",
     },
   },
   meilisearch: {

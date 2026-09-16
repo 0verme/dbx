@@ -1042,6 +1042,7 @@ pub enum AgentCapability {
     MongoRunCommand,
     MongoInsertDocuments,
     MongoReplaceDocument,
+    MongoFindCursor,
     MultiSession,
     StructuredErrorV1,
 }
@@ -1124,7 +1125,7 @@ fn parse_agent_rpc_error_header(header: &str) -> (Option<i64>, String) {
 }
 
 impl AgentCapability {
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 26] = [
         Self::Connect,
         Self::TestConnection,
         Self::Metadata,
@@ -1148,6 +1149,7 @@ impl AgentCapability {
         Self::MongoRunCommand,
         Self::MongoInsertDocuments,
         Self::MongoReplaceDocument,
+        Self::MongoFindCursor,
         Self::MultiSession,
         Self::StructuredErrorV1,
     ];
@@ -1177,6 +1179,7 @@ impl AgentCapability {
             Self::MongoRunCommand => "mongo_run_command",
             Self::MongoInsertDocuments => "mongo_insert_documents",
             Self::MongoReplaceDocument => "mongo_replace_document",
+            Self::MongoFindCursor => "mongo_find_cursor",
             Self::MultiSession => "multi_session",
             Self::StructuredErrorV1 => "structured_error_v1",
         }
@@ -1383,10 +1386,13 @@ pub enum MongoAgentMethod {
     DeleteDocument,
     DeleteDocuments,
     RunCommand,
+    StartFindCursor,
+    FetchFindCursor,
+    CloseFindCursor,
 }
 
 impl MongoAgentMethod {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 26] = [
         Self::ListDatabases,
         Self::ListCollections,
         Self::FindDocuments,
@@ -1410,6 +1416,9 @@ impl MongoAgentMethod {
         Self::DeleteDocument,
         Self::DeleteDocuments,
         Self::RunCommand,
+        Self::StartFindCursor,
+        Self::FetchFindCursor,
+        Self::CloseFindCursor,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -1437,6 +1446,9 @@ impl MongoAgentMethod {
             Self::DeleteDocument => "delete_document",
             Self::DeleteDocuments => "delete_documents",
             Self::RunCommand => "run_command",
+            Self::StartFindCursor => "start_find_cursor",
+            Self::FetchFindCursor => "fetch_find_cursor",
+            Self::CloseFindCursor => "close_find_cursor",
         }
     }
 }
@@ -2795,6 +2807,27 @@ impl AgentDriverClient {
         self.call_mongo_method(MongoAgentMethod::InsertDocuments, params).await
     }
 
+    pub async fn mongo_start_find_cursor<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        params: Value,
+    ) -> Result<T, String> {
+        self.call_mongo_method(MongoAgentMethod::StartFindCursor, params).await
+    }
+
+    pub async fn mongo_fetch_find_cursor<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        params: Value,
+    ) -> Result<T, String> {
+        self.call_mongo_method(MongoAgentMethod::FetchFindCursor, params).await
+    }
+
+    pub async fn mongo_close_find_cursor<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        params: Value,
+    ) -> Result<T, String> {
+        self.call_mongo_method(MongoAgentMethod::CloseFindCursor, params).await
+    }
+
     pub async fn mongo_update_document<T: DeserializeOwned + Send + 'static>(
         &mut self,
         params: Value,
@@ -2972,6 +3005,7 @@ pub fn agent_supports_capability(handshake: Option<&AgentHandshake>, capability:
             | AgentCapability::MongoRunCommand
             | AgentCapability::MongoInsertDocuments
             | AgentCapability::MongoReplaceDocument
+            | AgentCapability::MongoFindCursor
     ) {
         return handshake.map(|value| value.supports(capability)).unwrap_or(false);
     }
@@ -5006,9 +5040,10 @@ for line in sys.stdin:
         assert_eq!(AgentCapability::MongoRunCommand.as_str(), "mongo_run_command");
         assert_eq!(AgentCapability::MongoInsertDocuments.as_str(), "mongo_insert_documents");
         assert_eq!(AgentCapability::MongoReplaceDocument.as_str(), "mongo_replace_document");
+        assert_eq!(AgentCapability::MongoFindCursor.as_str(), "mongo_find_cursor");
         assert_eq!(AgentCapability::MultiSession.as_str(), "multi_session");
         assert_eq!(AgentCapability::StructuredErrorV1.as_str(), "structured_error_v1");
-        assert_eq!(AgentCapability::ALL.len(), 25);
+        assert_eq!(AgentCapability::ALL.len(), 26);
     }
 
     #[test]
@@ -5073,6 +5108,9 @@ for line in sys.stdin:
         assert_eq!(MongoAgentMethod::ReplaceDocument.as_str(), "replace_document");
         assert_eq!(MongoAgentMethod::DeleteDocument.as_str(), "delete_document");
         assert_eq!(MongoAgentMethod::DeleteDocuments.as_str(), "delete_documents");
+        assert_eq!(MongoAgentMethod::StartFindCursor.as_str(), "start_find_cursor");
+        assert_eq!(MongoAgentMethod::FetchFindCursor.as_str(), "fetch_find_cursor");
+        assert_eq!(MongoAgentMethod::CloseFindCursor.as_str(), "close_find_cursor");
     }
 
     #[test]
@@ -5138,6 +5176,9 @@ for line in sys.stdin:
         let _mongo_clone_collection = AgentDriverClient::mongo_clone_collection::<serde_json::Value>;
         let _mongo_drop_database = AgentDriverClient::mongo_drop_database::<serde_json::Value>;
         let _mongo_insert_document = AgentDriverClient::mongo_insert_document::<serde_json::Value>;
+        let _mongo_start_find_cursor = AgentDriverClient::mongo_start_find_cursor::<serde_json::Value>;
+        let _mongo_fetch_find_cursor = AgentDriverClient::mongo_fetch_find_cursor::<serde_json::Value>;
+        let _mongo_close_find_cursor = AgentDriverClient::mongo_close_find_cursor::<serde_json::Value>;
         let _mongo_update_document = AgentDriverClient::mongo_update_document::<serde_json::Value>;
         let _mongo_update_documents = AgentDriverClient::mongo_update_documents::<serde_json::Value>;
         let _mongo_delete_document = AgentDriverClient::mongo_delete_document::<serde_json::Value>;
@@ -5389,6 +5430,8 @@ for line in sys.stdin:
         assert!(!agent_supports_capability(Some(&handshake), AgentCapability::MongoRunCommand));
         assert!(!agent_supports_capability(None, AgentCapability::MongoInsertDocuments));
         assert!(!agent_supports_capability(Some(&handshake), AgentCapability::MongoInsertDocuments));
+        assert!(!agent_supports_capability(None, AgentCapability::MongoFindCursor));
+        assert!(!agent_supports_capability(Some(&handshake), AgentCapability::MongoFindCursor));
 
         let mongo_handshake =
             AgentHandshake { capabilities: vec![AgentCapability::MongoDropDatabase.as_str().to_string()], ..handshake };
@@ -5414,6 +5457,12 @@ for line in sys.stdin:
             Some(&mongo_insert_documents_handshake),
             AgentCapability::MongoInsertDocuments
         ));
+
+        let mongo_find_cursor_handshake = AgentHandshake {
+            capabilities: vec![AgentCapability::MongoFindCursor.as_str().to_string()],
+            ..mongo_insert_documents_handshake
+        };
+        assert!(agent_supports_capability(Some(&mongo_find_cursor_handshake), AgentCapability::MongoFindCursor));
     }
 
     #[test]

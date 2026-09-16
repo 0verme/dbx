@@ -5260,6 +5260,11 @@ export default withEnglishFallback({
       start: "Importar",
       success: "Se importaron {count} documentos",
       stillRunning: "La importación sigue en curso. Use Cancelar para detener nuevos lotes.",
+      legacyInsertUnsupported: "Este controlador MongoDB Legacy no puede insertar documentos en lote. Actualice o reinstale el controlador MongoDB Legacy.",
+      legacyCursorInvalid: "El cursor de exportación de MongoDB Legacy ya no está disponible. Vuelva a intentar la exportación.",
+      legacyExportUnsupported: "Este controlador MongoDB Legacy no admite la preservación de tipos BSON al exportar. Actualice o reinstale el controlador MongoDB Legacy.",
+      legacyExportStalled: "El controlador MongoDB Legacy devolvió dos veces la misma página de exportación. Actualice o reinstale el controlador y vuelva a intentar la exportación.",
+      legacyExportMissingId: "El controlador MongoDB Legacy devolvió un documento sin _id, por lo que la exportación no puede paginar de forma segura.",
       rowsRead: "Filas leídas",
       rowsInserted: "Filas insertadas",
       rowsFailed: "Filas fallidas",
@@ -5270,6 +5275,9 @@ export default withEnglishFallback({
         writing: "Escribiendo",
         done: "Hecho",
       },
+    },
+    insert: {
+      partialFailure: "El controlador MongoDB Legacy rechazó {failed} de {total} documentos: {message}",
     },
   },
   meilisearch: {

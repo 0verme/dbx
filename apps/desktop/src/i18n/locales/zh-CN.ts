@@ -5533,6 +5533,11 @@ export default withEnglishFallback({
       start: "开始导入",
       success: "已导入 {count} 个文档",
       stillRunning: "导入仍在运行。如需停止后续批次，请点取消。",
+      legacyInsertUnsupported: "当前 MongoDB Legacy 驱动不支持批量插入文档。请升级或重新安装 MongoDB Legacy 驱动。",
+      legacyCursorInvalid: "MongoDB Legacy 导出游标已失效，请重试导出。",
+      legacyExportUnsupported: "当前 MongoDB Legacy 驱动不支持导出时保留 BSON 类型。请升级或重新安装 MongoDB Legacy 驱动。",
+      legacyExportStalled: "MongoDB Legacy 驱动返回了重复的导出分页。请升级或重新安装 MongoDB Legacy 驱动后重试导出。",
+      legacyExportMissingId: "MongoDB Legacy 驱动返回了缺少 _id 的文档，导出无法安全分页。",
       rowsRead: "已读取",
       rowsInserted: "已插入",
       rowsFailed: "失败",
@@ -5543,6 +5548,9 @@ export default withEnglishFallback({
         writing: "写入中",
         done: "完成",
       },
+    },
+    insert: {
+      partialFailure: "MongoDB Legacy 驱动拒绝了 {total} 个文档中的 {failed} 个：{message}",
     },
   },
   meilisearch: {

@@ -4895,6 +4895,11 @@ export default withEnglishFallback({
       start: "가져오기",
       success: "{count}개 문서를 가져왔습니다",
       stillRunning: "가져오기가 계속 실행 중입니다. 이후 배치를 멈추려면 취소를 사용하세요.",
+      legacyInsertUnsupported: "이 MongoDB Legacy 드라이버는 문서 일괄 삽입을 지원하지 않습니다. MongoDB Legacy 드라이버를 업그레이드하거나 다시 설치하세요.",
+      legacyCursorInvalid: "MongoDB Legacy 내보내기 커서를 더 이상 사용할 수 없습니다. 내보내기를 다시 시도하세요.",
+      legacyExportUnsupported: "이 MongoDB Legacy 드라이버는 내보내기 시 BSON 타입 유지를 지원하지 않습니다. MongoDB Legacy 드라이버를 업그레이드하거나 다시 설치하세요.",
+      legacyExportStalled: "MongoDB Legacy 드라이버가 동일한 내보내기 페이지를 두 번 반환했습니다. 드라이버를 업그레이드하거나 다시 설치한 후 다시 시도하세요.",
+      legacyExportMissingId: "MongoDB Legacy 드라이버가 _id 없는 문서를 반환해 안전하게 페이지 매김할 수 없습니다.",
       rowsRead: "읽은 행",
       rowsInserted: "삽입된 행",
       rowsFailed: "실패한 행",
@@ -4905,6 +4910,9 @@ export default withEnglishFallback({
         writing: "쓰는 중",
         done: "완료",
       },
+    },
+    insert: {
+      partialFailure: "MongoDB Legacy 드라이버가 {total}개 문서 중 {failed}개를 거부했습니다: {message}",
     },
   },
   meilisearch: {

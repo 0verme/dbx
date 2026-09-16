@@ -2649,6 +2649,41 @@ fn is_retryable_mongo_write_code(code: i32) -> bool {
     !matches!(code, 11000 | 11001 | 12582)
 }
 
+/// Reads the `insert_documents` result of a MongoDB legacy agent. The agent reports a partly
+/// applied batch as a success carrying one entry per rejected document, so callers must inspect
+/// [`MongoInsertOutcome::errors`] instead of trusting a bare affected-row count.
+pub fn agent_insert_outcome(result: &serde_json::Value) -> Result<MongoInsertOutcome, String> {
+    let inserted = result
+        .get("affected_rows")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "MongoDB Legacy Agent returned an invalid insertMany result".to_string())?;
+    let errors = result
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .map(|errors| errors.iter().map(agent_insert_error).collect())
+        .unwrap_or_default();
+    Ok(MongoInsertOutcome { inserted, errors })
+}
+
+/// One rejected document, or a batch-wide rejection the agent could not attribute to a document
+/// (a write concern failure) — those carry no index and keep [`MongoBulkWriteError::index`] `None`.
+fn agent_insert_error(value: &serde_json::Value) -> MongoBulkWriteError {
+    // A rejection is never dropped for lack of a message: dropping it would make a document the
+    // server refused look like a successful insert.
+    let message = value
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("MongoDB Legacy Agent rejected a document without a message")
+        .to_string();
+    let code = value.get("code").and_then(serde_json::Value::as_i64).map(|code| code as i32);
+    MongoBulkWriteError {
+        message,
+        index: value.get("index").and_then(serde_json::Value::as_u64).map(|index| index as usize),
+        code,
+        retryable: code.is_some_and(is_retryable_mongo_write_code),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn for_each_find_document(
     client: &Client,

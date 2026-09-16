@@ -5421,7 +5421,7 @@ async fn insert_mongo_documents_for_transfer(
     let docs_json = serde_json::to_string(documents).map_err(|e| format!("Failed to encode MongoDB documents: {e}"))?;
     match crate::mongo_ops::mongo_insert_documents_core(state, connection_id, database, collection, &docs_json).await {
         Ok(count) => Ok(count),
-        Err(error) if error.to_ascii_lowercase().contains("legacy agent") => {
+        Err(error) if crate::mongo_ops::is_legacy_agent_insert_many_unsupported(&error) => {
             let mut inserted = 0;
             for document in documents {
                 let doc_json =
@@ -5457,7 +5457,7 @@ async fn insert_mongo_documents_extended_json_for_transfer(
     .await
     {
         Ok(count) => Ok(count),
-        Err(error) if error.to_ascii_lowercase().contains("legacy agent") => {
+        Err(error) if crate::mongo_ops::is_legacy_agent_insert_many_unsupported(&error) => {
             insert_mongo_documents_for_transfer(state, connection_id, database, collection, documents).await
         }
         Err(error) => Err(error),
