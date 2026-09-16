@@ -6040,6 +6040,8 @@ export default withEnglishFallback({
     selectDatabase: "Selecionar banco de dados",
     databasePlaceholder: "Nome do banco de dados",
     options: "Opções",
+    packageParts: "{count} partes SQL",
+    skipRelationalConstraints: "Desabilitar temporariamente restrições relacionais durante a importação",
     continueOnError: "Continuar em caso de erro",
     runInBackground: "Executar em segundo plano",
     cancelling: "Cancelando...",
