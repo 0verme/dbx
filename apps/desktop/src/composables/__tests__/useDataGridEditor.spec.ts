@@ -50,6 +50,7 @@ function createEditorWithResult(
   tableColumns?: Array<{ name: string; data_type: string; extra?: string; column_default?: string }>,
   mongoCollectionGrid = false,
   quickEntry = false,
+  editable = ref(true),
 ) {
   let editor: ReturnType<typeof useDataGridEditor>;
   const result = ref<{ columns: string[]; rows: CellValue[][] }>({
@@ -59,7 +60,7 @@ function createEditorWithResult(
 
   editor = useDataGridEditor({
     result: computed(() => result.value),
-    editable: computed(() => true),
+    editable: computed(() => editable.value),
     databaseType: computed(() => (mongoCollectionGrid ? "mongodb" : "postgres")),
     normalizeEditorInput: mongoCollectionGrid ? mongoDocumentGridInputValue : undefined,
     connectionId: computed(() => "connection-1"),
@@ -143,6 +144,46 @@ describe("useDataGridEditor searched replacements", () => {
     mocks.prepareDataGridSave.mockReset();
     mocks.executeBatch.mockReset();
     mocks.getConfig.mockReturnValue(undefined);
+  });
+
+  it.each([true, false])("blocks queued saves while row identity is pending (autoSave=%s)", async (autoSave) => {
+    const editable = ref(true);
+    const editor = createEditor(undefined, true, undefined, undefined, [["old", "keep", "last"]], undefined, undefined, false, false, editable);
+    editor.newRows.value = [];
+    editor.applyCellValue(0, 0, "new");
+    editable.value = false;
+
+    await editor.saveChanges({ autoSave });
+
+    expect(mocks.prepareDataGridSave).not.toHaveBeenCalled();
+    expect(mocks.executeBatch).not.toHaveBeenCalled();
+    expect(editor.hasPendingChanges.value).toBe(true);
+    editable.value = true;
+    mocks.prepareDataGridSave.mockResolvedValue({ statements: ["UPDATE people SET first='new'"], rollbackStatements: [] });
+    mocks.executeBatch.mockResolvedValue([]);
+    await editor.saveChanges();
+    expect(mocks.executeBatch).toHaveBeenCalledOnce();
+  });
+
+  it("rechecks row identity readiness after asynchronous save preparation", async () => {
+    const editable = ref(true);
+    const editor = createEditor(undefined, true, undefined, undefined, [["old", "keep", "last"]], undefined, undefined, false, false, editable);
+    editor.newRows.value = [];
+    editor.applyCellValue(0, 0, "new");
+    let finishPreparation!: (value: { statements: string[]; rollbackStatements: string[] }) => void;
+    mocks.prepareDataGridSave.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishPreparation = resolve;
+      }),
+    );
+    const save = editor.saveChanges();
+    expect(mocks.prepareDataGridSave).toHaveBeenCalledOnce();
+    editable.value = false;
+    finishPreparation({ statements: ["UPDATE people SET first='new'"], rollbackStatements: [] });
+    await save;
+    expect(mocks.executeBatch).not.toHaveBeenCalled();
+    expect(editor.hasPendingChanges.value).toBe(true);
+    expect(editor.isSaving.value).toBe(false);
   });
 
   it("stages one undoable batch, keeps empty strings and preserves prior pending edits", () => {

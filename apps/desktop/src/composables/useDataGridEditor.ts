@@ -1849,6 +1849,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
   }
 
   async function saveChanges(saveOptions: SaveChangesOptions = {}) {
+    if (!editable.value) return;
     if (saveOptions.autoSave && manualSaveRequired.value) return;
     if (isSaving.value) {
       if (saveOptions.autoSave) pendingAutoSaveRequested = true;
@@ -1881,6 +1882,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
       });
       if (!confirmed) return;
     }
+    if (!editable.value) return;
     if (customHandler && snapshot.newRows.length > 0 && customHandler.supportsInsert !== true && customHandler.canInsert !== true) {
       saveError.value = i18n.global.t("grid.insertRowsNotSupported");
       return;
@@ -1976,6 +1978,10 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
         await finishInterruptedSaveChanges(snapshot);
         return;
       }
+    }
+    if (!editable.value || stmtOptions?.tableMeta !== tableMeta.value) {
+      await finishInterruptedSaveChanges(snapshot);
+      return;
     }
     const start = Date.now();
     let apiResult: { affected_rows?: number } | undefined;
