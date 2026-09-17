@@ -5626,14 +5626,21 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   /**
-   * Resolve grouped result columns by projection ordinal. All databases use the
-   * mapping for comments. MySQL may additionally edit direct columns from one
-   * uniquely identifiable base table; aggregate expressions and columns from
-   * every other source remain read-only.
+   * Resolve read-only query result columns by projection ordinal. All databases
+   * use the mapping for comments. MySQL aggregation may additionally edit
+   * direct columns from one uniquely identifiable base table.
    */
-  async function resolveAggregationQueryMetadata(tab: QueryTab, sql: string, executionDatabase: string, traceId: string | undefined): Promise<QueryMetadataPatch | undefined> {
+  async function resolveQueryDisplayMetadata(
+    tab: QueryTab,
+    sql: string,
+    executionDatabase: string,
+    traceId: string | undefined,
+    connection: ConnectionConfig | undefined,
+    allowMysqlEditing = true,
+    readOnlyReason: "aggregation" | "complex-source" = "aggregation",
+  ): Promise<QueryMetadataPatch | undefined> {
     if (tab.mode !== "query" || !tab.connectionId || !tab.result || !tab.result.columns.length) return undefined;
-    const conn = useConnectionStore().getConfig(tab.connectionId);
+    const conn = connection ?? useConnectionStore().getConfig(tab.connectionId);
     const dbType = conn?.db_type || "";
     const analysis = analyzeSelectStructureForDisplay(sql);
     if (!analysis) return undefined;
@@ -5664,12 +5671,12 @@ export const useQueryStore = defineStore("query", () => {
       const readOnlyPatch: QueryMetadataPatch = {
         queryAnalysis: undefined,
         querySourceColumns: undefined,
-        queryEditabilityReason: "aggregation",
+        queryEditabilityReason: readOnlyReason,
         tableMeta: undefined,
         resultColumnComments: displayInfo.comments,
         queryDisplaySourceColumns: displayInfo.mapping,
       };
-      if (dbType !== "mysql" || (conn?.driver_profile || conn?.db_type) !== "mysql") return readOnlyPatch;
+      if (!allowMysqlEditing || dbType !== "mysql" || (conn?.driver_profile || conn?.db_type) !== "mysql") return readOnlyPatch;
       // Mutation safety boundary: the FROM root must remain on the preserved
       // side of the join tree, and GROUP BY must resolve to exactly that table's
       // declared primary key. This makes every editable result row identify one
@@ -5723,7 +5730,7 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
-  async function buildQueryMetadataPatch(tab: QueryTab, sql: string, executionDatabase: string, traceId?: string, elapsed?: () => string, hiddenPrimaryKeys: HiddenPrimaryKeyProjection[] = []): Promise<QueryMetadataPatch | undefined> {
+  async function buildQueryMetadataPatch(tab: QueryTab, sql: string, executionDatabase: string, traceId?: string, elapsed?: () => string, hiddenPrimaryKeys: HiddenPrimaryKeyProjection[] = [], connection?: ConnectionConfig): Promise<QueryMetadataPatch | undefined> {
     if (tab.mode !== "query") return;
     if (!tab.result || !tab.result.columns.length) {
       return {
@@ -5743,8 +5750,13 @@ export const useQueryStore = defineStore("query", () => {
       elapsed: elapsed?.(),
     });
     if (!editability.editable) {
-      const aggregationPatch = editability.reason === "aggregation" ? await resolveAggregationQueryMetadata(tab, sql, executionDatabase, traceId) : undefined;
-      if (aggregationPatch) return aggregationPatch;
+      let displayPatch: QueryMetadataPatch | undefined;
+      if (editability.reason === "aggregation") {
+        displayPatch = await resolveQueryDisplayMetadata(tab, sql, executionDatabase, traceId, connection);
+      } else if (editability.reason === "complex-source") {
+        displayPatch = await resolveQueryDisplayMetadata(tab, sql, executionDatabase, traceId, connection, false, "complex-source");
+      }
+      if (displayPatch) return displayPatch;
       return {
         queryAnalysis: undefined,
         querySourceColumns: undefined,
@@ -5763,8 +5775,7 @@ export const useQueryStore = defineStore("query", () => {
       };
     }
 
-    const connStore = useConnectionStore();
-    const conn = connStore.getConfig(tab.connectionId);
+    const conn = connection ?? useConnectionStore().getConfig(tab.connectionId);
     const dbType = conn?.db_type || "";
     const sources = editableQuerySources(analysis);
     const loadedSources: LoadedEditableSource[] = [];
@@ -5915,14 +5926,14 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
-  function analyzeQueryMetadataInBackground(tabId: string, sql: string, result: QueryResult, executionDatabase: string, traceId: string, elapsed: () => string, databaseType: DatabaseType | undefined, hiddenPrimaryKeys: HiddenPrimaryKeyProjection[] = []) {
+  function analyzeQueryMetadataInBackground(tabId: string, sql: string, result: QueryResult, executionDatabase: string, traceId: string, elapsed: () => string, databaseType: DatabaseType | undefined, hiddenPrimaryKeys: HiddenPrimaryKeyProjection[] = [], connection?: ConnectionConfig) {
     void (async () => {
       const tab = tabs.value.find((t) => t.id === tabId);
       if (!tab || tab.result !== result) return;
       queryExecutionLog("info", "metadata:start", { traceId, elapsed: elapsed() });
       // Metadata requests outlive the displayed result when another query starts
       // or a retained run is selected. Analyze this result, not the live tab.
-      const patch = await buildQueryMetadataPatch({ ...tab, result }, sql, executionDatabase, traceId, elapsed, hiddenPrimaryKeys);
+      const patch = await buildQueryMetadataPatch({ ...tab, result }, sql, executionDatabase, traceId, elapsed, hiddenPrimaryKeys, connection);
       if (patch?.queryAnalysis && hasHiddenPhysicalRowKey(databaseType, hiddenPrimaryKeys)) {
         patch.queryAnalysis = { ...patch.queryAnalysis, allowInsert: false };
       }
@@ -7365,7 +7376,7 @@ export const useQueryStore = defineStore("query", () => {
           elapsed: elapsed(),
         });
         if (current.mode === "query" && current.result) {
-          analyzeQueryMetadataInBackground(id, displayedQueryMetadataSql(current, queryMetadataSql), current.result, executionDatabase, traceId, elapsed, effectiveDbType, hiddenPrimaryKeys);
+          analyzeQueryMetadataInBackground(id, displayedQueryMetadataSql(current, queryMetadataSql), current.result, executionDatabase, traceId, elapsed, effectiveDbType, hiddenPrimaryKeys, conn);
         }
       } else {
         queryExecutionLog("warn", "stale-result", {
@@ -7981,7 +7992,7 @@ export const useQueryStore = defineStore("query", () => {
       const metadataStartedAt = performance.now();
       const connection = useConnectionStore().getConfig(tab.connectionId);
       const executionDatabase = dataTabExecutionDatabase(connection, tab.database, tab.catalog);
-      analyzeQueryMetadataInBackground(id, sourceStatement, tab.result, executionDatabase, uuid().slice(0, 8), () => `${Math.round(performance.now() - metadataStartedAt)}ms`, effectiveDatabaseTypeForConnection(connection));
+      analyzeQueryMetadataInBackground(id, sourceStatement, tab.result, executionDatabase, uuid().slice(0, 8), () => `${Math.round(performance.now() - metadataStartedAt)}ms`, effectiveDatabaseTypeForConnection(connection), [], connection);
     }
   }
 
