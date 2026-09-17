@@ -230,6 +230,7 @@ import { createRowLowerTextCache } from "@/lib/dataGrid/dataGridRowLowerText";
 import { dataGridPreviewLabelKey, dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGrid/dataGridSaveUi";
 import { buildDataGridSavedRowRefreshPlan, dataGridSavedRowRefreshPatches } from "@/lib/dataGrid/dataGridSavedRowRefresh";
 import type { QueryEditabilityReason } from "@/lib/sql/sqlAnalysis";
+import { sqlWithoutCommentsForCopy } from "@/lib/sql/sqlWithoutCommentsForCopy";
 import { EDITOR_FONT_FAMILY_CSS_VAR } from "@/lib/editor/editorThemes";
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 import {
@@ -10193,6 +10194,16 @@ async function copyUserFacingSql() {
   if (userFacingSql.value) await copyText(userFacingSql.value);
 }
 
+async function copyUserFacingSqlWithoutComments() {
+  if (!userFacingSql.value) return;
+  await copyText(sqlWithoutCommentsForCopy(userFacingSql.value, resolvedDatabaseType.value));
+}
+
+const statusSqlContextMenuItems = computed<ContextMenuItem[]>(() => [
+  { label: t("grid.copyQuerySql"), icon: Copy, action: () => void copyUserFacingSql() },
+  { label: t("grid.copyExecutableSql"), icon: Copy, action: () => void copyUserFacingSqlWithoutComments() },
+]);
+
 type TableInfoTabItem = {
   id: TableInfoTab;
   label: string;
@@ -13559,16 +13570,20 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
         </template>
       </div>
 
-      <Tooltip v-if="sqlOneLiner">
-        <TooltipTrigger as-child>
-          <span class="min-w-0 max-w-full justify-self-center truncate opacity-60 cursor-pointer hover:opacity-100" @click="copyUserFacingSql">
-            {{ sqlOneLiner }}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" class="max-w-md">
-          <pre class="text-xs font-mono whitespace-pre-wrap">{{ userFacingSql }}</pre>
-        </TooltipContent>
-      </Tooltip>
+      <div v-if="sqlOneLiner" class="min-w-0 max-w-full justify-self-center">
+        <CustomContextMenu :items="statusSqlContextMenuItems" v-slot="{ onContextMenu }">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <span class="block min-w-0 max-w-full truncate opacity-60 cursor-pointer hover:opacity-100" data-result-sql @click="copyUserFacingSql" @contextmenu="onContextMenu">
+                {{ sqlOneLiner }}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" class="max-w-md">
+              <pre class="text-xs font-mono whitespace-pre-wrap">{{ userFacingSql }}</pre>
+            </TooltipContent>
+          </Tooltip>
+        </CustomContextMenu>
+      </div>
       <span v-else class="min-w-0" />
 
       <DataGridPagination

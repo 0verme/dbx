@@ -2241,6 +2241,8 @@ export default withEnglishFallback({
     copyColumnName: "Copiar nombre de columna",
     columnDragChipMany: "{names} ({count} columnas)",
     copySqlCondition: "Copiar condición SQL",
+    copyQuerySql: "Copiar SQL",
+    copyExecutableSql: "Copiar SQL (sin comentarios)",
     copyAlterColumnSql: "Copiar como SQL ALTER",
     alterSqlCopied: "SQL ALTER copiado al portapapeles",
     alterSqlCopiedWithWarnings: "SQL ALTER copiado al portapapeles ({count} advertencia(s))",

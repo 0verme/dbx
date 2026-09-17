@@ -2238,6 +2238,8 @@ export default withEnglishFallback({
     noAlterSqlAvailable: "이 컬럼에 사용 가능한 ALTER SQL이 없습니다",
     copyAlterSqlFailed: "복사 실패: {message}",
     copySqlCondition: "SQL 조건 복사",
+    copyQuerySql: "SQL 복사",
+    copyExecutableSql: "SQL 복사 (주석 제외)",
     transpose: "행 전치",
     transposeMultiRowToggle: "다중 행",
     transposeSingleRow: "현재 행",

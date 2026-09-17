@@ -2244,6 +2244,8 @@ export default withEnglishFallback({
     noAlterSqlAvailable: "Nessun SQL ALTER disponibile per questa colonna",
     copyAlterSqlFailed: "Copia non riuscita: {message}",
     copySqlCondition: "Copia Condizione SQL",
+    copyQuerySql: "Copia SQL",
+    copyExecutableSql: "Copia SQL (senza commenti)",
     transpose: "Traspone Riga",
     transposeMultiRowToggle: "Più righe",
     transposeSingleRow: "Riga corrente",

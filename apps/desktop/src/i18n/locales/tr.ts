@@ -2254,6 +2254,8 @@ export default withEnglishFallback({
     noAlterSqlAvailable: "Bu sütun için ALTER SQL yok",
     copyAlterSqlFailed: "Kopyalama başarısız: {message}",
     copySqlCondition: "SQL Koşulunu Kopyala",
+    copyQuerySql: "SQL Kopyala",
+    copyExecutableSql: "SQL'i kopyala (yorumlar olmadan)",
     transpose: "Satırı Devrik Göster",
     transposeMultiRowToggle: "Çok satırlı",
     transposeSingleRow: "Geçerli satır",

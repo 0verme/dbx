@@ -2417,6 +2417,8 @@ export default {
     noAlterSqlAvailable: "No ALTER SQL available for this column",
     copyAlterSqlFailed: "Copy failed: {message}",
     copySqlCondition: "Copy SQL Condition",
+    copyQuerySql: "Copy SQL",
+    copyExecutableSql: "Copy SQL (without comments)",
     transpose: "Transpose Row",
     transposeMultiRowToggle: "Multi-row",
     transposeSingleRow: "Current row",

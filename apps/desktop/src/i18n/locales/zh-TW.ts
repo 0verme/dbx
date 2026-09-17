@@ -2252,6 +2252,8 @@ export default withEnglishFallback({
     noAlterSqlAvailable: "此欄沒有可複製的 ALTER SQL",
     copyAlterSqlFailed: "複製失敗：{message}",
     copySqlCondition: "複製 SQL 條件",
+    copyQuerySql: "複製 SQL",
+    copyExecutableSql: "複製 SQL（不含註解）",
     transpose: "轉置檢視",
     transposeMultiRowToggle: "多列轉置",
     transposeSingleRow: "目前列",

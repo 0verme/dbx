@@ -2256,6 +2256,8 @@ export default withEnglishFallback({
     noAlterSqlAvailable: "この列に利用可能なALTER SQLはありません",
     copyAlterSqlFailed: "コピーに失敗しました: {message}",
     copySqlCondition: "SQL条件をコピー",
+    copyQuerySql: "SQLをコピー",
+    copyExecutableSql: "SQLをコピー（コメントなし）",
     transpose: "行を転置",
     transposeMultiRowToggle: "複数行",
     transposeSingleRow: "現在の行",
