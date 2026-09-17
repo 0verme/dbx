@@ -3683,7 +3683,9 @@ fn generate_create_table_ddl_with_column_quoting(
     };
 
     let create_prefix = match target_db {
-        DatabaseType::SqlServer | DatabaseType::Dameng => "CREATE TABLE",
+        DatabaseType::Oracle | DatabaseType::OceanbaseOracle | DatabaseType::SqlServer | DatabaseType::Dameng => {
+            "CREATE TABLE"
+        }
         _ => "CREATE TABLE IF NOT EXISTS",
     };
 
@@ -12620,6 +12622,152 @@ CREATE TABLE "Other"."prefix""Source"."NAME" ("ID" INT);"#;
             identity_insert_statement("inter_putaway", "dbo", &DatabaseType::SqlServer, false),
             "SET IDENTITY_INSERT [dbo].[inter_putaway] OFF"
         );
+    }
+
+    #[test]
+    fn transfer_create_table_mysql_to_oceanbase_oracle_omits_if_not_exists() {
+        let columns = vec![db::ColumnInfo {
+            is_nullable: false,
+            is_primary_key: true,
+            ..test_column("area_code", "varchar(36)")
+        }];
+
+        let ddl = generate_create_table_ddl(
+            &columns,
+            "BASEDATA_AREAS",
+            "source_db",
+            "SALES",
+            &DatabaseType::OceanbaseOracle,
+            &DatabaseType::Mysql,
+            None,
+            None,
+        );
+
+        assert_eq!(
+            ddl,
+            "CREATE TABLE \"SALES\".\"BASEDATA_AREAS\" (\n  \"area_code\" VARCHAR(36 CHAR) NOT NULL,\n  PRIMARY KEY (\"area_code\")\n)"
+        );
+    }
+
+    #[test]
+    fn transfer_create_table_oracle_family_and_dameng_use_plain_create() {
+        let columns = vec![test_column("id", "int")];
+
+        for target in [DatabaseType::Oracle, DatabaseType::OceanbaseOracle, DatabaseType::Dameng] {
+            for schema in ["", "SALES"] {
+                let ddl = generate_create_table_ddl(
+                    &columns,
+                    "items",
+                    "source_db",
+                    schema,
+                    &target,
+                    &DatabaseType::Mysql,
+                    None,
+                    None,
+                );
+                let full_table = if schema.is_empty() { "\"items\"" } else { "\"SALES\".\"items\"" };
+
+                assert!(ddl.starts_with(&format!("CREATE TABLE {full_table} (\n")), "{target:?}: {ddl}");
+                assert!(!ddl.contains("IF NOT EXISTS"), "{target:?}: {ddl}");
+            }
+        }
+    }
+
+    #[test]
+    fn transfer_create_table_supported_dialects_keep_if_not_exists() {
+        let columns = vec![test_column("id", "int")];
+
+        for target in [DatabaseType::Mysql, DatabaseType::Postgres, DatabaseType::Sqlite, DatabaseType::Kingbase] {
+            let ddl = generate_create_table_ddl(
+                &columns,
+                "items",
+                "source_db",
+                "",
+                &target,
+                &DatabaseType::Mysql,
+                None,
+                None,
+            );
+
+            assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS "), "{target:?}: {ddl}");
+        }
+    }
+
+    #[test]
+    fn transfer_create_table_sqlserver_preserves_existence_guard() {
+        let ddl = generate_create_table_ddl(
+            &[test_column("id", "int")],
+            "items",
+            "source_db",
+            "dbo",
+            &DatabaseType::SqlServer,
+            &DatabaseType::Mysql,
+            None,
+            None,
+        );
+
+        assert!(ddl.starts_with(
+            "IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'items')\nCREATE TABLE [dbo].[items] (\n"
+        ));
+        assert!(!ddl.contains("CREATE TABLE IF NOT EXISTS"));
+    }
+
+    #[test]
+    fn transfer_create_table_oceanbase_oracle_preserves_column_quoting_policy() {
+        let columns = vec![
+            db::ColumnInfo { is_primary_key: true, ..test_column("AREA_CODE", "varchar(36)") },
+            test_column("select", "varchar(36)"),
+            test_column("has space", "varchar(36)"),
+            test_column("has\"quote", "varchar(36)"),
+        ];
+
+        for quote_columns in [true, false] {
+            let ddl = generate_create_table_ddl_with_column_quoting(
+                &columns,
+                "BASEDATA_AREAS",
+                "source_db",
+                "SALES",
+                &DatabaseType::OceanbaseOracle,
+                &DatabaseType::Mysql,
+                None,
+                None,
+                quote_columns,
+            );
+            assert!(ddl.starts_with("CREATE TABLE \"SALES\".\"BASEDATA_AREAS\" (\n"), "{ddl}");
+            assert!(ddl.contains("\"AREA_CODE\" VARCHAR(36 CHAR)"), "{ddl}");
+            assert!(ddl.contains("PRIMARY KEY (\"AREA_CODE\")"), "{ddl}");
+            assert!(ddl.contains("\"select\" VARCHAR(36 CHAR)"), "{ddl}");
+            assert!(ddl.contains("\"has space\" VARCHAR(36 CHAR)"), "{ddl}");
+            assert!(ddl.contains("\"has\"\"quote\" VARCHAR(36 CHAR)"), "{ddl}");
+        }
+    }
+
+    #[test]
+    fn transfer_create_table_oracle_existing_targets_and_errors_remain_distinct() {
+        let tables = vec![test_table("BASEDATA_AREAS")];
+        assert_eq!(
+            existing_transfer_target_table_name("BASEDATA_AREAS", &tables, false),
+            Some("BASEDATA_AREAS".to_string())
+        );
+        assert_eq!(existing_transfer_target_table_name("basedata_areas", &tables, false), None);
+        assert_eq!(existing_transfer_target_table_name("BASEDATA", &tables, false), None);
+        assert!(transfer_create_table_created(Ok(()), "Failed to create table").unwrap());
+        assert!(!transfer_create_table_created(
+            Err("Table 'BASEDATA_AREAS' already exists".to_string()),
+            "Failed to create table"
+        )
+        .unwrap());
+
+        for error in [
+            "ORA-00900: invalid SQL statement near 'NOT EXISTS'",
+            "ORA-01031: insufficient privileges",
+            "ORA-00955: name is already used by an existing object",
+        ] {
+            assert_eq!(
+                transfer_create_table_created(Err(error.to_string()), "Failed to create table"),
+                Err(format!("Failed to create table: {error}"))
+            );
+        }
     }
 
     #[test]
