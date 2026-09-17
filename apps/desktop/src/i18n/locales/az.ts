@@ -3367,6 +3367,8 @@ export default withEnglishFallback({
     viewDdl: "DDL-ə bax",
     viewDdlLoading: "DDL yüklənir...",
     ddlCopied: "DDL kopyalandı",
+    excludeDdlStorage: "Saxlama atributlarını çıxar",
+    excludeDdlStorageHint: "OceanBase Oracle DDL-in göstərilməsinə, kopyalanmasına və strukturun ixracına tətbiq olunur. Sıxılma, replika və saxlama parametrlərini saxlamaq üçün söndürün. Bölmələr və məhdudiyyətlər həmişə saxlanılır.",
     refreshDdlOnOpen: "Hər açılışda yenilə",
     refreshDdlOnOpenHint: "Aktiv olduqda DDL hər açılışda verilənlər bazasından yenidən yüklənir; deaktiv olduqda keşdəki məlumatlara üstünlük verilir",
     dropObject: "Obyekti sil",

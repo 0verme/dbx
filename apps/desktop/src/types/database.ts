@@ -1499,6 +1499,9 @@ export interface TableStructureEditorDraft {
   activeTab: TableInfoTab;
   /** DDL as loaded from the database — the baseline `ddlDraft` is compared against. */
   ddlContent?: string;
+  /** Original DDL and display preference retained so restoring a draft cannot change its baseline. */
+  rawDdlContent?: string;
+  excludeDdlStorage?: boolean;
   /** Edited DDL script, or null/undefined when the DDL tab was left untouched. */
   ddlDraft?: string | null;
   newTableName: string;

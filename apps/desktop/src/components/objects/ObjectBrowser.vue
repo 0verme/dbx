@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { applyDdlStoragePreference } from "@/lib/sql/ddlStorage";
+import DdlStorageToggle from "@/components/objects/DdlStorageToggle.vue";
+
 import { computed, createApp, nextTick, onActivated, onBeforeUnmount, ref, watch, type Component } from "vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
@@ -246,7 +249,8 @@ const tableInfoTab = ref<TableInfoTab>("ddl");
 const tableColumns = ref<ColumnInfo[]>([]);
 const tableColumnsLoading = ref(false);
 const tableColumnsLoaded = ref(false);
-const tableDdlContent = ref("");
+const rawTableDdlContent = ref("");
+const tableDdlContent = computed(() => applyDdlStoragePreference(rawTableDdlContent.value, effectiveDatabaseType.value, settingsStore.editorSettings.excludeDdlStorage));
 const tableDdlLoading = ref(false);
 const tableDdlLoaded = ref(false);
 const tableIndexes = ref<IndexInfo[]>([]);
@@ -1134,7 +1138,7 @@ async function openTableInfo(row: ObjectBrowserRow, initialTab?: TableInfoTab) {
   sidePanelGuard.bump();
   // Reset state
   tableColumns.value = [];
-  tableDdlContent.value = "";
+  rawTableDdlContent.value = "";
   tableIndexes.value = [];
   tableForeignKeys.value = [];
   tableTriggers.value = [];
@@ -1185,11 +1189,11 @@ async function fetchTableDdl(force = settingsStore.editorSettings.refreshDdlOnOp
     const { ddl } = await loadObjectDdl(tableMetadataRequest(row), { force });
     if (sidePanelGuard.isStale(epoch)) return;
     const formatDialect = sqlFormatDialectForDbType(effectiveDatabaseType.value);
-    tableDdlContent.value = settingsStore.editorSettings.generateSqlQuoteIdentifiers ? ddl : omitDdlIdentifierQuotes(ddl, formatDialect);
+    rawTableDdlContent.value = settingsStore.editorSettings.generateSqlQuoteIdentifiers ? ddl : omitDdlIdentifierQuotes(ddl, formatDialect);
     loadedSuccessfully = true;
   } catch (e: any) {
     if (sidePanelGuard.isStale(epoch)) return;
-    tableDdlContent.value = `-- Error: ${e?.message || e}`;
+    rawTableDdlContent.value = `-- Error: ${e?.message || e}`;
   } finally {
     if (sidePanelGuard.isFresh(epoch)) {
       tableDdlLoaded.value = loadedSuccessfully;
@@ -1323,7 +1327,7 @@ async function refreshActiveTableInfo() {
   sidePanelGuard.bump();
 
   if (tableInfoTab.value === "ddl") {
-    tableDdlContent.value = "";
+    rawTableDdlContent.value = "";
     tableDdlLoaded.value = false;
     await fetchTableDdl(true);
   } else if (tableInfoTab.value === "columns") {
@@ -2090,7 +2094,7 @@ async function exportStructure(row: ObjectBrowserRow) {
   try {
     const schema = row.schema || selectedSchema.value || props.database;
     const ddl = await api.getTableDdl(props.connection.id, props.database, schema, row.name, tableDdlObjectType(row.type), props.catalog, true);
-    await saveFileContent(buildSingleDdlExportFileContent(ddl), `${row.name}.sql`, "SQL", "sql");
+    await saveFileContent(buildSingleDdlExportFileContent(applyDdlStoragePreference(ddl, effectiveDatabaseType.value, settingsStore.editorSettings.excludeDdlStorage)), `${row.name}.sql`, "SQL", "sql");
   } catch (e: any) {
     console.error("Export structure failed:", e);
   }
@@ -3789,6 +3793,9 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
             <Button variant="ghost" size="icon" class="h-7 w-7 shrink-0" :disabled="activeTableInfoLoading" :title="t('structureEditor.refresh')" :aria-label="t('structureEditor.refresh')" @click="refreshActiveTableInfo">
               <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': activeTableInfoLoading }" />
             </Button>
+          </div>
+          <div v-if="tableInfoTab === 'ddl' && effectiveDatabaseType === 'oceanbase-oracle'" class="border-b px-3 py-2">
+            <DdlStorageToggle :database-type="effectiveDatabaseType" :disabled="tableDdlLoading" />
           </div>
           <div v-if="tableInfoTab === 'columns'" class="flex-1 min-h-0 overflow-auto">
             <div v-if="tableColumnsLoading" class="h-full flex items-center justify-center">

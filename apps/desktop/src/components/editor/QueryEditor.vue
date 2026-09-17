@@ -197,6 +197,7 @@ import { usesLocalOnlyEditorCompletionMetadata, usesOnDemandOnlyEditorColumnMeta
 import { loadTableMetadata } from "@/lib/metadata/tableMetadataCache";
 import { analyzeIntentionActions, prepareExpandWildcardContext, buildExpandWildcardReplacement, type IntentionAction } from "@/lib/editor/sqlIntentionActions";
 import { loadObjectDdl } from "@/lib/metadata/objectDdlCache";
+import { applyDdlStoragePreference } from "@/lib/sql/ddlStorage";
 import { loadObjectMetadataFacet } from "@/lib/metadata/objectMetadataCache";
 import { queryContextObjectActions, queryContextObjectRoute, queryTableCandidateAtSqlPosition, queryTableNavigationTargetAtSqlPosition, resolveQueryContextCandidateDatabase, resolveQueryContextObjectTarget, type QueryContextObjectAction } from "@/lib/sql/queryCursorTableTarget";
 import * as api from "@/lib/backend/api";
@@ -3397,7 +3398,7 @@ async function resolveSqlHoverTooltip(currentView: EditorViewType, pos: number) 
       // views. Hover only removes PostgreSQL's appended access-control tail.
       try {
         const { ddl } = await loadObjectDdl(objectMetadataRequest);
-        const rawDdl = ddlForHoverPreview(ddl);
+        const rawDdl = ddlForHoverPreview(applyDdlStoragePreference(ddl, props.databaseType, settingsStore.editorSettings.excludeDdlStorage));
         if (rawDdl && rawDdl.trim()) {
           // A view's display DDL wraps the raw (often single-line) view source
           // in `CREATE ... VIEW ... AS`; the table-oriented reformatter cannot
