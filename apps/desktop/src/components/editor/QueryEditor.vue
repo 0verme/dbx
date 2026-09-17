@@ -128,6 +128,7 @@ import {
   type SqlObjectNavigationTarget,
 } from "@/lib/sql/sqlNavigation";
 import { buildHoverTableSql, ddlForHoverPreview, hoverTableMatchesScope, normalizeAlignedSqlWhitespace, quoteIdentifier, quoteQualifiedName, reformatHoverDdl, scopeHoverTables, type HoverTableScope } from "@/lib/editor/hoverTableSql";
+import { matchHoverTableCandidates, resolveHoverTableLookupTarget } from "@/lib/editor/hoverTableLookup";
 import { constrainSqlHoverLayout } from "@/lib/editor/sqlHoverLayout";
 import { createHoverSearch, type HoverSearchController } from "@/lib/editor/sqlHoverSearch";
 import { lineColumnToOffset, sqlErrorDecorationRange as resolveSqlErrorDecorationRange, sqlErrorSqlMatchesEditor } from "@/lib/sql/sqlDiagnostics";
@@ -3176,11 +3177,24 @@ async function resolveSqlHoverTooltip(currentView: EditorViewType, pos: number) 
   const tableLookupName = semanticTarget && !semanticQualifierIsRowSource ? semanticTarget.name : name;
   const qualifiedTableLookup = semanticTarget?.schema ? `${semanticTarget.schema}.${semanticTarget.name}` : identifier;
 
-  const hoverTarget = completionMetadataTarget({
-    name: tableLookupName,
+  const lookup = resolveHoverTableLookupTarget({
+    database: props.database,
+    schema: props.schema,
     catalog: props.catalog,
-    database: semanticTarget?.database,
-    schema: semanticTarget?.schema,
+    databaseType: props.databaseType,
+    tableName: tableLookupName,
+    // Alias.column must not be treated as schema.table; keep the bare column/table token.
+    identifierParts: semanticQualifierIsRowSource ? [tableLookupName] : parts,
+    semanticDatabase: semanticQualifierIsRowSource ? undefined : semanticTarget?.database,
+    semanticSchema: semanticQualifierIsRowSource ? undefined : semanticTarget?.schema,
+    mode: settingsStore.editorSettings.tableHoverLookupMode,
+  });
+
+  const hoverTarget = completionMetadataTarget({
+    name: lookup.tableName,
+    catalog: props.catalog,
+    database: lookup.database !== props.database ? lookup.database : undefined,
+    schema: lookup.schema,
   });
   if (!hoverTarget) return null;
   const hoverScope: HoverTableScope = {
@@ -3188,27 +3202,73 @@ async function resolveSqlHoverTooltip(currentView: EditorViewType, pos: number) 
     database: hoverTarget.database,
     schema: hoverTarget.schema,
   };
+  const preferredSchema = props.schema;
+  const matchHoverTable = (tables: typeof cachedTables) =>
+    matchHoverTableCandidates(tables, {
+      lookups: [qualifiedTableLookup, identifier],
+      tableName: tableLookupName,
+      preferredSchema,
+    });
 
   try {
-    let hoverTables = cachedTables.filter((table) => hoverTableMatchesScope(table, hoverScope));
-    let table = matchTable(qualifiedTableLookup, hoverTables) ?? matchTable(tableLookupName, hoverTables) ?? matchTable(identifier, hoverTables) ?? matchTable(name, hoverTables);
-    if (!table) {
-      const localTables = connectionStore.lookupLocalCompletionTables(props.connectionId, hoverScope.database, tableLookupName, MAX_COMPLETION_TABLES, hoverScope.schema, hoverScope.catalog);
-      const localHoverTables = scopeHoverTables(localTables, hoverScope);
+    const searchLocal = (schema?: string) => {
+      const scopeForFilter: HoverTableScope = { ...hoverScope, schema };
+      const localTables = connectionStore.lookupLocalCompletionTables(props.connectionId!, hoverScope.database, tableLookupName, MAX_COMPLETION_TABLES, schema, hoverScope.catalog);
+      const localHoverTables = schema ? scopeHoverTables(localTables, scopeForFilter) : scopeHoverTables(localTables, { ...hoverScope, schema: undefined });
+      return localHoverTables;
+    };
+    const searchRemote = async (schema: string | undefined, globalSearch: boolean) => {
+      const loadedTables = await connectionStore.listCompletionTables(props.connectionId!, hoverScope.database, tableLookupName, MAX_COMPLETION_TABLES, schema, globalSearch, preferredSchema, hoverScope.catalog);
+      return schema ? scopeHoverTables(loadedTables, { ...hoverScope, schema }) : loadedTables;
+    };
+
+    let hoverTables = cachedTables.filter((table) => (lookup.preferGlobalFirst || !hoverScope.schema ? hoverTableMatchesScope(table, { ...hoverScope, schema: undefined }) : hoverTableMatchesScope(table, hoverScope)));
+    let table = matchHoverTable(hoverTables);
+
+    if (!table && !lookup.preferGlobalFirst) {
+      const localHoverTables = searchLocal(hoverScope.schema);
       hoverTables = mergeCompletionTables(localHoverTables, hoverTables);
       cachedTables = mergeCompletionTables(localHoverTables, cachedTables);
-      table = matchTable(qualifiedTableLookup, hoverTables) ?? matchTable(tableLookupName, hoverTables) ?? matchTable(identifier, hoverTables) ?? matchTable(name, hoverTables);
+      table = matchHoverTable(hoverTables);
     }
-    if (!table && !usesLocalOnlyCompletionMetadata()) {
-      const loadedTables = await connectionStore.listCompletionTables(props.connectionId, hoverScope.database, tableLookupName, MAX_COMPLETION_TABLES, hoverScope.schema, false, hoverScope.schema, hoverScope.catalog);
-      const remoteHoverTables = scopeHoverTables(loadedTables, hoverScope);
+
+    if (!table && lookup.preferGlobalFirst) {
+      const localHoverTables = searchLocal(undefined);
+      hoverTables = mergeCompletionTables(localHoverTables, hoverTables);
+      cachedTables = mergeCompletionTables(localHoverTables, cachedTables);
+      table = matchHoverTable(hoverTables);
+    }
+
+    if (!table && !usesLocalOnlyCompletionMetadata() && !lookup.preferGlobalFirst) {
+      const remoteHoverTables = await searchRemote(hoverScope.schema, false);
       hoverTables = mergeCompletionTables(hoverTables, remoteHoverTables);
       cachedTables = mergeCompletionTables(cachedTables, remoteHoverTables);
-      table = matchTable(qualifiedTableLookup, hoverTables) ?? matchTable(tableLookupName, hoverTables) ?? matchTable(identifier, hoverTables) ?? matchTable(name, hoverTables);
+      table = matchHoverTable(hoverTables);
     }
+
+    if (!table && !usesLocalOnlyCompletionMetadata() && lookup.preferGlobalFirst) {
+      const remoteHoverTables = await searchRemote(undefined, true);
+      hoverTables = mergeCompletionTables(hoverTables, remoteHoverTables);
+      cachedTables = mergeCompletionTables(cachedTables, remoteHoverTables);
+      table = matchHoverTable(hoverTables);
+    }
+
+    if (!table && lookup.allowGlobalFallback && !lookup.preferGlobalFirst) {
+      const localHoverTables = searchLocal(undefined);
+      hoverTables = mergeCompletionTables(localHoverTables, hoverTables);
+      cachedTables = mergeCompletionTables(localHoverTables, cachedTables);
+      table = matchHoverTable(hoverTables);
+      if (!table && !usesLocalOnlyCompletionMetadata()) {
+        const remoteHoverTables = await searchRemote(undefined, true);
+        hoverTables = mergeCompletionTables(hoverTables, remoteHoverTables);
+        cachedTables = mergeCompletionTables(cachedTables, remoteHoverTables);
+        table = matchHoverTable(hoverTables);
+      }
+    }
+
     if (table && settingsStore.editorSettings.showTableDdlHoverPreview && !semanticQualifierIsRowSource && (!qualifier || table.schema?.toLowerCase() === qualifier.toLowerCase() || table.name === name)) {
-      const hoverDatabase = hoverScope.database;
-      const hoverSchema = hoverScope.schema ?? table.schema ?? "";
+      const hoverDatabase = table.database ?? hoverScope.database;
+      const hoverSchema = table.schema ?? hoverScope.schema ?? "";
       const hoverQualifiedName = [hoverScope.catalog, hoverDatabase, hoverSchema, table.name].filter(Boolean).join(".");
       const objectMetadataRequest = {
         connectionId: props.connectionId,
@@ -6851,6 +6911,22 @@ onMounted(async () => {
               const objectSchemaHint = identity.parts.length >= 3 ? identity.schema : identity.parts.length === 1 ? props.schema : undefined;
               const isRoutineCall = identity.role === "routine_call";
               const isRelationColumnList = identity.role === "relation_column_list";
+              const tableLookup = resolveHoverTableLookupTarget({
+                database: props.database!,
+                schema: props.schema,
+                catalog: props.catalog,
+                databaseType: props.databaseType,
+                tableName: tableLookupFilter,
+                identifierParts,
+                mode: settingsStore.editorSettings.tableHoverLookupMode,
+              });
+              const tableLookupSchema = tableLookup.preferGlobalFirst ? undefined : (tableLookup.schema ?? props.schema);
+              const matchNavigationTable = (tables: typeof cachedTables) =>
+                matchHoverTableCandidates(tables, {
+                  lookups: [identifier],
+                  tableName: tableLookupFilter,
+                  preferredSchema: props.schema,
+                });
               const relationNavigationTarget = (target: SqlObjectNavigationTarget) =>
                 queryTableNavigationTargetAtSqlPosition(
                   {
@@ -6864,15 +6940,24 @@ onMounted(async () => {
                   target,
                 );
 
-              // 1. Local table cache (sync). Relation column lists always prefer tables over routines.
-              if (cachedTables.length === 0) {
-                cachedTables = connectionStore.lookupLocalCompletionTables(props.connectionId!, props.database!, tableLookupFilter, MAX_COMPLETION_TABLES, props.schema, props.catalog);
-              }
-
-              let matchedTable = matchTable(identifier, cachedTables);
+              // 1. Local table lookup with the resolved scope (do not trust stale editor cache alone —
+              // completion/hover may have filled cachedTables with the current schema only).
+              const localScopedTables = connectionStore.lookupLocalCompletionTables(props.connectionId!, tableLookup.database, tableLookupFilter, MAX_COMPLETION_TABLES, tableLookupSchema, props.catalog);
+              cachedTables = mergeCompletionTables(localScopedTables, cachedTables);
+              let matchedTable = matchNavigationTable(localScopedTables);
               if (matchedTable) {
                 emit("clickTable", relationNavigationTarget(matchedTable));
                 return;
+              }
+
+              if (!matchedTable && tableLookup.allowGlobalFallback && !tableLookup.preferGlobalFirst) {
+                const localGlobalTables = connectionStore.lookupLocalCompletionTables(props.connectionId!, tableLookup.database, tableLookupFilter, MAX_COMPLETION_TABLES, undefined, props.catalog);
+                cachedTables = mergeCompletionTables(cachedTables, localGlobalTables);
+                matchedTable = matchNavigationTable(localGlobalTables);
+                if (matchedTable) {
+                  emit("clickTable", relationNavigationTarget(matchedTable));
+                  return;
+                }
               }
 
               const preserveOracleStoreCase = (value?: string) => !!value && value !== value.toUpperCase();
@@ -6929,20 +7014,38 @@ onMounted(async () => {
               // Routine-call sites may still hit this when a table and procedure share a name and
               // local caches were empty; table wins only if listed as a relation.
               if (!usesLocalOnlyCompletionMetadata() && (!isRoutineCall || isRelationColumnList || identity.role === "unknown")) {
-                cachedTables = await connectionStore.listCompletionTables(props.connectionId!, props.database!, tableLookupFilter, MAX_COMPLETION_TABLES, props.schema, false, props.schema, props.catalog);
-                matchedTable = matchTable(identifier, cachedTables);
+                cachedTables = await connectionStore.listCompletionTables(props.connectionId!, tableLookup.database, tableLookupFilter, MAX_COMPLETION_TABLES, tableLookupSchema, tableLookup.preferGlobalFirst, props.schema, props.catalog);
+                matchedTable = matchNavigationTable(cachedTables);
                 if (matchedTable) {
                   emit("clickTable", relationNavigationTarget(matchedTable));
                   return;
                 }
+                if (tableLookup.allowGlobalFallback && !tableLookup.preferGlobalFirst) {
+                  const globalTables = await connectionStore.listCompletionTables(props.connectionId!, tableLookup.database, tableLookupFilter, MAX_COMPLETION_TABLES, undefined, true, props.schema, props.catalog);
+                  cachedTables = mergeCompletionTables(cachedTables, globalTables);
+                  matchedTable = matchNavigationTable(cachedTables);
+                  if (matchedTable) {
+                    emit("clickTable", relationNavigationTarget(matchedTable));
+                    return;
+                  }
+                }
               } else if (!usesLocalOnlyCompletionMetadata() && isRoutineCall) {
                 // Lightweight table check so INSERT INTO ORDERS(…) is not the only guarded path —
-                // still avoid global scans: only session-scoped prefix lookup.
-                cachedTables = await connectionStore.listCompletionTables(props.connectionId!, props.database!, tableLookupFilter, 20, props.schema, false, props.schema, props.catalog);
-                matchedTable = matchTable(identifier, cachedTables);
+                // still avoid unbounded scans: session-scoped first, optional name-filtered global fallback.
+                cachedTables = await connectionStore.listCompletionTables(props.connectionId!, tableLookup.database, tableLookupFilter, 20, tableLookupSchema, tableLookup.preferGlobalFirst, props.schema, props.catalog);
+                matchedTable = matchNavigationTable(cachedTables);
                 if (matchedTable) {
                   emit("clickTable", relationNavigationTarget(matchedTable));
                   return;
+                }
+                if (tableLookup.allowGlobalFallback && !tableLookup.preferGlobalFirst) {
+                  const globalTables = await connectionStore.listCompletionTables(props.connectionId!, tableLookup.database, tableLookupFilter, 20, undefined, true, props.schema, props.catalog);
+                  cachedTables = mergeCompletionTables(cachedTables, globalTables);
+                  matchedTable = matchNavigationTable(cachedTables);
+                  if (matchedTable) {
+                    emit("clickTable", relationNavigationTarget(matchedTable));
+                    return;
+                  }
                 }
               }
 

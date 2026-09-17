@@ -103,6 +103,7 @@ import {
   type ClickTableNavigationTarget,
   type EditorSettings,
   type SqlCompletionTriggerMode,
+  type TableHoverLookupMode,
   SIDEBAR_INDENT_MIN,
   SIDEBAR_INDENT_MAX,
   SIDEBAR_FONT_SIZE_MIN,
@@ -657,6 +658,15 @@ const editGenerateSqlIncludeDatabaseName = ref(settingsStore.editorSettings.gene
 const editGenerateSqlQuoteIdentifiers = ref(settingsStore.editorSettings.generateSqlQuoteIdentifiers);
 const editFormatSqlOnSqlFileSave = ref(settingsStore.editorSettings.formatSqlOnSqlFileSave);
 const editShowTableDdlHoverPreview = ref(settingsStore.editorSettings.showTableDdlHoverPreview);
+const editTableHoverLookupMode = ref<TableHoverLookupMode>(settingsStore.editorSettings.tableHoverLookupMode);
+const tableHoverLookupModeDescription = computed(() => {
+  const key = {
+    current: "settings.tableHoverLookupModeCurrentDescription",
+    fallback: "settings.tableHoverLookupModeFallbackDescription",
+    always: "settings.tableHoverLookupModeAlwaysDescription",
+  }[editTableHoverLookupMode.value];
+  return t(key);
+});
 const editClickTableNavigationTarget = ref<ClickTableNavigationTarget>(settingsStore.editorSettings.clickTableNavigationTarget);
 const editUpdateNotificationsEnabled = ref(settingsStore.editorSettings.updateNotificationsEnabled);
 const editAutoDownloadUpdates = ref(settingsStore.editorSettings.autoDownloadUpdates);
@@ -816,6 +826,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     generateSqlQuoteIdentifiers: editGenerateSqlQuoteIdentifiers.value,
     formatSqlOnSqlFileSave: editFormatSqlOnSqlFileSave.value,
     showTableDdlHoverPreview: editShowTableDdlHoverPreview.value,
+    tableHoverLookupMode: editTableHoverLookupMode.value,
     updateNotificationsEnabled: editUpdateNotificationsEnabled.value,
     autoDownloadUpdates: editAutoDownloadUpdates.value,
     sidebarObjectInfoMode: editSidebarObjectInfoMode.value,
@@ -1341,6 +1352,7 @@ function syncEditorSettingsDraftFromStore() {
   editGenerateSqlQuoteIdentifiers.value = settingsStore.editorSettings.generateSqlQuoteIdentifiers;
   editFormatSqlOnSqlFileSave.value = settingsStore.editorSettings.formatSqlOnSqlFileSave;
   editShowTableDdlHoverPreview.value = settingsStore.editorSettings.showTableDdlHoverPreview;
+  editTableHoverLookupMode.value = settingsStore.editorSettings.tableHoverLookupMode;
   editClickTableNavigationTarget.value = settingsStore.editorSettings.clickTableNavigationTarget;
   editUpdateNotificationsEnabled.value = settingsStore.editorSettings.updateNotificationsEnabled;
   editAutoDownloadUpdates.value = settingsStore.editorSettings.autoDownloadUpdates;
@@ -1458,6 +1470,7 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   generateSqlQuoteIdentifiers: editGenerateSqlQuoteIdentifiers,
   formatSqlOnSqlFileSave: editFormatSqlOnSqlFileSave,
   showTableDdlHoverPreview: editShowTableDdlHoverPreview,
+  tableHoverLookupMode: editTableHoverLookupMode,
   updateNotificationsEnabled: editUpdateNotificationsEnabled,
   autoDownloadUpdates: editAutoDownloadUpdates,
   sidebarObjectInfoMode: editSidebarObjectInfoMode,
@@ -1842,6 +1855,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editAppCloseUnsavedTabsMode.value = DEFAULT_EDITOR_SETTINGS.appCloseUnsavedTabsMode;
     editSavedSqlOpenTargetMode.value = DEFAULT_EDITOR_SETTINGS.savedSqlOpenTargetMode;
     editShowTableDdlHoverPreview.value = DEFAULT_EDITOR_SETTINGS.showTableDdlHoverPreview;
+    editTableHoverLookupMode.value = DEFAULT_EDITOR_SETTINGS.tableHoverLookupMode;
     editExternalSqlEditorMaxMb.value = DEFAULT_EDITOR_SETTINGS.externalSqlEditorMaxMb;
     editClickTableNavigationTarget.value = DEFAULT_EDITOR_SETTINGS.clickTableNavigationTarget;
     editSqlVariableSubstitutionEnabled.value = DEFAULT_EDITOR_SETTINGS.sqlVariableSubstitutionEnabled;
@@ -2034,6 +2048,7 @@ function resetAllDefaults() {
   editGenerateSqlQuoteIdentifiers.value = DEFAULT_EDITOR_SETTINGS.generateSqlQuoteIdentifiers;
   editFormatSqlOnSqlFileSave.value = DEFAULT_EDITOR_SETTINGS.formatSqlOnSqlFileSave;
   editShowTableDdlHoverPreview.value = DEFAULT_EDITOR_SETTINGS.showTableDdlHoverPreview;
+  editTableHoverLookupMode.value = DEFAULT_EDITOR_SETTINGS.tableHoverLookupMode;
   editUpdateNotificationsEnabled.value = DEFAULT_EDITOR_SETTINGS.updateNotificationsEnabled;
   editAutoDownloadUpdates.value = DEFAULT_EDITOR_SETTINGS.autoDownloadUpdates;
   editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
@@ -2194,6 +2209,12 @@ function onDefaultTransactionModeChange(v: any) {
 function onCompletionTriggerModeChange(v: any) {
   if (v === "manual" || v === "require-prefix" || v === "positional") {
     editCompletionTriggerMode.value = v;
+  }
+}
+
+function onTableHoverLookupModeChange(v: any) {
+  if (v === "current" || v === "fallback" || v === "always") {
+    editTableHoverLookupMode.value = v;
   }
 }
 
@@ -5601,6 +5622,25 @@ onUnmounted(() => {
                     <SelectContent>
                       <SelectItem value="all">{{ t("settings.executeModeAll") }}</SelectItem>
                       <SelectItem value="current">{{ t("settings.executeModeCurrent") }}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2 md:col-span-2" data-editor-table-hover-lookup-mode>
+                  <div class="min-w-0 space-y-1">
+                    <Label>{{ t("settings.tableHoverLookupMode") }}</Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ tableHoverLookupModeDescription }}
+                    </p>
+                  </div>
+                  <Select :model-value="editTableHoverLookupMode" @update:model-value="onTableHoverLookupModeChange">
+                    <SelectTrigger class="h-8 w-48 shrink-0">
+                      <SelectValue :placeholder="t('settings.tableHoverLookupMode')" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="current">{{ t("settings.tableHoverLookupModeCurrent") }}</SelectItem>
+                      <SelectItem value="fallback">{{ t("settings.tableHoverLookupModeFallback") }}</SelectItem>
+                      <SelectItem value="always">{{ t("settings.tableHoverLookupModeAlways") }}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
