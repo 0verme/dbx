@@ -12,7 +12,8 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::{InstalledPlugin, InstalledPluginInfo, PluginManifest};
+use super::lifecycle::PluginUsageGuard;
+use super::{InstalledPlugin, InstalledPluginInfo, PluginLifecycle, PluginManifest};
 
 pub const DBXP_EXTENSION: &str = "dbxp";
 pub const PLUGIN_CHECKSUMS_FILE: &str = "checksums.json";
@@ -48,12 +49,14 @@ pub struct PluginInstallResult {
     pub previous_version: Option<String>,
     pub package_sha256: String,
     pub signature: PluginSignatureStatus,
+    _update_guard: Option<PluginUsageGuard>,
 }
 
 #[derive(Debug, Clone)]
 pub struct PluginRollbackResult {
     pub plugin: InstalledPlugin,
     pub previous_version: String,
+    _update_guard: Option<PluginUsageGuard>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -135,6 +138,7 @@ pub struct PluginPackageInstaller {
     root_dir: PathBuf,
     app_version: String,
     trust_store: Arc<PluginTrustStore>,
+    lifecycle: Option<PluginLifecycle>,
 }
 
 #[derive(Debug, Clone)]
@@ -256,11 +260,16 @@ fn read_trust_document(root_dir: &Path) -> Result<PluginTrustDocument, String> {
 impl PluginPackageInstaller {
     pub fn new(root_dir: PathBuf, app_version: impl Into<String>) -> Result<Self, String> {
         let trust_store = super::marketplace::package_install_trust_store(&root_dir)?;
-        Ok(Self { root_dir, app_version: app_version.into(), trust_store: Arc::new(trust_store) })
+        Ok(Self { root_dir, app_version: app_version.into(), trust_store: Arc::new(trust_store), lifecycle: None })
     }
 
     pub fn with_trust_store(root_dir: PathBuf, app_version: impl Into<String>, trust_store: PluginTrustStore) -> Self {
-        Self { root_dir, app_version: app_version.into(), trust_store: Arc::new(trust_store) }
+        Self { root_dir, app_version: app_version.into(), trust_store: Arc::new(trust_store), lifecycle: None }
+    }
+
+    pub fn with_lifecycle(mut self, lifecycle: PluginLifecycle) -> Self {
+        self.lifecycle = Some(lifecycle);
+        self
     }
 
     pub fn install_file(
@@ -374,6 +383,7 @@ impl PluginPackageInstaller {
         }
         make_backend_executable(&compatibility.backend_executable)?;
 
+        let update_guard = self.lifecycle.as_ref().map(|lifecycle| lifecycle.begin_update(&manifest.id)).transpose()?;
         let container_dir = self.root_dir.join(&manifest.id);
         migrate_legacy_container(&container_dir)?;
         let versions_dir = container_dir.join(VERSIONS_DIR);
@@ -460,10 +470,11 @@ impl PluginPackageInstaller {
             log::warn!("Failed to prune plugin '{}' install history: {error}", manifest.id);
         }
         let plugin = InstalledPlugin::new(manifest, version_dir, &self.app_version);
-        Ok(PluginInstallResult { plugin, previous_version, package_sha256, signature })
+        Ok(PluginInstallResult { plugin, previous_version, package_sha256, signature, _update_guard: update_guard })
     }
 
     fn rollback_locked(&self, plugin_id: &str) -> Result<PluginRollbackResult, String> {
+        let update_guard = self.lifecycle.as_ref().map(|lifecycle| lifecycle.begin_update(plugin_id)).transpose()?;
         let container_dir = self.root_dir.join(plugin_id);
         let current = read_latest_activation(&container_dir)?
             .ok_or_else(|| format!("Plugin '{plugin_id}' does not have an active version"))?;
@@ -501,7 +512,7 @@ impl PluginPackageInstaller {
         if let Err(error) = prune_plugin_history(&container_dir, &activation) {
             log::warn!("Failed to prune plugin '{plugin_id}' rollback history: {error}");
         }
-        Ok(PluginRollbackResult { plugin, previous_version })
+        Ok(PluginRollbackResult { plugin, previous_version, _update_guard: update_guard })
     }
 }
 
@@ -1018,6 +1029,94 @@ mod tests {
         PLUGIN_CHECKSUMS_FILE, PLUGIN_SIGNATURE_FILE, VERSIONS_DIR,
     };
     use crate::plugins::{PluginManifest, PluginRegistry};
+
+    #[test]
+    fn runtime_updates_and_rollbacks_preserve_active_connections_and_versions() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = PluginRegistry::new_with_app_version(root.path().to_path_buf(), "0.5.67");
+        let lifecycle = registry.lifecycle();
+        let installer =
+            PluginPackageInstaller::with_trust_store(root.path().to_path_buf(), "0.5.67", PluginTrustStore::default())
+                .with_lifecycle(lifecycle.clone());
+        let first = package("1.0.0", None, false);
+        let second = package("1.1.0", None, false);
+        installer.install_bytes(&first, PluginInstallPolicy::LocalDevelopment).unwrap();
+        let connection = lifecycle.begin_connection("sample.hello", "My connection").unwrap();
+        for bytes in [&first, &second] {
+            let error = installer.install_bytes(bytes, PluginInstallPolicy::LocalDevelopment).unwrap_err();
+            assert!(error.contains("My connection"));
+            assert_eq!(registry.find_plugin("sample.hello").unwrap().unwrap().manifest.version, "1.0.0");
+        }
+        assert!(!root.path().join("sample.hello/versions/1.1.0").exists());
+        drop(connection);
+
+        let unrelated = lifecycle.begin_connection("other.plugin", "Unrelated connection").unwrap();
+        let installed = installer.install_bytes(&second, PluginInstallPolicy::LocalDevelopment).unwrap();
+        assert!(lifecycle.begin_connection("sample.hello", "New connection").is_err());
+        assert!(lifecycle.begin_operation("sample.hello").is_err());
+        drop(installed);
+        let connection = lifecycle.begin_connection("sample.hello", "My connection").unwrap();
+        assert!(installer.rollback("sample.hello").unwrap_err().contains("My connection"));
+        assert_eq!(registry.find_plugin("sample.hello").unwrap().unwrap().manifest.version, "1.1.0");
+        drop(connection);
+        let rollback = installer.rollback("sample.hello").unwrap();
+        assert_eq!(registry.find_plugin("sample.hello").unwrap().unwrap().manifest.version, "1.0.0");
+        assert!(lifecycle.begin_operation("sample.hello").is_err());
+        drop(rollback);
+        assert!(lifecycle.begin_connection("sample.hello", "Reconnected").is_ok());
+        drop(unrelated);
+    }
+
+    #[test]
+    fn runtime_install_file_and_signed_packages_share_the_update_guard() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = PluginRegistry::new_with_app_version(root.path().to_path_buf(), "0.5.67");
+        let lifecycle = registry.lifecycle();
+        let signer = SigningKey::from_bytes(&[23; 32]);
+        let trust = PluginTrustStore::from_base64_keys(BTreeMap::from([(
+            "test".to_string(),
+            base64::engine::general_purpose::STANDARD.encode(signer.verifying_key().as_bytes()),
+        )]))
+        .unwrap();
+        let installer = PluginPackageInstaller::with_trust_store(root.path().to_path_buf(), "0.5.67", trust)
+            .with_lifecycle(lifecycle.clone());
+        installer
+            .install_bytes(&package("1.0.0", Some((&signer, "test")), false), PluginInstallPolicy::LocalSigned)
+            .unwrap();
+        let bytes = package("1.1.0", Some((&signer, "test")), false);
+        let package_path = root.path().join("update.dbxp");
+        std::fs::write(&package_path, &bytes).unwrap();
+        let operation = lifecycle.begin_operation("sample.hello").unwrap();
+        assert!(installer
+            .install_file(&package_path, PluginInstallPolicy::LocalSigned)
+            .unwrap_err()
+            .contains("active operations"));
+        let expectation = PluginPackageExpectation {
+            id: "sample.hello".to_string(),
+            version: "1.1.0".to_string(),
+            publisher: "sample".to_string(),
+            permissions: BTreeSet::from(["host.events".to_string()]),
+            signing_key_id: "test".to_string(),
+        };
+        assert!(installer.install_marketplace_bytes(&bytes, &expectation).unwrap_err().contains("active operations"));
+        drop(operation);
+        installer.install_marketplace_bytes(&bytes, &expectation).unwrap();
+        assert_eq!(registry.find_plugin("sample.hello").unwrap().unwrap().manifest.version, "1.1.0");
+    }
+
+    #[test]
+    fn failed_runtime_update_releases_the_admission_guard() {
+        let root = tempfile::tempdir().unwrap();
+        let lifecycle = crate::plugins::PluginLifecycle::default();
+        let installer =
+            PluginPackageInstaller::with_trust_store(root.path().to_path_buf(), "0.5.67", PluginTrustStore::default())
+                .with_lifecycle(lifecycle.clone());
+        installer.install_bytes(&package("1.0.0", None, false), PluginInstallPolicy::LocalDevelopment).unwrap();
+        assert!(installer.rollback("sample.hello").is_err());
+        assert!(lifecycle.begin_connection("sample.hello", "Retry").is_ok());
+        assert!(installer.install_bytes(&package("1.1.0", None, true), PluginInstallPolicy::LocalDevelopment).is_err());
+        assert!(lifecycle.begin_update("sample.hello").is_ok());
+    }
 
     #[test]
     fn installs_versioned_package_and_rolls_back_atomically() {
