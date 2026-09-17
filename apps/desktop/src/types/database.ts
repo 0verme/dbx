@@ -789,6 +789,8 @@ export interface CatalogInfo {
 export interface TableInfo {
   name: string;
   table_type: string;
+  /** Optional validity populated by status-aware object loaders. */
+  valid?: boolean | null;
   comment?: string | null;
   parent_schema?: string | null;
   parent_name?: string | null;

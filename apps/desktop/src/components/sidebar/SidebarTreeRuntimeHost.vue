@@ -207,6 +207,7 @@ import { createDatabaseCollationOptionsForCharset, DEFAULT_GBASE8S_DATABASE_LOCA
 import { executeWithProductionContextGuard, executeWithProductionSqlGuard } from "@/lib/database/productionExecutionGuard";
 import { connectionIsEffectivelyReadOnly } from "@/lib/database/readOnlyWriteAccess";
 import { buildXuguCompileSql } from "@/lib/database/xuguCompileSql";
+import { buildDamengCompileViewSql } from "@/lib/database/damengCompileSql";
 import type { SidebarDataOpenRequest } from "@/lib/sidebar/sidebarDataOpenCoordinator";
 import { createSidebarActionTarget, findSidebarActionTarget, releaseRemovedSidebarActionTarget, type SidebarActionTarget } from "@/lib/sidebar/sidebarActionTarget";
 import { createSidebarMenuContext, normalizeSidebarMenuDescriptors } from "@/lib/sidebar/sidebarTreeMenuDescriptors";
@@ -333,6 +334,9 @@ import {
   editDatabaseCollation,
   editDatabaseCommentText,
   showEditSchemaCommentDialog,
+  showCompileErrorDialog,
+  compileErrorTitle,
+  compileErrorMessage,
   schemaCommentText,
   schemaCommentLoading,
   schemaCommentPreviewSql,
@@ -2614,6 +2618,26 @@ async function compileXuguObject() {
     await connectionStore.refreshTreeNode(node);
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function compileDamengView() {
+  const node = activeNode.value;
+  if (currentDatabaseType() !== "dameng" || node.type !== "view" || !node.connectionId || !node.database) return;
+  const sql = buildDamengCompileViewSql({ schema: node.schema, name: node.objectName || node.label });
+  if (!sql) return;
+  try {
+    await connectionStore.ensureConnected(node.connectionId);
+    const executed = await executeTreeNodeSqlWithProductionGuard(node, sql, { database: node.database, schema: node.schema });
+    if (!executed) return;
+    toast(t("contextMenu.compileObjectSuccess", { name: node.label }), 3000);
+    await connectionStore.refreshObjectListTreeNode(node.connectionId, node.database, node.schema);
+  } catch (e: any) {
+    compileErrorTitle.value = t("contextMenu.compileObjectFailedTitle");
+    compileErrorMessage.value = t("contextMenu.compileObjectFailedMessage", { name: node.label, message: e?.message || String(e) });
+    claimTreeItemDialogOwnership();
+    routeTreeItemDialogController();
+    showCompileErrorDialog.value = true;
   }
 }
 
@@ -5291,6 +5315,9 @@ function databaseSpecificDialogCapabilities() {
     createSchemaName,
     confirmCreateSchema,
     showEditSchemaCommentDialog,
+    showCompileErrorDialog,
+    compileErrorTitle,
+    compileErrorMessage,
     schemaCommentText,
     schemaCommentLoading,
     schemaCommentPreviewSql,
@@ -6093,6 +6120,9 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     if (node.type === "view" || node.type === "materialized_view") {
       items.push({ label: t("contextMenu.editView"), action: () => openObjectSourceDialog(true), icon: Pencil });
       items.push({ label: t("contextMenu.viewSource"), action: () => openObjectSourceDialog(false), icon: Code2 });
+      if (node.type === "view" && currentDatabaseType() === "dameng" && buildDamengCompileViewSql({ schema: node.schema, name: node.objectName || node.label })) {
+        items.push({ label: t("contextMenu.compileObject"), action: compileDamengView, icon: Wrench });
+      }
       items.push({
         label: t("contextMenu.viewDdl"),
         action: openDdl,

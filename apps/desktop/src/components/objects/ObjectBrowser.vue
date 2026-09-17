@@ -124,6 +124,7 @@ import { isCancelSearchShortcut } from "@/lib/editor/keyboardShortcuts";
 import { executeWithProductionSqlGuard } from "@/lib/database/productionExecutionGuard";
 import { connectionIsEffectivelyReadOnly } from "@/lib/database/readOnlyWriteAccess";
 import { buildXuguCompileSql } from "@/lib/database/xuguCompileSql";
+import { buildDamengCompileViewSql } from "@/lib/database/damengCompileSql";
 import { formatShortcut } from "@/lib/editor/shortcutRegistry";
 import { batchTableEmptyFeedback, buildBatchTableEmptyPlan, runBatchTableEmpty, type BatchTableEmptyPlanItem } from "@/lib/sidebar/batchTableEmpty";
 import { runBatchTableDrop } from "@/lib/table/batchTableDrop";
@@ -224,6 +225,9 @@ const sourceError = ref("");
 const sourceRow = ref<ObjectBrowserRow | null>(null);
 const sourceEditing = ref(false);
 const sourceCanEdit = ref(true);
+const showCompileErrorDialog = ref(false);
+const compileErrorTitle = ref("");
+const compileErrorMessage = ref("");
 // --- Right-side panel state ---
 // Unified panel: either "table-info" (for tables) or "source" (for views/procedures/etc.)
 const sidePanelRow = ref<ObjectBrowserRow | null>(null);
@@ -2570,6 +2574,24 @@ async function compileXuguObject(row: ObjectBrowserRow) {
   }
 }
 
+async function compileDamengView(row: ObjectBrowserRow) {
+  if (effectiveDatabaseType.value !== "dameng" || row.type !== "VIEW") return;
+  const schema = row.schema || selectedSchema.value;
+  const sql = buildDamengCompileViewSql({ schema, name: row.name });
+  if (!sql) return;
+  try {
+    const executed = await executeObjectBrowserSqlWithProductionGuard(sql, () => api.executeQuery(props.connection.id, props.database, sql, schema));
+    if (!executed) return;
+    toast(t("contextMenu.compileObjectSuccess", { name: row.name }));
+    await reload();
+    await connectionStore.refreshObjectListTreeNode(props.connection.id, props.database, schema);
+  } catch (e: any) {
+    compileErrorTitle.value = t("contextMenu.compileObjectFailedTitle");
+    compileErrorMessage.value = t("contextMenu.compileObjectFailedMessage", { name: row.name, message: e?.message || String(e) });
+    showCompileErrorDialog.value = true;
+  }
+}
+
 async function refreshTruncatePreviewSql(row: ObjectBrowserRow) {
   truncatePreviewSql.value = "";
   truncatePreviewSql.value = await buildTruncateTableSql(tableAdminSqlOptions(row, { cascade: canTruncateTargetCascade.value && truncateTableCascade.value })).catch(() => "");
@@ -3244,6 +3266,7 @@ function getViewMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
     { label: t("contextMenu.viewData"), action: () => openViewData(item), icon: Table2 },
     { label: t("contextMenu.editView"), action: () => openSource(item), icon: PencilLine },
     { label: t("contextMenu.viewSource"), action: () => openSource(item), icon: Code2 },
+    ...(effectiveDatabaseType.value === "dameng" && item.type === "VIEW" && buildDamengCompileViewSql({ schema: item.schema || selectedSchema.value, name: item.name }) ? [{ label: t("contextMenu.compileObject"), action: () => compileDamengView(item), icon: Wrench }] : []),
     {
       label: t("contextMenu.viewDdl"),
       action: () => openTableInfo(item, "ddl"),
@@ -3633,7 +3656,12 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
                       {{ t("objects.partitions", { count: item.partitionCount }) }}
                     </span>
                   </div>
-                  <div class="truncate text-xs text-muted-foreground">{{ typeLabel(item) }}</div>
+                  <div class="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
+                    <span class="truncate">{{ typeLabel(item) }}</span>
+                    <span v-if="item.type === 'VIEW' && item.valid != null" class="shrink-0 rounded border px-1 py-px text-[10px] font-medium" :class="item.valid ? 'border-emerald-500/30 text-emerald-600' : 'border-destructive/30 text-destructive'">
+                      {{ t(item.valid ? "objects.validStatus" : "objects.invalidStatus") }}
+                    </span>
+                  </div>
                   <div v-if="showObjectRowStats" class="truncate text-xs tabular-nums text-muted-foreground" :title="item.estimatedRows == null ? '' : formatObjectBrowserCount(item.estimatedRows)">
                     {{ formatObjectBrowserCount(item.estimatedRows) }}
                   </div>
@@ -3679,6 +3707,9 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
                     <span class="w-full truncate text-sm font-medium leading-tight text-foreground">{{ item.displayName }}</span>
                     <div class="flex items-center gap-1.5">
                       <span class="text-xs text-muted-foreground">{{ typeLabel(item) }}</span>
+                      <span v-if="item.type === 'VIEW' && item.valid != null" class="rounded border px-1 py-px text-[10px] font-medium" :class="item.valid ? 'border-emerald-500/30 text-emerald-600' : 'border-destructive/30 text-destructive'">
+                        {{ t(item.valid ? "objects.validStatus" : "objects.invalidStatus") }}
+                      </span>
                       <span v-if="showObjectRowStats && item.estimatedRows != null && item.estimatedRows > 0" class="object-browser-stat-badge object-browser-stat-badge-rows rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-primary">{{
                         formatObjectBrowserCount(item.estimatedRows)
                       }}</span>
@@ -4054,6 +4085,18 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
         <Button :disabled="!renameInput.trim() || renameInput.trim() === renameTarget?.name" @click="confirmRename">
           {{ t("contextMenu.renameObject") }}
         </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <Dialog v-model:open="showCompileErrorDialog">
+    <DialogContent class="sm:max-w-[560px]">
+      <DialogHeader>
+        <DialogTitle>{{ compileErrorTitle }}</DialogTitle>
+      </DialogHeader>
+      <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-destructive/5 p-3 text-sm text-destructive">{{ compileErrorMessage }}</pre>
+      <DialogFooter>
+        <Button @click="showCompileErrorDialog = false">{{ t("common.close") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

@@ -106,6 +106,8 @@ impl CatalogInfo {
 pub struct TableInfo {
     pub name: String,
     pub table_type: String, // "TABLE" or "VIEW"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid: Option<bool>,
     pub comment: Option<String>,
     pub parent_schema: Option<String>,
     pub parent_name: Option<String>,
@@ -856,7 +858,7 @@ pub struct CustomTypeDetails {
 mod tests {
     use super::{
         CompletionAssistantCandidate, CompletionAssistantCandidateKind, ObjectInfo, ObjectSourceKind, QueryMessage,
-        SpatialColumn, SpatialColumnBuilder,
+        SpatialColumn, SpatialColumnBuilder, TableInfo,
     };
 
     #[test]
@@ -954,6 +956,39 @@ mod tests {
         assert_eq!(trigger.enabled, Some(false));
         assert_eq!(trigger.comment.as_deref(), Some("audit"));
         assert_eq!(objects[1].xugu_type_members_expandable, Some(true));
+    }
+
+    #[test]
+    fn dameng_table_validity_round_trips_true_false_and_unknown() {
+        for validity in [Some(true), Some(false), None] {
+            let payload = serde_json::json!({"name": "VIEW_A", "table_type": "VIEW", "valid": validity});
+            let table: TableInfo = serde_json::from_value(payload).unwrap();
+            assert_eq!(table.valid, validity);
+            let encoded = serde_json::to_value(&table).unwrap();
+            assert_eq!(encoded.get("valid").and_then(serde_json::Value::as_bool), validity);
+            assert_eq!(encoded.get("valid").is_some(), validity.is_some());
+            let decoded: TableInfo = serde_json::from_value(encoded).unwrap();
+            assert_eq!(decoded.valid, validity);
+        }
+        let legacy: TableInfo = serde_json::from_str(r#"{"name":"TABLE_A","table_type":"TABLE"}"#).unwrap();
+        assert_eq!(legacy.valid, None);
+    }
+
+    #[test]
+    fn dameng_object_validity_round_trips_true_false_and_unknown() {
+        for validity in [Some(true), Some(false), None] {
+            let payload =
+                serde_json::json!({"name": "VIEW_A", "object_type": "VIEW", "schema": "APP", "valid": validity});
+            let object: ObjectInfo = serde_json::from_value(payload).unwrap();
+            assert_eq!(object.valid, validity);
+            let encoded = serde_json::to_value(&object).unwrap();
+            assert_eq!(encoded.get("valid").and_then(serde_json::Value::as_bool), validity);
+            assert_eq!(encoded.get("valid").is_some(), validity.is_some());
+            let decoded: ObjectInfo = serde_json::from_value(encoded).unwrap();
+            assert_eq!(decoded.valid, validity);
+        }
+        let legacy: ObjectInfo = serde_json::from_str(r#"{"name":"TABLE_A","object_type":"TABLE"}"#).unwrap();
+        assert_eq!(legacy.valid, None);
     }
 
     #[test]

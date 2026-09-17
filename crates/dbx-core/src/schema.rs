@@ -2303,6 +2303,7 @@ fn message_queue_topic_tables(topics: Vec<crate::mq::TopicInfo>) -> Vec<db::Tabl
         .map(|topic| db::TableInfo {
             name: topic.name,
             table_type: "TOPIC".to_string(),
+            valid: None,
             comment: None,
             parent_schema: topic.namespace,
             parent_name: None,
@@ -2762,6 +2763,7 @@ fn collection_names_to_tables(names: Vec<String>, table_type: &str) -> Vec<db::T
         .map(|name| db::TableInfo {
             name,
             table_type: table_type.to_string(),
+            valid: None,
             comment: None,
             parent_schema: None,
             parent_name: None,
@@ -3045,6 +3047,7 @@ fn presto_like_tables_from_query_result(result: &db::QueryResult) -> Vec<db::Tab
                 table_type: normalize_information_schema_table_type(
                     query_result_cell_string(row, 1).as_deref().unwrap_or("TABLE"),
                 ),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -4733,6 +4736,7 @@ for line in sys.stdin:
         super::db::TableInfo {
             name: name.to_string(),
             table_type: "BASE TABLE".to_string(),
+            valid: None,
             comment: None,
             parent_schema: None,
             parent_name: None,
@@ -4902,6 +4906,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "t_order_view".to_string(),
                 table_type: "VIEW".to_string(),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -5028,6 +5033,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "active_orders".to_string(),
                 table_type: "VIEW".to_string(),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -5036,6 +5042,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "active_users".to_string(),
                 table_type: "VIEW".to_string(),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -5056,6 +5063,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "orders_view".to_string(),
                 table_type: "VIEW".to_string(),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -5063,6 +5071,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "daily_orders_mv".to_string(),
                 table_type: "MATERIALIZED_VIEW".to_string(),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -5070,6 +5079,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "monthly_orders_mv".to_string(),
                 table_type: "MATERIALIZED_VIEW".to_string(),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -5816,6 +5826,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "ORDERS".to_string(),
                 table_type: "TABLE".to_string(),
+                valid: None,
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
@@ -5823,6 +5834,7 @@ for line in sys.stdin:
             super::db::TableInfo {
                 name: "PRODUCTS".to_string(),
                 table_type: "TABLE".to_string(),
+                valid: None,
                 comment: Some("Existing".to_string()),
                 parent_schema: None,
                 parent_name: None,

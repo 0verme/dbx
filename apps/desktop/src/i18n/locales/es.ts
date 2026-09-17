@@ -3231,6 +3231,8 @@ export default withEnglishFallback({
     maxRetriesHint: "Reintentar automáticamente en caso de limitación de tasa, tiempo de espera o error de red temporal. 0 = no reintentar, máximo 10.",
   },
   contextMenu: {
+    compileObjectFailedTitle: "Error al compilar la vista",
+    compileObjectFailedMessage: 'No se pudo compilar la vista "{name}":\n{message}',
     openConnection: "Abrir conexión",
     closeConnection: "Cerrar conexión",
     closeSelectedConnections: "Cerrar {count} conexiones seleccionadas",
@@ -4017,6 +4019,8 @@ export default withEnglishFallback({
     anyPrivilegeDisabled: "Los privilegios de tipo ANY están deshabilitados por DM8 (ENABLE_DDL_ANY_PRIV=0) y no se pueden otorgar ni revocar",
   },
   objects: {
+    validStatus: "VALID",
+    invalidStatus: "INVALID",
     all: "Todos",
     tables: "Tablas",
     collections: "Colecciones",

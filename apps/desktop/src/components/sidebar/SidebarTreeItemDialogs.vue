@@ -131,6 +131,9 @@ const {
   createSchemaName,
   confirmCreateSchema,
   showEditSchemaCommentDialog,
+  showCompileErrorDialog,
+  compileErrorTitle,
+  compileErrorMessage,
   schemaCommentText,
   schemaCommentLoading,
   schemaCommentPreviewSql,
@@ -207,6 +210,7 @@ watch(
     showRedisDatabaseAliasDialog,
     showCreateSchemaDialog,
     showEditSchemaCommentDialog,
+    showCompileErrorDialog,
   ],
   (open) => {
     if (open.every((value) => !value)) emit("closed");
@@ -802,6 +806,18 @@ watch(
         <Button :disabled="schemaCommentLoading" @click="confirmEditSchemaComment">
           {{ schemaCommentLoading ? t("contextMenu.schemaCommentSaving") : t("dangerDialog.confirm") }}
         </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <Dialog v-model:open="showCompileErrorDialog">
+    <DialogContent class="sm:max-w-[560px]">
+      <DialogHeader>
+        <DialogTitle>{{ compileErrorTitle }}</DialogTitle>
+      </DialogHeader>
+      <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-destructive/5 p-3 text-sm text-destructive">{{ compileErrorMessage }}</pre>
+      <DialogFooter>
+        <Button @click="showCompileErrorDialog = false">{{ t("common.close") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

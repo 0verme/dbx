@@ -3255,6 +3255,8 @@ export default withEnglishFallback({
     maxRetriesHint: "レート制限、タイムアウト、または一時的なネットワークエラーが発生した場合に自動的にリトライします。0 = リトライなし、最大10。",
   },
   contextMenu: {
+    compileObjectFailedTitle: "ビューのコンパイルに失敗しました",
+    compileObjectFailedMessage: "ビュー「{name}」のコンパイルに失敗しました:\n{message}",
     openConnection: "接続を開く",
     closeConnection: "接続を閉じる",
     closeSelectedConnections: "選択した{count}件の接続を閉じる",
@@ -4077,6 +4079,8 @@ export default withEnglishFallback({
     anyPrivilegeDisabled: "ANY系権限はDM8で無効化されています（ENABLE_DDL_ANY_PRIV=0）ため、付与・取り消しはできません",
   },
   objects: {
+    validStatus: "VALID",
+    invalidStatus: "INVALID",
     all: "すべて",
     tables: "テーブル",
     collections: "コレクション",

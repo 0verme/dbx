@@ -3231,6 +3231,8 @@ export default withEnglishFallback({
     maxRetriesHint: "Tente novamente automaticamente ao encontrar limitação de taxa, tempo limite ou erro de rede temporário. 0 = não tentar novamente, máximo 10.",
   },
   contextMenu: {
+    compileObjectFailedTitle: "Falha na compilação da visão",
+    compileObjectFailedMessage: 'Falha ao compilar a visão "{name}":\n{message}',
     openConnection: "Abrir Conexão",
     closeConnection: "Fechar Conexão",
     closeSelectedConnections: "Fechar {count} conexões selecionadas",
@@ -4017,6 +4019,8 @@ export default withEnglishFallback({
     anyPrivilegeDisabled: "Privilégios do tipo ANY estão desabilitados pelo DM8 (ENABLE_DDL_ANY_PRIV=0) e não podem ser concedidos ou revogados",
   },
   objects: {
+    validStatus: "VALID",
+    invalidStatus: "INVALID",
     all: "Todos",
     tables: "Tabelas",
     collections: "Coleções",
