@@ -255,7 +255,7 @@ fn read_trust_document(root_dir: &Path) -> Result<PluginTrustDocument, String> {
 
 impl PluginPackageInstaller {
     pub fn new(root_dir: PathBuf, app_version: impl Into<String>) -> Result<Self, String> {
-        let trust_store = PluginTrustStore::load(&root_dir)?;
+        let trust_store = super::marketplace::package_install_trust_store(&root_dir)?;
         Ok(Self { root_dir, app_version: app_version.into(), trust_store: Arc::new(trust_store) })
     }
 
@@ -1109,6 +1109,102 @@ mod tests {
         let signed = package("1.0.0", Some((&signing_key, "sample-key")), false);
         let result = installer.install_marketplace_bytes(&signed, &expectation).unwrap();
         assert_eq!(result.signature, PluginSignatureStatus::Trusted { key_id: "sample-key".to_string() });
+    }
+
+    #[test]
+    fn local_installer_loads_official_keys_without_persisting_them() {
+        let root = tempfile::tempdir().unwrap();
+        let installer = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
+
+        assert!(installer.trust_store.keys.contains_key("dbx-store-release-2026"));
+        assert!(installer.trust_store.keys.contains_key("dbx-store-preview-2026"));
+        assert!(PluginTrustStore::list_base64_keys(root.path()).unwrap().is_empty());
+        assert!(!root.path().join(".trust").exists());
+    }
+
+    #[test]
+    fn local_installer_rejects_forged_official_signatures() {
+        let root = tempfile::tempdir().unwrap();
+        let installer = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
+        let forged_key = SigningKey::from_bytes(&[11u8; 32]);
+        let package_path = root.path().join("forged.dbxp");
+        std::fs::write(&package_path, package("1.0.0", Some((&forged_key, "dbx-store-release-2026")), false)).unwrap();
+
+        for policy in [PluginInstallPolicy::LocalSigned, PluginInstallPolicy::LocalDevelopment] {
+            let error = installer.install_file(&package_path, policy).unwrap_err();
+            assert_eq!(error, "Plugin package signature verification failed");
+        }
+        assert!(!root.path().join("sample.hello").exists());
+    }
+
+    #[test]
+    fn local_installer_preserves_custom_key_trust() {
+        let root = tempfile::tempdir().unwrap();
+        let signing_key = SigningKey::from_bytes(&[9u8; 32]);
+        let public_key = base64::engine::general_purpose::STANDARD.encode(signing_key.verifying_key().as_bytes());
+        PluginTrustStore::save_base64_key(root.path(), "sample-repository", &public_key).unwrap();
+        let installer = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
+        let package_path = root.path().join("custom.dbxp");
+        std::fs::write(&package_path, package("1.0.0", Some((&signing_key, "sample-repository")), false)).unwrap();
+
+        let installed = installer.install_file(&package_path, PluginInstallPolicy::LocalSigned).unwrap();
+
+        assert_eq!(installed.signature, PluginSignatureStatus::Trusted { key_id: "sample-repository".to_string() });
+        assert!(installer.trust_store.keys.contains_key("dbx-store-release-2026"));
+        assert_eq!(PluginTrustStore::list_base64_keys(root.path()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn local_installer_rejects_unknown_signed_packages() {
+        let root = tempfile::tempdir().unwrap();
+        let installer = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
+        let signing_key = SigningKey::from_bytes(&[9u8; 32]);
+        let package = package("1.0.0", Some((&signing_key, "unknown-release")), false);
+
+        for policy in [PluginInstallPolicy::LocalSigned, PluginInstallPolicy::LocalDevelopment] {
+            let error = installer.install_bytes(&package, policy).unwrap_err();
+            assert_eq!(error, "Plugin package is signed by untrusted key 'unknown-release'");
+        }
+        assert!(!root.path().join("sample.hello").exists());
+    }
+
+    #[test]
+    fn local_installer_rejects_official_key_conflicts() {
+        let root = tempfile::tempdir().unwrap();
+        let forged_key = SigningKey::from_bytes(&[11u8; 32]);
+        let public_key = base64::engine::general_purpose::STANDARD.encode(forged_key.verifying_key().as_bytes());
+        PluginTrustStore::save_base64_key(root.path(), "dbx-store-release-2026", &public_key).unwrap();
+
+        let error = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67")
+            .err()
+            .expect("a custom key must not override an official signing key");
+
+        assert!(error.contains("'dbx-store-release-2026' already exists with a different public key"));
+    }
+
+    #[test]
+    fn local_installer_accepts_matching_official_keys() {
+        let root = tempfile::tempdir().unwrap();
+        let installer = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
+        let official_key = installer.trust_store.keys.get("dbx-store-release-2026").unwrap();
+        let public_key = base64::engine::general_purpose::STANDARD.encode(official_key.as_bytes());
+        PluginTrustStore::save_base64_key(root.path(), "dbx-store-release-2026", &public_key).unwrap();
+
+        let reloaded = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
+
+        assert_eq!(reloaded.trust_store.keys.get("dbx-store-release-2026"), Some(official_key));
+        assert_eq!(PluginTrustStore::list_base64_keys(root.path()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn local_installer_enforces_unsigned_policy() {
+        let root = tempfile::tempdir().unwrap();
+        let installer = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
+        let unsigned = package("1.0.0", None, false);
+
+        assert!(installer.install_bytes(&unsigned, PluginInstallPolicy::LocalSigned).is_err());
+        let installed = installer.install_bytes(&unsigned, PluginInstallPolicy::LocalDevelopment).unwrap();
+        assert_eq!(installed.signature, PluginSignatureStatus::Unsigned);
     }
 
     #[test]

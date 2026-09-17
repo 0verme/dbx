@@ -24,6 +24,7 @@ import { useQueryStore } from "@/stores/queryStore";
 import type { InstalledPlugin, PluginInstallResult, PluginRepository, PluginRepositoryCatalogResult, PluginTrustedKey } from "@/types/database";
 import { useI18n } from "vue-i18n";
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
+import { translateBackendError } from "@/i18n/backend-errors";
 
 const props = defineProps<{
   focusTarget?: PluginCenterFocus | null;
@@ -389,7 +390,7 @@ async function installPlugin(source: string | File) {
     const result = await api.installPluginPackage(source, allowUnsigned.value);
     await finishInstall(result);
   } catch (cause) {
-    toast(cause instanceof Error ? cause.message : String(cause), 8000);
+    toast(translateBackendError(t, cause), 8000);
   } finally {
     installing.value = false;
   }
@@ -422,7 +423,7 @@ async function installPluginFromUrl() {
     installUrl.value = "";
     await finishInstall(result);
   } catch (cause) {
-    toast(cause instanceof Error ? cause.message : String(cause), 8000);
+    toast(translateBackendError(t, cause), 8000);
   } finally {
     unlisten?.();
     urlInstalling.value = false;

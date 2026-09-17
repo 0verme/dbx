@@ -445,9 +445,7 @@ impl PluginMarketplace {
             bytes.extend_from_slice(&chunk);
             on_progress(bytes.len() as u64, total);
         }
-        let trust_store = url_install_trust_store(&self.root_dir)?;
-        PluginPackageInstaller::with_trust_store(self.root_dir.clone(), self.app_version.clone(), trust_store)
-            .install_bytes(&bytes, policy)
+        PluginPackageInstaller::new(self.root_dir.clone(), self.app_version.clone())?.install_bytes(&bytes, policy)
     }
 
     async fn download_limited(&self, url: Url, max_bytes: usize, label: &str) -> Result<Vec<u8>, String> {
@@ -719,11 +717,11 @@ fn marketplace_trust_store(root_dir: &Path, kind: PluginRepositoryKind) -> Resul
     Ok(store)
 }
 
-/// Trust store for direct URL installs: the user's trusted keys plus the
+/// Trust store for local file and direct URL installs: the user's trusted keys plus the
 /// built-in official DBX Marketplace keys. A user-saved key that collides with
 /// a builtin key id but carries a different public key is a rotation conflict
 /// and fails the install instead of silently overriding the builtin key.
-pub fn url_install_trust_store(root_dir: &Path) -> Result<PluginTrustStore, String> {
+pub(super) fn package_install_trust_store(root_dir: &Path) -> Result<PluginTrustStore, String> {
     let mut keys = PluginTrustStore::list_base64_keys(root_dir)?
         .into_iter()
         .map(|key| (key.key_id, key.public_key))
@@ -732,7 +730,7 @@ pub fn url_install_trust_store(root_dir: &Path) -> Result<PluginTrustStore, Stri
         if let Some(existing) = keys.get(&key_id) {
             if existing.trim() != public_key {
                 return Err(format!(
-                    "Trusted plugin key '{key_id}' already exists with a different public key; remove it before installing official store packages from a URL"
+                    "Trusted plugin key '{key_id}' already exists with a different public key; remove it before installing official store packages"
                 ));
             }
             continue;
@@ -740,6 +738,10 @@ pub fn url_install_trust_store(root_dir: &Path) -> Result<PluginTrustStore, Stri
         keys.insert(key_id, public_key);
     }
     PluginTrustStore::from_base64_keys(keys)
+}
+
+pub fn url_install_trust_store(root_dir: &Path) -> Result<PluginTrustStore, String> {
+    package_install_trust_store(root_dir)
 }
 
 fn parse_http_url(raw: &str, label: &str) -> Result<Url, String> {
@@ -1011,6 +1013,14 @@ mod tests {
     fn loads_builtin_official_trusted_keys() {
         let root = tempfile::tempdir().unwrap();
         assert!(!marketplace_trust_store(root.path(), PluginRepositoryKind::Official).unwrap().is_empty());
+    }
+
+    #[test]
+    fn custom_repositories_do_not_implicitly_trust_official_keys() {
+        let root = tempfile::tempdir().unwrap();
+        for kind in [PluginRepositoryKind::Custom, PluginRepositoryKind::Enterprise] {
+            assert!(marketplace_trust_store(root.path(), kind).unwrap().is_empty());
+        }
     }
 
     #[tokio::test]
