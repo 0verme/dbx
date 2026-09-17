@@ -295,12 +295,52 @@ export interface PluginFormFieldOption {
   value: string;
 }
 
-export interface PluginFieldCondition {
-  /** Key of another plugin form field whose current value drives the condition. */
+/** A literal a `one_of` clause may list; compared by canonical string form. */
+export type PluginFieldConditionLiteral = string | number | boolean;
+
+/** Legacy single-field clause: `{ field, one_of }`. */
+export interface PluginFieldConditionClause {
+  /** Key of another plugin form field whose current value drives the clause. */
   field: string;
-  /** The condition matches when the referenced field's value is in this list. */
-  one_of: string[];
+  /** The clause matches when the referenced field's value is in this list. */
+  one_of: PluginFieldConditionLiteral[];
 }
+
+/** Every nested condition must match. */
+export interface PluginFieldConditionAllOf {
+  all_of: PluginFieldCondition[];
+}
+
+/** At least one nested condition must match. */
+export interface PluginFieldConditionAnyOf {
+  any_of: PluginFieldCondition[];
+}
+
+/** Inverts the nested condition. */
+export interface PluginFieldConditionNot {
+  not: PluginFieldCondition;
+}
+
+/** Host API 1.1: local-file action on a plugin connection field. */
+export interface PluginFormFieldPicker {
+  /** `directory` is desktop-only. */
+  kind: "file" | "directory";
+  /** Extensions (`.pem`) or MIME types (`text/plain`) offered by the picker. */
+  accept?: string[];
+  /**
+   * Declared sibling field that receives the file content on hosts without a
+   * client filesystem (the browser build). Desktop hosts store the chosen path
+   * in the declaring field and clear this one instead.
+   */
+  content_field?: string;
+}
+
+/**
+ * `visible_when` / `required_when` expression. The legacy `{ field, one_of }`
+ * clause keeps its exact meaning; `all_of` / `any_of` / `not` compose clauses
+ * (e.g. `sudo_source = custom AND read_only = false`).
+ */
+export type PluginFieldCondition = PluginFieldConditionClause | PluginFieldConditionAllOf | PluginFieldConditionAnyOf | PluginFieldConditionNot;
 
 export interface PluginFormField {
   key: string;
@@ -309,11 +349,15 @@ export interface PluginFormField {
   description?: string;
   placeholder?: string;
   required?: boolean;
-  default?: PluginFormFieldValue;
+  /** Declared default. Hosts older than the manifest serialization fix send
+   * `null` for "no default", which the form treats as unset. */
+  default?: PluginFormFieldValue | null;
   options?: PluginFormFieldOption[];
   /** Plugin method returning `{ options: [{ value, label }] }` for dynamic
    * select rendering; falls back to the declared type when unavailable. */
   options_action?: string;
+  /** Host API 1.1: offer a local-file action on this field. */
+  picker?: PluginFormFieldPicker;
   binding?: PluginFormFieldBinding;
   visible_when?: PluginFieldCondition;
   required_when?: PluginFieldCondition;
