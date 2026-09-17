@@ -4819,6 +4819,9 @@ export interface SqlFileProgress {
   elapsedMs: number;
   statementSummary: string;
   error?: string | null;
+  bytesRead?: number;
+  totalBytes?: number;
+  phase?: "preparing" | "reading" | "executing";
   fileIndex?: number;
   fileName?: string;
 }
