@@ -803,6 +803,8 @@ function expandStarProjectionColumnsForSource(analysis: EditableQueryInfo, sourc
 let saveTabsQueue = Promise.resolve();
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistGeneration = 0;
+/** Monotonic id for content-search jump requests; lets repeated clicks on the same result re-trigger the editor reveal. */
+let contentRevealSeq = 0;
 
 function saveTabs(tabs: QueryTab[], activeTabId: string | null, workspace?: EditorWorkspacePersistState): Promise<void> {
   if (isDetachedWindow()) return Promise.resolve();
@@ -2939,10 +2941,11 @@ export const useQueryStore = defineStore("query", () => {
     });
   }
 
-  function openExternalSqlFile(connectionId: string, database: string, path: string, sql: string, version?: QueryTab["externalSqlFileVersion"], catalog?: string, schema?: string) {
+  function openExternalSqlFile(connectionId: string, database: string, path: string, sql: string, version?: QueryTab["externalSqlFileVersion"], catalog?: string, schema?: string, reveal?: { line: number; column?: number }) {
     const normalizedPath = normalizeExternalSqlPath(path);
     const existing = tabs.value.find((tab) => tab.mode === "query" && tab.externalSqlPath && normalizeExternalSqlPath(tab.externalSqlPath) === normalizedPath);
     if (existing) {
+      if (reveal) existing.editorRevealRequest = { id: ++contentRevealSeq, line: reveal.line, column: reveal.column };
       switchTab(existing.id);
       return existing.id;
     }
@@ -2966,6 +2969,7 @@ export const useQueryStore = defineStore("query", () => {
       originalSql: sql,
       externalSqlPath: path,
       externalSqlFileVersion: version,
+      editorRevealRequest: reveal ? { id: ++contentRevealSeq, line: reveal.line, column: reveal.column } : undefined,
       isExecuting: false,
       isCancelling: false,
       isExplaining: false,
