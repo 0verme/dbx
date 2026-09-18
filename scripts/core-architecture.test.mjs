@@ -112,6 +112,28 @@ test("CI and release tracking follow the new source owners", () => {
   assert.ok(read("scripts/release.mjs").includes('"crates/dbx-drivers/src/mongo_shell.rs"'));
 });
 
+test("the standalone DuckDB lockfile includes core's internal dependency closure", () => {
+  const lockedPackages = new Map(read("agents/drivers/duckdb/Cargo.lock")
+    .split("\n[[package]]\n").slice(1)
+    .map((block) => [block.match(/^name = "([^"]+)"$/m)[1], block]));
+  const visited = new Set();
+  function inspect(name) {
+    if (visited.has(name)) return;
+    visited.add(name);
+    const pkg = members.get(name);
+    const locked = lockedPackages.get(name);
+    assert.ok(locked, `DuckDB lockfile misses ${name}`);
+    assert.ok(locked.includes(`version = "${pkg.version}"\n`), `DuckDB lockfile has a stale version of ${name}`);
+    assert.doesNotMatch(locked, /^source = /m);
+    const dependencies = new Set([...locked.matchAll(/^ "([^"]+)",$/gm)].map((match) => match[1].split(" ")[0]));
+    for (const dependency of pkg.dependencies.filter((dep) => dep.kind !== "dev" && !dep.optional && members.has(dep.name))) {
+      assert.ok(dependencies.has(dependency.name), `DuckDB lockfile misses ${name} -> ${dependency.name}`);
+      inspect(dependency.name);
+    }
+  }
+  inspect("dbx-core");
+});
+
 test("source-sensitive client tests point to existing owners", () => {
   function inspect(directory) {
     for (const entry of readdirSync(path.join(root, directory), { withFileTypes: true })) {
