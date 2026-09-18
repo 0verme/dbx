@@ -1462,6 +1462,35 @@ fn build_rownum_sampling_union_sql(select_columns: &str, parts: &[String]) -> St
     format!("SELECT {select_columns} FROM ({})", parts.join(" UNION ALL "))
 }
 
+/// Returns the rows fetched for a sampling strategy, collapsing duplicates
+/// that multi-branch sampling can fabricate.
+///
+/// `Hybrid` and `ExtremeValues` sampling merge several independent SELECT
+/// branches with `UNION ALL` (random + key ASC extremes + key DESC extremes
+/// for Hybrid, ASC + DESC extremes for ExtremeValues). The same physical row
+/// can be picked by more than one branch - for example the random branch
+/// hitting a key that the head/tail extreme branches already selected. That
+/// branch overlap is an artifact of sampling and must not be mistaken for a
+/// duplicate key in the compared table, so identical rows are collapsed to
+/// one copy before `collect_compare_rows` runs.
+///
+/// Rows that share the sampled key but differ in any other column are
+/// *kept*: they indicate a real duplicate in the table and must still trip
+/// the duplicate-key check. The single-branch `Random` strategy cannot
+/// fabricate duplicates, so its rows pass through untouched and genuine
+/// duplicates stay visible.
+fn sampled_rows_for(strategy: &SamplingStrategy, rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
+    match strategy {
+        SamplingStrategy::Random => rows,
+        SamplingStrategy::ExtremeValues | SamplingStrategy::Hybrid => dedupe_sampled_rows(rows),
+    }
+}
+
+fn dedupe_sampled_rows(rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
+    let mut seen = HashSet::with_capacity(rows.len());
+    rows.into_iter().filter(|row| seen.insert(row.clone())).collect()
+}
+
 fn build_sampling_select_sql(
     database_type: DatabaseType,
     schema: &str,
@@ -1675,7 +1704,7 @@ async fn fetch_sampled_compare_rows(
     )
     .await?;
 
-    Ok(result.rows)
+    Ok(sampled_rows_for(strategy, result.rows))
 }
 
 fn compute_column_checksums(columns: &[String], rows: &[Vec<Value>]) -> HashMap<String, String> {
@@ -2437,6 +2466,135 @@ mod tests {
         assert!(err.contains("Duplicate source key"), "{err}");
         assert!(err.contains("[tenant_id, user_id]"), "{err}");
         assert!(err.contains("[\"A\", 1001]"), "{err}");
+    }
+
+    #[test]
+    fn sampling_branch_overlap_is_not_reported_as_duplicate_key() {
+        // Hybrid sampling merges three independent branches with UNION ALL:
+        // random + head (key ASC extremes) + tail (key DESC extremes). The
+        // random branch can pick the same physical row that the head/tail
+        // branch already selected. Without deduplication the compare pipeline
+        // mistakes the resulting duplicate row for a duplicate key in the
+        // source table (issue #9095).
+        let overlapped = vec![
+            vec![json!(1), json!("Ada")],  // random branch
+            vec![json!(2), json!("Bob")],  // random branch
+            vec![json!(1), json!("Ada")],  // head branch - same physical row
+            vec![json!(4), json!("Dora")], // tail branch
+        ];
+        let target_rows =
+            vec![vec![json!(1), json!("Ada")], vec![json!(2), json!("Bob")], vec![json!(4), json!("Dora")]];
+
+        // The raw multi-branch sampling result currently trips the duplicate
+        // check - this is the #9095 false positive.
+        let err = compare_data_rows(CompareDataRowsOptions {
+            columns: vec!["id".to_string(), "name".to_string()],
+            key_columns: vec!["id".to_string()],
+            source_rows: overlapped.clone(),
+            target_rows: target_rows.clone(),
+        })
+        .expect_err("raw sampling overlap currently fails the duplicate check");
+        assert!(err.contains("Duplicate source key for column(s) [id]: 1"), "{err}");
+
+        // The sampled path must collapse identical rows (branch overlap) but
+        // still compare the remaining sample successfully.
+        let deduped = sampled_rows_for(&SamplingStrategy::Hybrid, overlapped);
+        assert_eq!(
+            deduped,
+            vec![vec![json!(1), json!("Ada")], vec![json!(2), json!("Bob")], vec![json!(4), json!("Dora")]]
+        );
+
+        let diff = compare_data_rows(CompareDataRowsOptions {
+            columns: vec!["id".to_string(), "name".to_string()],
+            key_columns: vec!["id".to_string()],
+            source_rows: deduped,
+            target_rows,
+        })
+        .expect("deduplicated sampling overlap must compare successfully");
+        assert!(diff.added.is_empty(), "{:?}", diff.added);
+        assert!(diff.removed.is_empty(), "{:?}", diff.removed);
+        assert!(diff.modified.is_empty(), "{:?}", diff.modified);
+    }
+
+    #[test]
+    fn sampled_rows_dedupe_keeps_real_duplicate_rows() {
+        // Two different rows sharing the key are a real duplicate in the
+        // table - deduplication must keep both so the duplicate-key check
+        // can still reject them.
+        let rows = vec![vec![json!(100), json!("Row A")], vec![json!(100), json!("Row B")]];
+        let kept = sampled_rows_for(&SamplingStrategy::Hybrid, rows.clone());
+        assert_eq!(kept, rows);
+
+        let err = compare_data_rows(CompareDataRowsOptions {
+            columns: vec!["id".to_string(), "name".to_string()],
+            key_columns: vec!["id".to_string()],
+            source_rows: kept,
+            target_rows: vec![vec![json!(100), json!("Row A")]],
+        })
+        .expect_err("real duplicate keys must still be rejected after dedupe");
+        assert!(err.contains("Duplicate source key for column(s) [id]: 100"), "{err}");
+    }
+
+    #[test]
+    fn random_sampling_rows_are_not_deduplicated() {
+        // A single-branch random sample cannot fabricate duplicates, so two
+        // identical rows in its result are a real duplicate in the table and
+        // must not be hidden by the sampled path.
+        let rows = vec![vec![json!(7), json!("Same")], vec![json!(7), json!("Same")]];
+        let kept = sampled_rows_for(&SamplingStrategy::Random, rows.clone());
+        assert_eq!(kept, rows);
+
+        let err = compare_data_rows(CompareDataRowsOptions {
+            columns: vec!["id".to_string(), "name".to_string()],
+            key_columns: vec!["id".to_string()],
+            source_rows: rows,
+            target_rows: vec![vec![json!(7), json!("Same")]],
+        })
+        .expect_err("random sampling must keep real duplicates visible");
+        assert!(err.contains("Duplicate source key"), "{err}");
+    }
+
+    #[test]
+    fn bigint_keys_beyond_js_safe_range_remain_distinct() {
+        // BIGINT values outside the JS safe integer range arrive as exact
+        // strings (safe_i64_to_json). Two adjacent values must stay two
+        // different keys - collapsing them would corrupt the compare.
+        let big_a = json!("-9222269855922960743");
+        let big_b = json!("-9222269855922960742");
+
+        let no_diff = compare_data_rows(CompareDataRowsOptions {
+            columns: vec!["id".to_string(), "name".to_string()],
+            key_columns: vec!["id".to_string()],
+            source_rows: vec![vec![big_a.clone(), json!("Alpha")]],
+            target_rows: vec![vec![big_a.clone(), json!("Alpha")]],
+        })
+        .expect("identical bigint keys must not produce differences");
+        assert!(no_diff.added.is_empty() && no_diff.removed.is_empty() && no_diff.modified.is_empty());
+
+        let diff = compare_data_rows(CompareDataRowsOptions {
+            columns: vec!["id".to_string(), "name".to_string()],
+            key_columns: vec!["id".to_string()],
+            source_rows: vec![vec![big_b.clone(), json!("Beta")]],
+            target_rows: vec![vec![big_a, json!("Alpha")]],
+        })
+        .expect("adjacent bigint keys must compare successfully");
+        assert_eq!(diff.added.len(), 1, "adjacent key must be a different key");
+        assert_eq!(diff.removed.len(), 1, "adjacent key must be a different key");
+    }
+
+    #[test]
+    fn bigint_duplicate_error_reports_exact_string_key() {
+        let err = compare_data_rows(CompareDataRowsOptions {
+            columns: vec!["id".to_string(), "name".to_string()],
+            key_columns: vec!["id".to_string()],
+            source_rows: vec![
+                vec![json!("-9222269855922960743"), json!("A")],
+                vec![json!("-9222269855922960743"), json!("B")],
+            ],
+            target_rows: vec![vec![json!("-9222269855922960743"), json!("A")]],
+        })
+        .expect_err("duplicate bigint keys should fail");
+        assert!(err.contains("Duplicate source key for column(s) [id]: \"-9222269855922960743\""), "{err}");
     }
 
     #[test]
