@@ -4413,7 +4413,7 @@ function globalInstructionsTooLong(): boolean {
 }
 
 // Agent turn limit for DBX's API-backed agent loop. CLI providers enforce their own limits.
-// Mirrors DEFAULT/MIN/MAX_MAX_AGENT_TURNS in crates/dbx-core/src/agent_loop.rs —
+// Mirrors DEFAULT/MIN/MAX_MAX_AGENT_TURNS in crates/dbx-core/src/ai/agent_loop.rs —
 // keep in sync; the backend clamp on save/load is the actual source of truth.
 const editMaxAgentTurns = ref<number | undefined>(undefined);
 const maxAgentTurnsSaving = ref(false);
