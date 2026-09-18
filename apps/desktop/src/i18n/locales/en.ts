@@ -1903,6 +1903,7 @@ export default {
     copyExtractorSkipComputed: "Skip computed columns",
     copyExtractorSkipGenerated: "Skip generated columns",
     copyExtractorExcludePrimaryKeys: "Exclude primary keys",
+    copyExtractorIncludeDatabaseName: "Include database name",
     copyExtractorInsertMode: "INSERT statements",
     copyExtractorInsertMerged: "Merge rows",
     copyExtractorInsertRowByRow: "One statement per row",

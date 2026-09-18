@@ -2348,6 +2348,7 @@ export default withEnglishFallback({
     copyExtractorSkipComputed: "Saltar columnas calculadas",
     copyExtractorSkipGenerated: "Saltar columnas generadas",
     copyExtractorExcludePrimaryKeys: "Excluir claves primarias",
+    copyExtractorIncludeDatabaseName: "Incluir el nombre de la base de datos",
     copyExtractorInsertMode: "Modo de sentencia INSERT",
     copyExtractorInsertMerged: "Combinar varias filas",
     copyExtractorInsertRowByRow: "Una sentencia por fila",

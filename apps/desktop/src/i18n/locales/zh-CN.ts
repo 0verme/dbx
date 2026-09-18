@@ -1817,6 +1817,7 @@ export default withEnglishFallback({
     copyExtractorSkipComputed: "跳过计算列",
     copyExtractorSkipGenerated: "跳过生成列",
     copyExtractorExcludePrimaryKeys: "排除主键",
+    copyExtractorIncludeDatabaseName: "包含数据库名称",
     copyExtractorInsertMode: "INSERT 语句模式",
     copyExtractorInsertMerged: "合并多行",
     copyExtractorInsertRowByRow: "每行一条语句",

@@ -2346,6 +2346,7 @@ export default withEnglishFallback({
     copyExtractorSkipComputed: "Salta colonne calcolate",
     copyExtractorSkipGenerated: "Salta colonne generate",
     copyExtractorExcludePrimaryKeys: "Escludi chiavi primarie",
+    copyExtractorIncludeDatabaseName: "Includi il nome del database",
     copyExtractorInsertMode: "Modalità istruzione INSERT",
     copyExtractorInsertMerged: "Unisci più righe",
     copyExtractorInsertRowByRow: "Una istruzione per riga",

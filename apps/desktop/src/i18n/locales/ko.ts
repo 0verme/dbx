@@ -1773,6 +1773,7 @@ export default withEnglishFallback({
     copyExtractorSkipComputed: "계산된 컬럼 건너뛰기",
     copyExtractorSkipGenerated: "생성된 컬럼 건너뛰기",
     copyExtractorExcludePrimaryKeys: "기본 키 제외",
+    copyExtractorIncludeDatabaseName: "데이터베이스 이름 포함",
     copyExtractorInsertMode: "INSERT 구문",
     copyExtractorInsertMerged: "행 병합",
     copyExtractorInsertRowByRow: "행별 한 구문",

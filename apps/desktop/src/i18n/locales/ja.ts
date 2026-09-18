@@ -2368,6 +2368,7 @@ export default withEnglishFallback({
     copyExtractorSkipComputed: "計算列をスキップ",
     copyExtractorSkipGenerated: "生成列をスキップ",
     copyExtractorExcludePrimaryKeys: "主キーを除外",
+    copyExtractorIncludeDatabaseName: "データベース名を含める",
     copyExtractorInsertMode: "INSERT文モード",
     copyExtractorInsertMerged: "複数行をマージ",
     copyExtractorInsertRowByRow: "1行ごとに1文",

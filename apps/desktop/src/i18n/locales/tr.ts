@@ -1755,6 +1755,7 @@ export default withEnglishFallback({
     copyExtractorSkipComputed: "Hesaplanan sütunları atla",
     copyExtractorSkipGenerated: "Üretilen sütunları atla",
     copyExtractorExcludePrimaryKeys: "Birincil anahtarları hariç tut",
+    copyExtractorIncludeDatabaseName: "Veritabanı adını dahil et",
     copyExtractorInsertMode: "INSERT ifadeleri",
     copyExtractorInsertMerged: "Satırları birleştir",
     copyExtractorInsertRowByRow: "Her satır için bir ifade",

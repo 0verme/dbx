@@ -2354,6 +2354,7 @@ export default withEnglishFallback({
     copyExtractorSkipComputed: "跳過計算列",
     copyExtractorSkipGenerated: "跳過生成列",
     copyExtractorExcludePrimaryKeys: "排除主鍵",
+    copyExtractorIncludeDatabaseName: "包含資料庫名稱",
     copyExtractorInsertMode: "INSERT 語句模式",
     copyExtractorInsertMerged: "合併多行",
     copyExtractorInsertRowByRow: "每行一條語句",
