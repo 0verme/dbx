@@ -2705,6 +2705,38 @@ function acceptCompletionOrNextSnippetField(view: EditorViewType): boolean {
   return codeMirrorNextSnippetField?.(view) ?? false;
 }
 
+function acceptSqlServerCompletionOnSpace(view: EditorViewType): boolean {
+  if (isEditorComposing(view)) return false;
+  if (props.databaseType !== "sqlserver" || !settingsStore.editorSettings.sqlServerSpaceConfirmsCompletion) return false;
+  if (codeMirrorCompletionStatus?.(view.state) !== "active") return false;
+  // A non-empty selection belongs to block editing, not word completion.
+  if (!view.state.selection.main.empty) return false;
+  const selected = codeMirrorSelectedCompletion?.(view.state) as QueryCompletionOption | null | undefined;
+  const completionType = selected?.type;
+  if (completionType !== "keyword" && completionType !== "table" && completionType !== "column") return false;
+  // Batch-selection rows own Space for checkbox toggling; this Prec.highest binding outranks their keymap.
+  if (selected?.dbxBatchColumnSelection || selected?.dbxBatchColumnSelectionAction) return false;
+  if (!(codeMirrorAcceptCompletion?.(view) ?? false)) return false;
+
+  const selection = view.state.selection.main;
+  if (!selection.empty) return true;
+  const cursor = selection.head;
+  const previousCharacter = cursor > 0 ? view.state.sliceDoc(cursor - 1, cursor) : "";
+  if (/\s/.test(previousCharacter)) return true;
+
+  const nextCharacter = view.state.sliceDoc(cursor, cursor + 1);
+  if (/\s/.test(nextCharacter)) {
+    view.dispatch({ selection: { anchor: cursor + 1 }, scrollIntoView: true });
+  } else {
+    view.dispatch({
+      changes: { from: cursor, insert: " " },
+      selection: { anchor: cursor + 1 },
+      scrollIntoView: true,
+    });
+  }
+  return true;
+}
+
 function clearPendingCompletionTab() {
   if (pendingCompletionTabTimer === null) return;
   clearTimeout(pendingCompletionTabTimer);
@@ -6942,6 +6974,7 @@ onMounted(async () => {
       vimModeComp.of(vimModeExtension(initialSettings.vimModeEnabled)),
       defaultKeymapComp.of(defaultKeymapExtension()),
       keymap.of([...searchKeymapWithoutModD(searchKeymap), ...historyKeymap, ...foldKeymap, ...completionKeymap]),
+      Prec.highest(keymap.of([{ key: "Space", run: acceptSqlServerCompletionOnSpace }])),
       sqlLanguageComp.of(buildSqlLanguageExtension()),
       sqlSemanticHighlightComp.of(buildSqlSemanticHighlightExtension()),
       tooltips({ parent: tooltipParent }),
