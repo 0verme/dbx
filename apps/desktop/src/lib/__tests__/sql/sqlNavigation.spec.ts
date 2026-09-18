@@ -311,6 +311,13 @@ describe("call-site navigation helpers", () => {
     });
   });
 
+  it("folds unquoted Oracle schema and table navigation targets", () => {
+    expect(normalizeOracleNavigationTarget({ name: "emp", schema: "hr" })).toEqual({
+      name: "EMP",
+      schema: "HR",
+    });
+  });
+
   it("preserves quoted package.member mixed-case identities", () => {
     const sql = 'BEGIN\n  "Pkg"."Member"();\nEND;';
     const identity = resolveSqlObjectNavigationIdentity(sql, sql.indexOf("Member"));
