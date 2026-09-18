@@ -1458,8 +1458,13 @@ fn build_limited_sampling_select_sql(
     }
 }
 
-fn build_rownum_sampling_union_sql(select_columns: &str, parts: &[String]) -> String {
-    format!("SELECT {select_columns} FROM ({})", parts.join(" UNION ALL "))
+fn build_sampling_union_sql(parts: &[String]) -> String {
+    parts
+        .iter()
+        .enumerate()
+        .map(|(branch, sql)| format!("SELECT dbx_sample.*, '{branch}' AS dbx_sample_branch FROM ({sql}) dbx_sample"))
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ")
 }
 
 /// Returns the rows fetched for a sampling strategy, collapsing duplicates
@@ -1471,12 +1476,12 @@ fn build_rownum_sampling_union_sql(select_columns: &str, parts: &[String]) -> St
 /// can be picked by more than one branch - for example the random branch
 /// hitting a key that the head/tail extreme branches already selected. That
 /// branch overlap is an artifact of sampling and must not be mistaken for a
-/// duplicate key in the compared table, so identical rows are collapsed to
-/// one copy before `collect_compare_rows` runs.
+/// duplicate key in the compared table. The trailing internal branch marker
+/// lets us retain the largest occurrence count within any single branch before
+/// `collect_compare_rows` runs, then remove the marker from the returned rows.
 ///
-/// Rows that share the sampled key but differ in any other column are
-/// *kept*: they indicate a real duplicate in the table and must still trip
-/// the duplicate-key check. The single-branch `Random` strategy cannot
+/// Both identical rows within a branch and rows sharing a key but differing
+/// in other columns are kept for the duplicate-key check. The `Random` strategy cannot
 /// fabricate duplicates, so its rows pass through untouched and genuine
 /// duplicates stay visible.
 fn sampled_rows_for(strategy: &SamplingStrategy, rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
@@ -1487,8 +1492,22 @@ fn sampled_rows_for(strategy: &SamplingStrategy, rows: Vec<Vec<Value>>) -> Vec<V
 }
 
 fn dedupe_sampled_rows(rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
-    let mut seen = HashSet::with_capacity(rows.len());
-    rows.into_iter().filter(|row| seen.insert(row.clone())).collect()
+    let mut counts: HashMap<Vec<Value>, (HashMap<Value, usize>, usize)> = HashMap::with_capacity(rows.len());
+    let mut sampled_rows = Vec::with_capacity(rows.len());
+    for mut row in rows {
+        let Some(branch) = row.pop() else {
+            sampled_rows.push(row);
+            continue;
+        };
+        let (branch_counts, retained_count) = counts.entry(row.clone()).or_default();
+        let branch_count = branch_counts.entry(branch).or_default();
+        *branch_count += 1;
+        if *branch_count > *retained_count {
+            *retained_count = *branch_count;
+            sampled_rows.push(row);
+        }
+    }
+    sampled_rows
 }
 
 fn build_sampling_select_sql(
@@ -1576,17 +1595,7 @@ fn build_sampling_select_sql(
                 tail_count,
             );
 
-            if uses_oracle_rownum_sampling(database_type) {
-                return build_rownum_sampling_union_sql(&select_columns, &[head, tail]);
-            }
-
-            format!(
-                "SELECT {select_columns} FROM ( \
-                 ({head}) \
-                 UNION ALL \
-                 ({tail}) \
-                 ) AS _extreme_sample"
-            )
+            build_sampling_union_sql(&[head, tail])
         }
         SamplingStrategy::Hybrid => {
             if key_columns.is_empty() {
@@ -1609,21 +1618,21 @@ fn build_sampling_select_sql(
 
             let random_part = match database_type {
                 DatabaseType::Postgres | DatabaseType::Redshift | DatabaseType::DuckDb | DatabaseType::Databricks => {
-                    format!("(SELECT {select_columns} FROM {table} TABLESAMPLE SYSTEM (1) LIMIT {random_count})")
+                    format!("SELECT {select_columns} FROM {table} TABLESAMPLE SYSTEM (1) LIMIT {random_count}")
                 }
                 DatabaseType::SqlServer => {
                     format!(
-                        "(SELECT TOP ({random_count}) {select_columns} FROM {table} TABLESAMPLE ({random_count} ROWS))"
+                        "SELECT TOP ({random_count}) {select_columns} FROM {table} TABLESAMPLE ({random_count} ROWS)"
                     )
                 }
                 DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Goldendb => {
-                    format!("(SELECT {select_columns} FROM {table} ORDER BY RAND() LIMIT {random_count})")
+                    format!("SELECT {select_columns} FROM {table} ORDER BY RAND() LIMIT {random_count}")
                 }
                 DatabaseType::Sqlite | DatabaseType::Rqlite | DatabaseType::Turso => {
-                    format!("(SELECT {select_columns} FROM {table} ORDER BY RANDOM() LIMIT {random_count})")
+                    format!("SELECT {select_columns} FROM {table} ORDER BY RANDOM() LIMIT {random_count}")
                 }
                 DatabaseType::ClickHouse => {
-                    format!("(SELECT {select_columns} FROM {table} ORDER BY rand() LIMIT {random_count})")
+                    format!("SELECT {select_columns} FROM {table} ORDER BY rand() LIMIT {random_count}")
                 }
                 DatabaseType::Oracle | DatabaseType::OceanbaseOracle | DatabaseType::Dameng => {
                     build_limited_sampling_select_sql(
@@ -1635,16 +1644,16 @@ fn build_sampling_select_sql(
                     )
                 }
                 DatabaseType::Iris => {
-                    format!("(SELECT TOP {random_count} {select_columns} FROM {table} ORDER BY RAND())")
+                    format!("SELECT TOP {random_count} {select_columns} FROM {table} ORDER BY RAND()")
                 }
                 DatabaseType::Questdb => {
-                    format!("(SELECT {select_columns} FROM {table} ORDER BY RAND() LIMIT {random_count})")
+                    format!("SELECT {select_columns} FROM {table} ORDER BY RAND() LIMIT {random_count}")
                 }
                 DatabaseType::Informix => {
-                    format!("(SELECT FIRST {random_count} {select_columns} FROM {table} ORDER BY RAND())")
+                    format!("SELECT FIRST {random_count} {select_columns} FROM {table} ORDER BY RAND()")
                 }
                 _ => {
-                    format!("(SELECT {select_columns} FROM {table} LIMIT {random_count})")
+                    format!("SELECT {select_columns} FROM {table} LIMIT {random_count}")
                 }
             };
             let head =
@@ -1657,19 +1666,7 @@ fn build_sampling_select_sql(
                 tail_count,
             );
 
-            if uses_oracle_rownum_sampling(database_type) {
-                return build_rownum_sampling_union_sql(&select_columns, &[random_part, head, tail]);
-            }
-
-            format!(
-                "SELECT {select_columns} FROM ( \
-                 {random_part} \
-                 UNION ALL \
-                 ({head}) \
-                 UNION ALL \
-                 ({tail}) \
-                 ) AS _hybrid_sample"
-            )
+            build_sampling_union_sql(&[random_part, head, tail])
         }
     }
 }
@@ -1704,7 +1701,11 @@ async fn fetch_sampled_compare_rows(
     )
     .await?;
 
-    Ok(sampled_rows_for(strategy, result.rows))
+    if key_columns.is_empty() {
+        Ok(result.rows)
+    } else {
+        Ok(sampled_rows_for(strategy, result.rows))
+    }
 }
 
 fn compute_column_checksums(columns: &[String], rows: &[Vec<Value>]) -> HashMap<String, String> {
@@ -2469,6 +2470,180 @@ mod tests {
     }
 
     #[test]
+    fn sampled_rows_preserve_identical_duplicates_within_each_branch() {
+        for strategy in [SamplingStrategy::Hybrid, SamplingStrategy::ExtremeValues] {
+            for label in ["source", "target"] {
+                let branch_count = if strategy == SamplingStrategy::Hybrid { 3 } else { 2 };
+                for branch in 0..branch_count {
+                    let row = vec![json!(1), json!("Ada"), json!(branch.to_string())];
+                    let kept = sampled_rows_for(&strategy, vec![row.clone(), row]);
+                    assert_eq!(kept, vec![vec![json!(1), json!("Ada")]; 2]);
+                    let unique = vec![vec![json!(1), json!("Ada")]];
+                    let (source_rows, target_rows) = if label == "source" { (kept, unique) } else { (unique, kept) };
+                    let result = compare_data_rows(CompareDataRowsOptions {
+                        columns: vec!["id".to_string(), "name".to_string()],
+                        key_columns: vec!["id".to_string()],
+                        source_rows,
+                        target_rows,
+                    });
+                    assert!(
+                        result.as_ref().is_err_and(|error| error.contains(&format!("Duplicate {label} key"))),
+                        "{strategy:?} {label} branch {branch}: {result:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sampled_rows_keep_maximum_branch_multiplicity_in_any_order() {
+        let row = vec![json!(1), json!(null), json!({"nested": [1, 2]})];
+        for strategy in [SamplingStrategy::Hybrid, SamplingStrategy::ExtremeValues] {
+            for branches in [["0", "1", "1", "0", "1"], ["1", "0", "1", "1", "0"]] {
+                let tagged = branches
+                    .into_iter()
+                    .map(|branch| {
+                        let mut tagged_row = row.clone();
+                        tagged_row.push(json!(branch));
+                        tagged_row
+                    })
+                    .collect();
+                assert_eq!(sampled_rows_for(&strategy, tagged), vec![row.clone(); 3]);
+            }
+        }
+    }
+
+    #[test]
+    fn sampled_rows_overlap_compares_on_either_side_without_internal_columns() {
+        let rows = vec![vec![json!(1), json!("Ada")], vec![json!(2), json!("Bob")]];
+        for strategy in [SamplingStrategy::Hybrid, SamplingStrategy::ExtremeValues] {
+            let branch_count = if strategy == SamplingStrategy::Hybrid { 3 } else { 2 };
+            let mut tagged = Vec::new();
+            for branch in 0..branch_count {
+                for row in &rows {
+                    let mut tagged_row = row.clone();
+                    tagged_row.push(json!(branch.to_string()));
+                    tagged.push(tagged_row);
+                }
+            }
+            let kept = sampled_rows_for(&strategy, tagged);
+            assert_eq!(kept, rows);
+            for (source_rows, target_rows) in [(kept.clone(), rows.clone()), (rows.clone(), kept)] {
+                let diff = compare_data_rows(CompareDataRowsOptions {
+                    columns: vec!["id".to_string(), "name".to_string()],
+                    key_columns: vec!["id".to_string()],
+                    source_rows,
+                    target_rows,
+                })
+                .unwrap();
+                assert!(diff.added.is_empty() && diff.removed.is_empty() && diff.modified.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn sampled_equal_row_counts_do_not_hide_identical_duplicates() {
+        for strategy in [SamplingStrategy::Hybrid, SamplingStrategy::ExtremeValues] {
+            let source_rows = sampled_rows_for(
+                &strategy,
+                vec![
+                    vec![json!(1), json!("Ada"), json!("0")],
+                    vec![json!(1), json!("Ada"), json!("0")],
+                    vec![json!(2), json!("Bob"), json!("0")],
+                ],
+            );
+            let target_rows = sampled_rows_for(
+                &strategy,
+                vec![
+                    vec![json!(1), json!("Ada"), json!("0")],
+                    vec![json!(2), json!("Bob"), json!("0")],
+                    vec![json!(2), json!("Bob"), json!("0")],
+                ],
+            );
+            assert_eq!(source_rows.len(), target_rows.len());
+            let error = compare_data_rows(CompareDataRowsOptions {
+                columns: vec!["id".to_string(), "name".to_string()],
+                key_columns: vec!["id".to_string()],
+                source_rows,
+                target_rows,
+            })
+            .unwrap_err();
+            assert!(error.contains("Duplicate source key"), "{error}");
+        }
+    }
+
+    #[test]
+    fn sampled_empty_rows_and_full_compare_keep_existing_behavior() {
+        for strategy in [SamplingStrategy::Random, SamplingStrategy::Hybrid, SamplingStrategy::ExtremeValues] {
+            assert!(sampled_rows_for(&strategy, Vec::new()).is_empty());
+        }
+        for label in ["source", "target"] {
+            let rows = vec![vec![json!(1), json!("Ada")]; 2];
+            let (source_rows, target_rows) = if label == "source" { (rows, Vec::new()) } else { (Vec::new(), rows) };
+            let error = compare_data_rows(CompareDataRowsOptions {
+                columns: vec!["id".to_string(), "name".to_string()],
+                key_columns: vec!["id".to_string()],
+                source_rows,
+                target_rows,
+            })
+            .unwrap_err();
+            assert!(error.contains(&format!("Duplicate {label} key")), "{error}");
+        }
+    }
+
+    #[test]
+    fn sampling_sql_marks_only_multi_branch_queries() {
+        use sqlparser::dialect::{
+            Dialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+        };
+        use sqlparser::parser::Parser;
+
+        for database_type in [
+            DatabaseType::Oracle,
+            DatabaseType::OceanbaseOracle,
+            DatabaseType::Dameng,
+            DatabaseType::SqlServer,
+            DatabaseType::Postgres,
+            DatabaseType::Mysql,
+            DatabaseType::Sqlite,
+        ] {
+            let dialect: Box<dyn Dialect> = match database_type {
+                DatabaseType::SqlServer => Box::new(MsSqlDialect {}),
+                DatabaseType::Mysql => Box::new(MySqlDialect {}),
+                DatabaseType::Postgres => Box::new(PostgreSqlDialect {}),
+                DatabaseType::Sqlite => Box::new(SQLiteDialect {}),
+                _ => Box::new(GenericDialect {}),
+            };
+            for strategy in [SamplingStrategy::Random, SamplingStrategy::Hybrid, SamplingStrategy::ExtremeValues] {
+                for columns in [Vec::new(), vec!["id".to_string(), "dbx_sample_branch".to_string()]] {
+                    let sql = build_sampling_select_sql(
+                        database_type,
+                        "APP",
+                        "EVENTS",
+                        &columns,
+                        &["id".to_string()],
+                        &strategy,
+                        10,
+                    );
+                    let branch_count = match strategy {
+                        SamplingStrategy::Random => 0,
+                        SamplingStrategy::Hybrid => 3,
+                        SamplingStrategy::ExtremeValues => 2,
+                    };
+                    assert!(Parser::parse_sql(dialect.as_ref(), &sql).is_ok(), "{database_type:?}: {sql}");
+                    assert_eq!(sql.matches("AS dbx_sample_branch").count(), branch_count, "{sql}");
+                    for branch in 0..branch_count {
+                        assert!(sql.contains(&format!("'{branch}' AS dbx_sample_branch")), "{sql}");
+                    }
+                    let keyless =
+                        build_sampling_select_sql(database_type, "APP", "EVENTS", &columns, &[], &strategy, 10);
+                    assert!(!keyless.contains("AS dbx_sample_branch"), "{keyless}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn sampling_branch_overlap_is_not_reported_as_duplicate_key() {
         // Hybrid sampling merges three independent branches with UNION ALL:
         // random + head (key ASC extremes) + tail (key DESC extremes). The
@@ -2498,7 +2673,15 @@ mod tests {
 
         // The sampled path must collapse identical rows (branch overlap) but
         // still compare the remaining sample successfully.
-        let deduped = sampled_rows_for(&SamplingStrategy::Hybrid, overlapped);
+        let tagged = overlapped
+            .into_iter()
+            .zip(["0", "0", "1", "2"])
+            .map(|(mut row, branch)| {
+                row.push(json!(branch));
+                row
+            })
+            .collect();
+        let deduped = sampled_rows_for(&SamplingStrategy::Hybrid, tagged);
         assert_eq!(
             deduped,
             vec![vec![json!(1), json!("Ada")], vec![json!(2), json!("Bob")], vec![json!(4), json!("Dora")]]
@@ -2522,7 +2705,15 @@ mod tests {
         // table - deduplication must keep both so the duplicate-key check
         // can still reject them.
         let rows = vec![vec![json!(100), json!("Row A")], vec![json!(100), json!("Row B")]];
-        let kept = sampled_rows_for(&SamplingStrategy::Hybrid, rows.clone());
+        let tagged = rows
+            .iter()
+            .cloned()
+            .map(|mut row| {
+                row.push(json!("0"));
+                row
+            })
+            .collect();
+        let kept = sampled_rows_for(&SamplingStrategy::Hybrid, tagged);
         assert_eq!(kept, rows);
 
         let err = compare_data_rows(CompareDataRowsOptions {
@@ -2756,10 +2947,10 @@ mod tests {
 
         assert_eq!(
             sql,
-            "SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM \"APP\".\"EVENTS\" ORDER BY DBMS_RANDOM.VALUE) WHERE ROWNUM <= 5 UNION ALL SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM \"APP\".\"EVENTS\" ORDER BY \"ID\" ASC, \"TENANT_ID\" ASC) WHERE ROWNUM <= 2 UNION ALL SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM \"APP\".\"EVENTS\" ORDER BY \"ID\" DESC, \"TENANT_ID\" DESC) WHERE ROWNUM <= 3)"
+            "SELECT dbx_sample.*, '0' AS dbx_sample_branch FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM \"APP\".\"EVENTS\" ORDER BY DBMS_RANDOM.VALUE) WHERE ROWNUM <= 5) dbx_sample UNION ALL SELECT dbx_sample.*, '1' AS dbx_sample_branch FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM \"APP\".\"EVENTS\" ORDER BY \"ID\" ASC, \"TENANT_ID\" ASC) WHERE ROWNUM <= 2) dbx_sample UNION ALL SELECT dbx_sample.*, '2' AS dbx_sample_branch FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM (SELECT \"ID\", \"TENANT_ID\", \"NAME\", \"CREATED_AT\" FROM \"APP\".\"EVENTS\" ORDER BY \"ID\" DESC, \"TENANT_ID\" DESC) WHERE ROWNUM <= 3) dbx_sample"
         );
         assert!(!sql.contains(" LIMIT "));
-        assert!(!sql.contains(" AS _hybrid_sample"));
+        assert!(!sql.contains(") AS "));
     }
 
     #[test]
@@ -2776,7 +2967,7 @@ mod tests {
             );
 
             assert!(!sql.contains(" LIMIT "), "{database_type:?}: {sql}");
-            assert!(!sql.contains(" AS _hybrid_sample"), "{database_type:?}: {sql}");
+            assert!(!sql.contains(") AS "), "{database_type:?}: {sql}");
             assert_eq!(sql.matches("ROWNUM <= ").count(), 3, "{database_type:?}: {sql}");
         }
     }
