@@ -921,6 +921,8 @@ export type {
   AgentOfflineExportCandidate,
   AgentOfflineExportPreview,
   AgentOfflineExportResult,
+  AgentOfflineImportFailure,
+  AgentOfflineImportResult,
   DriverStoreUsage,
   DriverStoreUsageItem,
   DriverRuntimeHealth,
