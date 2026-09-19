@@ -154,19 +154,59 @@ export function createConcurrencyLimiter(limit: number, onIdle?: () => void) {
  * and fail whoever loses the race with `DBX metadata pool is busy; please
  * retry`. Waiting here instead keeps the queue off the backend gate, where
  * `METADATA_POOL_ACQUIRE_TIMEOUT` (5s) would turn it into that error.
+ *
+ * A lane is held by every `loadSchemaDetails` call running on it: each call
+ * registers itself as a holder before its first await and releases that hold
+ * in a `finally`, and the lane leaves the map only once the last holder has
+ * gone and every request it accepted has settled. The limiter's idle callback
+ * cannot own this lifecycle: at SQL Server's concurrency of 1 the lane goes
+ * idle at every table boundary, which used to evict it mid-compare so the next
+ * compare built a second lane and the two 1-wide fan-outs together overran the
+ * capacity-1 gate. The request count matters for the same reason on the way
+ * out: a failed compare stops awaiting requests it already queued, and those
+ * orphans must keep the lane alive so a retry still shares it instead of
+ * racing it on the gate. An empty table list never runs a request at all, so
+ * only the holder count can free its lane.
  */
-const schemaDiffMetadataLanes = new Map<string, ReturnType<typeof createConcurrencyLimiter>>();
+interface SchemaDiffMetadataLane {
+  key: string;
+  run: ReturnType<typeof createConcurrencyLimiter>;
+  holders: number;
+  requests: number;
+}
 
-function schemaDiffMetadataLane(connectionId: string, database: string, limit: number) {
-  const key = `${connectionId}\u0000${database}`;
+const schemaDiffMetadataLanes = new Map<string, SchemaDiffMetadataLane>();
+
+function schemaDiffMetadataLaneKey(connectionId: string, database: string): string {
+  return `${connectionId}\u0000${database}`;
+}
+
+function evictSchemaDiffMetadataLaneIfUnused(lane: SchemaDiffMetadataLane) {
+  if (lane.holders <= 0 && lane.requests <= 0 && schemaDiffMetadataLanes.get(lane.key) === lane) {
+    schemaDiffMetadataLanes.delete(lane.key);
+  }
+}
+
+function acquireSchemaDiffMetadataLane(connectionId: string, database: string, limit: number): SchemaDiffMetadataLane {
+  const key = schemaDiffMetadataLaneKey(connectionId, database);
   const existing = schemaDiffMetadataLanes.get(key);
-  if (existing) return existing;
+  if (existing) {
+    existing.holders += 1;
+    return existing;
+  }
 
-  const lane = createConcurrencyLimiter(limit, () => {
-    if (schemaDiffMetadataLanes.get(key) === lane) schemaDiffMetadataLanes.delete(key);
-  });
+  const lane: SchemaDiffMetadataLane = { key, run: createConcurrencyLimiter(limit), holders: 1, requests: 0 };
   schemaDiffMetadataLanes.set(key, lane);
   return lane;
+}
+
+function releaseSchemaDiffMetadataLane(lane: SchemaDiffMetadataLane) {
+  lane.holders -= 1;
+  evictSchemaDiffMetadataLaneIfUnused(lane);
+}
+
+export function schemaDiffMetadataLaneCountForTests(): number {
+  return schemaDiffMetadataLanes.size;
 }
 
 export interface SchemaDiffMetadataApi {
@@ -205,23 +245,36 @@ function isViewOrMaterializedView(tableType: string): ObjectSourceKind | undefin
 
 export async function loadSchemaDetails(tables: TableInfo[], context: SchemaDetailLoadContext, api: SchemaDiffMetadataApi): Promise<TableSchemaDetail[]> {
   const concurrency = schemaDiffMetadataConcurrency(context.dbType, tables.length);
-  const runMetadataQuery = schemaDiffMetadataLane(context.connectionId, context.database, concurrency);
+  // Hold the lane from before the first await so a compare starting while this
+  // one is between tables shares this lane instead of building a second one.
+  const lane = acquireSchemaDiffMetadataLane(context.connectionId, context.database, concurrency);
+  const runMetadataQuery = <T>(task: () => Promise<T>): Promise<T> => {
+    lane.requests += 1;
+    return lane.run(task).finally(() => {
+      lane.requests -= 1;
+      evictSchemaDiffMetadataLaneIfUnused(lane);
+    });
+  };
   let completed = 0;
 
-  return mapWithConcurrency(tables, concurrency, async (table) => {
-    const objectType = isViewOrMaterializedView(table.table_type);
-    const loadPlan = schemaDiffMetadataLoadPlan(isSchemaDiffView(table), context.options);
-    const ddlPromise = loadPlan.ddl ? runMetadataQuery(() => api.getTableDdl(context.connectionId, context.database, context.schema, table.name, objectType)) : Promise.resolve("");
-    const [columns, indexes, foreignKeys, triggers, ddl] = await Promise.all([
-      loadPlan.columns ? runMetadataQuery(() => api.getColumns(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
-      loadPlan.indexes ? runMetadataQuery(() => api.listIndexes(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
-      loadPlan.foreignKeys ? runMetadataQuery(() => api.listForeignKeys(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
-      loadPlan.triggers ? runMetadataQuery(() => api.listTriggers(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
-      ddlPromise,
-    ]);
+  try {
+    return await mapWithConcurrency(tables, concurrency, async (table) => {
+      const objectType = isViewOrMaterializedView(table.table_type);
+      const loadPlan = schemaDiffMetadataLoadPlan(isSchemaDiffView(table), context.options);
+      const ddlPromise = loadPlan.ddl ? runMetadataQuery(() => api.getTableDdl(context.connectionId, context.database, context.schema, table.name, objectType)) : Promise.resolve("");
+      const [columns, indexes, foreignKeys, triggers, ddl] = await Promise.all([
+        loadPlan.columns ? runMetadataQuery(() => api.getColumns(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
+        loadPlan.indexes ? runMetadataQuery(() => api.listIndexes(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
+        loadPlan.foreignKeys ? runMetadataQuery(() => api.listForeignKeys(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
+        loadPlan.triggers ? runMetadataQuery(() => api.listTriggers(context.connectionId, context.database, context.schema, table.name)) : Promise.resolve([]),
+        ddlPromise,
+      ]);
 
-    const detail = { name: table.name, columns, indexes, foreignKeys, triggers, ddl };
-    context.onProgress?.({ current: ++completed, total: tables.length, objectName: table.name });
-    return detail;
-  });
+      const detail = { name: table.name, columns, indexes, foreignKeys, triggers, ddl };
+      context.onProgress?.({ current: ++completed, total: tables.length, objectName: table.name });
+      return detail;
+    });
+  } finally {
+    releaseSchemaDiffMetadataLane(lane);
+  }
 }

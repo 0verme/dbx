@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createConcurrencyLimiter, loadSchemaDetails, mapWithConcurrency, schemaDiffMetadataConcurrency, schemaDiffMetadataLoadPlan, shouldFetchSchemaDiffDdl, type SchemaDiffMetadataApi, type SchemaDiffMetadataProgress } from "../../schema/schemaDiffMetadataLoad";
+import { createConcurrencyLimiter, loadSchemaDetails, mapWithConcurrency, schemaDiffMetadataConcurrency, schemaDiffMetadataLaneCountForTests, schemaDiffMetadataLoadPlan, shouldFetchSchemaDiffDdl, type SchemaDiffMetadataApi, type SchemaDiffMetadataProgress } from "../../schema/schemaDiffMetadataLoad";
 import { getSchemaDiffNextProgressStep, shouldLoadSchemaDiffExtraObjectPhase, shouldLoadSchemaDiffExtraObjects, shouldLoadSchemaDiffRoutines } from "../../schema/schemaDiffProgress";
 import { DEFAULT_MYSQL_OPTIONS, DEFAULT_POSTGRES_OPTIONS } from "../../../types/schemaDiff";
 import type { TableInfo } from "../../../types/database";
@@ -213,6 +213,129 @@ describe("schemaDiffMetadataLoad", () => {
     expect(foreground).toHaveLength(4);
     expect(background).toHaveLength(4);
     expect(gate.peak()).toBe(1);
+  });
+
+  it("keeps one shared lane for a compare starting after another compare's first table", async () => {
+    // Regression: the lane used to be evicted by the limiter's idle callback,
+    // which at SQL Server's concurrency of 1 fires at every table boundary --
+    // mid-compare. A compare starting there built a second 1-wide lane, and the
+    // two fan-outs together overran the backend's capacity-1 gate with
+    // `DBX metadata pool is busy`. The lane must instead live as long as the
+    // compares actively using it hold it.
+    const gate = createMetadataGate(1);
+    const { api } = gateMetadataApi(gate, { ddl: 4, metadata: 1 });
+    const context = {
+      connectionId: "9596-mid-flight",
+      database: "app",
+      schema: "dbo",
+      dbType: "sqlserver",
+      options: { ...DEFAULT_POSTGRES_OPTIONS },
+    };
+    const tables = sqlserverTables("orders", "customers", "events", "invoices");
+
+    let resolvePastFirstTable!: () => void;
+    const pastFirstTable = new Promise<void>((resolve) => {
+      resolvePastFirstTable = resolve;
+    });
+
+    const first = loadSchemaDetails(tables, { ...context, onProgress: (value) => { if (value.current >= 2) resolvePastFirstTable(); } }, api);
+    await pastFirstTable;
+    // The first compare is past a table boundary, exactly where the old
+    // idle-based eviction had already removed its lane mid-compare.
+    expect(schemaDiffMetadataLaneCountForTests()).toBe(1);
+
+    const second = loadSchemaDetails(tables, context, api);
+    const [firstDetails, secondDetails] = await Promise.all([first, second]);
+
+    expect(firstDetails).toHaveLength(4);
+    expect(secondDetails).toHaveLength(4);
+    expect(gate.peak()).toBe(1);
+    expect(schemaDiffMetadataLaneCountForTests()).toBe(0);
+  });
+
+  it("does not pin the metadata lane when the table list is empty", async () => {
+    // An empty compare (a filter that matches nothing) never runs a metadata
+    // request, so limiter activity alone can never free the lane. The call's
+    // own hold must release it, or the lane stays pinned in the map forever.
+    const gate = createMetadataGate(1);
+    const { api, calls } = gateMetadataApi(gate, { ddl: 0, metadata: 0 });
+
+    const details = await loadSchemaDetails(
+      [],
+      {
+        connectionId: "9596-empty-tables",
+        database: "app",
+        schema: "dbo",
+        dbType: "sqlserver",
+        options: { ...DEFAULT_POSTGRES_OPTIONS },
+      },
+      api,
+    );
+
+    expect(details).toEqual([]);
+    expect(calls()).toBe(0);
+    expect(schemaDiffMetadataLaneCountForTests()).toBe(0);
+  });
+
+  it("keeps the lane alive until a failed compare's queued requests drain", async () => {
+    // A failed compare stops awaiting requests it already queued: its
+    // `Promise.all` rejects while the remaining requests keep running on the
+    // lane. Those orphans must keep the lane in the map so an immediate retry
+    // shares it instead of racing the orphans on the gate with a second lane.
+    let active = 0;
+    let peak = 0;
+    const track = async <T>(task: () => Promise<T>) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      try {
+        return await task();
+      } finally {
+        active -= 1;
+      }
+    };
+    const api: SchemaDiffMetadataApi = {
+      getTableDdl: async (_connectionId, _database, _schema, table) =>
+        track(async () => {
+          await wait(6);
+          return `ddl:${table}`;
+        }),
+      getColumns: async () => {
+        throw new Error("columns failed");
+      },
+      listIndexes: async () =>
+        track(async () => {
+          await wait(6);
+          return [];
+        }),
+      listForeignKeys: async () =>
+        track(async () => {
+          await wait(6);
+          return [];
+        }),
+      listTriggers: async () =>
+        track(async () => {
+          await wait(6);
+          return [];
+        }),
+    };
+    const context = {
+      connectionId: "9596-orphan-drain",
+      database: "app",
+      schema: "dbo",
+      dbType: "sqlserver",
+      options: { ...DEFAULT_POSTGRES_OPTIONS },
+    };
+    const tables = sqlserverTables("orders", "customers");
+
+    await expect(loadSchemaDetails(tables, context, api)).rejects.toThrow("columns failed");
+    // The compare has failed, but its queued index/key/trigger requests are
+    // still draining behind it: the lane must still exist for the retry.
+    expect(schemaDiffMetadataLaneCountForTests()).toBe(1);
+
+    await expect(loadSchemaDetails(tables, context, api)).rejects.toThrow("columns failed");
+    for (let attempt = 0; attempt < 100 && schemaDiffMetadataLaneCountForTests() > 0; attempt += 1) await wait(1);
+    expect(schemaDiffMetadataLaneCountForTests()).toBe(0);
+    expect(peak).toBe(1);
   });
 
   it("keeps SQL Server metadata lanes independent per database", async () => {
