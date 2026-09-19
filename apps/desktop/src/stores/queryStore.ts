@@ -59,6 +59,7 @@ import { connectionObjectTreeNodeSchema, connectionQueryExecutionSchema, connect
 import { frontendQueryTimeoutDelayMs, frontendQueryTimeoutSecsForSql, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
 import { queryResultNameFromPreamble, queryResultSourceLabel } from "@/lib/sql/queryResultSource";
 import { sqlServerCountUsesLocalTempTable } from "@/lib/query/queryResultCountSession";
+import { stripPaginationRowNumber } from "@/lib/query/queryPaginationResult";
 import { beginDataGridNativeSelectionBlock, finishDataGridNativeSelectionBlock } from "@/lib/dataGrid/dataGridNativeSelection";
 import { appendLargeValueCells, canUseTableDataLargeValuePreview, remapLargeValueCells, tableDataLargeValuePreviewOptions, TABLE_DATA_RESULT_MAX_BYTES } from "@/lib/dataGrid/dataGridLargeValues";
 import { simpleDataGridOrderByReferencesMissingColumn, sortDataGridRowIndexes, type DataGridSortDirection } from "@/lib/dataGrid/dataGridSort";
@@ -6310,6 +6311,7 @@ export const useQueryStore = defineStore("query", () => {
     let countSql: string | undefined;
     let exactQueryRowBound: number | undefined;
     let useAgentResultSession = false;
+    let paginationRowNumberColumn: string | undefined;
     let executionDispatched = false;
     let producedResult = false;
     const resumedExecutionTarget = batchResume?.batch.executionTarget;
@@ -7054,6 +7056,7 @@ export const useQueryStore = defineStore("query", () => {
           countSql = sqlServerUseScript && plan.countSql ? replaceSqlServerLeadingUseQuery(queryBaseSql, sqlServerUseScript, plan.countSql) : plan.countSql;
           exactQueryRowBound = plan.exactQueryRowBound;
           useAgentResultSession = plan.useAgentResultSession;
+          paginationRowNumberColumn = plan.paginationRowNumberColumn;
         }
         const hasBoundedPagination = typeof pageLimit === "number" && typeof pageOffset === "number";
         if (options?.appendResult && !hasBoundedPagination && !useAgentResultSession) {
@@ -7269,6 +7272,9 @@ export const useQueryStore = defineStore("query", () => {
         options?.sourceOffset === undefined ? undefined : tab.sql,
       );
       const results = offsetBatchQueryResultIndexes(annotatedResults.results, batchResume?.startStatementIndex ?? 0);
+      if (paginationRowNumberColumn && results.length === 1) {
+        results[0] = markQueryResultsRowsRaw([stripPaginationRowNumber(results[0]!, paginationRowNumberColumn)])[0]!;
+      }
       reconcileBatchSqlResults(tab, executionId, results);
       // Sticky proven-read-only aggregation (Oracle/OceanBase-Oracle/MySQL/PG).
       // Only the initial manual execution participates: a later cursor-page
@@ -8563,8 +8569,8 @@ export const useQueryStore = defineStore("query", () => {
             }
           : { maxRows: plan.pageLimit, fetchSize: plan.pageLimit, clientSessionId, catalog: location.catalog, timeoutSecs: queryTimeoutSecs };
         const results = await api.executeMulti(location.connectionId, executionDatabase, plan.sqlToExecute, location.schema, exportExecutionId, executionOptions);
-        const result = results[0];
-        if (!result) break;
+        if (!results[0]) break;
+        const result = stripPaginationRowNumber(results[0], plan.paginationRowNumberColumn);
         if (columns.length === 0) columns = result.columns;
         rows.push(...result.rows);
         executionTimeMs += result.execution_time_ms ?? 0;

@@ -438,6 +438,7 @@ export interface QueryPaginationExecutionPlan {
   countSql?: string;
   exactQueryRowBound?: number;
   useAgentResultSession: boolean;
+  paginationRowNumberColumn?: string;
 }
 
 export type QuerySortDirection = "asc" | "desc";
