@@ -83,6 +83,7 @@ import {
   type DesktopIconTheme,
   type InterfaceLayout,
   type DisconnectTabHandlingMode,
+  type DeleteConnectionTabHandlingMode,
   type DataTabReuseMode,
   type DataGridFilterEditorView,
   type MultiStatementDefaultView,
@@ -723,6 +724,15 @@ const editAutoSelectActiveSidebarNode = ref(settingsStore.editorSettings.autoSel
 const editSidebarBrowseObjectsOnDatabaseActivation = ref(settingsStore.editorSettings.sidebarBrowseObjectsOnDatabaseActivation);
 const editOpenTabsRestoreMode = ref<OpenTabsRestoreMode>(settingsStore.editorSettings.openTabsRestoreMode);
 const editDisconnectTabHandlingMode = ref<DisconnectTabHandlingMode>(settingsStore.editorSettings.disconnectTabHandlingMode);
+const editDeleteConnectionTabHandlingMode = ref<DeleteConnectionTabHandlingMode>(settingsStore.editorSettings.deleteConnectionTabHandlingMode);
+const editRememberConnectionDatabaseOnDelete = ref(settingsStore.editorSettings.rememberConnectionDatabaseOnDelete);
+// 「记住的连接名 → 数据库」是累积数据而非偏好设置，不进弹窗草稿；这里直接读写 store，
+// 让清除操作立即生效，不受弹窗的保存/取消影响。
+const rememberedConnectionDatabaseCount = computed(() => Object.keys(settingsStore.editorSettings.rememberedConnectionDatabases).length);
+
+function clearRememberedConnectionDatabases() {
+  settingsStore.clearRememberedConnectionDatabases();
+}
 const editDataTabReuseMode = ref<DataTabReuseMode>(settingsStore.editorSettings.dataTabReuseMode);
 const editOpenDataTabsNextToActive = ref(settingsStore.editorSettings.openDataTabsNextToActive);
 const editPrefillNewQueryWithSelect = ref(settingsStore.editorSettings.prefillNewQueryWithSelect);
@@ -797,6 +807,20 @@ const disconnectTabHandlingModeDescriptionKey = computed(() => {
   }
 
   return "disconnectTabHandlingModeCloseTabsDescription";
+});
+const deleteConnectionTabHandlingModeDescriptionKey = computed(() => {
+  switch (editDeleteConnectionTabHandlingMode.value) {
+    case "close-tabs":
+      return "deleteConnectionTabHandlingModeCloseTabsDescription";
+    case "keep-sql-tabs":
+      return "deleteConnectionTabHandlingModeKeepSqlTabsDescription";
+    case "keep-pinned-sql-tabs":
+      return "deleteConnectionTabHandlingModeKeepPinnedSqlTabsDescription";
+    case "keep-all-tabs":
+      return "deleteConnectionTabHandlingModeKeepAllTabsDescription";
+  }
+
+  return "deleteConnectionTabHandlingModeCloseTabsDescription";
 });
 const normalizedEditTableColumnTemplateFields = computed(() => tableColumnTemplateRowsToSettings(editTableColumnTemplateRows.value));
 const visibleTableColumnTemplateRows = computed(() =>
@@ -969,6 +993,8 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     sidebarBrowseObjectsOnDatabaseActivation: editSidebarBrowseObjectsOnDatabaseActivation.value,
     openTabsRestoreMode: editOpenTabsRestoreMode.value,
     disconnectTabHandlingMode: editDisconnectTabHandlingMode.value,
+    deleteConnectionTabHandlingMode: editDeleteConnectionTabHandlingMode.value,
+    rememberConnectionDatabaseOnDelete: editRememberConnectionDatabaseOnDelete.value,
     dataTabReuseMode: editDataTabReuseMode.value,
     openDataTabsNextToActive: editOpenDataTabsNextToActive.value,
     prefillNewQueryWithSelect: editPrefillNewQueryWithSelect.value,
@@ -1610,6 +1636,8 @@ function syncEditorSettingsDraftFromStore() {
   editSidebarBrowseObjectsOnDatabaseActivation.value = settingsStore.editorSettings.sidebarBrowseObjectsOnDatabaseActivation;
   editOpenTabsRestoreMode.value = settingsStore.editorSettings.openTabsRestoreMode;
   editDisconnectTabHandlingMode.value = settingsStore.editorSettings.disconnectTabHandlingMode;
+  editDeleteConnectionTabHandlingMode.value = settingsStore.editorSettings.deleteConnectionTabHandlingMode;
+  editRememberConnectionDatabaseOnDelete.value = settingsStore.editorSettings.rememberConnectionDatabaseOnDelete;
   editDataTabReuseMode.value = settingsStore.editorSettings.dataTabReuseMode;
   editOpenDataTabsNextToActive.value = settingsStore.editorSettings.openDataTabsNextToActive;
   editPrefillNewQueryWithSelect.value = settingsStore.editorSettings.prefillNewQueryWithSelect;
@@ -1737,6 +1765,8 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   sidebarBrowseObjectsOnDatabaseActivation: editSidebarBrowseObjectsOnDatabaseActivation,
   openTabsRestoreMode: editOpenTabsRestoreMode,
   disconnectTabHandlingMode: editDisconnectTabHandlingMode,
+  deleteConnectionTabHandlingMode: editDeleteConnectionTabHandlingMode,
+  rememberConnectionDatabaseOnDelete: editRememberConnectionDatabaseOnDelete,
   dataTabReuseMode: editDataTabReuseMode,
   openDataTabsNextToActive: editOpenDataTabsNextToActive,
   prefillNewQueryWithSelect: editPrefillNewQueryWithSelect,
@@ -2177,6 +2207,8 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editSidebarBrowseObjectsOnDatabaseActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarBrowseObjectsOnDatabaseActivation;
     editOpenTabsRestoreMode.value = DEFAULT_EDITOR_SETTINGS.openTabsRestoreMode;
     editDisconnectTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.disconnectTabHandlingMode;
+    editDeleteConnectionTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.deleteConnectionTabHandlingMode;
+    editRememberConnectionDatabaseOnDelete.value = DEFAULT_EDITOR_SETTINGS.rememberConnectionDatabaseOnDelete;
     editDataTabReuseMode.value = DEFAULT_EDITOR_SETTINGS.dataTabReuseMode;
     editOpenDataTabsNextToActive.value = DEFAULT_EDITOR_SETTINGS.openDataTabsNextToActive;
     editPrefillNewQueryWithSelect.value = DEFAULT_EDITOR_SETTINGS.prefillNewQueryWithSelect;
@@ -2339,6 +2371,8 @@ function resetAllDefaults() {
   editSidebarBrowseObjectsOnDatabaseActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarBrowseObjectsOnDatabaseActivation;
   editOpenTabsRestoreMode.value = DEFAULT_EDITOR_SETTINGS.openTabsRestoreMode;
   editDisconnectTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.disconnectTabHandlingMode;
+  editDeleteConnectionTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.deleteConnectionTabHandlingMode;
+  editRememberConnectionDatabaseOnDelete.value = DEFAULT_EDITOR_SETTINGS.rememberConnectionDatabaseOnDelete;
   editDataTabReuseMode.value = DEFAULT_EDITOR_SETTINGS.dataTabReuseMode;
   editOpenDataTabsNextToActive.value = DEFAULT_EDITOR_SETTINGS.openDataTabsNextToActive;
   editPrefillNewQueryWithSelect.value = DEFAULT_EDITOR_SETTINGS.prefillNewQueryWithSelect;
@@ -2592,6 +2626,12 @@ const activeDataGridTypeColorSchemeName = computed(() => {
 function onDisconnectTabHandlingModeChange(v: any) {
   if (v === "close-tabs" || v === "keep-tabs-clear-results" || v === "keep-tabs-keep-results") {
     editDisconnectTabHandlingMode.value = v;
+  }
+}
+
+function onDeleteConnectionTabHandlingModeChange(v: any) {
+  if (v === "close-tabs" || v === "keep-sql-tabs" || v === "keep-pinned-sql-tabs" || v === "keep-all-tabs") {
+    editDeleteConnectionTabHandlingMode.value = v;
   }
 }
 
@@ -7121,6 +7161,52 @@ onUnmounted(() => {
                 <p class="text-xs text-muted-foreground">
                   {{ t(`settings.${disconnectTabHandlingModeDescriptionKey}`) }}
                 </p>
+              </div>
+              <div class="settings-item space-y-2 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <Label for="delete-connection-tab-handling-mode">{{ t("settings.deleteConnectionTabHandlingMode") }}</Label>
+                  <HelpTooltip :label="t('settings.deleteConnectionTabHandlingMode')">
+                    {{ t("settings.deleteConnectionTabHandlingModeDescription") }}
+                  </HelpTooltip>
+                </div>
+                <Select :model-value="editDeleteConnectionTabHandlingMode" @update:model-value="onDeleteConnectionTabHandlingModeChange">
+                  <SelectTrigger id="delete-connection-tab-handling-mode" class="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="close-tabs">{{ t("settings.deleteConnectionTabHandlingModeCloseTabs") }}</SelectItem>
+                    <SelectItem value="keep-sql-tabs">{{ t("settings.deleteConnectionTabHandlingModeKeepSqlTabs") }}</SelectItem>
+                    <SelectItem value="keep-pinned-sql-tabs">
+                      {{ t("settings.deleteConnectionTabHandlingModeKeepPinnedSqlTabs") }}
+                    </SelectItem>
+                    <SelectItem value="keep-all-tabs">{{ t("settings.deleteConnectionTabHandlingModeKeepAllTabs") }}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p class="text-xs text-muted-foreground">
+                  {{ t(`settings.${deleteConnectionTabHandlingModeDescriptionKey}`) }}
+                </p>
+              </div>
+              <div class="settings-item flex items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="min-w-0 space-y-1">
+                  <div class="flex items-center gap-2">
+                    <Label for="remember-connection-database-on-delete">{{ t("settings.rememberConnectionDatabaseOnDelete") }}</Label>
+                    <HelpTooltip :label="t('settings.rememberConnectionDatabaseOnDelete')">
+                      {{ t("settings.rememberConnectionDatabaseOnDeleteDescription") }}
+                    </HelpTooltip>
+                  </div>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("settings.rememberConnectionDatabaseOnDeleteHint") }}
+                  </p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs text-muted-foreground">
+                      {{ t("settings.rememberedConnectionDatabaseCount", { count: rememberedConnectionDatabaseCount }) }}
+                    </span>
+                    <Button variant="outline" size="sm" :disabled="rememberedConnectionDatabaseCount === 0" @click="clearRememberedConnectionDatabases">
+                      {{ t("settings.clearRememberedConnectionDatabases") }}
+                    </Button>
+                  </div>
+                </div>
+                <Switch id="remember-connection-database-on-delete" v-model="editRememberConnectionDatabaseOnDelete" />
               </div>
               <div class="settings-item space-y-2 rounded-md border bg-muted/20 px-3 py-2">
                 <div class="flex items-center gap-2">

@@ -121,6 +121,8 @@ const SETTINGS_TRANSFER_CATEGORY_KEYS: Record<SettingsTransferCategoryId, readon
     "sidebarBrowseObjectsOnDatabaseActivation",
     "openTabsRestoreMode",
     "disconnectTabHandlingMode",
+    "deleteConnectionTabHandlingMode",
+    "rememberConnectionDatabaseOnDelete",
     "dataTabReuseMode",
     "openDataTabsNextToActive",
     "clickTableNavigationTarget",

@@ -84,6 +84,8 @@ export const EDITOR_SETTINGS_DRAFT_KEYS = [
   "sidebarBrowseObjectsOnDatabaseActivation",
   "openTabsRestoreMode",
   "disconnectTabHandlingMode",
+  "deleteConnectionTabHandlingMode",
+  "rememberConnectionDatabaseOnDelete",
   "dataTabReuseMode",
   "openDataTabsNextToActive",
   "prefillNewQueryWithSelect",

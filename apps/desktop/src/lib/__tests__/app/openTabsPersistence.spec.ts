@@ -250,3 +250,28 @@ describe("openTabsPersistence originalSql round-trip", () => {
     });
   });
 });
+
+describe("openTabsPersistence detached connection tabs", () => {
+  it("preserves the original connection name of a kept SQL tab across a round-trip", () => {
+    const [restored] = roundTrip([queryTab({ connectionId: "deleted-conn", detachedConnectionName: "prod" })]);
+
+    expect(restored.connectionId).toBe("deleted-conn");
+    expect(restored.detachedConnectionName).toBe("prod");
+  });
+
+  it("keeps a detached SQL tab even though its connection no longer exists", () => {
+    const saved = serializeOpenTabs([queryTab({ id: "orphan", connectionId: "deleted-conn", detachedConnectionName: "prod" })]);
+
+    const { tabs } = restoreOpenTabsPayload({ tabs: saved, activeTabId: "orphan" }, { validConnectionIds: ["other-conn"] });
+
+    // SQL 页签不受 validConnectionIds 过滤，删除连接后保留下来的草稿页签才能跨重启存活。
+    expect(tabs.map((tab) => tab.id)).toEqual(["orphan"]);
+    expect(tabs[0].detachedConnectionName).toBe("prod");
+  });
+
+  it("omits the detached connection name when the tab is bound to a live connection", () => {
+    const [saved] = serializeOpenTabs([queryTab({})]);
+
+    expect(saved.detachedConnectionName).toBeUndefined();
+  });
+});

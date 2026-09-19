@@ -7,6 +7,7 @@ import { useI18n } from "vue-i18n";
 import { useToast } from "@/composables/useToast";
 import { savedSqlErrorMessage } from "@/lib/savedSql/savedSqlErrors";
 import { sanitizeTabPageUiState } from "@/lib/tabs/tabUiState";
+import type { DeletedConnectionTabKeepMode } from "@/lib/tabs/deletedConnectionTabs";
 import type { BatchSqlExecution, ConnectionConfig, DatabaseType, IndexInfo, NacosConfigEditorViewport, ObjectBrowserFilter, ObjectBrowserViewport, ObjectSource, ObjectSourceKind, QueryResult, QueryResultSourceColumnRef, QueryTab, TableInfoTab, TableStructureEditorTarget } from "@/types/database";
 import { orderPinnedFirst } from "@/lib/app/pinnedItems";
 import { canCancelQueryExecution } from "@/lib/sql/queryExecutionState";
@@ -2423,6 +2424,7 @@ export const useQueryStore = defineStore("query", () => {
       whereInput: t.whereInput,
       pinned: t.pinned,
       mode: t.mode,
+      detachedConnectionName: t.detachedConnectionName,
       autoCommit: t.autoCommit,
       resultAutoSave: t.resultAutoSave,
       uiState: t.uiState,
@@ -4578,31 +4580,92 @@ export const useQueryStore = defineStore("query", () => {
     return refreshed;
   }
 
+  /** 释放单个页签的运行期状态：回滚事务、清空结果与执行态，但保留页签本身。 */
+  function releaseTabRuntimeState(tab: QueryTab) {
+    rollbackTabTransaction(tab, { resetAutoCommit: true });
+    clearDataGridPendingSnapshotsForTab(tab.id);
+    beginClosingDataGridViewSnapshotsForTab(tab.id);
+    beginClosingBrowserState(tab.id);
+    clearDataGridStructuredFilterStatesForTab(tab.id);
+    clearDataGridSearchStatesForTab(tab.id);
+    if (tab.isExecuting) void cancelTabExecution(tab.id);
+    if (tab.isExplaining) void cancelTabExplain(tab.id);
+    void closeResultSession(tab);
+    void closeClientConnectionSession(tab);
+    clearResultRunSnapshots(tab);
+    void deleteTabResultSnapshot(tabResultCacheKey(tab.id));
+    releaseTabResultObjectPayloads(tab);
+    clearResultRuns(tab);
+    clearResultPayload(tab);
+  }
+
+  /**
+   * 释放匹配的页签：关闭非 SQL 页签，并清空 SQL 页签的运行期状态（保留页签本身）。
+   */
   function releaseTabsWhere(predicate: (tab: QueryTab) => boolean) {
     closeTabsWhere((tab) => predicate(tab) && tab.mode !== "query");
-    tabs.value
-      .filter((tab) => predicate(tab))
-      .forEach((tab) => {
-        rollbackTabTransaction(tab, { resetAutoCommit: true });
-        clearDataGridPendingSnapshotsForTab(tab.id);
-        beginClosingDataGridViewSnapshotsForTab(tab.id);
-        beginClosingBrowserState(tab.id);
-        clearDataGridStructuredFilterStatesForTab(tab.id);
-        clearDataGridSearchStatesForTab(tab.id);
-        if (tab.isExecuting) void cancelTabExecution(tab.id);
-        if (tab.isExplaining) void cancelTabExplain(tab.id);
-        void closeResultSession(tab);
-        void closeClientConnectionSession(tab);
-        clearResultRunSnapshots(tab);
-        void deleteTabResultSnapshot(tabResultCacheKey(tab.id));
-        releaseTabResultObjectPayloads(tab);
-        clearResultRuns(tab);
-        clearResultPayload(tab);
-      });
+    tabs.value.filter((tab) => predicate(tab)).forEach(releaseTabRuntimeState);
   }
 
   function releaseConnectionTabs(connectionId: string) {
     releaseTabsWhere((tab) => tab.connectionId === connectionId);
+  }
+
+  /**
+   * 删除连接时的页签处理：连接配置已从磁盘移除、无法再重连，因此策略与断开连接分开。
+   * - `none`：关闭该连接的全部页签（默认）
+   * - `sql`：保留全部 SQL 页签（`mode === "query"`），其余关闭
+   * - `pinned-sql`：只保留固定的 SQL 页签，其余关闭
+   * - `all`：不关闭任何页签，保留 SQL 文本与当前结果（与断开设置的「不关闭相关页签」一致）
+   *
+   * 关闭一律走非 force 路径（`closeScopedTabsWhere` → `beginBatchClose`）：干净页签立即关闭，
+   * 未保存的 SQL 草稿与表结构草稿都要经保存/放弃确认，删除连接不能静默丢改动。
+   *
+   * 该连接下的 SQL 页签都会记录原连接名（`detachedConnectionName`），便于新建同名连接后
+   * 重新绑定；包括因用户在确认框中选择取消而残留的页签。
+   */
+  function detachConnectionTabsForDelete(connectionId: string, options: { keep?: DeletedConnectionTabKeepMode; connectionName?: string } = {}) {
+    const keepMode = options.keep ?? "none";
+    const keep = keepMode === "all" ? () => true : keepMode === "pinned-sql" ? (tab: QueryTab) => tab.mode === "query" && tab.pinned === true : keepMode === "sql" ? (tab: QueryTab) => tab.mode === "query" : () => false;
+    const connectionName = options.connectionName?.trim();
+    // 先给该连接下的 SQL 页签打上脱离标记。关闭流程可能因为「未保存」确认被用户取消，
+    // 取消后残留的页签同样需要能按连接名重绑到新建的同名连接。
+    if (connectionName) {
+      for (const tab of tabs.value) {
+        if (tab.connectionId !== connectionId || tab.mode !== "query") continue;
+        tab.detachedConnectionName = connectionName;
+      }
+    }
+    if (keepMode === "all") {
+      // 连接已消失，任何未结束的事务都不可能再提交，但仍保留页签与已加载的结果。
+      rollbackConnectionTransactions(connectionId);
+      return;
+    }
+    closeScopedTabsWhere((tab) => tab.connectionId === connectionId && !keep(tab));
+    tabs.value.filter((tab) => tab.connectionId === connectionId && keep(tab)).forEach(releaseTabRuntimeState);
+  }
+
+  /**
+   * 新建同名连接后，把因删除连接而保留下来的 SQL 页签重新绑定到新连接。
+   * 返回重新绑定的页签数量；同名页签已指向该连接时只清除脱离标记。
+   *
+   * 页签自身记录的库优先——它可能指向该连接下的另一个库；只有页签没有库时才回落到
+   * 新连接的默认库，避免重绑把页签的执行上下文改掉。
+   */
+  function rebindDetachedTabs(connectionName: string, connectionId: string, database?: string): number {
+    const name = connectionName.trim();
+    if (!name) return 0;
+    const fallbackDatabase = database?.trim();
+    let rebound = 0;
+    for (const tab of tabs.value) {
+      if (tab.detachedConnectionName !== name) continue;
+      tab.detachedConnectionName = undefined;
+      if (tab.connectionId === connectionId) continue;
+      tab.connectionId = connectionId;
+      if (fallbackDatabase && !tab.database?.trim()) tab.database = fallbackDatabase;
+      rebound += 1;
+    }
+    return rebound;
   }
 
   function releaseDatabaseTabs(connectionId: string, database: string) {
@@ -8830,6 +8893,8 @@ export const useQueryStore = defineStore("query", () => {
     refreshDataTabsForTable,
     releaseConnectionTabs,
     releaseDatabaseTabs,
+    detachConnectionTabsForDelete,
+    rebindDetachedTabs,
     staleConnectionDataTabMetadata,
     isDatabaseOpen,
     openDatabaseKeys,

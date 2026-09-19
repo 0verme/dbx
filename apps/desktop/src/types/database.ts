@@ -1599,6 +1599,11 @@ export interface QueryTab {
   forceWordWrap?: boolean;
   connectionId: string;
   database: string;
+  /**
+   * 所属连接被删除后，被保留下来的 SQL 页签会记录原连接名。新建同名连接时按此
+   * 字段把页签重新绑定到新连接上；绑定完成后清空。
+   */
+  detachedConnectionName?: string;
   /** Optional branch context for a driver-profile database workspace. */
   workspaceBranch?: string;
   schema?: string;
