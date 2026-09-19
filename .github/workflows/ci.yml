@@ -100,7 +100,16 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libsecret-1-dev mold
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libsecret-1-dev
+
+      # Jammy's mold 1.0.3 (2022) mis-links the bundled duckdb C++ library
+      # (duckdb_create_config fails at runtime), so install a current static
+      # build pinned from upstream releases instead.
+      - name: Install mold linker
+        run: |
+          curl -fsSL https://github.com/rui314/mold/releases/download/v2.42.1/mold-2.42.1-x86_64-linux.tar.gz \
+            | sudo tar -C /usr/local --strip-components=1 -xz
+          mold --version
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -420,8 +429,13 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libsecret-1-dev
         if: matrix.group != 'foundation'
 
+      # Jammy's mold 1.0.3 (2022) is too old for modern C++ links; see the
+      # packages job note for the pinned upstream install.
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          curl -fsSL https://github.com/rui314/mold/releases/download/v2.42.1/mold-2.42.1-x86_64-linux.tar.gz \
+            | sudo tar -C /usr/local --strip-components=1 -xz
+          mold --version
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.97.1
@@ -870,8 +884,13 @@ jobs:
       - uses: actions/checkout@v5
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.97.1
+      # Jammy's mold 1.0.3 (2022) mis-links the bundled duckdb C++ library;
+      # see the packages job note for the pinned upstream install.
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          curl -fsSL https://github.com/rui314/mold/releases/download/v2.42.1/mold-2.42.1-x86_64-linux.tar.gz \
+            | sudo tar -C /usr/local --strip-components=1 -xz
+          mold --version
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
         with:
