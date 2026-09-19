@@ -8,6 +8,25 @@ const MYSQL_SMALL_SCHEMA_DIFF_METADATA_CONCURRENCY = 4;
 const MYSQL_SMALL_SCHEMA_TABLE_LIMIT = 30;
 const DEFAULT_SCHEMA_DIFF_METADATA_CONCURRENCY = 6;
 
+/**
+ * SQL Server metadata is served by a single serialized session per
+ * (connection, database): the native pool holds one `Mutex<SqlServerClient>`
+ * and the `sqlserver-legacy` profile holds one Agent session, while the
+ * backend metadata gate admits `METADATA_POOL_SQLSERVER_LIMIT = 1` in-flight
+ * request per (connection, database) and turns anything that still has to wait
+ * after `METADATA_POOL_ACQUIRE_TIMEOUT` (5s) into
+ * `DBX metadata pool is busy; please retry`
+ * (crates/dbx-core/src/connection/mod.rs). Fanning out further cannot add
+ * throughput because the backend serializes those same requests anyway; it
+ * only builds a queue that is guaranteed to time out.
+ *
+ * Both drivers share the same limit, so this is a per-database-type metadata
+ * capacity rather than a driver-capability check: `metadata_concurrency_limit`
+ * returns `METADATA_POOL_SQLSERVER_LIMIT` whenever the config is `sqlserver`,
+ * regardless of driver profile.
+ */
+const SQLSERVER_SCHEMA_DIFF_METADATA_CONCURRENCY = 1;
+
 function normalizeConcurrencyLimit(limit: number): number {
   return Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1;
 }
@@ -19,6 +38,9 @@ export function schemaDiffMetadataConcurrency(dbType: string | null | undefined,
       return MYSQL_SMALL_SCHEMA_DIFF_METADATA_CONCURRENCY;
     }
     return MYSQL_LARGE_SCHEMA_DIFF_METADATA_CONCURRENCY;
+  }
+  if (normalizedDbType === "sqlserver") {
+    return SQLSERVER_SCHEMA_DIFF_METADATA_CONCURRENCY;
   }
   return DEFAULT_SCHEMA_DIFF_METADATA_CONCURRENCY;
 }
@@ -84,7 +106,7 @@ export async function mapWithConcurrency<T, R>(items: readonly T[], limit: numbe
   return results;
 }
 
-export function createConcurrencyLimiter(limit: number) {
+export function createConcurrencyLimiter(limit: number, onIdle?: () => void) {
   const maxActive = normalizeConcurrencyLimit(limit);
   let active = 0;
   const queue: Array<() => void> = [];
@@ -106,7 +128,11 @@ export function createConcurrencyLimiter(limit: number) {
   function release() {
     active = Math.max(0, active - 1);
     const next = queue.shift();
-    if (next) next();
+    if (next) {
+      next();
+      return;
+    }
+    if (active === 0) onIdle?.();
   }
 
   return async function runLimited<T>(task: () => Promise<T>): Promise<T> {
@@ -117,6 +143,30 @@ export function createConcurrencyLimiter(limit: number) {
       release();
     }
   };
+}
+
+/**
+ * Schema compare metadata lanes are keyed exactly like the backend metadata
+ * gate -- `(connection id, database)` -- so the fan-out limit belongs to the
+ * resource instead of to one compare session. Two compares can hammer the same
+ * resource at once (closing a compare dialog keeps the compare running in the
+ * background) and adding their fan-out together would occupy the backend gate
+ * and fail whoever loses the race with `DBX metadata pool is busy; please
+ * retry`. Waiting here instead keeps the queue off the backend gate, where
+ * `METADATA_POOL_ACQUIRE_TIMEOUT` (5s) would turn it into that error.
+ */
+const schemaDiffMetadataLanes = new Map<string, ReturnType<typeof createConcurrencyLimiter>>();
+
+function schemaDiffMetadataLane(connectionId: string, database: string, limit: number) {
+  const key = `${connectionId}\u0000${database}`;
+  const existing = schemaDiffMetadataLanes.get(key);
+  if (existing) return existing;
+
+  const lane = createConcurrencyLimiter(limit, () => {
+    if (schemaDiffMetadataLanes.get(key) === lane) schemaDiffMetadataLanes.delete(key);
+  });
+  schemaDiffMetadataLanes.set(key, lane);
+  return lane;
 }
 
 export interface SchemaDiffMetadataApi {
@@ -155,7 +205,7 @@ function isViewOrMaterializedView(tableType: string): ObjectSourceKind | undefin
 
 export async function loadSchemaDetails(tables: TableInfo[], context: SchemaDetailLoadContext, api: SchemaDiffMetadataApi): Promise<TableSchemaDetail[]> {
   const concurrency = schemaDiffMetadataConcurrency(context.dbType, tables.length);
-  const runMetadataQuery = createConcurrencyLimiter(concurrency);
+  const runMetadataQuery = schemaDiffMetadataLane(context.connectionId, context.database, concurrency);
   let completed = 0;
 
   return mapWithConcurrency(tables, concurrency, async (table) => {

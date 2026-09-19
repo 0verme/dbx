@@ -8,6 +8,75 @@ function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+const METADATA_POOL_BUSY = "DBX metadata pool is busy; please retry";
+
+/**
+ * Mirrors the backend metadata gate (`crates/dbx-core/src/connection/mod.rs`):
+ * at most `capacity` in-flight metadata requests per gate key, and any request
+ * that cannot start is what `METADATA_POOL_ACQUIRE_TIMEOUT` (5s) reports as
+ * `DBX metadata pool is busy; please retry`.
+ *
+ * The fake rejects waiting requests instead of modelling the 5s wait, which is
+ * the conservative side of the real timeout: a test that passes here proves the
+ * caller never queues on the gate at all, not merely that it waits less than
+ * five seconds.
+ */
+function createMetadataGate(capacity: number) {
+  const active = new Map<string, number>();
+  let peak = 0;
+
+  return {
+    peak: () => peak,
+    async run<T>(key: string, task: () => Promise<T>): Promise<T> {
+      const current = active.get(key) ?? 0;
+      if (current >= capacity) throw new Error(METADATA_POOL_BUSY);
+      active.set(key, current + 1);
+      peak = Math.max(peak, current + 1);
+      try {
+        return await task();
+      } finally {
+        active.set(key, (active.get(key) ?? 1) - 1);
+      }
+    },
+  };
+}
+
+/**
+ * Wraps a metadata API in the backend gate above. The key matches
+ * `metadata_gate_key`: connection id plus database (SQL Server ignores the
+ * client session id there).
+ */
+function gateMetadataApi(gate: ReturnType<typeof createMetadataGate>, delays: { ddl: number; metadata: number }) {
+  let inFlight = 0;
+  let inFlightPeak = 0;
+  const key = (connectionId: string, database: string) => `${connectionId}\u0000${database}`;
+  const run = <T>(connectionId: string, database: string, delay: number, task: () => T) =>
+    gate.run(key(connectionId, database), async () => {
+      inFlight += 1;
+      inFlightPeak = Math.max(inFlightPeak, inFlight);
+      try {
+        await wait(delay);
+        return task();
+      } finally {
+        inFlight -= 1;
+      }
+    });
+
+  const api: SchemaDiffMetadataApi = {
+    getTableDdl: (connectionId, database, _schema, table) => run(connectionId, database, delays.ddl, () => `ddl:${table}`),
+    getColumns: (connectionId, database) => run(connectionId, database, delays.metadata, () => []),
+    listIndexes: (connectionId, database) => run(connectionId, database, delays.metadata, () => []),
+    listForeignKeys: (connectionId, database) => run(connectionId, database, delays.metadata, () => []),
+    listTriggers: (connectionId, database) => run(connectionId, database, delays.metadata, () => []),
+  };
+
+  return { api, inFlightPeak: () => inFlightPeak };
+}
+
+function sqlserverTables(...names: string[]): TableInfo[] {
+  return names.map((name) => ({ name, table_type: "TABLE" }) as TableInfo);
+}
+
 describe("schemaDiffMetadataLoad", () => {
   it("uses adaptive metadata concurrency for MySQL-compatible databases", () => {
     expect(schemaDiffMetadataConcurrency("mysql")).toBe(2);
@@ -18,6 +87,105 @@ describe("schemaDiffMetadataLoad", () => {
     expect(schemaDiffMetadataConcurrency("postgres")).toBe(6);
     expect(schemaDiffMetadataConcurrency("postgres", 100)).toBe(6);
     expect(schemaDiffMetadataConcurrency(undefined)).toBe(6);
+  });
+
+  it("uses one serialized metadata request for SQL Server", () => {
+    // The backend gate admits `METADATA_POOL_SQLSERVER_LIMIT = 1` in-flight
+    // request per (connection, database) and both SQL Server pools hold one
+    // serialized session, so any extra fan-out only queues until it fails.
+    // Native and `sqlserver-legacy` share one dbType and one limit, so there is
+    // no driver-profile branch to make here.
+    expect(schemaDiffMetadataConcurrency("sqlserver")).toBe(1);
+    expect(schemaDiffMetadataConcurrency("SQLServer", 12)).toBe(1);
+    expect(schemaDiffMetadataConcurrency("sqlserver", 500)).toBe(1);
+  });
+
+  it("keeps SQL Server metadata fan-out inside the backend gate", async () => {
+    const gate = createMetadataGate(1);
+    const { api, inFlightPeak } = gateMetadataApi(gate, { ddl: 4, metadata: 1 });
+
+    const details = await loadSchemaDetails(
+      sqlserverTables("orders", "customers", "events", "invoices", "items", "audit"),
+      {
+        connectionId: "9596-fanout",
+        database: "app",
+        schema: "dbo",
+        dbType: "sqlserver",
+        // SQL Server falls back to the PostgreSQL option tree today
+        // (`getSchemaDiffOptionsForDbType`), which fetches DDL for every table.
+        options: { ...DEFAULT_POSTGRES_OPTIONS },
+      },
+      api,
+    );
+
+    expect(details.map((detail) => detail.name)).toEqual(["orders", "customers", "events", "invoices", "items", "audit"]);
+    expect(details.map((detail) => detail.ddl)).toEqual(["ddl:orders", "ddl:customers", "ddl:events", "ddl:invoices", "ddl:items", "ddl:audit"]);
+    expect(gate.peak()).toBe(1);
+    expect(inFlightPeak()).toBe(1);
+  });
+
+  it("would trip the SQL Server metadata gate at the fan-out used before the fix", async () => {
+    const gate = createMetadataGate(1);
+    const runFanOut = createConcurrencyLimiter(6);
+
+    await expect(Promise.all(Array.from({ length: 6 }, () => runFanOut(() => gate.run("9596-fanout\u0000app", () => wait(1)))))).rejects.toThrow(METADATA_POOL_BUSY);
+  });
+
+  it("keeps SQL Server schema compare source and target databases inside the gate", async () => {
+    const gate = createMetadataGate(1);
+    const { api } = gateMetadataApi(gate, { ddl: 3, metadata: 1 });
+    const context = (database: string) => ({
+      connectionId: "9596-same-connection",
+      database,
+      schema: "dbo",
+      dbType: "sqlserver",
+      options: { ...DEFAULT_POSTGRES_OPTIONS },
+    });
+    const tables = sqlserverTables("orders", "customers", "events");
+
+    const source = await loadSchemaDetails(tables, context("app_source"), api);
+    const target = await loadSchemaDetails(tables, context("app_target"), api);
+
+    expect(source).toHaveLength(3);
+    expect(target).toHaveLength(3);
+    expect(gate.peak()).toBe(1);
+  });
+
+  it("queues concurrent SQL Server compares on one metadata resource instead of failing on the gate", async () => {
+    const gate = createMetadataGate(1);
+    const { api } = gateMetadataApi(gate, { ddl: 4, metadata: 1 });
+    const context = {
+      connectionId: "9596-background",
+      database: "app",
+      schema: "dbo",
+      dbType: "sqlserver",
+      options: { ...DEFAULT_POSTGRES_OPTIONS },
+    };
+    const tables = sqlserverTables("orders", "customers", "events", "invoices");
+
+    const [foreground, background] = await Promise.all([loadSchemaDetails(tables, context, api), loadSchemaDetails(tables, context, api)]);
+
+    expect(foreground).toHaveLength(4);
+    expect(background).toHaveLength(4);
+    expect(gate.peak()).toBe(1);
+  });
+
+  it("keeps SQL Server metadata lanes independent per database", async () => {
+    const gate = createMetadataGate(1);
+    const { api, inFlightPeak } = gateMetadataApi(gate, { ddl: 4, metadata: 1 });
+    const context = (database: string) => ({
+      connectionId: "9596-lanes",
+      database,
+      schema: "dbo",
+      dbType: "sqlserver",
+      options: { ...DEFAULT_POSTGRES_OPTIONS },
+    });
+    const tables = sqlserverTables("orders", "customers");
+
+    await Promise.all([loadSchemaDetails(tables, context("app_a"), api), loadSchemaDetails(tables, context("app_b"), api)]);
+
+    expect(gate.peak()).toBe(1);
+    expect(inFlightPeak()).toBe(2);
   });
 
   it("skips view DDL when views are disabled while preserving table DDL options", () => {
