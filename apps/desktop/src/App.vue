@@ -139,7 +139,7 @@ import { countActiveUpdateBlockingTasks } from "@/lib/app/appUpdateTaskGuard";
 import { initSavedSqlEditorPositions } from "@/lib/app/savedSqlEditorPosition";
 import { hasTreeNodeDatabaseContext } from "@/lib/sidebar/treeNodeContext";
 import { objectBrowserTablesToAiTreeNodes } from "@/lib/ai/objectBrowserToAiTargets";
-import { isSchemaAware, isSingleDatabase, usesTreeSchemaMode } from "@/lib/database/databaseFeatureSupport";
+import { isSchemaAware, isSingleDatabase, supportsConnectionQueryActions, usesTreeSchemaMode } from "@/lib/database/databaseFeatureSupport";
 import { codeMirrorSqlDialect, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { canFormatSqlForDatabaseType, formatSqlForEditing, sqlFormatDialectForDbType } from "@/lib/sql/sqlFormatter";
 import { formatSqlSnapshotForSave } from "@/lib/sql/sqlFormatOnSave";
@@ -749,6 +749,17 @@ const activeConnection = computed(() => {
   const tab = activeTab.value;
   return tab ? connectionStore.getConfig(tab.connectionId) : undefined;
 });
+
+function supportsGenericNewQuery(connection: ConnectionConfig | undefined): boolean {
+  if (!connection) return false;
+  // Some specialized connections use the same entry to open their dedicated
+  // workbench (for example MQ or Nacos), so those remain valid actions even
+  // though they do not support a generic SQL editor.
+  if (quickConnectionOpenTarget(connection).kind !== "query") return true;
+  return supportsConnectionQueryActions(effectiveDatabaseTypeForConnection(connection) ?? connection.db_type);
+}
+
+const canCreateNewQuery = computed(() => connectionStore.connections.some((connection) => supportsGenericNewQuery(connection)));
 
 // Oracle manual-mode indicator derived from the RESOLVED database type (an
 // Oracle connection uses the agent runtime but reports db_type "oracle"), so
@@ -2571,7 +2582,7 @@ function openConnectionSettings(connectionId: string, initialTab: ConfigTab = "c
 }
 
 async function newQuery() {
-  const target = resolveNewQueryTarget({
+  let target = resolveNewQueryTarget({
     activeTab: activeTab.value,
     selectedTreeNode: findTreeNodeById(connectionStore.treeNodes, connectionStore.selectedTreeNodeId),
     activeConnectionId: connectionStore.activeConnectionId,
@@ -2579,8 +2590,24 @@ async function newQuery() {
     preferredSource: newQueryContextSource.value,
   });
   if (!target) return;
-  const conn = connectionStore.getConfig(target.connectionId);
+  let conn = connectionStore.getConfig(target.connectionId);
   if (!conn) return;
+
+  // Specialized stores such as Meilisearch expose their own workspaces and
+  // must not receive a generic query tab. If the current context is such a
+  // store, fall back to the first connection with a supported query/workbench
+  // action.
+  if (!supportsGenericNewQuery(conn)) {
+    const fallbackConnection = connectionStore.connections.find((connection) => supportsGenericNewQuery(connection));
+    if (!fallbackConnection) return;
+    target = resolveNewQueryTarget({
+      activeConnectionId: fallbackConnection.id,
+      connections: connectionStore.connections,
+    });
+    if (!target) return;
+    conn = connectionStore.getConfig(target.connectionId);
+    if (!conn) return;
+  }
   connectionStore.activeConnectionId = target.connectionId;
   const connectionTarget = quickConnectionOpenTarget(conn);
   if (connectionTarget.kind !== "query") {
@@ -3929,6 +3956,7 @@ onUnmounted(() => {
           :agent-driver-update-count="showDriverStoreUpdateBadge"
           :has-mcp-update-available="showMcpSettingsUpdateBadge"
           :has-connections="connectionStore.connections.length > 0"
+          :can-new-query="canCreateNewQuery"
           :has-sql-file-connections="hasSqlFileConnections"
           @new-connection="showConnectionDialog = true"
           @expand-sidebar="setSidebarOpen(true)"
@@ -4197,7 +4225,7 @@ onUnmounted(() => {
                         :recent-connections="recentConnections"
                         :saved-sql-history-items="savedSqlHistoryItems"
                         :app-version="appVersion"
-                        :has-connections="connectionStore.connections.length > 0"
+                        :can-new-query="canCreateNewQuery"
                         @open-connection-query="openConnectionQuery"
                         @open-saved-sql="openSavedSqlFromWelcome"
                         @new-connection="showConnectionDialog = true"
