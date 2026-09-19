@@ -4661,9 +4661,52 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
+  const manualTransactionTargetEpochs = new WeakMap<QueryTab, number>();
+  const pendingManualTransactionStarts = new Map<string, { epoch: number; promise: Promise<string> }>();
+
+  function manualTransactionTargetEpoch(tab: QueryTab): number {
+    return manualTransactionTargetEpochs.get(tab) ?? 0;
+  }
+
+  function invalidateManualTransactionTarget(tab: QueryTab) {
+    manualTransactionTargetEpochs.set(tab, manualTransactionTargetEpoch(tab) + 1);
+  }
+
+  async function ensureManualTransactionSession(id: string, database: string, schema?: string, catalog?: string): Promise<string> {
+    const tab = tabs.value.find((item) => item.id === id);
+    if (!tab || tab.mode !== "query" || tab.autoCommit !== false || !tab.connectionId) {
+      throw new Error("Manual transaction mode is no longer active for this query tab");
+    }
+    if (tab.txnSessionId) return tab.txnSessionId;
+    const epoch = manualTransactionTargetEpoch(tab);
+    const pending = pendingManualTransactionStarts.get(id);
+    if (pending?.epoch === epoch) return pending.promise;
+
+    const connectionId = tab.connectionId;
+    const originalDatabase = tab.database;
+    const originalCatalog = tab.catalog;
+    const originalSchema = tab.schema;
+    const start = api
+      .beginManualTransaction(connectionId, database, schema, catalog)
+      .then(async (sessionId) => {
+        if (tabs.value.find((item) => item.id === id) !== tab || tab.autoCommit !== false || manualTransactionTargetEpoch(tab) !== epoch || tab.connectionId !== connectionId || tab.database !== originalDatabase || tab.catalog !== originalCatalog || tab.schema !== originalSchema) {
+          await api.rollbackManualTransaction(sessionId);
+          throw new Error("Query tab changed while the manual transaction was starting");
+        }
+        tab.txnSessionId = sessionId;
+        return sessionId;
+      })
+      .finally(() => {
+        if (pendingManualTransactionStarts.get(id)?.promise === start) pendingManualTransactionStarts.delete(id);
+      });
+    pendingManualTransactionStarts.set(id, { epoch, promise: start });
+    return start;
+  }
+
   function setAutoCommit(id: string, autoCommit: boolean) {
     const tab = tabs.value.find((t) => t.id === id);
     if (tab) {
+      if (tab.autoCommit !== autoCommit) invalidateManualTransactionTarget(tab);
       const wasManual = tab.autoCommit === false;
       tab.autoCommit = autoCommit;
       if (autoCommit && wasManual) {
@@ -4701,6 +4744,7 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   function rollbackTabTransaction(tab: QueryTab, options?: { resetAutoCommit?: boolean; resetAutoCommitDbType?: string }) {
+    invalidateManualTransactionTarget(tab);
     if (tab.txnSessionId) void rollbackTransaction(tab.id);
     if (options?.resetAutoCommit) {
       // Callers switching a tab to another connection pass the target db type
@@ -4727,11 +4771,11 @@ export const useQueryStore = defineStore("query", () => {
   async function rollbackTransaction(id: string) {
     const tab = tabs.value.find((t) => t.id === id);
     if (!tab?.txnSessionId) return;
-    try {
-      await api.rollbackManualTransaction(tab.txnSessionId);
-    } finally {
-      clearManualTransactionSession(tab);
-    }
+    const sessionId = tab.txnSessionId;
+    // Remove the old session before the backend responds: a target switch may
+    // start a new transaction while this rollback is still in flight.
+    clearManualTransactionSession(tab);
+    await api.rollbackManualTransaction(sessionId);
   }
 
   function updateEditorViewport(id: string, viewport: { scrollTop: number; scrollLeft: number }) {
@@ -6246,6 +6290,7 @@ export const useQueryStore = defineStore("query", () => {
     const executionEditorFingerprint = tab.mode === "query" ? sqlTextFingerprint(tab.sql) : undefined;
     const traceId = executionId.slice(0, 8);
     const startedAt = performance.now();
+    const executionTargetEpoch = manualTransactionTargetEpoch(tab);
     const elapsed = () => `${Math.round(performance.now() - startedAt)}ms`;
     const batchResume = options?.batchResume;
     const continueOnBatchError = batchResume?.continueOnError ?? settingsStore.editorSettings.continueOnErrorOnBatch;
@@ -7101,7 +7146,7 @@ export const useQueryStore = defineStore("query", () => {
       const sourceLabelDatabase = targetDatabase || conn?.database;
       const executionClientSessionId = options?.pagination?.clientSessionId ?? (tab.mode === "query" || tab.mode === "data" ? tabClientSessionId(tab) : undefined);
       const currentBeforeDispatch = findExecutionTab(id);
-      if (currentBeforeDispatch?.executionId !== executionId || currentBeforeDispatch.isCancelling) {
+      if (currentBeforeDispatch?.executionId !== executionId || currentBeforeDispatch.isCancelling || manualTransactionTargetEpoch(currentBeforeDispatch) !== executionTargetEpoch) {
         queryExecutionLog("info", "dispatch:skipped-cancelled", { traceId, elapsed: elapsed() });
         return false;
       }
@@ -7199,7 +7244,7 @@ export const useQueryStore = defineStore("query", () => {
         if (!tab.txnSessionId) {
           queryExecutionLog("info", "begin-manual-txn:start", { traceId, elapsed: elapsed() });
           try {
-            tab.txnSessionId = await api.beginManualTransaction(executionConnectionId, executionDatabase, executionSchema, executionCatalog);
+            tab.txnSessionId = await ensureManualTransactionSession(id, executionDatabase, executionSchema, executionCatalog);
             queryExecutionLog("info", "begin-manual-txn:done", { traceId, txnSessionId: tab.txnSessionId, elapsed: elapsed() });
           } catch (error) {
             const risk = classifySqlRisk(sqlToExecute, { dialect: effectiveDbType }).risk;
@@ -7240,6 +7285,7 @@ export const useQueryStore = defineStore("query", () => {
               return await executeInTransaction(txnSessionId);
             } catch (error) {
               if (options?.pagination?.sessionId || manualTransactionRecoveryAttempted || !isManualTransactionSessionExpired(error)) throw error;
+              if (tab.executionId !== executionId || tab.autoCommit !== false || manualTransactionTargetEpoch(tab) !== executionTargetEpoch) throw error;
               manualTransactionRecoveryAttempted = true;
               // The expired session was discarded by the backend; the replacement
               // session starts fresh, so the old sticky state resets with it.
@@ -7247,7 +7293,12 @@ export const useQueryStore = defineStore("query", () => {
               tab.txnSessionId = undefined;
               tab.txnAutoRolledBack = true;
               queryExecutionLog("info", "manual-txn:expired-recover", { traceId, elapsed: elapsed() });
-              const refreshedSessionId = await api.beginManualTransaction(executionConnectionId, executionDatabase, executionSchema, executionCatalog);
+              const refreshedSessionId = await ensureManualTransactionSession(id, executionDatabase, executionSchema, executionCatalog);
+              if (tab.executionId !== executionId || tab.autoCommit !== false || manualTransactionTargetEpoch(tab) !== executionTargetEpoch) {
+                if (tab.txnSessionId === refreshedSessionId) clearManualTransactionSession(tab);
+                await api.rollbackManualTransaction(refreshedSessionId);
+                throw new Error("Query tab changed while the manual transaction was restarting");
+              }
               tab.txnSessionId = refreshedSessionId;
               queryExecutionLog("info", "manual-txn:restarted", { traceId, txnSessionId: refreshedSessionId, elapsed: elapsed() });
               return executeInTransaction(refreshedSessionId);
@@ -7257,20 +7308,11 @@ export const useQueryStore = defineStore("query", () => {
       } else {
         executionPromise = executeWithoutManualTransaction();
       }
-      const annotatedResults = annotateQueryResultSources(
-        markQueryResultsRowsRaw(
-          await withFrontendQueryTimeout(executionPromise, frontendTimeoutSecs, t("editor.queryTimeoutError", { seconds: frontendTimeoutSecs }), () => {
-            void api.cancelQuery(executionId).catch((error) => queryExecutionLog("warn", "frontend-timeout:cancel-failed", { traceId, error }));
-          }),
-        ),
-        queryBaseSql,
-        sourceLabelDatabase,
-        effectiveDbType,
-        options?.sourceOffset,
-        sqlStatementParameterOptions,
-        sqlToExecute,
-        options?.sourceOffset === undefined ? undefined : tab.sql,
-      );
+      const responseResults = await withFrontendQueryTimeout(executionPromise, frontendTimeoutSecs, t("editor.queryTimeoutError", { seconds: frontendTimeoutSecs }), () => {
+        void api.cancelQuery(executionId).catch((error) => queryExecutionLog("warn", "frontend-timeout:cancel-failed", { traceId, error }));
+      });
+      if (findExecutionTab(id) !== tab || tab.executionId !== executionId || manualTransactionTargetEpoch(tab) !== executionTargetEpoch) return false;
+      const annotatedResults = annotateQueryResultSources(markQueryResultsRowsRaw(responseResults), queryBaseSql, sourceLabelDatabase, effectiveDbType, options?.sourceOffset, sqlStatementParameterOptions, sqlToExecute, options?.sourceOffset === undefined ? undefined : tab.sql);
       const results = offsetBatchQueryResultIndexes(annotatedResults.results, batchResume?.startStatementIndex ?? 0);
       if (paginationRowNumberColumn && results.length === 1) {
         results[0] = markQueryResultsRowsRaw([stripPaginationRowNumber(results[0]!, paginationRowNumberColumn)])[0]!;
@@ -7319,7 +7361,7 @@ export const useQueryStore = defineStore("query", () => {
         }
       }
       const current = findExecutionTab(id);
-      if (current?.executionId === executionId) {
+      if (current?.executionId === executionId && manualTransactionTargetEpoch(current) === executionTargetEpoch) {
         if (captureResultRun && current.isCancelling && restorePendingResultRun(current, executionId)) return false;
         if (successfulOracleSchemaChanges > 0) {
           current.completionContextVersion = (current.completionContextVersion ?? 0) + successfulOracleSchemaChanges;
@@ -7503,6 +7545,7 @@ export const useQueryStore = defineStore("query", () => {
       queryExecutionLog("error", "error", { traceId, elapsed: elapsed(), error: e });
       // Sync connection state if the error indicates a lost connection
       useConnectionStore().recordConnectionLostError(executionConnectionId ?? tab.connectionId, e);
+      if (findExecutionTab(id) !== tab || tab.executionId !== executionId || manualTransactionTargetEpoch(tab) !== executionTargetEpoch) return false;
       // Handle manual transaction auto-rollback (idle timeout only for the banner;
       // other statement failures still clear the session without the 5-minute notice).
       if (tab.autoCommit === false) {
@@ -8802,6 +8845,7 @@ export const useQueryStore = defineStore("query", () => {
     markManualTransactionDirty,
     commitTransaction,
     rollbackTransaction,
+    ensureManualTransactionSession,
     renameTab,
     openDatabaseBrowser,
     openDriverProfileWorkspace,
