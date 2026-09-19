@@ -49,13 +49,18 @@ function createMetadataGate(capacity: number) {
 function gateMetadataApi(gate: ReturnType<typeof createMetadataGate>, delays: { ddl: number; metadata: number }) {
   let inFlight = 0;
   let inFlightPeak = 0;
+  let calls = 0;
   const key = (connectionId: string, database: string) => `${connectionId}\u0000${database}`;
   const run = <T>(connectionId: string, database: string, delay: number, task: () => T) =>
     gate.run(key(connectionId, database), async () => {
       inFlight += 1;
       inFlightPeak = Math.max(inFlightPeak, inFlight);
+      calls += 1;
       try {
-        await wait(delay);
+        // `0` means "no artificial latency": the fake gate decides admission
+        // synchronously, so the fan-out model under test does not depend on a
+        // timer, and a large-scale case can skip hundreds of sequential timers.
+        if (delay > 0) await wait(delay);
         return task();
       } finally {
         inFlight -= 1;
@@ -70,7 +75,7 @@ function gateMetadataApi(gate: ReturnType<typeof createMetadataGate>, delays: { 
     listTriggers: (connectionId, database) => run(connectionId, database, delays.metadata, () => []),
   };
 
-  return { api, inFlightPeak: () => inFlightPeak };
+  return { api, inFlightPeak: () => inFlightPeak, calls: () => calls };
 }
 
 function sqlserverTables(...names: string[]): TableInfo[] {
@@ -120,6 +125,46 @@ describe("schemaDiffMetadataLoad", () => {
 
     expect(details.map((detail) => detail.name)).toEqual(["orders", "customers", "events", "invoices", "items", "audit"]);
     expect(details.map((detail) => detail.ddl)).toEqual(["ddl:orders", "ddl:customers", "ddl:events", "ddl:invoices", "ddl:items", "ddl:audit"]);
+    expect(gate.peak()).toBe(1);
+    expect(inFlightPeak()).toBe(1);
+  });
+
+  it("keeps a large SQL Server schema inside the metadata gate", async () => {
+    // Regression for #9596 at the reporter's scale: compares over a handful of
+    // tables succeed there, while "more than 100 tables" reproduces
+    // `DBX metadata pool is busy` every time. 100 is a field observation, not
+    // a code threshold -- the failure comes from the 6-wide fan-out queueing on
+    // a capacity-1 resource, and a bigger schema adds metadata volume, tail
+    // latency and time windows where other metadata work shares the same
+    // permit. So this case scales the workload instead of special-casing a
+    // table count: the capacity fix has to hold for a realistically large
+    // schema, not only for the six tables above.
+    const tableCount = 120;
+    const tables = sqlserverTables(...Array.from({ length: tableCount }, (_, index) => `table_${String(index).padStart(3, "0")}`));
+    const gate = createMetadataGate(1);
+    // No artificial latency: the fake gate decides admission synchronously, so
+    // a 6-wide fan-out still trips it on the first burst, while 600 sequential
+    // timers would only add wall clock (`setTimeout(1)` costs ~15ms on
+    // Windows).
+    const { api, inFlightPeak, calls } = gateMetadataApi(gate, { ddl: 0, metadata: 0 });
+
+    const details = await loadSchemaDetails(
+      tables,
+      {
+        connectionId: "9596-large-schema",
+        database: "app",
+        schema: "dbo",
+        dbType: "sqlserver",
+        options: { ...DEFAULT_POSTGRES_OPTIONS },
+      },
+      api,
+    );
+
+    expect(details).toHaveLength(tableCount);
+    expect(details.every((detail) => detail.ddl === `ddl:${detail.name}`)).toBe(true);
+    // 5 metadata requests per table (DDL + columns + indexes + foreign keys +
+    // triggers), every one of them admitted by a single capacity-1 permit.
+    expect(calls()).toBe(tableCount * 5);
     expect(gate.peak()).toBe(1);
     expect(inFlightPeak()).toBe(1);
   });
