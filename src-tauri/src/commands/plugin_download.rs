@@ -45,6 +45,11 @@ pub async fn download_plugin_file(
     let download_uuid = uuid::Uuid::parse_str(&download_id).map_err(|error| error.to_string())?;
     let input = params.as_object_mut().ok_or("Download params must be an object")?;
     input.insert("downloadId".into(), json!(download_id));
+    let control = json!({
+        "downloadId": download_id,
+        "connectionId": params.get("connectionId"),
+        "providerId": params.get("providerId"),
+    });
     let cancel = CancellationToken::new();
     let key = format!("{plugin_id}:{download_id}");
     {
@@ -80,7 +85,7 @@ pub async fn download_plugin_file(
                 return Ok(None);
             }
             let chunk: Value = host
-                .invoke(&plugin_id, "filesystem/download/read", params.clone(), None, Some(Duration::from_secs(120)))
+                .invoke(&plugin_id, "filesystem/download/read", control.clone(), None, Some(Duration::from_secs(120)))
                 .await?;
             let encoded = chunk.get("dataBase64").and_then(Value::as_str).ok_or("Invalid download chunk")?;
             if encoded.len() > 1_398_104 {
@@ -114,6 +119,6 @@ pub async fn download_plugin_file(
         _ = cancel.cancelled() => Ok(None),
     };
     let _: Result<Value, _> =
-        host.invoke(&plugin_id, "filesystem/download/close", params, None, Some(Duration::from_secs(10))).await;
+        host.invoke(&plugin_id, "filesystem/download/close", control, None, Some(Duration::from_secs(10))).await;
     result
 }
