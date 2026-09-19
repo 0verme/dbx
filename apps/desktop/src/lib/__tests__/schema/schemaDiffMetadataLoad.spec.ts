@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { createConcurrencyLimiter, loadSchemaDetails, mapWithConcurrency, schemaDiffMetadataConcurrency, schemaDiffMetadataLaneCountForTests, schemaDiffMetadataLoadPlan, shouldFetchSchemaDiffDdl, type SchemaDiffMetadataApi, type SchemaDiffMetadataProgress } from "../../schema/schemaDiffMetadataLoad";
+import {
+  createConcurrencyLimiter,
+  loadSchemaDetails,
+  mapWithConcurrency,
+  schemaDiffMetadataConcurrency,
+  schemaDiffMetadataLaneCountForTests,
+  schemaDiffMetadataLoadPlan,
+  shouldFetchSchemaDiffDdl,
+  type SchemaDiffMetadataApi,
+  type SchemaDiffMetadataProgress,
+} from "../../schema/schemaDiffMetadataLoad";
 import { getSchemaDiffNextProgressStep, shouldLoadSchemaDiffExtraObjectPhase, shouldLoadSchemaDiffExtraObjects, shouldLoadSchemaDiffRoutines } from "../../schema/schemaDiffProgress";
 import { DEFAULT_MYSQL_OPTIONS, DEFAULT_POSTGRES_OPTIONS } from "../../../types/schemaDiff";
 import type { TableInfo } from "../../../types/database";
@@ -238,7 +248,16 @@ describe("schemaDiffMetadataLoad", () => {
       resolvePastFirstTable = resolve;
     });
 
-    const first = loadSchemaDetails(tables, { ...context, onProgress: (value) => { if (value.current >= 2) resolvePastFirstTable(); } }, api);
+    const first = loadSchemaDetails(
+      tables,
+      {
+        ...context,
+        onProgress: (value) => {
+          if (value.current >= 2) resolvePastFirstTable();
+        },
+      },
+      api,
+    );
     await pastFirstTable;
     // The first compare is past a table boundary, exactly where the old
     // idle-based eviction had already removed its lane mid-compare.
