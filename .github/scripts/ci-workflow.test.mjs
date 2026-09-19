@@ -36,6 +36,7 @@ test("Agent and Rust matrices are bounded and do not cancel sibling failures", (
 test("stable Rust, Agent and overall gates always inspect selected upstream results", () => {
   for (const [name, mode, dependencies] of [["rust", "rust", ["fast-checks", "rust-fmt-clippy", "rust-test"]],
     ["agents", "agents", ["fast-checks", "agent-checks", "agent-rust", "agent-go", "agent-integration", "agent-java"]],
+    ["frontend", "frontend", ["frontend-checks", "frontend-typecheck", "frontend-test"]],
     ["ci", "all", ["rust", "agents", "frontend", "packages", "windows-win7-bundle", "duckdb-windows-driver", "nix-packaging"]]]) {
     const content = job(name);
     assert.match(content, /if: always\(\)/);
@@ -43,6 +44,16 @@ test("stable Rust, Agent and overall gates always inspect selected upstream resu
     assert.ok(content.includes("${{ toJSON(needs) }}"));
     for (const dependency of dependencies) assert.match(content, new RegExp(`^      - ${dependency}$`, "m"));
   }
+});
+
+test("frontend tests use two shards on separate runners", () => {
+  const content = job("frontend-test");
+  assert.match(content, /fail-fast: false/);
+  assert.match(content, /shard: \[1, 2\]/);
+  assert.ok(content.includes("--shard=${{ matrix.shard }}/2"));
+  assert.ok(content.includes("--reporter=github-actions"));
+  assert.ok(content.includes("ci-vitest-file-timing-reporter.mjs"));
+  assert.doesNotMatch(job("frontend-typecheck"), /vitest|oxfmt|oxlint/);
 });
 
 test("every old Agent stage has an independent owner and Java packaging remains strict", () => {
@@ -59,6 +70,22 @@ test("every old Agent stage has an independent owner and Java packaging remains 
   assert.ok(job("agent-integration").includes("if: matrix.scenario == 'rocketmq'"));
   assert.ok(job("agent-integration").includes('java-version: "21"'));
   for (const name of ["agent-rust", "agent-go", "agent-integration", "agent-java"]) assert.doesNotMatch(job(name), /continue-on-error: true/);
+});
+
+test("native Rust driver caches exclude failed build artifacts", () => {
+  const content = job("agent-rust");
+  assert.ok(content.includes('shared-key: ci-agent-rust-v2-${{ matrix.driver }}'));
+  assert.ok(content.includes("cache-on-failure: false"));
+});
+
+test("DuckDB Windows builds persist Rust and C++ compiler results", () => {
+  const content = job("duckdb-windows-driver");
+  assert.ok(content.includes('SCCACHE_GHA_ENABLED: "true"'));
+  assert.ok(content.includes('CC: "sccache cl.exe"'));
+  assert.ok(content.includes('CXX: "sccache cl.exe"'));
+  assert.ok(content.includes("0b201ec74fa43914dc39ae48a89fd1d8cb592756"));
+  assert.ok(content.includes("fc920bf0ec8de6ee65d409111f7ec508035751ba"));
+  assert.ok(content.includes('version: "v0.16.0"'));
 });
 
 test("the planner uses the exact event base and preserves a single workflow cancellation scope", () => {
