@@ -3642,6 +3642,12 @@ export default withEnglishFallback({
     loadFailed: "스키마를 불러오는 데 실패했습니다: {message}",
   },
   databaseLinks: {
+    remoteTenant: "원격 테넌트",
+    remoteProtocol: "원격 데이터베이스 프로토콜",
+    remoteCluster: "원격 클러스터(선택 사항)",
+    oceanbaseRecreateHint: "OceanBase 링크는 직접 수정할 수 없습니다. 대체 링크를 만들고 테스트한 후 기존 링크를 명시적으로 삭제하세요. 기존 링크를 자동으로 삭제하지 않습니다.",
+    oceanbasePublic: "Public",
+    oceanbaseSharedReadOnly: "Another user created this public link. You can test and use it, but only its creator can delete it.",
     shadowed: "A private link with the same name takes precedence in this session.",
     search: "Search database links",
     name: "Link name",

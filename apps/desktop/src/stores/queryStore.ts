@@ -202,6 +202,7 @@ interface OpenPendingObjectSourceTabOptions {
   title: string;
   schema?: string;
   catalog?: string;
+  initialEditing?: boolean;
   request: ObjectSourceRequestIdentity;
 }
 
@@ -2716,6 +2717,7 @@ export const useQueryStore = defineStore("query", () => {
         tab.database === options.database &&
         (tab.schema || "") === (options.schema || "") &&
         (tab.catalog || "") === (options.catalog || "") &&
+        (tab.sourceLoad.initialEditing ?? true) === (options.initialEditing ?? true) &&
         tab.sourceLoad.request.name === options.request.name &&
         tab.sourceLoad.request.objectType === options.request.objectType &&
         (tab.sourceLoad.request.signature || "") === (options.request.signature || ""),
@@ -2732,15 +2734,18 @@ export const useQueryStore = defineStore("query", () => {
     // 两条弯路都要避开 —— 再建一个 pending tab 会让界面上多出一个转圈 tab，
     // 随后又被交接逻辑关掉；而只切过去不校验，会让重开看到的是旧 DDL
     // （改动前每次打开都会重新取源，源码 tab 没有其它刷新入口）。
-    const loaded = findMatchingObjectSourceTab({
-      connectionId: options.connectionId,
-      database: options.database,
-      title: options.title,
-      schema: options.schema,
-      catalog: options.catalog,
-      sql: "",
-      objectSource: { schema: options.schema, name: options.request.name, objectType: options.request.objectType, signature: options.request.signature },
-    });
+    const loaded =
+      options.initialEditing === false
+        ? undefined
+        : findMatchingObjectSourceTab({
+            connectionId: options.connectionId,
+            database: options.database,
+            title: options.title,
+            schema: options.schema,
+            catalog: options.catalog,
+            sql: "",
+            objectSource: { schema: options.schema, name: options.request.name, objectType: options.request.objectType, signature: options.request.signature },
+          });
     if (loaded) {
       loaded.sourceView = true;
       switchTab(loaded.id);
@@ -2760,7 +2765,7 @@ export const useQueryStore = defineStore("query", () => {
 
     const id = createTab(options.connectionId, options.database, options.title, "query", options.schema, "", options.catalog, { forceNew: true, sourceView: true });
     const tab = tabs.value.find((candidate) => candidate.id === id);
-    if (tab) tab.sourceLoad = { startedAt: Date.now(), request: { ...options.request } };
+    if (tab) tab.sourceLoad = { startedAt: Date.now(), initialEditing: options.initialEditing, request: { ...options.request } };
     void loadObjectSourceIntoTab(id);
     return id;
   }
@@ -2799,7 +2804,7 @@ export const useQueryStore = defineStore("query", () => {
       // 期间 tab 可能被关闭、被复用或已被编辑：身份没变且用户没改过内容时才回填
       const current = tabs.value.find((candidate) => candidate.id === id);
       if (current?.objectSource !== objectSource || resolvedType !== objectSource.objectType) return;
-      if (raw.editable === false || OBJECT_SOURCE_READ_ONLY_TYPES.includes(resolvedType)) return;
+      if (raw.editable === false || (OBJECT_SOURCE_READ_ONLY_TYPES.includes(resolvedType) && !(databaseType === "oceanbase-oracle" && resolvedType === "SEQUENCE"))) return;
       if (isTabDirty(current)) return;
       updateSql(id, editableSource);
       markTabClean(current);
@@ -2828,7 +2833,7 @@ export const useQueryStore = defineStore("query", () => {
     const { connectionId } = tab;
     const { database } = tab;
     const schema = tab.schema || database;
-    const { request } = tab.sourceLoad;
+    const { request, initialEditing } = tab.sourceLoad;
     try {
       const connectionStore = useConnectionStore();
       await connectionStore.ensureConnected(connectionId);
@@ -2848,7 +2853,7 @@ export const useQueryStore = defineStore("query", () => {
         databaseType,
         signature: request.signature,
       });
-      applyLoadedObjectSource(id, { connectionId, database, schema, catalog: tab.catalog, title: tab.title, request, editableSource, raw, resolvedType });
+      applyLoadedObjectSource(id, { connectionId, database, schema, catalog: tab.catalog, title: tab.title, request, initialEditing, databaseType, editableSource, raw, resolvedType });
     } catch (e: any) {
       // 就地显示错误 + Retry：用户此刻正看着这个 tab，比 toast 更可发现
       const failed = tabs.value.find((candidate) => candidate.id === id);
@@ -2865,6 +2870,8 @@ export const useQueryStore = defineStore("query", () => {
       catalog?: string;
       title: string;
       request: ObjectSourceRequestIdentity;
+      initialEditing?: boolean;
+      databaseType: DatabaseType;
       editableSource: string;
       raw: ObjectSource;
       resolvedType: ObjectSourceKind;
@@ -2873,7 +2880,7 @@ export const useQueryStore = defineStore("query", () => {
     // 加载期间 tab 被关掉（用户放弃）或连接被断开：静默丢弃，不重建、不写库
     const tab = tabs.value.find((candidate) => candidate.id === id);
     if (!tab?.sourceLoad) return;
-    const sourceIsEditable = loaded.raw.editable !== false && !OBJECT_SOURCE_READ_ONLY_TYPES.includes(loaded.resolvedType);
+    const sourceIsEditable = loaded.initialEditing !== false && loaded.raw.editable !== false && (!OBJECT_SOURCE_READ_ONLY_TYPES.includes(loaded.resolvedType) || (loaded.databaseType === "oceanbase-oracle" && loaded.resolvedType === "SEQUENCE"));
     if (sourceIsEditable) {
       const options: OpenObjectSourceTabOptions = {
         connectionId: loaded.connectionId,
@@ -2901,7 +2908,7 @@ export const useQueryStore = defineStore("query", () => {
       updateSql(id, loaded.editableSource);
       setObjectSource(id, options.objectSource);
     } else {
-      updateSql(id, loaded.editableSource);
+      updateSql(id, loaded.raw.source);
     }
     tab.sourceView = true;
     markTabClean(tab);

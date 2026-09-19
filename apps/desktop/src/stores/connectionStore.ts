@@ -105,7 +105,7 @@ import type { SqlCompletionColumn, SqlCompletionForeignKey, SqlCompletionObject,
 import { usesOracleCurrentSchemaCompletion } from "@/lib/sql/oracleCompletionSession";
 import { mergeSqlObjectNavigationType, sqlObjectNavigationTypeFromTableType } from "@/lib/sql/sqlNavigation";
 import * as api from "@/lib/backend/api";
-import { ORACLE_DATABASE_LINKS_SQL, oracleDatabaseLinksFromResult } from "@/lib/database/oracleDatabaseLinks";
+import { oracleDatabaseLinksFromResult, oracleDatabaseLinksSql, supportsOracleDatabaseLinks } from "@/lib/database/oracleDatabaseLinks";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { useTunnelProfileStore } from "@/stores/tunnelProfileStore";
 import { connectionIsDorisFamilyCatalogCapable, isInternalDorisCatalog, isSchemaAware, normalizeSidebarObjectKind, schemaNodeHasLoadableName, shouldShowDorisCatalogTree, sidebarObjectKindsForDatabase, supportsPackageMemberExpansion, usesTreeSchemaMode } from "@/lib/database/databaseCapabilities";
@@ -1984,15 +1984,16 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function buildOracleDatabaseLinksNode(connectionId: string, existingConnectionNode?: TreeNode): TreeNode | undefined {
     const config = getConfig(connectionId);
-    if (effectiveDatabaseTypeForConnection(config) !== "oracle") return undefined;
+    if (!supportsOracleDatabaseLinks(effectiveDatabaseTypeForConnection(config))) return undefined;
     const existing = existingConnectionNode?.children?.find((child) => child.type === "oracle-db-links");
     return { ...existing, id: `${connectionId}:__oracle_db_links`, label: "tree.databaseLinks", type: "oracle-db-links", connectionId, database: config?.database || "", isExpanded: existing?.isExpanded ?? false, children: existing?.children ?? [] };
   }
 
   async function listOracleDatabaseLinks(connectionId: string, database: string) {
-    if (effectiveDatabaseTypeForConnection(getConfig(connectionId)) !== "oracle") return [];
+    const databaseType = effectiveDatabaseTypeForConnection(getConfig(connectionId));
+    if (!supportsOracleDatabaseLinks(databaseType)) return [];
     await ensureConnected(connectionId);
-    return oracleDatabaseLinksFromResult(await api.executeQuery(connectionId, database, ORACLE_DATABASE_LINKS_SQL, undefined, undefined, { maxRows: 10000, timeoutSecs: 15 }));
+    return oracleDatabaseLinksFromResult(await api.executeQuery(connectionId, database, oracleDatabaseLinksSql(databaseType), undefined, undefined, { maxRows: 10000, timeoutSecs: 15 }));
   }
 
   async function refreshOracleDatabaseLinks(connectionId: string) {

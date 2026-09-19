@@ -3755,6 +3755,12 @@ export default withEnglishFallback({
     loadFailed: "載入 Schema 失敗：{message}",
   },
   databaseLinks: {
+    remoteTenant: "遠端租戶",
+    remoteProtocol: "遠端資料庫協定",
+    remoteCluster: "遠端叢集（選填）",
+    oceanbaseRecreateHint: "OceanBase 連結暫不提供原地修改。請先建立並測試替代連結，再明確刪除舊連結；不會自動刪除既有連結。",
+    oceanbasePublic: "公有",
+    oceanbaseSharedReadOnly: "此公有連結由其他使用者建立。你可以測試和使用，但只有建立者可以刪除。",
     shadowed: "A private link with the same name takes precedence in this session.",
     search: "Search database links",
     name: "Link name",

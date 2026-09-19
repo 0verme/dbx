@@ -1788,6 +1788,8 @@ export interface QueryTab {
    */
   sourceLoad?: {
     startedAt: number;
+    /** Whether this request should open an editable object definition instead of the original source. */
+    initialEditing?: boolean;
     /** 加载失败时写入；保留 request 以便就地重试 */
     error?: string;
     /**

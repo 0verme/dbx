@@ -3754,6 +3754,12 @@ export default withEnglishFallback({
     loadFailed: "Impossibile caricare gli schema: {message}",
   },
   databaseLinks: {
+    remoteTenant: "Tenant remoto",
+    remoteProtocol: "Protocollo del database remoto",
+    remoteCluster: "Cluster remoto (facoltativo)",
+    oceanbaseRecreateHint: "I collegamenti OceanBase non si modificano direttamente. Creare e verificare un sostituto prima di eliminare esplicitamente il collegamento precedente. Nessun collegamento viene eliminato automaticamente.",
+    oceanbasePublic: "Public",
+    oceanbaseSharedReadOnly: "Another user created this public link. You can test and use it, but only its creator can delete it.",
     shadowed: "A private link with the same name takes precedence in this session.",
     search: "Search database links",
     name: "Link name",

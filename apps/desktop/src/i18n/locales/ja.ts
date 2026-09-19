@@ -3780,6 +3780,12 @@ export default withEnglishFallback({
     loadFailed: "スキーマの読み込みに失敗しました: {message}",
   },
   databaseLinks: {
+    remoteTenant: "リモートテナント",
+    remoteProtocol: "リモートデータベースのプロトコル",
+    remoteCluster: "リモートクラスタ（任意）",
+    oceanbaseRecreateHint: "OceanBaseリンクの直接変更には対応していません。代替リンクを作成してテストした後、古いリンクを明示的に削除してください。既存リンクを自動削除することはありません。",
+    oceanbasePublic: "Public",
+    oceanbaseSharedReadOnly: "Another user created this public link. You can test and use it, but only its creator can delete it.",
     shadowed: "A private link with the same name takes precedence in this session.",
     search: "Search database links",
     name: "Link name",

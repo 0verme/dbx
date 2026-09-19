@@ -3885,6 +3885,12 @@ export default {
     loadFailed: "Failed to load schemas: {message}",
   },
   databaseLinks: {
+    remoteTenant: "Remote tenant",
+    remoteProtocol: "Remote database protocol",
+    remoteCluster: "Remote cluster (optional)",
+    oceanbaseRecreateHint: "In-place updates are not available for OceanBase links. Create and test a replacement before explicitly deleting the old link. Existing links are never dropped automatically.",
+    oceanbasePublic: "Public",
+    oceanbaseSharedReadOnly: "Another user created this public link. You can test and use it, but only its creator can delete it.",
     shadowed: "A private link with the same name takes precedence in this session. Test the public link from a user without that private link.",
     search: "Search database links",
     name: "Link name",

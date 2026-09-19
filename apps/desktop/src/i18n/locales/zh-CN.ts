@@ -3796,6 +3796,12 @@ export default withEnglishFallback({
     loadFailed: "加载 Schema 失败：{message}",
   },
   databaseLinks: {
+    remoteTenant: "远程租户",
+    remoteProtocol: "远程数据库协议",
+    remoteCluster: "远程集群（可选）",
+    oceanbaseRecreateHint: "OceanBase 链接暂不提供原地修改。请先新建并测试替代链接，再明确删除旧链接；不会自动删除已有链接。",
+    oceanbasePublic: "公有",
+    oceanbaseSharedReadOnly: "此公有链接由其他用户创建。你可以测试和使用，但只有创建者可以删除。",
     shadowed: "当前会话会优先使用同名私有链接。请使用没有该私有链接的用户测试此公有链接。",
     search: "搜索数据库链接",
     name: "链接名称",

@@ -127,6 +127,9 @@ pub fn build_routine_rename_object_source_statements(
 }
 
 pub fn build_executable_object_source_statements(input: EditableObjectSourceSqlInput) -> Result<Vec<String>, String> {
+    if input.database_type == DatabaseType::OceanbaseOracle && input.object_type == ObjectSourceKind::Sequence {
+        return Ok(vec![oceanbase_sequence_edit_sql(&input)?]);
+    }
     let source = input.source.trim();
     let source = if is_opengauss_like(input.database_type) && input.object_type == ObjectSourceKind::Procedure {
         strip_standalone_trailing_slash(source)
@@ -319,6 +322,92 @@ fn build_routine_rename_cleanup(input: &EditableObjectSourceSqlInput, source: &s
         object_type_keyword(&input.object_type),
         postgres_qualified_name(input.schema.as_deref(), &input.name),
         declaration.signature
+    ))
+}
+
+/// Alter sequence options without replaying START WITH or dropping the existing sequence.
+fn oceanbase_sequence_edit_sql(input: &EditableObjectSourceSqlInput) -> Result<String, String> {
+    let invalid = || {
+        "Expected CREATE/ALTER SEQUENCE for the selected object with supported sequence options; restart and additional statements are not allowed.".to_string()
+    };
+    let mut tokens: Vec<Token> = Tokenizer::new(&OracleDialect {}, input.source.trim())
+        .tokenize()
+        .map_err(|_| invalid())?
+        .into_iter()
+        .filter(|token| !matches!(token, Token::Whitespace(_)))
+        .collect();
+    if matches!(tokens.last(), Some(Token::SemiColon)) {
+        tokens.pop();
+    }
+    let word = |index: usize, expected: &str| matches!(tokens.get(index), Some(Token::Word(w)) if w.quote_style.is_none() && w.value.eq_ignore_ascii_case(expected));
+    let creating = word(0, "CREATE");
+    if (!creating && !word(0, "ALTER")) || !word(1, "SEQUENCE") {
+        return Err(invalid());
+    }
+    let mut index = 2;
+    let mut names = Vec::new();
+    loop {
+        let Some(Token::Word(name)) = tokens.get(index) else {
+            return Err(invalid());
+        };
+        names.push(if name.quote_style.is_some() { name.value.clone() } else { name.value.to_uppercase() });
+        index += 1;
+        if !matches!(tokens.get(index), Some(Token::Period)) {
+            break;
+        }
+        index += 1;
+    }
+    let expected = match input.schema.as_deref().filter(|schema| !schema.is_empty()) {
+        Some(schema) => vec![schema.to_string(), input.name.clone()],
+        None => vec![input.name.clone()],
+    };
+    if names != expected && names != vec![input.name.clone()] {
+        return Err(invalid());
+    }
+    let mut options = Vec::new();
+    while index < tokens.len() {
+        let start = index;
+        let skip_start = creating && word(index, "START");
+        let numeric = if word(index, "INCREMENT") || skip_start {
+            let next = if skip_start { "WITH" } else { "BY" };
+            if !word(index + 1, next) {
+                return Err(invalid());
+            }
+            index += 2;
+            true
+        } else if ["MINVALUE", "MAXVALUE", "CACHE"].iter().any(|option| word(index, option)) {
+            index += 1;
+            true
+        } else if ["NOMINVALUE", "NOMAXVALUE", "NOCACHE", "CYCLE", "NOCYCLE", "ORDER", "NOORDER"]
+            .iter()
+            .any(|option| word(index, option))
+        {
+            index += 1;
+            false
+        } else {
+            return Err(invalid());
+        };
+        if numeric {
+            if matches!(tokens.get(index), Some(Token::Minus | Token::Plus)) {
+                index += 1;
+            }
+            if !matches!(tokens.get(index), Some(Token::Number(value, false)) if !value.is_empty() && value.bytes().all(|c| c.is_ascii_digit()))
+            {
+                return Err(invalid());
+            }
+            index += 1;
+        }
+        if !skip_start {
+            options.push(tokens[start..index].iter().map(ToString::to_string).collect::<Vec<_>>().join(" "));
+        }
+    }
+    if options.is_empty() {
+        return Err(invalid());
+    }
+    Ok(format!(
+        "ALTER SEQUENCE {}\n  {};",
+        postgres_qualified_name(input.schema.as_deref(), &input.name),
+        options.join("\n  ")
     ))
 }
 
@@ -993,6 +1082,70 @@ fn parse_object_source_kind(value: &str) -> Option<ObjectSourceKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ob_sequence(source: &str, schema: Option<&str>, name: &str) -> EditableObjectSourceSqlInput {
+        EditableObjectSourceSqlInput {
+            database_type: DatabaseType::OceanbaseOracle,
+            object_type: ObjectSourceKind::Sequence,
+            schema: schema.map(str::to_string),
+            name: name.to_string(),
+            source: source.to_string(),
+        }
+    }
+
+    #[test]
+    fn oceanbase_sequence_edit_preserves_counter_and_object_identity() {
+        let source = "CREATE SEQUENCE \"App\".\"Seq\" MINVALUE -999 MAXVALUE 9999999999999999999999999999 INCREMENT BY -2 START WITH 40 CACHE 20 NOCYCLE NOORDER;";
+        let input = ob_sequence(source, Some("App"), "Seq");
+        let expected = "ALTER SEQUENCE \"App\".\"Seq\"\n  MINVALUE - 999\n  MAXVALUE 9999999999999999999999999999\n  INCREMENT BY - 2\n  CACHE 20\n  NOCYCLE\n  NOORDER;";
+        assert_eq!(build_editable_object_source(input.clone()), expected);
+        assert_eq!(build_executable_object_source_statements(input).unwrap(), vec![expected]);
+        let alter = ob_sequence(expected, Some("App"), "Seq");
+        assert_eq!(build_executable_object_source_statements(alter).unwrap(), vec![expected]);
+    }
+
+    #[test]
+    fn oceanbase_sequence_edit_handles_unqualified_and_quoted_names() {
+        for (schema, name, source, expected_name) in [
+            (Some("APP"), "SEQ", "alter sequence seq increment by 3 nocache", "\"APP\".\"SEQ\""),
+            (None, "SEQ", "create sequence seq start with 1 increment by 1", "\"SEQ\""),
+            (
+                Some("A.B"),
+                "S\"Q",
+                "CREATE SEQUENCE \"A.B\".\"S\"\"Q\" START WITH 1 -- no reset\n INCREMENT BY 2",
+                "\"A.B\".\"S\"\"Q\"",
+            ),
+        ] {
+            let sql = build_executable_object_source_sql(ob_sequence(source, schema, name)).unwrap();
+            assert!(sql.starts_with(&format!("ALTER SEQUENCE {expected_name}")));
+            assert!(!sql.contains("START WITH"));
+            assert!(!sql.contains("DROP"));
+        }
+    }
+
+    #[test]
+    fn oceanbase_sequence_edit_rejects_restart_wrong_targets_and_extra_statements() {
+        for source in [
+            "ALTER SEQUENCE APP.SEQ RESTART START WITH 1",
+            "ALTER SEQUENCE APP.OTHER INCREMENT BY 1",
+            "ALTER SEQUENCE OTHER.SEQ INCREMENT BY 1",
+            "ALTER SEQUENCE \"app\".SEQ INCREMENT BY 1",
+            "ALTER SEQUENCE APP.SEQ INCREMENT BY 1; DROP TABLE APP.T",
+            "DROP SEQUENCE APP.SEQ",
+            "CREATE OR REPLACE SEQUENCE APP.SEQ INCREMENT BY 1",
+            "CREATE SEQUENCE APP.SEQ START WITH 1",
+            "ALTER SEQUENCE APP.SEQ CACHE 1.5",
+            "ALTER SEQUENCE APP.SEQ CACHE 1e3",
+            "ALTER SEQUENCE APP.SEQ INCREMENT BY",
+            "ALTER SEQUENCE APP.SEQ START WITH 1",
+            "CREATE SEQUENCE APP.SEQ START WITH 1 INCREMENT BY 1; SELECT 1 FROM DUAL",
+        ] {
+            assert!(
+                build_executable_object_source_statements(ob_sequence(source, Some("APP"), "SEQ")).is_err(),
+                "{source}"
+            );
+        }
+    }
 
     #[test]
     fn oracle_ddl_terminator_respects_quoted_tokens_and_slash_delimiters() {

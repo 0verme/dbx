@@ -2595,6 +2595,7 @@ function openObjectSourceDialog(initialEditing: boolean, viewPackageBody = false
       title: `Source - ${node.label}`,
       schema,
       catalog: node.catalog,
+      initialEditing,
       request: { name: sourceTarget.name, objectType: sourceTarget.objectType, signature: sourceNode.signature },
     });
     return;
@@ -6380,8 +6381,11 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     return true;
   }
 
-  if (node.type === "sequence") {
+  if (node.type === "sequence" || (node.type === "synonym" && currentDatabaseType() === "oceanbase-oracle")) {
     items.push({ label: t("contextMenu.viewSource"), action: () => openObjectSourceDialog(false), icon: Code2 });
+    if (currentDatabaseType() === "oceanbase-oracle") {
+      items.push({ label: t("contextMenu.editObject"), action: () => openObjectSourceDialog(true), icon: Pencil });
+    }
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     items.push({ label: t("contextMenu.changeOpenMode"), action: () => emit("open-settings", "navigation"), icon: Settings2 });
     return true;
