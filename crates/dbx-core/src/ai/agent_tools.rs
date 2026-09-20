@@ -1835,6 +1835,7 @@ for line in sys.stdin:
             rows,
             affected_rows,
             execution_time_ms: 1,
+            server_execute_time_us: None,
             truncated: false,
             session_id: None,
             has_more: false,

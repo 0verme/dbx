@@ -1821,6 +1821,16 @@ export default withEnglishFallback({
     noNumericData: "グラフ化できる数値データがありません",
   },
   grid: {
+    agentExecuteTime: "実行時間：{ms} ms",
+    serverExecuteTime: "DB 実行：{us} µs",
+    serverExecuteTimeUnavailable: "DB 実行：取得不可",
+    serverExecuteTimeHint:
+      "OceanBase SQL Audit の EXECUTE_TIME はサーバーでの実行計画の処理時間です。JDBC カーソルでは元の文の終了後に取得したサンプルを表示します。ページごとに独立した SQL を実行する場合は、すべてのページのサンプルがあるときだけ合計を表示します。実行時間や待機時間と範囲が重複します。カーソルが終了していない場合や、監査データの取得・関連付けができない場合は取得不可となります。",
+    agentExecuteTimeHint: "スキーマの設定から JDBC execute が戻るまでの Agent の処理時間です。行の取得は含まず、データベースサーバーだけの実行時間ではありません。",
+    clientRequestWait: "待機時間：{ms} ms",
+    clientRequestWaitHint: "デスクトップ側がクエリ要求を送信してから結果全体を受信するまでの時間です。行の取得、利用可能な場合のサーバー監査クエリ、転送を含み、SQL の準備とテーブル描画は含みません。複数ページを読み込んだ場合は各ページの待機時間を合計します。",
+    resultViewUpdate: "テーブル更新：{ms} ms",
+    resultViewUpdateHint: "テーブルが今回の結果を受け取ってから DOM 更新が完了するか Canvas の描画が送信されるまでの時間です。GPU 合成と画面への実際の表示は含みません。",
     rows: "{count}行",
     totalRows: "{count}件表示",
     loadedRows: "{count}件読み込み済み",
