@@ -477,10 +477,26 @@ export function pluginNetworkOrigins(permissions: readonly string[] | undefined)
   return [...origins];
 }
 
-export function pluginSandboxDocument(html: string, permissions?: readonly string[], theme?: PluginBridgeTheme): string {
+export interface PluginSandboxOptions {
+  /**
+   * Base URL under which the workbench document may fetch further plugin UI
+   * assets (code-split chunks, fonts) — `dbx-plugin://localhost/<id>/assets/`
+   * on native custom schemes, `http(s)://dbx-plugin.localhost/<id>/assets/`
+   * where WebView2 maps the scheme to an http subdomain. Injected as the
+   * document `<base>` and allowed in the resource CSP directives. Omit on
+   * hosts without the plugin asset protocol (the web host).
+   */
+  baseUrl?: string;
+}
+
+export function pluginSandboxDocument(html: string, permissions?: readonly string[], theme?: PluginBridgeTheme, options?: PluginSandboxOptions): string {
   const networkOrigins = pluginNetworkOrigins(permissions);
   const connectSrc = networkOrigins.length > 0 ? `connect-src ${networkOrigins.join(" ")};` : "connect-src 'none';";
-  const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data: blob:; ${connectSrc} media-src data: blob:;">`;
+  const assetSource = pluginAssetCspSource(options?.baseUrl);
+  const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:${assetSource}; style-src 'unsafe-inline' blob:; img-src data: blob:${assetSource}; font-src data: blob:${assetSource}; ${connectSrc} media-src data: blob:${assetSource};">`;
+  // <base> must precede every relative URL the document resolves (inlined CSS
+  // url(), dynamic import specifiers), so it leads the injection.
+  const base = options?.baseUrl && assetSource ? `<base href="${escapeHtmlAttribute(options.baseUrl)}">` : "";
   const sdk = `<script>${pluginSdkSource(theme)}</script>`;
   const uiKit = `<style>${pluginUiKitCss()}</style>`;
   // Placed after the uiKit so the boot `color-scheme` wins the cascade: the
@@ -488,9 +504,26 @@ export function pluginSandboxDocument(html: string, permissions?: readonly strin
   // has loaded, and the uiKit's token fallbacks would otherwise paint the
   // first frame white on dark hosts.
   const bootTheme = pluginBootThemeCss(theme);
-  const injection = `${csp}${uiKit}${bootTheme ? `<style>${bootTheme}</style>` : ""}${sdk}`;
+  const injection = `${csp}${base}${uiKit}${bootTheme ? `<style>${bootTheme}</style>` : ""}${sdk}`;
   if (/<head(?:\s[^>]*)?>/i.test(html)) return html.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${injection}`);
   return `<!doctype html><html><head>${injection}</head><body>${html}</body></html>`;
+}
+
+/**
+ * CSP source expression for the plugin asset base URL: the exact origin for
+ * the http(s)-mapped form (WebView2), the whole scheme for the native custom
+ * scheme form. Only dbx-plugin shapes contribute a source — anything else is
+ * ignored (and suppresses the <base> too).
+ */
+function pluginAssetCspSource(baseUrl: string | undefined): string {
+  if (!baseUrl) return "";
+  const mapped = baseUrl.match(/^(https?:\/\/dbx-plugin\.localhost)(?:\/|$)/i);
+  if (mapped) return ` ${mapped[1].toLowerCase()}`;
+  return /^dbx-plugin:\/\//i.test(baseUrl) ? " dbx-plugin:" : "";
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**

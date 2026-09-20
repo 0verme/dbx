@@ -431,6 +431,10 @@ Treat `terminal.fontSize`-style concerns as plugin-owned: the host never dictate
 
 Build the UI as packaged static assets, not references to a Vite server or CDN scripts. The host converts the entry and assets into sandbox-loadable content. For CSP errors, verify build outputs and confinement under `ui.root`, and reproduce with the matching CLI version. Use plugin-owned dialogs for delete/rename rather than relying on native `alert`/`confirm`/`prompt` inside the sandbox.
 
+#### Lazy loading and code splitting
+
+The host inlines the entry script into the sandbox document; further `ui/` assets stay addressable at runtime through the `dbx-plugin` scheme — `dbx-plugin://localhost/<plugin-id>/<path-under-ui.root>` (WebView2 maps it to `http://dbx-plugin.localhost/<plugin-id>/…`). The host injects the platform-correct form as the sandbox document's `<base>` and allows it in the resource CSP, so dynamic `import()` of code-split chunks works in packaged plugins — provided the build emits **relative** asset URLs: set `base: "./"` (Vite) or `publicPath: "./"` (webpack) so chunk and CSS asset URLs resolve against the injected base instead of the host origin. Absolute `/assets/…` references cannot carry the plugin id and will 404. The scheme serves files only, confined to each plugin's `ui.root`, and responses are never cached across plugin updates.
+
 ## Native Sidecars and RPC
 
 Use a native backend only when the browser sandbox cannot provide the capability, such as S3/SSH protocols, system credentials, long-lived connections, or CPU-heavy work. A Sidecar is not an OS sandbox and runs with the current user's privileges.

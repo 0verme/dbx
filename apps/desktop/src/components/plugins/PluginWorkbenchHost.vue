@@ -424,13 +424,18 @@ function localUiAssetPath(source: string): string | undefined {
   }
 }
 
-async function inlineLocalUiAssets(html: string, pluginId: string): Promise<string> {
+async function inlineLocalUiAssets(html: string, pluginId: string): Promise<{ html: string; entryDirectory: string }> {
   const document = new DOMParser().parseFromString(html, "text/html");
   const resources = [...document.querySelectorAll("script[src], link[rel='stylesheet'][href]")];
+  // Dynamic-import chunks and CSS url() references live next to the entry
+  // script; its directory is the <base> the sandbox document needs to resolve
+  // them through the dbx-plugin scheme.
+  let entryDirectory = "";
   for (const resource of resources) {
     const source = resource.getAttribute(resource.tagName === "SCRIPT" ? "src" : "href");
     const path = source ? localUiAssetPath(source) : undefined;
     if (!path) continue;
+    if (!entryDirectory) entryDirectory = path.split("/").slice(0, -1).join("/");
     const asset = await api.readPluginUiAsset(pluginId, path);
     const content = new TextDecoder().decode(Uint8Array.from(atob(asset.dataBase64), (character) => character.charCodeAt(0)));
     if (resource.tagName === "SCRIPT") {
@@ -446,7 +451,19 @@ async function inlineLocalUiAssets(html: string, pluginId: string): Promise<stri
       resource.replaceWith(style);
     }
   }
-  return document.documentElement.outerHTML;
+  return { html: document.documentElement.outerHTML, entryDirectory };
+}
+
+/**
+ * Base URL prefix for lazy-loaded plugin UI assets. wry serves custom schemes
+ * natively on WKWebView/webkit2gtk but maps them onto http(s) subdomains on
+ * WebView2, so the host page's own protocol picks the form the webview will
+ * actually request. The web host has no plugin asset protocol.
+ */
+function pluginUiBaseUrl(pluginId: string, entryDirectory: string): string | undefined {
+  if (!isTauriRuntime()) return undefined;
+  const origin = location.protocol === "http:" || location.protocol === "https:" ? `${location.protocol}//dbx-plugin.localhost/${pluginId}/` : `dbx-plugin://localhost/${pluginId}/`;
+  return entryDirectory ? `${origin}${entryDirectory}/` : origin;
 }
 
 async function loadWorkbench() {
@@ -461,9 +478,11 @@ async function loadWorkbench() {
     const asset = await api.readPluginUiEntry(props.plugin.manifest.id);
     if (disposed || generation !== loadGeneration) return;
     const bytes = Uint8Array.from(atob(asset.dataBase64), (character) => character.charCodeAt(0));
-    const html = await inlineLocalUiAssets(new TextDecoder().decode(bytes), props.plugin.manifest.id);
+    const { html, entryDirectory } = await inlineLocalUiAssets(new TextDecoder().decode(bytes), props.plugin.manifest.id);
     if (disposed || generation !== loadGeneration) return;
-    source.value = pluginSandboxDocument(html, props.plugin.manifest.permissions, currentBridgeTheme());
+    source.value = pluginSandboxDocument(html, props.plugin.manifest.permissions, currentBridgeTheme(), {
+      baseUrl: pluginUiBaseUrl(props.plugin.manifest.id, entryDirectory),
+    });
     await nextTick();
     if (disposed || generation !== loadGeneration) return;
     createBridge();

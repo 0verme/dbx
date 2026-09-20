@@ -431,6 +431,10 @@ env 消息的 `theme` 结构为 `{ appearance, tokens, editor? }`。`appearance`
 
 UI 必须构建为包内静态资源，不要把 Vite 开发服务器或 CDN 的脚本地址写入发行包。宿主把入口及资源转换成沙箱可加载内容；CSP 报错时检查构建产物是否存在、路径是否落在 `ui.root` 内，并使用匹配版本的 CLI 复现。用插件自己的对话框组件处理删除/重命名，不要依赖沙箱中的原生 `alert`/`confirm`/`prompt`。
 
+#### 懒加载与代码分割
+
+宿主会把入口脚本内联进沙箱文档，`ui/` 下的其余资源在运行时通过 `dbx-plugin` 协议保持可寻址：`dbx-plugin://localhost/<插件id>/<ui.root内相对路径>`（WebView2 上映射为 `http://dbx-plugin.localhost/<插件id>/…`）。宿主会把平台对应的形式注入为沙箱文档的 `<base>`，并放行资源类 CSP，因此打包后的插件可以正常动态 `import()` 代码分割的 chunk——前提是构建产物使用**相对**资源地址：Vite 设 `base: "./"`、webpack 设 `publicPath: "./"`，让 chunk 和 CSS 资源地址基于注入的 base 解析而不是宿主 origin。绝对路径 `/assets/…` 携带不了插件 id，会 404。该协议只读文件、限定在每个插件的 `ui.root` 内，且插件更新后不会沿用旧缓存。
+
 ## 原生 Sidecar 和 RPC
 
 只有浏览器沙箱无法完成的能力才需要原生后端，例如 S3/SSH 协议、系统凭据、长连接或高性能计算。Sidecar 不是操作系统沙箱，会以当前用户权限运行。

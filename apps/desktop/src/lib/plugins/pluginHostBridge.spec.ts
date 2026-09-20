@@ -731,6 +731,34 @@ describe("PluginHostBridge", () => {
     expect(closed).toContain("host.stream.chunk");
   });
 
+  it("injects a <base> and widens resource CSP sources for the plugin asset origin", () => {
+    const document = pluginSandboxDocument("<html><head></head><body></body></html>", [], undefined, { baseUrl: "dbx-plugin://localhost/io.github.t8y2.s3/assets/" });
+    expect(document).toContain('<base href="dbx-plugin://localhost/io.github.t8y2.s3/assets/">');
+    expect(document).toContain("script-src 'unsafe-inline' blob: dbx-plugin:;");
+    expect(document).toContain("font-src data: blob: dbx-plugin:;");
+    // <base> leads the head injection so inlined CSS url() resolves against it.
+    expect(document.indexOf("<base ")).toBeLessThan(document.indexOf("<style>"));
+  });
+
+  it("allows the WebView2-mapped asset origin exactly", () => {
+    const document = pluginSandboxDocument("<html><head></head><body></body></html>", [], undefined, { baseUrl: "http://dbx-plugin.localhost/io.github.t8y2.s3/assets/" });
+    expect(document).toContain("script-src 'unsafe-inline' blob: http://dbx-plugin.localhost;");
+    expect(document).toContain('<base href="http://dbx-plugin.localhost/io.github.t8y2.s3/assets/">');
+  });
+
+  it("rejects malformed asset base URLs without touching the CSP", () => {
+    const document = pluginSandboxDocument("<html><head></head><body></body></html>", [], undefined, { baseUrl: "javascript:alert(1)" });
+    expect(document).not.toContain("<base ");
+    expect(document).toContain("script-src 'unsafe-inline' blob:;");
+  });
+
+  it("keeps the sandbox CSP untouched without an asset base URL", () => {
+    const document = pluginSandboxDocument("<html><head></head><body></body></html>");
+    expect(document).toContain("script-src 'unsafe-inline' blob:;");
+    expect(document).toContain("font-src data: blob:;");
+    expect(document).not.toContain("<base ");
+  });
+
   it("pre-seeds the current theme as the sandbox first paint", () => {
     const themed = pluginSandboxDocument("<html><head></head><body></body></html>", ["host.events"], { appearance: "dark", tokens: { "--color-background": "#131416", "--color-foreground": "rgb(215 215 219)" } });
     expect(themed).toContain("color-scheme: dark");
