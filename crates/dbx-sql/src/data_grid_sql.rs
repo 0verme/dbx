@@ -2309,7 +2309,7 @@ fn format_oracle_lob_assignment_literal(text: &str, constructor: &str) -> String
 
 fn oracle_sql_literal_char_len(ch: char) -> usize {
     match ch {
-        '\\' | '\'' => 2,
+        '\'' => 2,
         _ => ch.len_utf8(),
     }
 }
@@ -2322,7 +2322,6 @@ fn append_oracle_sql_literal_characters(output: &mut String, text: &str) {
 
 fn append_oracle_sql_literal_char(output: &mut String, ch: char) {
     match ch {
-        '\\' => output.push_str("\\\\"),
         '\'' => output.push_str("''"),
         _ => output.push(ch),
     }
@@ -2488,7 +2487,7 @@ pub fn format_grid_sql_literal_with_identifier_quote(
     let escaped_text = if database_type == Some(DatabaseType::Neo4j) {
         literal_text.replace('\\', "\\\\").replace('\'', "\\'")
     } else if is_sqlite_literal_database(database_type)
-        || matches!(database_type, Some(DatabaseType::Dameng | DatabaseType::Oracle))
+        || matches!(database_type, Some(DatabaseType::Dameng | DatabaseType::Oracle | DatabaseType::OceanbaseOracle))
     {
         // These engines keep backslashes literal in ordinary string literals,
         // so only the quote delimiter needs escaping.
@@ -6187,7 +6186,7 @@ mod tests {
             format_grid_assignment_sql_literal(&json!(special_value), Some(DatabaseType::Oracle), Some(&clob), None);
         assert!(special_literal.starts_with("TO_CLOB('"));
         assert!(special_literal.contains("''"));
-        assert!(special_literal.contains("\\\\"));
+        assert!(!special_literal.contains("\\\\"));
         let varchar = column("body", "VARCHAR2(5000)", true, None);
         let varchar_literal =
             format_grid_assignment_sql_literal(&json!(large_value), Some(DatabaseType::Oracle), Some(&varchar), None);
@@ -8012,6 +8011,37 @@ mod tests {
         // backslash as an escape character, so this behavior must be preserved.
         assert_eq!(format_grid_sql_literal(&json!(r"a\b"), Some(DatabaseType::Mysql), None), r"'a\\b'");
         assert_eq!(format_grid_sql_literal(&json!(r"a\b"), Some(DatabaseType::Neo4j), None), r"'a\\b'");
+    }
+
+    #[test]
+    fn oceanbase_oracle_literals_do_not_double_escape_backslashes() {
+        assert_eq!(format_grid_sql_literal(&json!(r"a\b"), Some(DatabaseType::OceanbaseOracle), None), r"'a\b'");
+        assert_eq!(
+            format_grid_sql_literal(&json!(r"line\n's"), Some(DatabaseType::OceanbaseOracle), None),
+            r"'line\n''s'"
+        );
+    }
+
+    #[test]
+    fn oracle_clob_literals_keep_backslashes_single() {
+        let clob = column("body", "CLOB", true, None);
+        assert_eq!(
+            format_grid_assignment_sql_literal(&json!(r"a\b's"), Some(DatabaseType::Oracle), Some(&clob), None),
+            r"'a\b''s'"
+        );
+        // Backslashes count as one byte toward the chunk budget, so a value at the
+        // chunk boundary splits at the same offset it would without backslashes.
+        let value = format!("{}\\", "x".repeat(ORACLE_SQL_LITERAL_MAX_BYTES));
+        let literal = format_grid_assignment_sql_literal(&json!(value), Some(DatabaseType::Oracle), Some(&clob), None);
+        let chunks = literal
+            .split("TO_CLOB('")
+            .skip(1)
+            .map(|chunk| chunk.split("')").next().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].len(), ORACLE_LOB_LITERAL_CHUNK_BYTES);
+        assert!(chunks[1].ends_with('\\'));
+        assert!(!chunks.iter().any(|chunk| chunk.contains("\\\\")));
     }
 
     #[test]
