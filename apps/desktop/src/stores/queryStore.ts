@@ -168,6 +168,7 @@ interface BuildQueryResultExportRequestOptions {
   includeSqlSheet?: boolean;
   exportTableName?: string;
   exportColumnTypes?: Array<string | null | undefined>;
+  exportColumnExtras?: Array<string | null | undefined>;
   insertMode?: SqlInsertMode;
 }
 
@@ -8768,6 +8769,7 @@ export const useQueryStore = defineStore("query", () => {
       executionId: uuid(),
       exportTableName: options.exportTableName,
       exportColumnTypes: options.exportColumnTypes,
+      exportColumnExtras: options.exportColumnExtras,
       numericColumnRightAlign: settings.numericColumnRightAlign,
       identifierQuote: connStore.connectionIdentifierQuote(location.connectionId),
     };
