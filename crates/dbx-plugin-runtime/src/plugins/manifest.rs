@@ -19,7 +19,8 @@ pub const PLUGIN_CONNECTION_TEST_METHOD: &str = "connection/test";
 pub const PLUGIN_CONNECTION_CONNECT_METHOD: &str = "connection/connect";
 pub const PLUGIN_CONNECTION_DISCONNECT_METHOD: &str = "connection/disconnect";
 pub const PLUGIN_CONNECTION_ACTION_METHOD: &str = "connection/action";
-pub const SUPPORTED_PLUGIN_PERMISSIONS: &[&str] = &["host.events", "host.binary", "host.workbench", "host.filesystem"];
+pub const SUPPORTED_PLUGIN_PERMISSIONS: &[&str] =
+    &["host.events", "host.binary", "host.workbench", "host.filesystem", "host.plans:read"];
 
 /// Cap the number of `host.network:<origin>` entries so a manifest cannot bloat
 /// the sandbox CSP or enumerate large origin lists.
@@ -1482,7 +1483,7 @@ mod tests {
     use super::{
         parse_host_network_permission, resolve_safe_plugin_path, validate_connection_actions,
         PluginConnectionActionContribution, PluginConnectionProviderContribution, PluginFormFieldBinding,
-        PluginManifest,
+        PluginManifest, SUPPORTED_PLUGIN_PERMISSIONS,
     };
 
     #[test]
@@ -1542,6 +1543,70 @@ mod tests {
         std::fs::write(dir.path().join("ui").join("index.html"), "<!doctype html>").unwrap();
         let compatibility = manifest.compatibility(dir.path(), "0.1.0");
         assert!(compatibility.errors.iter().any(|error| error.contains("host.network:http://api.vendor.com")));
+    }
+
+    #[test]
+    fn accepts_host_plans_read_and_still_rejects_unknown_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("ui")).unwrap();
+        std::fs::write(dir.path().join("ui").join("index.html"), "<!doctype html>").unwrap();
+
+        let manifest: PluginManifest = serde_json::from_value(serde_json::json!({
+            "manifest_version": 1,
+            "id": "io.dbx.example",
+            "name": "Example",
+            "version": "1.0.0",
+            "publisher": "example",
+            "engines": { "dbx": ">=0.1.0", "host_api": "^1.0" },
+            "entrypoints": { "ui": { "root": "ui", "entry": "ui/index.html" } },
+            "permissions": ["host.plans:read"]
+        }))
+        .unwrap();
+        let compatibility = manifest.compatibility(dir.path(), "0.1.0");
+        assert!(compatibility.compatible, "{:?}", compatibility.errors);
+
+        // The plan API is read-only: an execute-scoped scope must not be declared.
+        for permission in ["host.plans:execute", "host.plans", "host.plans:read:all", "host.plan:read"] {
+            let manifest: PluginManifest = serde_json::from_value(serde_json::json!({
+                "manifest_version": 1,
+                "id": "io.dbx.example",
+                "name": "Example",
+                "version": "1.0.0",
+                "publisher": "example",
+                "engines": { "dbx": ">=0.1.0", "host_api": "^1.0" },
+                "entrypoints": { "ui": { "root": "ui", "entry": "ui/index.html" } },
+                "permissions": [permission]
+            }))
+            .unwrap();
+            let compatibility = manifest.compatibility(dir.path(), "0.1.0");
+            assert!(!compatibility.compatible, "{permission} must stay unsupported");
+            assert!(
+                compatibility.errors.iter().any(|error| error.contains(permission)),
+                "{permission}: {:?}",
+                compatibility.errors
+            );
+        }
+    }
+
+    /// The published schema is the editor/CI contract for the same enum; a
+    /// permission added to one side only would let a manifest pass an editor
+    /// check and fail installation (or the reverse).
+    #[test]
+    fn manifest_schema_permission_enum_matches_supported_permissions() {
+        let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("plugins")
+            .join("manifest.schema.json");
+        let schema: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&schema_path).unwrap()).unwrap();
+        let declared = schema["properties"]["permissions"]["items"]["anyOf"][0]["enum"]
+            .as_array()
+            .expect("permissions.items.anyOf[0].enum must be an array")
+            .iter()
+            .map(|value| value.as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(declared, SUPPORTED_PLUGIN_PERMISSIONS.iter().map(|value| value.to_string()).collect::<Vec<_>>());
     }
 
     #[test]

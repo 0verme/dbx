@@ -160,6 +160,9 @@ import type {
   QuerySqlBuildResult,
   BuildExplainSqlOptions,
   ExplainSqlBuildResult,
+  PluginPlanCapabilities,
+  PluginPlanRequest,
+  PluginPlanResult,
   DroppedFilePreviewSqlOptions,
   MongoGridFsFileInfo,
   AppSupportInfo,
@@ -1565,6 +1568,19 @@ export async function getExplainInfo(connectionId: string, database: string | un
     sql,
     mode,
   });
+}
+
+/** Plugin Host API: what the host and this connection can plan. Never connects. */
+export async function getPluginPlanCapabilities(connectionId: string): Promise<PluginPlanCapabilities> {
+  return post<PluginPlanCapabilities>("/api/query/plugin-plan-capabilities", { connectionId });
+}
+
+/**
+ * Plugin Host API: acquires the estimated plan for caller-supplied SQL. The
+ * backend generates and owns the EXPLAIN statement; the request cannot carry one.
+ */
+export async function getPluginEstimatedPlan(request: PluginPlanRequest): Promise<PluginPlanResult> {
+  return post<PluginPlanResult>("/api/query/plugin-estimated-plan", request);
 }
 
 export async function buildDroppedFilePreviewSql(options: DroppedFilePreviewSqlOptions): Promise<string | undefined> {
@@ -4493,7 +4509,7 @@ export async function elasticsearchCountDocuments(connectionId: string, index: s
   });
 }
 
-export async function elasticsearchGetIndexMetadata(connectionId: string, index: string, kind: ElasticsearchIndexMetadataKind): Promise<Record<string, any>> {
+export async function elasticsearchGetIndexMetadata(connectionId: string, index: string, kind: ElasticsearchIndexMetadataKind): Promise<Record<string, unknown>> {
   return post("/api/document-store/elasticsearch/index-metadata", {
     connectionId,
     index,
@@ -4833,14 +4849,14 @@ export async function meilisearchGetDocument(connectionId: string, index: string
   });
 }
 
-export async function meilisearchGetIndexSettings(connectionId: string, index: string): Promise<Record<string, any>> {
+export async function meilisearchGetIndexSettings(connectionId: string, index: string): Promise<Record<string, unknown>> {
   return post("/api/document-store/meilisearch/settings/get", {
     connectionId,
     index,
   });
 }
 
-export async function meilisearchUpdateIndexSettings(connectionId: string, index: string, settings: Record<string, any>): Promise<void> {
+export async function meilisearchUpdateIndexSettings(connectionId: string, index: string, settings: Record<string, unknown>): Promise<void> {
   return post("/api/document-store/meilisearch/settings/update", {
     connectionId,
     index,
@@ -4848,7 +4864,7 @@ export async function meilisearchUpdateIndexSettings(connectionId: string, index
   });
 }
 
-export async function meilisearchGetIndexStats(connectionId: string, index: string): Promise<{ numberOfDocuments: number; isIndexing: boolean; fieldDistribution: Record<string, number> } & Record<string, any>> {
+export async function meilisearchGetIndexStats(connectionId: string, index: string): Promise<{ numberOfDocuments: number; isIndexing: boolean; fieldDistribution: Record<string, number> } & Record<string, unknown>> {
   return post("/api/document-store/meilisearch/stats", {
     connectionId,
     index,
