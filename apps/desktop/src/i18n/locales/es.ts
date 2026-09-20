@@ -2624,6 +2624,7 @@ export default withEnglishFallback({
     close: "Cerrar",
     sqlFile: "Archivo SQL",
     sqlLibraryFile: "Biblioteca SQL",
+    pluginWorkbench: "Plugin",
     searchingContent: "Buscando en el contenido de archivos…",
     globalSearchHint: "Búsqueda global de contenido de archivos",
     modeObjects: "Buscar objetos y archivos",

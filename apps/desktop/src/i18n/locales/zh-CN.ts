@@ -2636,6 +2636,7 @@ export default withEnglishFallback({
     close: "关闭",
     sqlFile: "SQL文件",
     sqlLibraryFile: "SQL库",
+    pluginWorkbench: "插件",
     searchingContent: "正在搜索文件内容…",
     globalSearchHint: "全局文件内容搜索",
     modeObjects: "搜索对象与文件",

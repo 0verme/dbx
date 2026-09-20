@@ -3144,6 +3144,12 @@ async function handleQuickOpenSelect(item: any) {
     return;
   }
 
+  // Standalone plugin workbenches open without a database connection
+  if (item.type === "plugin_workbench" && item.pluginId && item.contributionId) {
+    queryStore.openPluginWorkbench(item.pluginId, item.contributionId, { title: item.label });
+    return;
+  }
+
   // For all other types, set the active connection
   connectionStore.activeConnectionId = item.connectionId;
 

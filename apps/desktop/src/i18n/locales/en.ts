@@ -2724,6 +2724,7 @@ export default {
     close: "Close",
     sqlFile: "SQL File",
     sqlLibraryFile: "SQL Library",
+    pluginWorkbench: "Plugin",
     searchingContent: "Searching file contents…",
     globalSearchHint: "Global content search",
     modeObjects: "Search objects and files",

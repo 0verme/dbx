@@ -2530,6 +2530,7 @@ export default withEnglishFallback({
     close: "닫기",
     sqlFile: "SQL 파일",
     sqlLibraryFile: "SQL 라이브러리",
+    pluginWorkbench: "플러그인",
     searchingContent: "파일 내용 검색 중…",
     globalSearchHint: "전역 파일 내용 검색",
     modeObjects: "객체 및 파일 검색",

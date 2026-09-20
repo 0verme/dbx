@@ -2621,6 +2621,7 @@ export default withEnglishFallback({
     close: "關閉",
     sqlFile: "SQL檔案",
     sqlLibraryFile: "SQL庫",
+    pluginWorkbench: "外掛",
     searchingContent: "正在搜尋檔案內容…",
     globalSearchHint: "全域檔案內容搜尋",
     modeObjects: "搜尋物件與檔案",

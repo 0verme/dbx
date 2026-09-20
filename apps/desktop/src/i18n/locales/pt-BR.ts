@@ -2623,6 +2623,7 @@ export default withEnglishFallback({
     close: "Fechar",
     sqlFile: "Arquivo SQL",
     sqlLibraryFile: "Biblioteca SQL",
+    pluginWorkbench: "Plugin",
     searchingContent: "Pesquisando conteúdo dos arquivos…",
     globalSearchHint: "Pesquisa global de conteúdo de arquivos",
     modeObjects: "Pesquisar objetos e arquivos",

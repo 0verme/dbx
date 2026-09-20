@@ -2647,6 +2647,7 @@ export default withEnglishFallback({
     close: "閉じる",
     sqlFile: "SQLファイル",
     sqlLibraryFile: "SQLライブラリ",
+    pluginWorkbench: "プラグイン",
     searchingContent: "ファイル内容を検索中…",
     globalSearchHint: "グローバルファイル内容検索",
     modeObjects: "オブジェクトとファイルを検索",
