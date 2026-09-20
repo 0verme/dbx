@@ -13,12 +13,14 @@ import {
   pluginDisplayName,
   type MarketplacePlugin,
 } from "@/lib/pluginCatalog";
+import { fetchPluginInstalls, formatPluginInstalls, type PluginInstalls } from "@/lib/pluginStats";
 
 const i18n = {
   en: {
     title: "Plugin Center",
     viewPlugin: "View plugin",
     refreshError: "Could not refresh the catalog; showing the last snapshot.",
+    installCount: (count: number) => `${formatPluginInstalls(count, "en")} installs`,
     submitTitle: "Built a plugin for DBX?",
     submitDesc: "Package it as a .dbxp, submit a PR to dbx-store, and it will appear here and in the in-app plugin center after review.",
     submitAction: "Submit to dbx-store",
@@ -30,6 +32,7 @@ const i18n = {
     title: "插件中心",
     viewPlugin: "查看插件",
     refreshError: "目录刷新失败，当前展示构建时的快照。",
+    installCount: (count: number) => `${formatPluginInstalls(count, "cn")} 次安装`,
     submitTitle: "为 DBX 开发了插件？",
     submitDesc: "打包为 .dbxp，向 dbx-store 提交 PR，审核通过后会同时出现在本页面和客户端插件中心。",
     submitAction: "提交到 dbx-store",
@@ -46,8 +49,17 @@ function mergePlugins(snapshot: MarketplacePlugin[], live: MarketplacePlugin[]):
   return [...byId.values()];
 }
 
-export function PluginsClient({ lang, initialPlugins }: { lang: DocsLang; initialPlugins: MarketplacePlugin[] }) {
+export function PluginsClient({
+  lang,
+  initialPlugins,
+  initialInstalls,
+}: {
+  lang: DocsLang;
+  initialPlugins: MarketplacePlugin[];
+  initialInstalls: PluginInstalls | null;
+}) {
   const [plugins, setPlugins] = useState(initialPlugins);
+  const [installs, setInstalls] = useState<PluginInstalls | null>(initialInstalls);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const t = i18n[lang];
 
@@ -62,6 +74,9 @@ export function PluginsClient({ lang, initialPlugins }: { lang: DocsLang; initia
       .catch(() => {
         if (!cancelled) setRefreshFailed(true);
       });
+    fetchPluginInstalls({ cache: "no-cache" }).then((data) => {
+      if (!cancelled && data) setInstalls(data);
+    });
     return () => {
       cancelled = true;
     };
@@ -112,6 +127,7 @@ export function PluginsClient({ lang, initialPlugins }: { lang: DocsLang; initia
                       <p className="mt-0.5 text-[13px] text-landing-muted">
                         {plugin.publisher}
                         {plugin.license ? ` · ${plugin.license}` : ""}
+                        {installs?.[plugin.id] ? ` · ${t.installCount(installs[plugin.id])}` : ""}
                       </p>
                     </div>
                   </div>
