@@ -1659,8 +1659,9 @@ class SqlCompletionProvider {
   ) {
     this.t = input.translations;
     const dialect = sqlCompletionApplyDialect(input.databaseType, input.dialect);
-    // "Quote identifiers in generated SQL" off: Oracle completion inserts bare names instead of quoting lowercase ones.
-    this.dialect = dialect === "oracle" && input.quoteIdentifiers === false ? undefined : dialect;
+    // "Quote identifiers in generated SQL" off: Oracle-like and upper-folding (Dameng, DB2)
+    // completions insert bare names instead of quoting mixed-case ones.
+    this.dialect = input.quoteIdentifiers === false && (dialect === "oracle" || dialect === "upper") ? undefined : dialect;
     this.databaseType = input.databaseType;
   }
 
