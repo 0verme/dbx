@@ -123,6 +123,9 @@ public final class OceanBaseOracleAgent extends ConfiguredJdbcAgent {
     private QueryPageResult withCompletedCursorServerTiming(QueryPageResult result) {
         // JdbcExecutor closes the ResultSet and Statement before returning a terminal
         // page. Never issue audit SQL while Connector/J still owns an open cursor.
+        // executePage limits rows while reading, without Statement.setMaxRows.
+        // Preserve its JDBC default of 0 here; QueryPageOptions.maxRows is a
+        // client-side cap, not the statement limit used by Connector/J.
         if (!result.getHas_more() && !result.getTruncated() && !result.getColumns().isEmpty()) {
             result.setServer_execute_time_us(availableServerExecuteTimeUs(result.getCursor_rows_read(), 0));
         }

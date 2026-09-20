@@ -14,6 +14,8 @@ import com.dbx.agent.TableInfo;
 import com.dbx.agent.test.TestSupport;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -153,6 +155,69 @@ class OceanBaseOracleAgentTest {
         Assertions.assertEquals(null, OceanBaseOracleAgent.serverExecuteTimeUs(auditTimingConnection(1, 500, true, new ArrayList<>(), new ArrayList<>(), new ArrayList<>()), 500, 0));
     }
 
+
+    @ParameterizedTest
+    @CsvSource({"10, 1000, false", "1, 1000, false", "1, 1, true", "2, 2, false"})
+    void preservesTheCursorStatementLimitWhenSamplingItsTerminalPage(int pageSize, int maxRows, boolean truncated) {
+        List<Integer> auditLimits = new ArrayList<>();
+        List<String> auditSql = new ArrayList<>();
+        Connection auditConnection = auditTimingConnection(1, 2, false, auditSql, new ArrayList<>(), auditLimits);
+        int[] row = {-1};
+        int[] queryLimit = {0}; // JDBC's default, independent of the client-side cap.
+        boolean[] queryStarted = {false};
+        boolean[] resultClosed = {false};
+        boolean[] statementClosed = {false};
+        ResultSetMetaData meta = proxy(ResultSetMetaData.class, (method, args) -> {
+            if ("getColumnCount".equals(method.getName())) return 1;
+            if ("getColumnLabel".equals(method.getName())) return "N";
+            if ("getColumnType".equals(method.getName())) return Types.INTEGER;
+            if ("getColumnTypeName".equals(method.getName())) return "NUMBER";
+            return defaultValue(method.getReturnType());
+        });
+        ResultSet cursor = proxy(ResultSet.class, (method, args) -> {
+            if ("next".equals(method.getName())) return ++row[0] < 2;
+            if ("getMetaData".equals(method.getName())) return meta;
+            if ("getObject".equals(method.getName()) || "getInt".equals(method.getName())) return row[0] + 1;
+            if ("close".equals(method.getName())) resultClosed[0] = true;
+            return defaultValue(method.getReturnType());
+        });
+        Statement statement = proxy(Statement.class, (method, args) -> {
+            if ("setMaxRows".equals(method.getName())) queryLimit[0] = (Integer) args[0];
+            if ("execute".equals(method.getName())) {
+                queryStarted[0] = !String.valueOf(args[0]).startsWith("ALTER SESSION");
+                statementClosed[0] = false;
+                return queryStarted[0];
+            }
+            if ("getResultSet".equals(method.getName())) return cursor;
+            if ("close".equals(method.getName())) statementClosed[0] = true;
+            return defaultValue(method.getReturnType());
+        });
+        Connection connection = proxy(Connection.class, (method, args) -> {
+            if ("createStatement".equals(method.getName())) {
+                if (!queryStarted[0]) return statement;
+                Assertions.assertTrue(resultClosed[0] && statementClosed[0], "close the cursor before reading its trace");
+                return auditConnection.createStatement();
+            }
+            if ("prepareStatement".equals(method.getName())) return auditConnection.prepareStatement((String) args[0]);
+            return defaultValue(method.getReturnType());
+        });
+        OceanBaseOracleAgent agent = new OceanBaseOracleAgent();
+        TestSupport.setPrivateConnection(agent, connection);
+        QueryPageResult result = agent.executeQueryPage("SELECT N FROM T", null, new QueryPageOptions(pageSize, null, maxRows, 5));
+        List<List<Object>> rows = new ArrayList<>(result.getRows());
+        if (result.getHas_more()) {
+            Assertions.assertNull(result.getServer_execute_time_us());
+            Assertions.assertTrue(auditSql.isEmpty(), "do not sample an open cursor");
+            result = agent.fetchQueryPage(result.getSession_id(), pageSize);
+            rows.addAll(result.getRows());
+        }
+        Assertions.assertFalse(result.getHas_more());
+        Assertions.assertEquals(truncated, result.getTruncated());
+        Assertions.assertEquals(truncated ? List.of(List.of(1)) : List.of(List.of(1), List.of(2)), rows);
+        Assertions.assertEquals(0, queryLimit[0], "the paging cap must not change the JDBC statement limit");
+        Assertions.assertEquals(truncated ? List.of() : List.of(0, 0), auditLimits);
+        Assertions.assertEquals(truncated ? null : Long.valueOf(370), result.getServer_execute_time_us());
+    }
 
     @Test
     void doesNotAuditAnOpenCursorAfterAnotherSessionMethodCanReplaceItsTrace() {
