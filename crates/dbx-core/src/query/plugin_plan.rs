@@ -11,6 +11,11 @@
 //! Only *estimated* plans are reachable from here. `analyze` is never set, so no
 //! request can turn into `EXPLAIN ANALYZE` / `SET STATISTICS XML`, and the
 //! caller's statement is never executed — it is only planned.
+//!
+//! The connection must already be open. Both entry points require a live pool
+//! for the connection (`require_open_connection`); a saved-but-disconnected
+//! connection is rejected rather than dialled with the stored credentials, so
+//! `host.plans:read` can never make DBX connect on a plugin's behalf.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -54,6 +59,12 @@ const WARNING_PLAN_NOT_JSON: &str = "plan_not_json";
 const WARNING_PLAN_TRUNCATED: &str = "plan_truncated";
 /// The driver stopped collecting plan rows at `PLUGIN_PLAN_MAX_ROWS`.
 const WARNING_PLAN_ROWS_TRUNCATED: &str = "plan_rows_truncated";
+
+/// The one error both plan entry points return when the connection is not open.
+/// Shared so `host.getPlanCapabilities` and `host.explainPlan` agree: a closed
+/// connection rejects the capability probe instead of succeeding and leaving
+/// the plan request to fail later.
+const CONNECTION_NOT_OPEN_ERROR: &str = "Connection is not open";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PlanPayload {
@@ -125,10 +136,13 @@ pub struct PluginPlanResult {
 }
 
 /// Reports what the plugin may expect from this connection without connecting
-/// to it, running any SQL, or reading anything beyond the stored config.
+/// to it, running any SQL, or reading anything beyond the stored config. The
+/// connection must already be open, so a closed one is refused here rather than
+/// after a plan request has already been prepared.
 pub async fn plugin_plan_capabilities(state: &AppState, connection_id: &str) -> Result<PluginPlanCapabilities, String> {
     let connection_id = require_connection_id(connection_id)?;
     let config = connection_config(state, connection_id).await?;
+    require_open_connection(state, connection_id).await?;
     let database_type = explain_database_type(&config);
     Ok(PluginPlanCapabilities {
         db_type: database_type.as_str().to_string(),
@@ -150,6 +164,7 @@ pub async fn plugin_plan_capabilities(state: &AppState, connection_id: &str) -> 
 pub async fn explain_estimated_plan(state: &AppState, request: PluginPlanRequest) -> Result<PluginPlanResult, String> {
     let request = validate_plugin_plan_request(request)?;
     let config = connection_config(state, &request.connection_id).await?;
+    require_open_connection(state, &request.connection_id).await?;
     let database_type = explain_database_type(&config);
     if !supports_explain_plan(Some(database_type)) {
         return Err(unsupported_dialect_message(database_type));
@@ -432,6 +447,21 @@ async fn connection_config(state: &AppState, connection_id: &str) -> Result<Conn
     configs.get(connection_id).cloned().ok_or_else(|| "Connection config not found".to_string())
 }
 
+/// Enforces the boundary both plan entry points document: a plugin may plan on
+/// a connection DBX already has open, never on a saved config alone.
+///
+/// `state.configs` holds every *saved* connection, and a disconnected one keeps
+/// its config, so the config table cannot answer this. Only the pool registry
+/// can, and it answers without connecting: a saved-but-closed connection is
+/// rejected here instead of being dialled with the stored credentials. Runs
+/// after [`connection_config`] so an unknown id still reports itself as unknown.
+async fn require_open_connection(state: &AppState, connection_id: &str) -> Result<(), String> {
+    if state.is_connection_open(connection_id).await {
+        return Ok(());
+    }
+    Err(CONNECTION_NOT_OPEN_ERROR.to_string())
+}
+
 fn require_connection_id(connection_id: &str) -> Result<&str, String> {
     let trimmed = connection_id.trim();
     if trimmed.is_empty() || trimmed.chars().count() > MAX_PLUGIN_PLAN_NAME_CHARS {
@@ -499,6 +529,8 @@ pub fn plugin_plan_timeout_secs(timeout_ms: Option<u64>, config: &ConnectionConf
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connection::PoolKind;
+    use crate::storage::Storage;
 
     fn config(db_type: DatabaseType, query_timeout_secs: u64) -> ConnectionConfig {
         serde_json::from_value(serde_json::json!({
@@ -512,6 +544,35 @@ mod tests {
             "query_timeout_secs": query_timeout_secs
         }))
         .unwrap()
+    }
+
+    /// A saved config with a different id, so one state can hold several.
+    fn config_for(db_type: DatabaseType, id: &str, query_timeout_secs: u64) -> ConnectionConfig {
+        let mut config = config(db_type, query_timeout_secs);
+        config.id = id.to_string();
+        config
+    }
+
+    /// A state holding saved configs but no pools: exactly the "saved but
+    /// disconnected" situation the plan boundary has to refuse.
+    async fn saved_connection_state(configs: &[ConnectionConfig]) -> (AppState, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = Storage::open(&dir.path().join("storage.db")).await.expect("open storage");
+        let state = AppState::new_with_plugin_dir(storage, dir.path().join("plugins"));
+        {
+            let mut stored = state.configs.write().await;
+            for config in configs {
+                stored.insert(config.id.clone(), config.clone());
+            }
+        }
+        (state, dir)
+    }
+
+    /// Opens `connection_id` the way DBX does: a pool in the registry. The pool
+    /// kind is irrelevant here because the plan gate only reads pool keys.
+    async fn open_connection(state: &AppState, pool_key: &str) {
+        let pool = PoolKind::Redis(std::sync::Arc::new(crate::db::redis_driver::redis_connection_test_stub()));
+        state.update_connection_pools(|connections| connections.insert(pool_key.to_string(), pool)).await;
     }
 
     fn request(mode: &str, sql: &str) -> PluginPlanRequest {
@@ -744,5 +805,50 @@ mod tests {
         assert_eq!(plugin_plan_timeout_ceiling_ms(&postgres), 30_000);
         assert_eq!(database_version(&postgres), None);
         assert_eq!(explain_database_type(&postgres).as_str(), "postgres");
+    }
+
+    /// The boundary the docs promise, enforced in core: a saved config is not an
+    /// open connection, so a plugin can never make DBX dial stored credentials.
+    #[tokio::test]
+    async fn saved_but_disconnected_connection_is_rejected_by_both_plan_calls() {
+        let postgres = config(DatabaseType::Postgres, 30);
+        let (state, _dir) = saved_connection_state(std::slice::from_ref(&postgres)).await;
+
+        let error = plugin_plan_capabilities(&state, &postgres.id).await.unwrap_err();
+        assert_eq!(error, CONNECTION_NOT_OPEN_ERROR);
+
+        let error = explain_estimated_plan(&state, request(PLUGIN_PLAN_MODE_ESTIMATED, "SELECT 1")).await.unwrap_err();
+        assert_eq!(error, CONNECTION_NOT_OPEN_ERROR);
+
+        // The check is a pure read: it must not have opened the connection it
+        // just refused, and an unknown id must still report itself as unknown.
+        assert!(state.with_connection_pools(|pools| pools.is_empty()).await);
+        assert_eq!(plugin_plan_capabilities(&state, "unknown").await.unwrap_err(), "Connection config not found");
+    }
+
+    /// The same connection, once DBX holds it open, behaves exactly as before.
+    #[tokio::test]
+    async fn an_open_connection_keeps_the_existing_behavior() {
+        let postgres = config(DatabaseType::Postgres, 30);
+        let redis = config_for(DatabaseType::Redis, "redis-conn", 0);
+        let (state, _dir) = saved_connection_state(&[postgres.clone(), redis.clone()]).await;
+
+        // A database-scoped or session-scoped pool is the same open connection.
+        open_connection(&state, "conn-1:analytics").await;
+        open_connection(&state, "redis-conn:session:tab-1").await;
+
+        let capabilities = plugin_plan_capabilities(&state, &postgres.id).await.unwrap();
+        assert_eq!(capabilities.db_type, "postgres");
+        assert!(capabilities.supports.estimated_plan);
+        assert_eq!(capabilities.limits.max_timeout_ms, 30_000);
+
+        // Redis has no estimated plan path, but the request reaches that dialect
+        // check instead of the open-connection gate.
+        let request =
+            PluginPlanRequest { connection_id: redis.id.clone(), ..request(PLUGIN_PLAN_MODE_ESTIMATED, "SELECT 1") };
+        assert_eq!(
+            explain_estimated_plan(&state, request).await.unwrap_err(),
+            unsupported_dialect_message(DatabaseType::Redis)
+        );
     }
 }

@@ -486,8 +486,8 @@ A plugin can read the **estimated** execution plan of a query without touching a
 
 | Request | Purpose |
 | --- | --- |
-| `host.getPlanCapabilities({ connectionId })` | Reports what the host and this connection can plan. It only reads the stored connection config; it never connects or probes the server. |
-| `host.explainPlan({ connectionId, database?, schema?, sql, mode, timeoutMs? })` | Returns the estimated plan for `sql`. |
+| `host.getPlanCapabilities({ connectionId })` | Reports what the host and this connection can plan. It only reads the stored connection config; it never connects or probes the server. The connection must already be open. |
+| `host.explainPlan({ connectionId, database?, schema?, sql, mode, timeoutMs? })` | Returns the estimated plan for `sql`. The connection must already be open. |
 
 `host.getPlanCapabilities` returns:
 
@@ -538,11 +538,21 @@ Boundaries:
 - **The plugin never supplies SQL to execute.** Only the source `sql` is accepted and the host builds the `EXPLAIN` statement itself, so a plugin cannot pass an `EXPLAIN` statement, a driver command, or an execution mode.
 - **Read-only targets only.** The same gate DBX uses for its own plan view rejects multi-statement input, DDL, DML, and dangerous keywords. Oracle is the one dialect where DBX also plans DML, because `EXPLAIN PLAN FOR` does not execute it.
 - **No credentials.** The response carries the plan and metadata only; a password, credential, connection string, or driver internals never cross this boundary, and the plan is not a user result set.
-- **The connection must already be open.** DBX does not connect on a plugin's behalf.
+- **The connection must already be open.** DBX does not connect on a plugin's behalf. A saved connection that is currently disconnected is rejected by both `host.getPlanCapabilities` and `host.explainPlan` with `Connection is not open`; only a connection DBX already holds open can be planned.
 - **`host.plans:read` is read-only.** It does not permit normal SQL execution, writes, DDL, or actual plans, and it is the only permission this API reads.
 - **Bounded.** `limits.maxPlanBytes` caps the plan payload, `timeoutMs` is clamped by the host, and a plan that cannot be cut safely fails with an explicit error instead of returning a partial document.
 
 Gate on capability rather than probing: read `window.dbxPlugin.capabilities.planApi` from the init message (an older host omits it), then confirm per-connection support with `host.getPlanCapabilities` before calling `host.explainPlan`.
+
+The plan API is Host API 1.2, so a plugin that cannot work without it declares the floor in its manifest:
+
+```json
+{
+  "engines": { "host_api": "^1.2" }
+}
+```
+
+The manifest range is a compatibility floor and `capabilities.planApi` is the runtime check; keep both.
 
 ### Host API methods a plugin may call
 

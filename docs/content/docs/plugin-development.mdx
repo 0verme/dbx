@@ -327,7 +327,7 @@ if (window.dbxPlugin.capabilities.planApi) {
 - `supports.estimatedPlan` is `false` when this connection's dialect has no estimated plan path in DBX; disable the feature instead of calling `explainPlan`.
 - `limits.maxTimeoutMs` already accounts for the connection's own query timeout, and a requested `timeoutMs` is clamped to it. `limits.maxPlanBytes` caps the plan payload.
 - `dbVersion` is present only when DBX already learned the product version for this connection; the host never probes the server on the plugin's behalf.
-- The call only reads the stored connection config. It does not connect.
+- The call only reads the stored connection config. It does not connect, but the connection must already be open: a saved connection that is currently disconnected is rejected instead of being opened for the plugin.
 
 `explainPlan(request)` returns `{ dbType, dbVersion?, format, rawPlan, truncated, warnings }`:
 
@@ -340,9 +340,11 @@ The plan API is bounded by design:
 - **The plugin never supplies SQL to execute.** Only the source `sql` is accepted and the host builds the `EXPLAIN` statement itself, so a plugin cannot pass an `EXPLAIN` statement, a driver command, or an execution mode.
 - **Read-only targets only.** The same gate DBX uses for its own plan view rejects multi-statement input, DDL, DML, and dangerous keywords. Oracle is the one dialect where DBX also plans DML, because `EXPLAIN PLAN FOR` does not execute it.
 - **No credentials, no result set.** The response carries the plan and metadata only; a password, credential, connection string, or driver internals never cross this boundary.
-- **The connection must already be open.** DBX does not connect on a plugin's behalf, and it does not create one for the plugin.
+- **The connection must already be open.** DBX does not connect on a plugin's behalf, and it does not create one for the plugin. Both `getPlanCapabilities` and `explainPlan` reject a saved-but-disconnected connection with `Connection is not open`; only a connection DBX already holds open can be planned.
 
 Gate on capability rather than probing: read `dbxPlugin.capabilities.planApi` from the init message (an older host omits it), then confirm per-connection support with `getPlanCapabilities` before calling `explainPlan`. Submitting `EXPLAIN` text of your own is neither necessary nor accepted.
+
+The plan API is Host API 1.2. A plugin that cannot work without it declares the floor in its manifest with `"engines": { "host_api": "^1.2" }`. The manifest range is a compatibility floor and `capabilities.planApi` is the runtime check; keep both.
 
 ### Themes, Layout, and Static Assets
 

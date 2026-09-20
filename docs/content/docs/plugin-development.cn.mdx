@@ -327,7 +327,7 @@ if (window.dbxPlugin.capabilities.planApi) {
 - `supports.estimatedPlan` 为 `false` 表示该连接的方言在 DBX 中没有估算计划路径；应直接禁用功能，而不是调用 `explainPlan`。
 - `limits.maxTimeoutMs` 已经考虑该连接自身的查询超时，请求里的 `timeoutMs` 会被夹到该上限；`limits.maxPlanBytes` 限制计划负载大小。
 - `dbVersion` 只在 DBX 已经知道该连接产品版本时才存在；宿主不会为了插件去探测服务器。
-- 该调用只读取已保存的连接配置，不会建立连接。
+- 该调用只读取已保存的连接配置，不会建立连接；但连接必须已经打开：已保存但当前已断开的连接会被拒绝，而不是替插件重新建连。
 
 `explainPlan(request)` 返回 `{ dbType, dbVersion?, format, rawPlan, truncated, warnings }`：
 
@@ -340,9 +340,11 @@ if (window.dbxPlugin.capabilities.planApi) {
 - **插件不能自己提供要执行的 SQL。** 只接受原始 `sql`，`EXPLAIN` 语句完全由宿主生成，因此插件无法传入 `EXPLAIN` 文本、驱动命令或执行模式。
 - **只允许只读目标。** DBX 自身计划视图使用的同一道校验会拒绝多语句、DDL、DML 和危险关键字。Oracle 是唯一例外：DBX 也会为它规划 DML，因为 `EXPLAIN PLAN FOR` 并不会执行该语句。
 - **不涉及凭据，也不返回结果集。** 返回体只有计划和元信息，密码、凭据、连接串、驱动内部结构都不会越过这条边界。
-- **连接必须已经打开。** DBX 不会替插件建立连接，也不会为插件创建连接。
+- **连接必须已经打开。** DBX 不会替插件建立连接，也不会为插件创建连接。`getPlanCapabilities` 与 `explainPlan` 对「已保存但已断开」的连接都会以 `Connection is not open` 拒绝；只有 DBX 当前已经打开的连接才能规划。
 
 判断能力时请读 `dbxPlugin.capabilities.planApi`（旧宿主不会带这个字段），再用 `getPlanCapabilities` 确认这条连接是否支持，最后才调用 `explainPlan`。自行拼 `EXPLAIN` 文本既没必要，也不会被接受。
+
+计划 API 属于 Host API 1.2。无法离开它工作的插件应在 manifest 里声明下限：`"engines": { "host_api": "^1.2" }`。manifest 里的版本范围是兼容下限，`capabilities.planApi` 是运行期探测，两者都保留。
 
 ### 主题、布局和静态资源
 

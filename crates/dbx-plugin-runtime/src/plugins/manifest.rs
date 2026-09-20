@@ -8,10 +8,12 @@ pub const SUPPORTED_PLUGIN_MANIFEST_VERSION: u32 = 1;
 /// Host API version the host advertises at `plugin/initialize`.
 ///
 /// 1.1 adds the plugin-initiated `host/requestUserInput` method (see
-/// `plugins/runtime.rs`). It is additive: 1.0 plugins keep working, and a
-/// plugin that wants the capability must check the advertised version (or the
-/// `host.requestUserInput` entry in `host.features`) before calling it.
-pub const SUPPORTED_PLUGIN_HOST_API_VERSION: &str = "1.1.0";
+/// `plugins/runtime.rs`). 1.2 adds the plugin-initiated plan Host API
+/// (`host.getPlanCapabilities` / `host.explainPlan`). Both are additive: older
+/// plugins keep working, and a plugin that wants either capability must check
+/// the advertised version (or the matching `capabilities` / `host.features`
+/// entry) before calling it.
+pub const SUPPORTED_PLUGIN_HOST_API_VERSION: &str = "1.2.0";
 /// Capabilities the host advertises to a plugin backend at `plugin/initialize`.
 pub const SUPPORTED_PLUGIN_HOST_FEATURES: &[&str] = &["host.requestUserInput"];
 pub const SUPPORTED_PLUGIN_PROTOCOL_VERSION: u32 = 1;
@@ -1483,7 +1485,7 @@ mod tests {
     use super::{
         parse_host_network_permission, resolve_safe_plugin_path, validate_connection_actions,
         PluginConnectionActionContribution, PluginConnectionProviderContribution, PluginFormFieldBinding,
-        PluginManifest, SUPPORTED_PLUGIN_PERMISSIONS,
+        PluginManifest, SUPPORTED_PLUGIN_HOST_API_VERSION, SUPPORTED_PLUGIN_PERMISSIONS,
     };
 
     #[test]
@@ -1607,6 +1609,46 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(declared, SUPPORTED_PLUGIN_PERMISSIONS.iter().map(|value| value.to_string()).collect::<Vec<_>>());
+    }
+
+    /// The reason for the 1.2.0 bump: `engines.host_api` is how a plugin states
+    /// "I need the plan API", so the advertised version has to satisfy `^1.2`
+    /// while a floor this host cannot meet stays rejected.
+    #[test]
+    fn host_api_advertises_the_floor_a_plan_api_plugin_declares() {
+        let advertised = semver::Version::parse(SUPPORTED_PLUGIN_HOST_API_VERSION)
+            .expect("the advertised Host API version must be semver");
+        assert!(
+            semver::VersionReq::parse("^1.2").unwrap().matches(&advertised),
+            "the host must satisfy the plan API floor it asks plugins to declare"
+        );
+
+        for requirement in ["^1.0", "^1.1", "^1.2", ">=1.1.0, <2.0.0"] {
+            assert!(host_api_requirement_errors(requirement).is_empty(), "{requirement} must be satisfiable");
+        }
+        for requirement in [">=1.3.0", "^2.0"] {
+            assert!(!host_api_requirement_errors(requirement).is_empty(), "{requirement} must be rejected");
+        }
+    }
+
+    /// A minimal v1 manifest declaring `host.plans:read`, so the compatibility
+    /// result isolates `engines.host_api`.
+    fn host_api_requirement_errors(requirement: &str) -> Vec<String> {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("ui")).unwrap();
+        std::fs::write(dir.path().join("ui").join("index.html"), "<!doctype html>").unwrap();
+        let manifest: PluginManifest = serde_json::from_value(serde_json::json!({
+            "manifest_version": 1,
+            "id": "io.dbx.example",
+            "name": "Example",
+            "version": "1.0.0",
+            "publisher": "example",
+            "engines": { "dbx": ">=0.1.0", "host_api": requirement },
+            "entrypoints": { "ui": { "root": "ui", "entry": "ui/index.html" } },
+            "permissions": ["host.plans:read"]
+        }))
+        .unwrap();
+        manifest.compatibility(dir.path(), "0.1.0").errors
     }
 
     #[test]
