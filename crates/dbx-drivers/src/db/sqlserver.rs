@@ -3016,7 +3016,8 @@ pub async fn list_foreign_keys(
     table: &str,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
     let sql = format!(
-        "SELECT fk.name, c.name, SCHEMA_NAME(rt.schema_id), rt.name, rc.name \
+        "SELECT fk.name, c.name, SCHEMA_NAME(rt.schema_id), rt.name, rc.name, \
+         fk.delete_referential_action, fk.update_referential_action \
          FROM sys.foreign_keys fk \
          JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id \
          JOIN sys.columns c ON fkc.parent_object_id = c.object_id AND fkc.parent_column_id = c.column_id \
@@ -3037,10 +3038,21 @@ pub async fn list_foreign_keys(
             ref_schema: Some(row.get::<&str, _>(2).unwrap_or("").to_string()),
             ref_table: row.get::<&str, _>(3).unwrap_or("").to_string(),
             ref_column: row.get::<&str, _>(4).unwrap_or("").to_string(),
-            on_update: None,
-            on_delete: None,
+            on_update: sqlserver_referential_action(row.get::<i32, _>(6).unwrap_or(0)),
+            on_delete: sqlserver_referential_action(row.get::<i32, _>(5).unwrap_or(0)),
         })
         .collect())
+}
+
+/// sys.foreign_keys referential actions: 0 = NO ACTION (default, omitted),
+/// 1 = CASCADE, 2 = SET NULL, 3 = SET DEFAULT.
+fn sqlserver_referential_action(code: i32) -> Option<String> {
+    match code {
+        1 => Some("CASCADE".to_string()),
+        2 => Some("SET NULL".to_string()),
+        3 => Some("SET DEFAULT".to_string()),
+        _ => None,
+    }
 }
 
 pub async fn get_table_comment(

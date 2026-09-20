@@ -11810,6 +11810,50 @@ mod ddl_tests {
     }
 
     #[test]
+    fn sqlserver_table_ddl_renders_referential_actions_once_per_constraint() {
+        let fk_with_actions = |name: &str, columns: &[(&str, &str)]| db::ForeignKeyInfo {
+            name: name.to_string(),
+            column: columns[0].0.to_string(),
+            ref_schema: Some("dbo".to_string()),
+            ref_table: "parent".to_string(),
+            ref_column: columns[0].1.to_string(),
+            on_update: Some("SET NULL".to_string()),
+            on_delete: Some("CASCADE".to_string()),
+        };
+        let composite = [
+            fk_with_actions("fk_pair", &[("a", "pa")]),
+            db::ForeignKeyInfo {
+                column: "b".to_string(),
+                ref_column: "pb".to_string(),
+                ..fk_with_actions("fk_pair", &[("a", "pa")])
+            },
+        ];
+        let ddl = render_sqlserver_table_ddl("dbo", "child", &[column("a", "int")], &[], &composite, None);
+        assert!(
+            ddl.contains("REFERENCES [dbo].[parent]([pa], [pb]) ON DELETE CASCADE ON UPDATE SET NULL"),
+            "actions once at constraint tail: {ddl}"
+        );
+        assert_eq!(ddl.matches("ON DELETE").count(), 1, "ddl: {ddl}");
+        assert_eq!(ddl.matches("ON UPDATE").count(), 1, "ddl: {ddl}");
+    }
+
+    #[test]
+    fn sqlserver_table_ddl_qualifies_cross_schema_references() {
+        let cross_schema = db::ForeignKeyInfo {
+            name: "fk_other".to_string(),
+            column: "ref_id".to_string(),
+            ref_schema: Some("other".to_string()),
+            ref_table: "target".to_string(),
+            ref_column: "id".to_string(),
+            on_update: Some("NO ACTION".to_string()),
+            on_delete: None,
+        };
+        let ddl = render_sqlserver_table_ddl("dbo", "child", &[column("ref_id", "int")], &[], &[cross_schema], None);
+        assert!(ddl.contains("REFERENCES [other].[target]([id])"), "cross-schema reference qualified: {ddl}");
+        assert!(!ddl.contains("ON UPDATE"), "NO ACTION omitted: {ddl}");
+    }
+
+    #[test]
     fn sqlserver_table_ddl_includes_identity_clause() {
         let mut id = column("FIDS", "int");
         id.is_nullable = false;
@@ -11843,14 +11887,14 @@ mod ddl_tests {
 
         assert!(
             ddl.contains(
-                "CONSTRAINT [FK_TRIGGERS_JOB] FOREIGN KEY ([sched_name], [job_name], [job_group]) REFERENCES [JOB_DETAILS]([sched_name], [job_name], [job_group])"
+                "CONSTRAINT [FK_TRIGGERS_JOB] FOREIGN KEY ([sched_name], [job_name], [job_group]) REFERENCES [dbo].[JOB_DETAILS]([sched_name], [job_name], [job_group])"
             ),
             "ddl: {ddl}"
         );
         assert_eq!(ddl.matches("CONSTRAINT [FK_TRIGGERS_JOB]").count(), 1, "ddl: {ddl}");
         assert!(
             ddl.contains(
-                "CONSTRAINT [FK_TRIGGERS_CAL] FOREIGN KEY ([calendar_name]) REFERENCES [CALENDARS]([calendar_name])"
+                "CONSTRAINT [FK_TRIGGERS_CAL] FOREIGN KEY ([calendar_name]) REFERENCES [dbo].[CALENDARS]([calendar_name])"
             ),
             "ddl: {ddl}"
         );
@@ -13500,6 +13544,17 @@ pub async fn build_sqlserver_ddl(
     Ok(render_sqlserver_table_ddl(schema, table, &columns, &indexes, &fkeys, table_comment.as_deref()))
 }
 
+fn sqlserver_fk_action_clause(kind: &str, value: Option<&str>) -> String {
+    let Some(value) = value else {
+        return String::new();
+    };
+    match value.trim().to_ascii_uppercase().as_str() {
+        "CASCADE" | "SET NULL" | "SET DEFAULT" => format!(" ON {kind} {}", value.trim().to_ascii_uppercase()),
+        // NO ACTION / RESTRICT are the default semantics; SQL Server only accepts NO ACTION.
+        _ => String::new(),
+    }
+}
+
 pub fn render_sqlserver_table_ddl(
     schema: &str,
     table: &str,
@@ -13541,11 +13596,19 @@ pub fn render_sqlserver_table_ddl(
         };
         let columns = fk_group.iter().map(|fk| sqlserver_ident(&fk.column)).collect::<Vec<_>>().join(", ");
         let ref_columns = fk_group.iter().map(|fk| sqlserver_ident(&fk.ref_column)).collect::<Vec<_>>().join(", ");
+        let ref_table = match first_fk.ref_schema.as_deref().map(str::trim) {
+            Some(ref_schema) if !ref_schema.is_empty() => {
+                format!("{}.{}", sqlserver_ident(ref_schema), sqlserver_ident(&first_fk.ref_table))
+            }
+            _ => sqlserver_ident(&first_fk.ref_table),
+        };
+        let on_delete = sqlserver_fk_action_clause("DELETE", first_fk.on_delete.as_deref());
+        let on_update = sqlserver_fk_action_clause("UPDATE", first_fk.on_update.as_deref());
         ddl.push_str(&format!(
-            ",\n  CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})",
+            ",\n  CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({}){on_delete}{on_update}",
             sqlserver_ident(&first_fk.name),
             columns,
-            sqlserver_ident(&first_fk.ref_table),
+            ref_table,
             ref_columns
         ));
     }
