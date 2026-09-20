@@ -1756,9 +1756,9 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   /** Drop loaded/confirmed-empty markers, metadata caches, and generations for a discarded shell. */
-  function forgetTreeNodeLoadState(nodeId: string) {
+  function forgetTreeNodeLoadState(nodeId: string, options?: { deletePersisted?: boolean }) {
     forgetFilteredObjectGroupChildren(nodeId);
-    clearLoadedChildrenCache(nodeId);
+    clearLoadedChildrenCache(nodeId, options);
     treeNodeLoads.invalidatePrefix(nodeId);
   }
 
@@ -1836,11 +1836,15 @@ export const useConnectionStore = defineStore("connection", () => {
     if (parent.children && parent.children.length > 0) {
       const oldMap = new Map(parent.children.map((c) => [c.id, c] as const));
       const nextIds = new Set(children.map((child) => child.id));
+      // Discarded shells collect here so their persisted-cache deletes can be
+      // aggregated into one prefix request per ancestor (issue #9779).
+      const discardedIds: string[] = [];
       for (const [oldId, old] of oldMap) {
         // Removed children keep no loaded markers; also bump generations so in-flight
         // loads cannot apply if the same id is recreated later.
         if (!nextIds.has(oldId) && old.type !== "load-more") {
-          forgetTreeNodeLoadState(oldId);
+          forgetTreeNodeLoadState(oldId, { deletePersisted: false });
+          discardedIds.push(oldId);
         }
       }
       children = children.map((child) => {
@@ -1871,10 +1875,12 @@ export const useConnectionStore = defineStore("connection", () => {
         // the next expand reload. Do not do this for tables/groups — load-more and list
         // refresh must preserve nested loaded markers (columns, etc.).
         if (old && (old.type === "database" || old.type === "schema" || old.type === "linked-server-schema")) {
-          forgetTreeNodeLoadState(child.id);
+          forgetTreeNodeLoadState(child.id, { deletePersisted: false });
+          discardedIds.push(child.id);
         }
         return child;
       });
+      deletePersistedTreeCachesForDiscardedDescendants(parent.id, discardedIds);
     }
     const migratedPins = migrateLegacyPinnedTreeNodeOrder(children, pinnedTreeNodeOrder.value);
     if (migratedPins.changed) {
@@ -3392,12 +3398,52 @@ export const useConnectionStore = defineStore("connection", () => {
     }
     invalidateMetadataCachesByTreePrefix(prefix);
     if (options?.deletePersisted === false) return;
+    deletePersistedSchemaCachePrefix(prefix);
+  }
+
+  // Persisted tree caches are keyed by colon-joined node ids, so both the raw
+  // id form and the fully-encoded legacy form must be invalidated. Failures are
+  // swallowed on purpose: a dropped delete only leaves a stale cache entry that
+  // the next save supersedes.
+  function deletePersistedSchemaCachePrefix(prefix: string) {
     const rawPrefix = `${prefix}:`;
     const encodedPrefix = `${schemaCacheKey(prefix)}:`;
     if (rawPrefix === encodedPrefix) {
       api.deleteSchemaCachePrefix(rawPrefix).catch(() => undefined);
     } else {
       Promise.all([api.deleteSchemaCachePrefix(rawPrefix), api.deleteSchemaCachePrefix(encodedPrefix)]).catch(() => undefined);
+    }
+  }
+
+  // Discarding sibling shells used to cost one prefix DELETE per node — on a
+  // large schema a list replacement or a remote search fired a request storm
+  // (issue #9779). Sibling ids all live under the parent's id prefix, so one
+  // ancestor delete covers the whole batch; ids that do not follow the parent's
+  // id path (encoded MQ/Nacos-style ids) keep per-node deletes, deduplicated to
+  // the minimal set so nested or duplicate prefixes share a request. The widened
+  // ancestor invalidation only drops caches that the next expand refetches — the
+  // in-memory markers for the same discarded shells were already cleared above —
+  // so nothing stale can survive, at worst one extra metadata fetch.
+  function deletePersistedTreeCachesForDiscardedDescendants(ancestorId: string, discardedIds: string[]) {
+    if (discardedIds.length === 0) return;
+    const ancestorPrefix = `${ancestorId}:`;
+    const prefixes = new Set<string>();
+    let coveredByAncestor = false;
+    for (const id of discardedIds) {
+      if (id.startsWith(ancestorPrefix)) coveredByAncestor = true;
+      else prefixes.add(id);
+    }
+    if (coveredByAncestor) prefixes.add(ancestorId);
+    for (const prefix of prefixes) {
+      // A prefix already covered by another prefix in the batch needs no request.
+      let covered = false;
+      for (const other of prefixes) {
+        if (other !== prefix && prefix.startsWith(`${other}:`)) {
+          covered = true;
+          break;
+        }
+      }
+      if (!covered) deletePersistedSchemaCachePrefix(prefix);
     }
   }
 
