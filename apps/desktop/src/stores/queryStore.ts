@@ -45,7 +45,7 @@ import { redisCommandResultToQueryResult } from "@/lib/redis/redisQueryResult";
 import { nextRedisCommandDb } from "@/lib/redis/redisCommandSession";
 import { isRedisMutatingCommand } from "@/lib/redis/redisCommandTable";
 import { usesAgentCursorForQuery } from "@/lib/database/databaseDriverManifest";
-import { defaultAutoCommitForDbType, supportsClearableQuerySchema, supportsTransaction, usesOracleStickyTransactionState, usesProvenReadOnlyStickyTransactionState } from "@/lib/database/databaseFeatureSupport";
+import { connectionIsDorisFamilyCatalogCapable, defaultAutoCommitForDbType, supportsClearableQuerySchema, supportsTransaction, usesOracleStickyTransactionState, usesProvenReadOnlyStickyTransactionState } from "@/lib/database/databaseFeatureSupport";
 import { canInsertTableRows, canUseKeylessRowPredicate, DBX_ROWID_COLUMN, editablePrimaryKeys, shouldIncludeSyntheticRowId, usesSyntheticRowIdKey } from "@/lib/table/tableEditing";
 import { TABLE_DATA_EXPORT_PAGE_SIZE } from "@/lib/table/tableDataExport";
 import { tableMetaForDataTab } from "@/lib/table/tableDataTabMeta";
@@ -5553,7 +5553,13 @@ export const useQueryStore = defineStore("query", () => {
     const resolvedSchema = (dbType === "sqlserver" && !source.schema) || (ORACLE_LIKE_METADATA_TYPES.has(metadataDbType) && !schema) || resolveAgentSearchPathSchema || useCurrentPostgresSchema ? "" : metadataSchemaForConnection(conn, metadataDatabase, schema || undefined);
     const metadataSchema = normalizeUppercaseFoldedMetadataIdentifier(metadataDbType, resolvedSchema || undefined, source.schema ? source.schemaQuoted : false) || "";
     const metadataTableName = normalizeUppercaseFoldedMetadataIdentifier(metadataDbType, source.tableName, source.tableNameQuoted)!;
-    const metadataCatalog = normalizeUppercaseFoldedMetadataIdentifier(metadataDbType, source.catalog, source.catalogQuoted);
+    // An unqualified source resolves in the tab's current external catalog on
+    // Doris-family federation: the statement executed there through the
+    // catalog execution context, so the column lookup must carry the same
+    // catalog or it searches the engine's internal catalog and finds no such
+    // database/table. Qualified sources keep the catalog parsed from the SQL.
+    const unqualifiedExecutionCatalog = !source.catalog && connectionIsDorisFamilyCatalogCapable(conn) ? tab.catalog : undefined;
+    const metadataCatalog = normalizeUppercaseFoldedMetadataIdentifier(metadataDbType, source.catalog ?? unqualifiedExecutionCatalog, source.catalogQuoted);
     const metadataSource: EditableQuerySource = {
       ...source,
       catalog: metadataCatalog,
@@ -5904,7 +5910,10 @@ export const useQueryStore = defineStore("query", () => {
         queryDisplaySourceColumns: displayInfo.mapping,
       };
     } catch (err) {
-      console.error("[DBX] ERROR fetching columns for grouped query metadata:", err);
+      // Display enrichment stays silent for the user, but a swallowed lookup
+      // failure must stay diagnosable: record it with the trace id and the
+      // execution database/catalog so namespace mismatches can be traced.
+      queryExecutionLog("warn", "metadata:display-columns:failed", { traceId, database: executionDatabase, catalog: tab.catalog, error: err });
       return undefined;
     }
   }
@@ -6095,7 +6104,10 @@ export const useQueryStore = defineStore("query", () => {
         queryDisplaySourceColumns: multiSourceInfo?.mapping,
       };
     } catch (err) {
-      console.error("[DBX] ERROR fetching columns for query metadata:", err);
+      // Metadata stays optional for the result grid, but the failure was
+      // previously only a bare console error with no trace context. Record the
+      // execution database/catalog so a lost catalog shows up in the debug log.
+      queryExecutionLog("warn", "metadata:columns:failed", { traceId, database: executionDatabase, catalog: tab.catalog, error: err });
       return {
         queryAnalysis: undefined,
         querySourceColumns: undefined,
