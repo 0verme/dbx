@@ -963,6 +963,7 @@ function requestActiveEditorPreviewChanges() {
 const multiExecuteDatabaseType = ref<DatabaseType>();
 const multiExecuteInitialTargets = ref<Array<{ connectionId: string; catalog?: string; database: string; schema?: string }>>([]);
 const multiExecuteLaunchId = ref(0);
+const multiExecuteManualTransaction = ref(false);
 // Launch-time input only. MultiDbExecuteDialog copies this into its immutable
 // batch context before the first target starts; execution never reads this ref.
 const multiExecuteSourceOffset = ref<number>();
@@ -972,7 +973,7 @@ function multiExecuteTargetLabel(target: { connectionId: string; catalog?: strin
   return [connection?.name || target.connectionId, target.catalog, target.database, target.schema].filter((value) => value !== undefined && value !== "").join(" / ");
 }
 
-async function executeMultiDbTarget(input: { target: { connectionId: string; catalog?: string; database: string; schema?: string }; sourceTabId: string; sql: string; scopeId: string; context: { sourceOffset?: number }; isCancellationRequested: () => boolean }) {
+async function executeMultiDbTarget(input: { target: { connectionId: string; catalog?: string; database: string; schema?: string }; sourceTabId: string; sql: string; scopeId: string; context: { sourceOffset?: number; manualTransaction?: boolean }; isCancellationRequested: () => boolean }) {
   const tab = queryStore.tabs.find((candidate) => candidate.id === input.sourceTabId);
   const connection = connectionStore.getConfig(input.target.connectionId);
   if (!tab || !connection) return { status: "failed" as const, errorMessage: t("multiDbExecute.targetMissingConnection") };
@@ -987,6 +988,7 @@ async function executeMultiDbTarget(input: { target: { connectionId: string; cat
       target: input.target,
     },
     sourceOffset: input.context.sourceOffset,
+    manualTransaction: input.context.manualTransaction,
     blockDangerousRedisCommands: blockDangerousRedisCommands.value,
     targetLabel: multiExecuteTargetLabel(input.target),
     scopeId: input.scopeId,
@@ -1006,7 +1008,7 @@ function cancelPendingMultiDbTarget(scopeId: string): void {
 
 async function requestMultiDbExecute() {
   const tab = activeTab.value;
-  if (!tab || !activeConnection.value || showMultiDbExecuteDialog.value) return;
+  if (!tab || !activeConnection.value || showMultiDbExecuteDialog.value || tab.txnSessionId) return;
   const sourceTabId = tab.id;
   const sourceConnection = connectionStore.getConfig(tab.connectionId) ?? activeConnection.value;
   const sourceTarget = normalizeSqlExecutionTarget(sourceConnection, {
@@ -1020,6 +1022,7 @@ async function requestMultiDbExecute() {
     multiExecuteSourceOffset.value = sourceOffset;
     multiExecuteLaunchId.value += 1;
     multiExecuteSourceTabId.value = sourceTabId;
+    multiExecuteManualTransaction.value = tab.autoCommit === false;
     multiExecuteDatabaseType.value = effectiveDatabaseTypeForConnection(sourceConnection);
     multiExecuteInitialTargets.value = [sourceTarget];
     showMultiDbExecuteDialog.value = true;
@@ -4388,6 +4391,7 @@ onUnmounted(() => {
           :initial-targets="multiExecuteInitialTargets"
           :launch-id="multiExecuteLaunchId"
           :execute-target="executeMultiDbTarget"
+          :initial-manual-transaction="multiExecuteManualTransaction"
           :cancel-target="cancelMultiDbTarget"
           :cancel-pending="cancelPendingMultiDbTarget"
           :source-offset="multiExecuteSourceOffset"

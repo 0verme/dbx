@@ -1417,6 +1417,11 @@ export const useQueryStore = defineStore("query", () => {
       txnSessionId: undefined,
       txnAutoRolledBack: undefined,
     });
+    // Workers must not inherit result navigation or write targets from the
+    // source editor, including when a dedicated transaction supplies results.
+    clearResultPayload(worker);
+    clearResultNavigationState(worker);
+    worker.resultBaseSql = undefined;
     multiDbExecutionWorkers.set(id, worker);
     const workers = multiDbExecutionWorkerScopes.get(scopeId) ?? new Set<string>();
     workers.add(id);

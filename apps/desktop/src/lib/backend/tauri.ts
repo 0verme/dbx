@@ -4867,6 +4867,7 @@ export interface SqlFileRequest {
   database: string;
   filePath: string;
   continueOnError: boolean;
+  txnSessionId?: string;
   selectedTables?: SqlFileTable[];
   partCooldownMs?: number;
   skipRelationalConstraints?: boolean;

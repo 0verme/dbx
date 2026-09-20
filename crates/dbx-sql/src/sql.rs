@@ -59,6 +59,9 @@ pub struct SqlFileRequest {
     pub database: String,
     pub file_path: String,
     pub continue_on_error: bool,
+    /// Reuse a held manual transaction instead of committing through ordinary query execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub txn_session_id: Option<String>,
     #[serde(default)]
     pub selected_tables: Option<Vec<dbx_types::sql_file::SqlFileTable>>,
     #[serde(default)]
