@@ -708,6 +708,7 @@ export default withEnglishFallback({
     databasePlaceholderRequired: "필수, 기존 데이터베이스 입력",
     databasePlaceholderWithDefault: "선택, 기본값 {database}",
     kingbaseDatabaseRequired: "KingbaseES는 연결이나 데이터베이스 목록을 불러오기 전에 기존 데이터베이스가 필요합니다.",
+    xuguDatabaseRequired: "XuguDB에 연결하려면 기존 데이터베이스가 필요합니다.",
     defaultDatabase: "기본 DB",
     authDatabase: "인증 DB",
     authDatabasePlaceholder: "선택, 보통 admin",

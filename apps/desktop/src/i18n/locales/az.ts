@@ -573,6 +573,7 @@ export default withEnglishFallback({
     databasePlaceholderRequired: "Tələb olunur, mövcud verilənlər bazasını daxil edin",
     databasePlaceholderWithDefault: "İstəyə bağlı, standart olaraq {database}",
     kingbaseDatabaseRequired: "KingbaseES əlaqə qurmazdan və ya verilənlər bazası siyahısını yükləməzdən əvvəl mövcud verilənlər bazası tələb edir.",
+    xuguDatabaseRequired: "XuguDB-yə qoşulmaq üçün əvvəlcə mövcud verilənlər bazası daxil edilməlidir.",
     defaultDatabase: "Standart verilənlər bazası",
     authDatabase: "Autentifikasiya verilənlər bazası",
     authDatabasePlaceholder: "İstəyə bağlı, adətən admin",

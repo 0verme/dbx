@@ -706,6 +706,7 @@ export default withEnglishFallback({
     databasePlaceholderRequired: "Obbligatorio, inserisci un database esistente",
     databasePlaceholderWithDefault: "Opzionale, predefinito {database}",
     kingbaseDatabaseRequired: "KingbaseES richiede un database esistente prima di connettersi o caricare l'elenco dei database.",
+    xuguDatabaseRequired: "XuguDB richiede un database esistente prima di connettersi.",
     defaultDatabase: "DB Predefinito",
     authDatabase: "DB di Autenticazione",
     authDatabasePlaceholder: "Opzionale, spesso admin",

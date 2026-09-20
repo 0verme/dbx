@@ -69,6 +69,7 @@ import {
 import type { PluginCenterFocus } from "@/lib/plugins/pluginCenterNavigation";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { applyMeilisearchBasePathToExternalConfig, applyParsedConnectionUrl, normalizeMongoConnectionString, parseConnectionUrl } from "@/lib/connection/connectionUrl";
+import { hasXuguConnectionDatabase } from "@/lib/connection/xuguDatabase";
 import { DEFAULT_QUERY_TIMEOUT_SECS, MAX_CONNECT_TIMEOUT_SECS, MAX_QUERY_TIMEOUT_SECS } from "@/lib/connection/timeoutLimits";
 import { buildOracleTnsConnectionString, normalizeOracleTnsAdminPath, parseOracleTnsConnectionString } from "@/lib/connection/oracleTnsConnection";
 import { connectionDeepLinkServiceHydrationValue, parseConnectionDeepLink, parseServiceConnectionUrl, type ConnectionDeepLinkDraft } from "@/lib/connection/connectionDeepLink";
@@ -2853,6 +2854,7 @@ const databaseLabel = computed(() => {
 
 const databasePlaceholder = computed(() => {
   if (form.value.db_type === "oracle" && form.value.oracle_connection_type === "tns") return t("connection.oracleTnsAliasPlaceholder");
+  if (form.value.db_type === "xugu") return t("connection.databasePlaceholderRequired");
   if (form.value.db_type === "kingbase") return t("connection.databasePlaceholderRequired");
   const fallback = defaultDatabaseForProfile();
   if (!fallback) return t("connection.databasePlaceholder");
@@ -4179,6 +4181,12 @@ function connectionConfigForSubmit(id: string, generatedName = "", validatePlugi
   }
   if (!config.name?.trim()) {
     config.name = generatedName.trim() || generateConnectionName();
+  }
+  if (config.db_type === "xugu") {
+    config.database = config.database?.trim() || undefined;
+    if (!hasXuguConnectionDatabase(config.database, config.connection_string)) {
+      throw new Error(t("connection.xuguDatabaseRequired"));
+    }
   }
   if (config.db_type === "kingbase") {
     config.database = config.database?.trim() || undefined;

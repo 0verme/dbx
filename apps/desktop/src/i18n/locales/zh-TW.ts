@@ -710,6 +710,7 @@ export default withEnglishFallback({
     databasePlaceholderRequired: "必填，請填寫已存在的資料庫",
     databasePlaceholderWithDefault: "可選，預設 {database}",
     kingbaseDatabaseRequired: "KingbaseES 需要先填寫一個已存在的資料庫後才能連線或載入資料庫清單。",
+    xuguDatabaseRequired: "虛谷 XuguDB 需要先填寫一個已存在的資料庫才能連線。",
     defaultDatabase: "預設 DB",
     authDatabase: "驗證 DB",
     authDatabasePlaceholder: "可選，通常為 admin",

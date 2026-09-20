@@ -575,6 +575,7 @@ export default withEnglishFallback({
     databasePlaceholderRequired: "Zorunlu, mevcut bir veritabanı girin",
     databasePlaceholderWithDefault: "İsteğe bağlı, varsayılan {database}",
     kingbaseDatabaseRequired: "KingbaseES bağlanmadan veya veritabanı listesini yüklemeden önce mevcut bir veritabanı ister.",
+    xuguDatabaseRequired: "XuguDB'ye bağlanmadan önce mevcut bir veritabanı gerekir.",
     defaultDatabase: "Varsayılan VT",
     authDatabase: "Kimlik Doğrulama VT",
     authDatabasePlaceholder: "İsteğe bağlı, genellikle admin",

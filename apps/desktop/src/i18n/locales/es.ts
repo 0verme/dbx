@@ -708,6 +708,7 @@ export default withEnglishFallback({
     databasePlaceholderRequired: "Obligatorio, ingresa una base de datos existente",
     databasePlaceholderWithDefault: "Opcional, por defecto {database}",
     kingbaseDatabaseRequired: "KingbaseES requiere una base de datos existente antes de conectar o cargar la lista de bases de datos.",
+    xuguDatabaseRequired: "XuguDB requiere una base de datos existente antes de conectarse.",
     defaultDatabase: "BD predeterminada",
     authDatabase: "BD de autenticación",
     authDatabasePlaceholder: "Opcional, normalmente admin",

@@ -716,6 +716,7 @@ export default {
     databasePlaceholderRequired: "Required, enter an existing database",
     databasePlaceholderWithDefault: "Optional, defaults to {database}",
     kingbaseDatabaseRequired: "KingbaseES requires an existing database before connecting or loading the database list.",
+    xuguDatabaseRequired: "XuguDB requires an existing database before connecting.",
     defaultDatabase: "Default DB",
     authDatabase: "Auth DB",
     authDatabasePlaceholder: "Optional, often admin",

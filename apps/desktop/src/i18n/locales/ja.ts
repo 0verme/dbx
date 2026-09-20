@@ -706,6 +706,7 @@ export default withEnglishFallback({
     databasePlaceholderRequired: "必須、既存のデータベースを入力",
     databasePlaceholderWithDefault: "任意、デフォルトは {database}",
     kingbaseDatabaseRequired: "KingbaseES は接続またはデータベース一覧の読み込み前に、既存のデータベース名が必要です。",
+    xuguDatabaseRequired: "XuguDB に接続するには、既存のデータベース名が必要です。",
     defaultDatabase: "デフォルトDB",
     authDatabase: "認証DB",
     authDatabasePlaceholder: "任意、通常は admin",
