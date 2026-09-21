@@ -1,38 +1,30 @@
 // @vitest-environment happy-dom
 
 import { createApp, nextTick, type App } from "vue";
-import { EditorView } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TABLE_DDL = "CREATE TABLE `users` (\n  `id` bigint NOT NULL AUTO_INCREMENT,\n  `email` varchar(255) DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB";
 
 const mocks = vi.hoisted(() => ({
   connection: {
-    id: "structure-ddl-tab",
-    name: "MySQL",
-    db_type: "mysql",
-    driver_label: "MySQL",
+    id: "structure-partitions-tab",
+    name: "PostgreSQL",
+    db_type: "postgres",
+    driver_label: "PostgreSQL",
   },
   ensureConnected: vi.fn(),
   executeQuery: vi.fn(),
   executeBatch: vi.fn(),
   listDataTypes: vi.fn(),
   buildTableStructureChangeSql: vi.fn(),
+  buildTablePartitionOperationSql: vi.fn(),
+  buildCreatePartitionedTableSql: vi.fn(),
   buildMysqlAutoIncrementSql: vi.fn(),
   buildTableOwnerChangeSql: vi.fn(),
   getTablePartitionStatus: vi.fn(),
+  getTablePartitioning: vi.fn(),
   getTableOwner: vi.fn(),
   updateEditorSettings: vi.fn(),
-  editorSettings: {
-    structureEditorDensity: "compact",
-    sqlFormatter: {},
-    tableColumnTemplateFields: [],
-    fontSize: 13,
-    fontFamily: "monospace",
-    theme: "default",
-    generateSqlIncludeDatabaseName: true,
-    generateSqlQuoteIdentifiers: true,
-  },
   loadObjectDdl: vi.fn(),
   invalidateObjectDdl: vi.fn(),
   loadObjectMetadataFacet: vi.fn(),
@@ -249,6 +241,26 @@ vi.mock("@/components/ui/select", async () => {
   });
   return { Select: Div, SelectContent: Div, SelectItem: Div, SelectTrigger: Div, SelectValue: Div };
 });
+vi.mock("@/components/ui/dialog", async () => {
+  const { defineComponent, h } = await import("vue");
+  const Div = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("div", attrs, slots.default?.()),
+  });
+  const Dialog = defineComponent({
+    name: "MockDialog",
+    props: { open: { type: Boolean, default: false } },
+    emits: ["update:open"],
+    setup:
+      (props, { slots }) =>
+      () =>
+        props.open ? h("div", { "data-dialog": "open" }, slots.default?.()) : null,
+  });
+  return { Dialog, DialogContent: Div, DialogFooter: Div, DialogHeader: Div, DialogTitle: Div };
+});
 vi.mock("@/components/editor/EditorSearchPanel.vue", async () => {
   const { defineComponent, h } = await import("vue");
   return {
@@ -271,7 +283,7 @@ vi.mock("@/stores/queryStore", () => ({ useQueryStore: () => ({ tableStructureRe
 vi.mock("@/stores/historyStore", () => ({ useHistoryStore: () => ({ add: vi.fn() }) }));
 vi.mock("@/stores/settingsStore", () => ({
   useSettingsStore: () => ({
-    editorSettings: mocks.editorSettings,
+    editorSettings: { structureEditorDensity: "compact", sqlFormatter: {}, tableColumnTemplateFields: [], fontSize: 13, fontFamily: "monospace", theme: "default", generateSqlQuoteIdentifiers: true },
     updateEditorSettings: mocks.updateEditorSettings,
   }),
 }));
@@ -297,13 +309,32 @@ vi.mock("@/lib/backend/api", () => ({
   buildMysqlAutoIncrementSql: mocks.buildMysqlAutoIncrementSql,
   buildTableOwnerChangeSql: mocks.buildTableOwnerChangeSql,
   getTablePartitionStatus: mocks.getTablePartitionStatus,
+  getTablePartitioning: mocks.getTablePartitioning,
+  buildTablePartitionOperationSql: mocks.buildTablePartitionOperationSql,
+  buildCreatePartitionedTableSql: mocks.buildCreatePartitionedTableSql,
   getTableOwner: mocks.getTableOwner,
 }));
 
 import TableStructureEditor from "@/components/structure/TableStructureEditor.vue";
 
 const mountedApps: App[] = [];
-let lastDraft: Record<string, unknown> | undefined;
+
+function structureDraft(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+  return {
+    dirty: false,
+    activeTab: "partitions",
+    newTableName: "",
+    tableComment: "",
+    originalTableComment: "",
+    columns: [],
+    indexes: [],
+    foreignKeys: [],
+    constraints: [],
+    triggers: [],
+    initialized: true,
+    ...overrides,
+  };
+}
 
 async function mountStructureEditor(props: Record<string, unknown> = {}) {
   const root = document.createElement("div");
@@ -312,21 +343,13 @@ async function mountStructureEditor(props: Record<string, unknown> = {}) {
     connectionId: mocks.connection.id,
     database: "test",
     tableName: "users",
-    initialTab: "columns",
     ...props,
-    "onUpdate:draft": (draft: Record<string, unknown> | undefined) => {
-      lastDraft = draft;
-    },
   });
   mountedApps.push(app);
   app.mount(root);
-  // The tab list lives inside the `v-else` of the loading branch, so every tab
-  // must be driven from a fully settled editor: a straggling metadata load
-  // would otherwise unmount the whole pane between query and click.
   await vi.waitFor(
     () => {
-      expect(root.querySelector('[data-tab-trigger="ddl"]')).not.toBeNull();
-      expect(buttonWithText(root, "structureEditor.addColumn").disabled).toBe(false);
+      expect(root.querySelector('[data-tab-trigger="foreignKeys"]')).not.toBeNull();
       expect(root.textContent).toContain("structureEditor.noChanges");
     },
     { timeout: 3000 },
@@ -343,56 +366,33 @@ async function settle() {
   }
 }
 
-async function clickTab(root: HTMLElement, tab: string) {
-  await vi.waitFor(
-    () => {
-      const trigger = root.querySelector<HTMLButtonElement>(`[data-tab-trigger="${tab}"]`);
-      expect(trigger).not.toBeNull();
-      trigger!.click();
-    },
-    { timeout: 3000 },
-  );
-}
-
 function buttonWithText(root: HTMLElement, text: string): HTMLButtonElement {
   const button = Array.from(root.querySelectorAll("button")).find((item) => item.textContent?.includes(text));
   if (!button) throw new Error(`Missing ${text} button`);
   return button as HTMLButtonElement;
 }
 
-function ddlEditorText(root: HTMLElement): string {
-  return root.querySelector(".structure-ddl-editor .cm-content")?.textContent ?? "";
-}
-
-/** The live CodeMirror view behind the DDL pane, so edits go through real transactions. */
-function ddlEditorView(root: HTMLElement): EditorView {
-  const dom = root.querySelector<HTMLElement>(".structure-ddl-editor .cm-editor");
-  const view = dom ? EditorView.findFromDOM(dom) : null;
-  if (!view) throw new Error("Missing DDL CodeMirror view");
-  return view;
-}
-
-async function openDdlTab(root: HTMLElement) {
-  await clickTab(root, "ddl");
-  await vi.waitFor(() => expect(ddlEditorText(root)).toContain("CREATE TABLE"), { timeout: 3000 });
-}
-
-async function editDdl(root: HTMLElement, script: string) {
-  const view = ddlEditorView(root);
-  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: script } });
-  await nextTick();
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
-  lastDraft = undefined;
-  mocks.connection.db_type = "mysql";
-  mocks.editorSettings.generateSqlIncludeDatabaseName = true;
   mocks.ensureConnected.mockResolvedValue(undefined);
   mocks.executeQuery.mockResolvedValue({ columns: [], rows: [] });
   mocks.executeBatch.mockResolvedValue({ rowsAffected: 0 });
   mocks.listDataTypes.mockResolvedValue([]);
-  mocks.getTablePartitionStatus.mockResolvedValue({ isPartitionedParent: false, isPartition: false });
+  mocks.getTablePartitionStatus.mockResolvedValue({ isPartitionedParent: true, isPartition: false });
+  mocks.buildTablePartitionOperationSql.mockResolvedValue({ statements: [], warnings: [] });
+  mocks.buildCreatePartitionedTableSql.mockResolvedValue({ statements: [], warnings: [] });
+  mocks.getTablePartitioning.mockResolvedValue({
+    isPartitioned: true,
+    isPartition: false,
+    strategy: "range",
+    keyDefinition: "RANGE (sold_on)",
+    keyColumns: ["sold_on"],
+    defaultPartition: "sales_default",
+    partitions: [
+      { schema: "public", name: "sales_2024", isLeaf: true, bound: { kind: "range", from: ["'2024-01-01'"], to: ["'2025-01-01'"] }, children: [] },
+      { schema: "public", name: "sales_default", isLeaf: true, bound: { kind: "default" }, children: [] },
+    ],
+  });
   mocks.getTableOwner.mockResolvedValue("");
   mocks.buildTableOwnerChangeSql.mockResolvedValue({ statements: [], warnings: [] });
   mocks.buildTableStructureChangeSql.mockResolvedValue({ statements: [], warnings: [] });
@@ -416,100 +416,229 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("TableStructureEditor DDL tab", () => {
-  it("keeps the DDL rendered when the tab is left and revisited", async () => {
-    // Regression for #7818/#7778: the second visit re-mounts the pane one tick
-    // after the tab activates, and nothing re-fetches (the DDL is already
-    // cached), so an init tied to a single nextTick left the tab blank forever.
-    const root = await mountStructureEditor();
-    await openDdlTab(root);
+describe("TableStructureEditor partitions tab", () => {
+  it("renders the Partitions tab for PostgreSQL and loads the partition tree on activation", async () => {
+    const root = await mountStructureEditor({ initialTab: "partitions", initialTabRequestId: 1 });
 
-    await clickTab(root, "columns");
-    await vi.waitFor(() => expect(root.querySelector(".structure-ddl-editor")).toBeNull(), { timeout: 3000 });
+    expect(root.querySelector('[data-tab-trigger="partitions"]')).not.toBeNull();
     await settle();
+    expect(mocks.getTablePartitioning).toHaveBeenCalledWith(mocks.connection.id, "test", "", "users");
 
-    await openDdlTab(root);
-    expect(ddlEditorText(root)).toContain("CREATE TABLE");
-    expect(ddlEditorText(root)).toContain("AUTO_INCREMENT");
-    // The revisit must not have refetched: the fix has to work off cached DDL.
-    expect(mocks.loadObjectDdl).toHaveBeenCalledTimes(1);
+    const text = root.textContent ?? "";
+    expect(text).toContain("structureEditor.partitionKindRange");
+    expect(text).toContain("sales_2024");
+    expect(text).toContain("sales_default");
+    expect(text).toContain("structureEditor.partitionsDefault");
   });
 
-  it("executes an edited DDL script as the previewed batch", async () => {
-    const root = await mountStructureEditor();
-    await openDdlTab(root);
+  it("shows the empty state for a table that is not partitioned", async () => {
+    mocks.getTablePartitioning.mockResolvedValue({ isPartitioned: false, isPartition: false, keyColumns: [], partitions: [] });
+    const root = await mountStructureEditor({ initialTab: "partitions", initialTabRequestId: 1 });
 
-    await editDdl(root, "ALTER TABLE `users` ADD COLUMN `nickname` varchar(64);\nALTER TABLE `users` ADD INDEX `idx_email` (`email`);");
-
-    await vi.waitFor(() => expect(root.textContent).toContain("ALTER TABLE `users` ADD COLUMN `nickname` varchar(64)"), { timeout: 3000 });
-    expect(root.textContent).toContain("structureEditor.ddlEditNotice");
-    await vi.waitFor(() => expect(buttonWithText(root, "structureEditor.apply").disabled).toBe(false), { timeout: 3000 });
-
-    buttonWithText(root, "structureEditor.apply").click();
-    await vi.waitFor(() => expect(mocks.executeBatch).toHaveBeenCalledTimes(1), { timeout: 3000 });
-    expect(mocks.executeBatch.mock.calls[0][2]).toEqual(["ALTER TABLE `users` ADD COLUMN `nickname` varchar(64)", "ALTER TABLE `users` ADD INDEX `idx_email` (`email`)"]);
-    // No partition DDL in this batch: it keeps the auto-commit path.
-    expect(mocks.executeBatch.mock.calls[0][5]).toBe(false);
-    // The structure builder must not have contributed statements to that batch.
-    expect(mocks.buildTableStructureChangeSql).not.toHaveBeenCalled();
+    await settle();
+    expect(root.textContent ?? "").toContain("structureEditor.partitionsEmpty");
   });
 
-  it("executes generated external-catalog DDL without dropping qualifiers", async () => {
-    mocks.connection.db_type = "doris";
-    mocks.editorSettings.generateSqlIncludeDatabaseName = false;
-    mocks.buildTableStructureChangeSql.mockResolvedValue({
-      statements: ["ALTER TABLE `iceberg`.`analytics`.`users` ADD COLUMN `nickname` STRING;"],
+  it("submits pending partition operations through the dedicated builder", async () => {
+    const operation = {
+      id: "op:1",
+      kind: "create",
+      parentSchema: "",
+      parentTable: "",
+      schema: "",
+      name: "sales_2025",
+      bound: { kind: "default" },
+      concurrently: false,
+    };
+    mocks.buildTablePartitionOperationSql.mockResolvedValue({
+      statements: ['CREATE TABLE "public"."sales_2025" PARTITION OF "public"."sales" DEFAULT;'],
       warnings: [],
     });
 
-    const root = await mountStructureEditor({ database: "analytics", catalog: "iceberg" });
-    buttonWithText(root, "structureEditor.addColumn").click();
+    const root = await mountStructureEditor({
+      initialTab: "partitions",
+      initialTabRequestId: 1,
+      draft: structureDraft({ activeTab: "partitions", partitionOperations: [operation] }),
+    });
+    await settle();
+    // The SQL preview is debounced, so wait for the builder rather than assuming
+    // it ran within the microtask settle loop.
+    await vi.waitFor(() => expect(mocks.buildTablePartitionOperationSql).toHaveBeenCalled(), { timeout: 3000 });
+    await settle();
+
+    const options = mocks.buildTablePartitionOperationSql.mock.calls.at(-1)?.[0] as { operations: unknown[] };
+    expect(options.operations).toHaveLength(1);
+    expect(root.textContent ?? "").toContain("structureEditor.partitionPendingOperations");
+    expect(root.textContent ?? "").toContain('CREATE TABLE "public"."sales_2025"');
+  });
+
+  it("generates a partitioned CREATE TABLE from a create-mode draft", async () => {
+    mocks.buildCreatePartitionedTableSql.mockResolvedValue({
+      statements: ['CREATE TABLE "public"."users" (\n  "id" integer\n) PARTITION BY RANGE ("id");'],
+      warnings: [],
+    });
+
+    const root = document.createElement("div");
+    document.body.append(root);
+    const app = createApp(TableStructureEditor, {
+      connectionId: mocks.connection.id,
+      database: "test",
+      tableName: "",
+      initialTab: "partitions",
+      initialTabRequestId: 1,
+      draft: structureDraft({
+        activeTab: "partitions",
+        newTableName: "users",
+        columns: [{ id: "id", name: "id", dataType: "integer", isNullable: false, defaultValue: "", comment: "", isPrimaryKey: false, extra: {}, markedForDrop: false }],
+        createPartitioningEnabled: true,
+        createPartitioningKind: "range",
+        createPartitioningColumns: ["id"],
+        createPartitioningExpression: "",
+      }),
+    });
+    mountedApps.push(app);
+    app.mount(root);
+
+    await vi.waitFor(() => expect(root.querySelector('[data-tab-trigger="partitions"]')).not.toBeNull(), { timeout: 3000 });
+    await vi.waitFor(() => expect(mocks.buildCreatePartitionedTableSql).toHaveBeenCalled(), { timeout: 3000 });
+
+    const args = mocks.buildCreatePartitionedTableSql.mock.calls.at(-1)?.[0] as {
+      partitioning: { kind: string; columns: string[] };
+      options: { tableName: string };
+    };
+    expect(args.partitioning).toEqual({ kind: "range", columns: ["id"], expression: "" });
+    expect(args.options.tableName).toBe("users");
+  });
+
+  it("shows the Partitions tab for KingbaseES connections", async () => {
+    // Regression: the status probe used to be gated on db_type === "postgres",
+    // which hid the tab on every other PostgreSQL-family engine.
+    const previous = mocks.connection.db_type;
+    mocks.connection.db_type = "kingbase";
+    try {
+      const root = await mountStructureEditor({ initialTab: "partitions", initialTabRequestId: 1 });
+      await settle();
+      expect(root.querySelector('[data-tab-trigger="partitions"]')).not.toBeNull();
+      expect(mocks.getTablePartitioning).toHaveBeenCalled();
+    } finally {
+      mocks.connection.db_type = previous;
+    }
+  });
+
+  it("still resolves the Partitions tab when the editor opens on the DDL tab", async () => {
+    // Regression: the DDL entry point skips loadStructure, so the status probe
+    // never ran and the tab was missing on a partitioned table.
+    const root = await mountStructureEditor({ initialTab: "ddl", initialTabRequestId: 1 });
+    await settle();
+    expect(root.querySelector('[data-tab-trigger="partitions"]')).not.toBeNull();
+  });
+
+  it("hides the Partitions tab for a table that is not partitioned", async () => {
+    mocks.getTablePartitionStatus.mockResolvedValue({ isPartitionedParent: false, isPartition: false });
+    const root = await mountStructureEditor();
+
+    await settle();
+    expect(root.querySelector('[data-tab-trigger="partitions"]')).toBeNull();
+    expect(mocks.getTablePartitioning).not.toHaveBeenCalled();
+  });
+
+  it("folds sub-partitions when the parent row is collapsed", async () => {
+    mocks.getTablePartitioning.mockResolvedValue({
+      isPartitioned: true,
+      isPartition: false,
+      strategy: "range",
+      keyDefinition: "RANGE (year)",
+      keyColumns: ["year"],
+      partitions: [
+        {
+          schema: "public",
+          name: "logs_2024",
+          strategy: "list",
+          isLeaf: false,
+          bound: { kind: "range", from: ["2024"], to: ["2025"] },
+          children: [{ schema: "public", name: "logs_2024_cn", isLeaf: true, bound: { kind: "list", values: ["'cn'"] }, children: [] }],
+        },
+      ],
+    });
+    const root = await mountStructureEditor({ initialTab: "partitions", initialTabRequestId: 1 });
+    await settle();
+
+    expect(root.textContent ?? "").toContain("logs_2024_cn");
+    expect(root.textContent ?? "").toContain("structureEditor.partitionChildCount");
+
+    const collapse = root.querySelector('button[title="structureEditor.partitionCollapse"]');
+    expect(collapse).not.toBeNull();
+    collapse!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await settle();
+
+    expect(root.textContent ?? "").not.toContain("logs_2024_cn");
+    expect(root.textContent ?? "").toContain("logs_2024");
+    expect(root.querySelector('button[title="structureEditor.partitionExpand"]')).not.toBeNull();
+  });
+
+  it("previews the SQL of the operation being edited in its dialog", async () => {
+    mocks.buildTablePartitionOperationSql.mockResolvedValue({
+      statements: ['ALTER TABLE "public"."sales" DETACH PARTITION "public"."sales_2024";'],
+      warnings: [],
+    });
+    const root = await mountStructureEditor({ initialTab: "partitions", initialTabRequestId: 1 });
+    await settle();
+
+    const detachButton = root.querySelector('button[title="structureEditor.partitionDetach"]');
+    expect(detachButton).not.toBeNull();
+    detachButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await vi.waitFor(() => expect(mocks.buildTablePartitionOperationSql).toHaveBeenCalled(), { timeout: 3000 });
+    await vi.waitFor(() => expect(root.textContent ?? "").toContain("ALTER TABLE"), { timeout: 3000 });
+    expect(root.textContent ?? "").toContain("structureEditor.partitionSqlPreview");
+
+    const options = mocks.buildTablePartitionOperationSql.mock.calls.at(-1)?.[0] as {
+      operations: { kind: string; name: string }[];
+    };
+    expect(options.operations).toHaveLength(1);
+    expect(options.operations[0]).toMatchObject({ kind: "detach", name: "sales_2024" });
+  });
+
+  it("surfaces a load failure instead of an empty state", async () => {
+    mocks.getTablePartitioning.mockRejectedValue(new Error("permission denied for table pg_partitioned_table"));
+    const root = await mountStructureEditor({ initialTab: "partitions", initialTabRequestId: 1 });
+
+    await settle();
+    expect(root.textContent ?? "").toContain("permission denied");
+  });
+
+  it("applies pending partition operations inside a single transaction", async () => {
+    const operation = {
+      id: "op:1",
+      kind: "create",
+      parentSchema: "",
+      parentTable: "",
+      schema: "",
+      name: "sales_2025",
+      bound: { kind: "default" },
+      concurrently: false,
+    };
+    mocks.buildTablePartitionOperationSql.mockResolvedValue({
+      statements: ['CREATE TABLE "public"."sales_2025" PARTITION OF "public"."sales" DEFAULT;'],
+      warnings: [],
+    });
+
+    const root = await mountStructureEditor({
+      initialTab: "partitions",
+      initialTabRequestId: 1,
+      draft: structureDraft({ activeTab: "partitions", partitionOperations: [operation] }),
+    });
+    await vi.waitFor(() => expect(mocks.buildTablePartitionOperationSql).toHaveBeenCalled(), { timeout: 3000 });
+    await settle();
 
     await vi.waitFor(() => expect(buttonWithText(root, "structureEditor.apply").disabled).toBe(false), { timeout: 3000 });
     buttonWithText(root, "structureEditor.apply").click();
-
     await vi.waitFor(() => expect(mocks.executeBatch).toHaveBeenCalledTimes(1), { timeout: 3000 });
-    expect(mocks.executeBatch.mock.calls[0][2]).toEqual(["ALTER TABLE `iceberg`.`analytics`.`users` ADD COLUMN `nickname` STRING;"]);
-  });
 
-  it("carries the edited script in the draft so the tab reports unsaved work", async () => {
-    const root = await mountStructureEditor();
-    await openDdlTab(root);
-    await editDdl(root, "ALTER TABLE `users` ADD COLUMN `nickname` varchar(64);");
-
-    await vi.waitFor(() => expect(lastDraft?.ddlDraft).toContain("ADD COLUMN `nickname`"), { timeout: 3000 });
-    // `dirty` is what the tab-close guard reads: DDL edits must count as unsaved.
-    expect(lastDraft?.dirty).toBe(true);
-    expect(lastDraft?.ddlContent).toContain("CREATE TABLE");
-    expect(root.querySelector("[data-ddl-dirty-indicator]")).not.toBeNull();
-  });
-
-  it("restores the database DDL and drops the pending batch on reset", async () => {
-    const root = await mountStructureEditor();
-    await openDdlTab(root);
-    await editDdl(root, "DROP TABLE `users`;");
-    await vi.waitFor(() => expect(root.textContent).toContain("structureEditor.ddlEditNotice"), { timeout: 3000 });
-
-    buttonWithText(root, "structureEditor.resetDdl").click();
-    await vi.waitFor(() => expect(root.textContent).toContain("structureEditor.noChanges"), { timeout: 3000 });
-    expect(root.textContent).not.toContain("structureEditor.ddlEditNotice");
-    expect(ddlEditorText(root)).toContain("CREATE TABLE");
-    expect(buttonWithText(root, "structureEditor.apply").disabled).toBe(true);
-  });
-
-  it("refuses to save when the DDL script and the structure tabs were both edited", async () => {
-    const root = await mountStructureEditor();
-    buttonWithText(root, "structureEditor.addColumn").click();
-    await nextTick();
-
-    await openDdlTab(root);
-    await editDdl(root, "ALTER TABLE `users` ADD COLUMN `nickname` varchar(64);");
-
-    await vi.waitFor(() => expect(root.textContent).toContain("structureEditor.ddlEditConflictsWithStructure"), { timeout: 3000 });
-    expect(buttonWithText(root, "structureEditor.apply").disabled).toBe(true);
-
-    buttonWithText(root, "structureEditor.apply").click();
-    await nextTick();
-    expect(mocks.executeBatch).not.toHaveBeenCalled();
+    // A failure must not leave a half-created hierarchy behind, so the batch is
+    // sent as one transaction (6th argument).
+    const call = mocks.executeBatch.mock.calls[0];
+    expect(call[2]).toEqual(['CREATE TABLE "public"."sales_2025" PARTITION OF "public"."sales" DEFAULT;']);
+    expect(call[5]).toBe(true);
   });
 });

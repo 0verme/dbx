@@ -2,8 +2,9 @@
 import { KeyRound, Loader2, Trash2 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
+import TablePartitionsPanel from "@/components/structure/TablePartitionsPanel.vue";
 import { tableColumnDefaultDisplayValue } from "@/lib/table/tableColumnDefaultPresentation";
-import type { ColumnInfo, ConstraintInfo, ForeignKeyInfo, IndexInfo, TableInfoTab, TriggerInfo } from "@/types/database";
+import type { ColumnInfo, ConstraintInfo, ForeignKeyInfo, IndexInfo, PgTablePartitioning, TableInfoTab, TriggerInfo } from "@/types/database";
 
 interface DataGridTableInfoPanelsProps {
   activeTab: TableInfoTab;
@@ -23,6 +24,9 @@ interface DataGridTableInfoPanelsProps {
   constraints: ConstraintInfo[];
   constraintsLoading: boolean;
   constraintsError: string;
+  partitioning: PgTablePartitioning | null;
+  partitionsLoading: boolean;
+  partitionsError: string;
   isProtectedMongoIndex: (index: IndexInfo) => boolean;
   formatColumnType: (dataType: string) => string;
 }
@@ -214,6 +218,8 @@ const { t } = useI18n();
       </div>
     </div>
   </div>
+
+  <TablePartitionsPanel v-else-if="props.activeTab === 'partitions'" :partitioning="props.partitioning" :loading="props.partitionsLoading" :error="props.partitionsError" :search-query="props.searchQuery" />
 </template>
 
 <style scoped>
