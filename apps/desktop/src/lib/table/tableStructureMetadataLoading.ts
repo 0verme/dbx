@@ -27,6 +27,9 @@ export function visibleTableStructureRefreshScope(activeTab: TableInfoTab): Tabl
       return { columns: false, indexes: false, foreignKeys: false, constraints: false, triggers: false, partitions: true, tableComment: false };
     case "ddl":
       return { columns: false, indexes: false, foreignKeys: false, constraints: false, triggers: false, partitions: false, tableComment: true };
+    default:
+      // "info" is a data-grid drawer tab and has no structure-editor scope.
+      return { columns: false, indexes: false, foreignKeys: false, constraints: false, triggers: false, partitions: false, tableComment: false };
   }
 }
 
