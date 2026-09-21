@@ -232,6 +232,10 @@ pub struct DesktopSettings {
     pub plugin_store_dir: Option<String>,
     #[serde(default)]
     pub agent_store_dir: Option<String>,
+    #[serde(default)]
+    pub custom_ai_skill_root_enabled: bool,
+    #[serde(default)]
+    pub custom_ai_skill_root: Option<String>,
     #[serde(default = "default_sidebar_table_page_size")]
     pub sidebar_table_page_size: usize,
 }
@@ -684,6 +688,8 @@ impl Default for DesktopSettings {
             driver_store_dir: None,
             plugin_store_dir: None,
             agent_store_dir: None,
+            custom_ai_skill_root_enabled: false,
+            custom_ai_skill_root: None,
             sidebar_table_page_size: default_sidebar_table_page_size(),
         }
     }
@@ -2292,6 +2298,18 @@ impl Storage {
             }
         }
         settings.insert(
+            "custom_ai_skill_root_enabled".to_string(),
+            serde_json::Value::Bool(desktop_settings.custom_ai_skill_root_enabled),
+        );
+        match desktop_settings.custom_ai_skill_root.as_ref().filter(|path| !path.trim().is_empty()) {
+            Some(path) => {
+                settings.insert("custom_ai_skill_root".to_string(), serde_json::Value::String(path.clone()));
+            }
+            None => {
+                settings.remove("custom_ai_skill_root");
+            }
+        }
+        settings.insert(
             "sidebar_table_page_size".to_string(),
             serde_json::Value::Number(serde_json::Number::from(desktop_settings.sidebar_table_page_size)),
         );
@@ -2355,6 +2373,16 @@ impl Storage {
                 .map(ToString::to_string),
             agent_store_dir: settings
                 .get("agent_store_dir")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string),
+            custom_ai_skill_root_enabled: settings
+                .get("custom_ai_skill_root_enabled")
+                .and_then(|value| value.as_bool())
+                .unwrap_or_else(|| DesktopSettings::default().custom_ai_skill_root_enabled),
+            custom_ai_skill_root: settings
+                .get("custom_ai_skill_root")
                 .and_then(|value| value.as_str())
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -7769,6 +7797,8 @@ mod tests {
                 driver_store_dir: Some("/tmp/dbx-drivers".to_string()),
                 plugin_store_dir: Some("/tmp/dbx-plugins".to_string()),
                 agent_store_dir: Some("/tmp/dbx-agents".to_string()),
+                custom_ai_skill_root_enabled: DesktopSettings::default().custom_ai_skill_root_enabled,
+                custom_ai_skill_root: None,
                 sidebar_table_page_size: DesktopSettings::default().sidebar_table_page_size,
             })
             .await
@@ -7790,9 +7820,51 @@ mod tests {
                 driver_store_dir: Some("/tmp/dbx-drivers".to_string()),
                 plugin_store_dir: Some("/tmp/dbx-plugins".to_string()),
                 agent_store_dir: Some("/tmp/dbx-agents".to_string()),
+                custom_ai_skill_root_enabled: DesktopSettings::default().custom_ai_skill_root_enabled,
+                custom_ai_skill_root: None,
                 sidebar_table_page_size: DesktopSettings::default().sidebar_table_page_size,
             }
         );
+    }
+
+    #[tokio::test]
+    async fn desktop_settings_roundtrip_custom_ai_skill_root() {
+        let path = temp_db_path("desktop-settings-custom-ai-skill-root");
+        let storage = Storage::open(&path).await.unwrap();
+
+        storage
+            .save_desktop_settings(&DesktopSettings {
+                custom_ai_skill_root_enabled: true,
+                custom_ai_skill_root: Some("/tmp/dbx-skills".to_string()),
+                ..DesktopSettings::default()
+            })
+            .await
+            .unwrap();
+
+        let settings = storage.load_desktop_settings().await.unwrap();
+        assert!(settings.custom_ai_skill_root_enabled);
+        assert_eq!(settings.custom_ai_skill_root.as_deref(), Some("/tmp/dbx-skills"));
+
+        let raw = storage.load_app_settings_json().await.unwrap();
+        assert_eq!(raw.get("custom_ai_skill_root_enabled").and_then(|value| value.as_bool()), Some(true));
+        assert_eq!(raw.get("custom_ai_skill_root").and_then(|value| value.as_str()), Some("/tmp/dbx-skills"));
+
+        storage
+            .save_desktop_settings(&DesktopSettings {
+                custom_ai_skill_root_enabled: false,
+                custom_ai_skill_root: Some("   ".to_string()),
+                ..DesktopSettings::default()
+            })
+            .await
+            .unwrap();
+
+        let settings = storage.load_desktop_settings().await.unwrap();
+        assert!(!settings.custom_ai_skill_root_enabled);
+        assert_eq!(settings.custom_ai_skill_root, None);
+
+        let raw = storage.load_app_settings_json().await.unwrap();
+        assert_eq!(raw.get("custom_ai_skill_root_enabled").and_then(|value| value.as_bool()), Some(false));
+        assert_eq!(raw.get("custom_ai_skill_root"), None);
     }
 
     #[tokio::test]
