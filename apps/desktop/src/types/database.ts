@@ -13,6 +13,10 @@ export function isMeilisearchDatabaseType(dbType?: DatabaseType): boolean {
   return dbType === "meilisearch";
 }
 
+export function isSolrDatabaseType(dbType?: DatabaseType): boolean {
+  return dbType === "solr";
+}
+
 export interface SqlSnippet {
   id: string;
   label: string;
@@ -1796,6 +1800,7 @@ export interface QueryTab {
     | "mysql-dashboard"
     | "postgres-dashboard"
     | "xugu-dashboard"
+    | "solr-admin"
     | "dolt-version-control"
     | "plugin-workbench"
     | "plugin-filesystem";
