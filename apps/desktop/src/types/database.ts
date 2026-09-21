@@ -459,13 +459,22 @@ export interface PluginFilesystemMutationResult {
   entry?: PluginFilesystemEntry;
 }
 
+export type PluginContextMenuTarget = "connection" | "table";
+
+export interface PluginTableContext {
+  connectionId: string;
+  database?: string;
+  schema?: string;
+  table: string;
+}
+
 export interface PluginContextMenuContribution {
   type: "context-menu";
   id: string;
   label: string;
   description?: string;
   icon?: string;
-  menu: string;
+  menu: PluginContextMenuTarget;
 }
 
 export interface PluginResultViewContribution {

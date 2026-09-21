@@ -2156,9 +2156,9 @@ export const useConnectionStore = defineStore("connection", () => {
   function objectGroupCacheKey(node: TreeNode): string {
     const config = node.connectionId ? getConfig(node.connectionId) : undefined;
     const objectTreeProfileCacheKey = driverProfileObjectTreeProfileForConnection(config)?.cacheKey;
-    // objects-v8: object-group listing SQL gained a pg_type branch for
-    // PostgreSQL-family user-defined types; older cached lists miss TYPE nodes.
-    const baseCacheVersion = objectTreeCacheVersion(config, node.database, node.schema, config?.db_type === "oracle" ? "objects-v7" : "objects-v8");
+    // objects-v9: table nodes now carry canonical tableName metadata for
+    // table-scoped plugin context; older cached nodes lack that identity.
+    const baseCacheVersion = objectTreeCacheVersion(config, node.database, node.schema, config?.db_type === "oracle" ? "objects-v8" : "objects-v9");
     const cacheVersion = objectTreeProfileCacheKey ? `${baseCacheVersion}:${objectTreeProfileCacheKey}` : baseCacheVersion;
     return schemaCacheKey(node.connectionId || "", node.database || "", node.schema || "", node.type, cacheVersion);
   }
@@ -2812,7 +2812,7 @@ export const useConnectionStore = defineStore("connection", () => {
     if (parent.type === "group-tables") return objectGroupCacheKey(parent);
     if (parent.type !== "database" && parent.type !== "schema" && parent.type !== "linked-server-schema") return null;
     const simpleObjectDisplay = useSettingsStore().editorSettings.sidebarObjectDisplay === "simple";
-    const cacheVersion = ownerAwareMetadataCacheVersion(getConfig(parent.connectionId), simpleObjectDisplay ? "objects-simple-v8" : "objects-grouped-v8");
+    const cacheVersion = ownerAwareMetadataCacheVersion(getConfig(parent.connectionId), simpleObjectDisplay ? "objects-simple-v9" : "objects-grouped-v9");
     return schemaCacheKey(parent.connectionId, parent.database, parent.schema || "", cacheVersion);
   }
 
@@ -5978,7 +5978,7 @@ export const useConnectionStore = defineStore("connection", () => {
             nodeKind: "simple-tables",
             catalog,
           });
-          const cacheKey = schemaCacheKey(connectionId, `doris-catalog:${catalog}`, database, "objects-simple-v5");
+          const cacheKey = schemaCacheKey(connectionId, `doris-catalog:${catalog}`, database, "objects-simple-v6");
           if (!options?.force && !searchFilter && !tableNameFilter) {
             const cached = await loadPersistedTreeChildren(node, cacheKey, load);
             if (cached.hit) {
@@ -6045,7 +6045,7 @@ export const useConnectionStore = defineStore("connection", () => {
       // collapses that to the database node id, so the loaded tables were attached to the
       // database node instead of the schema node, leaving `(default)` permanently empty.
       const nodeId = schema != null ? `${connectionId}:${database}:${schema}` : `${connectionId}:${database}`;
-      const cacheKey = schemaCacheKey(connectionId, database, schema || "", objectTreeCacheVersion(configForScope, database, schema, "objects-simple-v8"));
+      const cacheKey = schemaCacheKey(connectionId, database, schema || "", objectTreeCacheVersion(configForScope, database, schema, "objects-simple-v9"));
       if (await hydrateTreeNodeFromCache(findNode(treeNodes.value, nodeId), cacheKey)) {
         void loadTables(connectionId, database, schema, { ...options, force: true }).catch(() => undefined);
         return;
@@ -6085,7 +6085,7 @@ export const useConnectionStore = defineStore("connection", () => {
           const objectTreeProfile = driverProfileObjectTreeProfileForConnection(config);
           const isPublicSynonymScope = config?.db_type === "xugu" && isXuguPublicSynonymScope(schema);
           const isSchedulerJobScope = config?.db_type === "xugu" && isXuguSchedulerJobScope(schema);
-          const baseCacheVersion = objectTreeCacheVersion(config, database, schema, simpleObjectDisplay ? "objects-simple-v8" : "objects-grouped-v8");
+          const baseCacheVersion = objectTreeCacheVersion(config, database, schema, simpleObjectDisplay ? "objects-simple-v9" : "objects-grouped-v9");
           const cacheVersion = !simpleObjectDisplay && objectTreeProfile?.cacheKey ? `${baseCacheVersion}:${objectTreeProfile.cacheKey}` : baseCacheVersion;
           const cacheKey = schemaCacheKey(connectionId, database, schema || "", cacheVersion);
           const querySchema = connectionObjectTreeQuerySchema(config, database, schema);
@@ -6426,7 +6426,7 @@ export const useConnectionStore = defineStore("connection", () => {
             targetParent.objectCount = mergedChildren.length;
             setChildren(targetParent, nextChildren);
             if (!options?.searchFilter) {
-              await savePersistedTreeChildren(schemaCacheKey(parentConnectionId, parentDatabase, parent.schema || "", ownerAwareMetadataCacheVersion(config, "objects-simple-v8")), nextChildren);
+              await savePersistedTreeChildren(schemaCacheKey(parentConnectionId, parentDatabase, parent.schema || "", ownerAwareMetadataCacheVersion(config, "objects-simple-v9")), nextChildren);
             }
             // 该分支只服务 simple 库/模式表列表；搜索分页结果不是全量，不能作为成员依据。
             if (!page.hasMore && !options?.searchFilter) pruneTableVGroupStaleMembers(targetParent, nextChildren, true);

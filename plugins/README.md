@@ -431,7 +431,7 @@ The `context.result` snapshot is bounded — `{ columns, rows (<= 500), truncate
 
 ### `context-menu`
 
-A context-menu entry is rendered **natively** by DBX (no sandbox iframe, native theme and keyboard behavior) in the declared menu surface. v1 supports the saved-connection sidebar menu:
+A context-menu entry is rendered **natively** by DBX (no sandbox iframe, native theme and keyboard behavior) in the declared menu surface. v1 supports the saved-connection and table menus in the Sidebar Tree. Object Browser integration is not part of the first table contribution surface.
 
 ```json
 {
@@ -442,7 +442,31 @@ A context-menu entry is rendered **natively** by DBX (no sandbox iframe, native 
 }
 ```
 
-Clicking the item dispatches a `contextMenu/<id>` backend request with a non-secret connection summary (`{ id, dbType, name, database }`). The backend entrypoint is required; return `{ "message": "..." }` to surface a toast.
+For a table-scoped action, declare `menu: "table"`:
+
+```json
+{
+  "type": "context-menu",
+  "id": "example.inspect-table",
+  "label": "Inspect table",
+  "menu": "table"
+}
+```
+
+Clicking a connection item dispatches `contextMenu/<id>` with a non-secret connection summary (`{ id, dbType, name, database }`). Clicking a table item uses the same backend method and dispatches:
+
+```json
+{
+  "table": {
+    "connectionId": "connection-id",
+    "database": "example",
+    "schema": "public",
+    "table": "users"
+  }
+}
+```
+
+`database` and `schema` are optional and are omitted when the selected database does not expose those scopes. The table context contains object identity only; it never contains credentials, connection strings, or raw connection configuration. The backend entrypoint is required; return `{ "message": "..." }` to surface a toast.
 
 ### `filesystem-provider`
 

@@ -72,6 +72,7 @@ import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { savedSqlErrorMessage } from "@/lib/savedSql/savedSqlErrors";
 import { useToast } from "@/composables/useToast";
 import { createFrontendPluginRegistry } from "@/lib/plugins/frontendPlugin";
+import { buildPluginTableContextMenuInvocation } from "@/lib/plugins/pluginContext";
 import type { InstalledPlugin } from "@/types/database";
 import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
 import type { ColumnInfo, ConnectionConfig, DatabaseType, TreeNode, TreeNodeType } from "@/types/database";
@@ -5981,6 +5982,7 @@ function buildSpecialSidebarMenu(context: SidebarMenuFactoryContext): boolean {
         variant: "destructive" as const,
       });
     }
+    appendPluginTableMenuItems(items, node);
     return true;
   }
 
@@ -6162,6 +6164,7 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
       items.push({ label: "", separator: true });
       items.push(exportDataSubmenu(false));
       items.push({ label: t("contextMenu.refreshChildren"), action: refresh, icon: RefreshCw, shortcut: shortcutRefresh });
+      appendPluginTableMenuItems(items, node);
       return true;
     }
     const destructiveActions: ContextMenuItem[] = [];
@@ -6301,6 +6304,7 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
       icon: RefreshCw,
       shortcut: shortcutRefresh,
     });
+    appendPluginTableMenuItems(items, node);
     return true;
   }
 
@@ -6738,6 +6742,36 @@ function appendPluginConnectionMenuItems(items: ContextMenuItem[], node: TreeNod
       },
     });
   }
+}
+
+/** Plugin-contributed native menu entries for canonical table nodes. */
+function appendPluginTableMenuItems(items: ContextMenuItem[], node: TreeNode) {
+  if (node.type !== "table") return;
+  const pluginItems = sidebarPluginRegistry.value.listContextMenuItems("table");
+  if (pluginItems.length === 0) return;
+
+  const tableItems: ContextMenuItem[] = [];
+  for (const { plugin, contribution } of pluginItems) {
+    const invocation = buildPluginTableContextMenuInvocation(contribution.id, node);
+    if (!invocation) continue;
+    tableItems.push({
+      label: contribution.label,
+      icon: PlugZap,
+      action: () => {
+        api
+          .invokePlugin(plugin.manifest.id, invocation.method, invocation.params)
+          .then((result) => {
+            const message = (result as { message?: unknown } | null | undefined)?.message;
+            if (typeof message === "string" && message.trim()) toast(message, 4000);
+          })
+          .catch((error: unknown) => {
+            toast(String((error as Error)?.message || error), 5000);
+          });
+      },
+    });
+  }
+  if (tableItems.length === 0) return;
+  items.push({ label: "", separator: true }, ...tableItems);
 }
 
 function activateRuntimeNode(node: TreeNode) {

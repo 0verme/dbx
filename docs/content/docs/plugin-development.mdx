@@ -213,8 +213,23 @@ Action `when` accepts `always`, `create`, or `edit`; `variant` accepts `default`
 | --- | --- | --- |
 | `workbench` | `type`, `id`, `label` | Registers a workbench opened from the sidebar or plugin entry. |
 | `filesystem-provider` | `type`, `id`, `label`, `schemes` | Registers a virtual filesystem; `root_uri` can be `s3://bucket`, with optional `read`, `write`, `delete`, `rename`, and `mkdir` capabilities. |
-| `context-menu` | `type`, `id`, `label`, `menu: "connection"` | Adds an action to a connection context menu. |
+| `context-menu` | `type`, `id`, `label`, `menu: "connection"` or `"table"` | Adds an action to a Sidebar Tree connection or table context menu. |
 | `result-view` | `type`, `id`, `label` | Registers a query or task result view. |
+
+A `menu: "table"` contribution is currently exposed when the user opens a context menu on a concrete table node in the Sidebar Tree. DBX invokes the required backend entrypoint as `contextMenu/<contribution-id>` with the table identity:
+
+```json
+{
+  "table": {
+    "connectionId": "connection-id",
+    "database": "example",
+    "schema": "public",
+    "table": "users"
+  }
+}
+```
+
+`database` and `schema` are optional and are omitted when unavailable. The context contains no credential, connection string, or raw connection configuration. Object Browser can reuse this identity contract in a later contribution surface, but it is not a table menu surface in this release.
 
 Reference contributions by ID: a connection provider's `workbench` must point to a declared workbench and `filesystem_provider` to a declared filesystem provider. A contribution icon takes precedence over the plugin-level icon.
 
