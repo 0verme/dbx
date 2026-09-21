@@ -1644,6 +1644,12 @@ export default withEnglishFallback({
       pasteClipboardReadFailed: "Impossibile leggere gli appunti: {message}",
       convertNamingStyle: "Cambia stile di denominazione",
     },
+    gotoLine: {
+      placeholder: "Numero di riga",
+      total: "{total} righe",
+      outOfRange: "Inserisci un numero di riga tra 1 e {total}",
+      empty: "Inserisci un numero di riga",
+    },
     search: {
       find: "Trova",
       replace: "Sostituisci",
@@ -7364,6 +7370,7 @@ export default withEnglishFallback({
     shortcutExecuteSql: "Esegui SQL",
     shortcutExecuteSqlInNewResultTab: "Esegui SQL in una nuova scheda dei risultati",
     shortcutFind: "Trova",
+    shortcutGotoLine: "Vai alla riga",
     shortcutReplace: "Sostituisci",
     shortcutSaveSql: "Salva SQL",
     shortcutAcceptCompletion: "Accetta completamento",
