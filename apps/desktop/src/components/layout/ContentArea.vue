@@ -1077,7 +1077,7 @@ function openPluginResultView(pluginId: string, contributionId: string, label: s
     context: {
       connectionId: props.activeTab.connectionId || "",
       database: props.activeTab.database || "",
-      sql: props.activeTab.sql,
+      sql: resultSqlForGrid(props.activeTab),
       result: { columns: result.columns, rows: cappedRows, truncated: result.rows.length > cappedRows.length },
     },
   });
