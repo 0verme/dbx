@@ -136,6 +136,7 @@ import { createHoverSearch, type HoverSearchController } from "@/lib/editor/sqlH
 import { lineColumnToOffset, sqlErrorDecorationRange as resolveSqlErrorDecorationRange, sqlErrorSqlMatchesEditor } from "@/lib/sql/sqlDiagnostics";
 import { analyzeMysqlRoutineSyntax, supportsMysqlRoutineSyntaxDiagnostics } from "@/lib/sql/mysqlRoutineSyntaxDiagnostics";
 import { buildOracleSyntaxDiagnostics } from "@/lib/sql/oracleSyntaxDiagnostics";
+import { buildSqlServerRoutineSyntaxDiagnostics } from "@/lib/sql/sqlServerRoutineSyntaxDiagnostics";
 import {
   DBX_TABLE_REFERENCE_MIME,
   DBX_TABLE_REFERENCE_DROP_EVENT,
@@ -185,6 +186,7 @@ import { startsQueryEditorRectangularSelection, startsQueryEditorSelectionDrag, 
 import { LARGE_PASTE_HISTORY_USER_EVENT, normalizeQueryEditorPasteText, recoverableNativePasteSuffix, shouldRecoverLargeTauriPaste } from "@/lib/editor/queryEditorLargePaste";
 import { queryEditorClipboardPasteChange } from "@/lib/editor/queryEditorClipboardPaste";
 import { computePasteCaretResyncTarget } from "@/lib/editor/queryEditorPasteCaretResync";
+import { needsDiagnosticCaretReanchor } from "@/lib/editor/queryEditorDiagnosticCaretAnchor";
 import { queryEditorCommentTokens, queryEditorLineCommentToken, queryEditorWordLanguageData } from "@/lib/editor/queryEditorLineComment";
 import { createShellLineCommentHighlight } from "@/lib/editor/codemirrorShellLineCommentHighlight";
 import { extendQueryEditorSelection, runQueryEditorAltExtendSelection } from "@/lib/editor/queryEditorExtendSelection";
@@ -216,6 +218,7 @@ import {
   isSqlVirtualTableReference,
   shouldRunSqlSemanticDiagnostics,
   sqlSemanticDiagnosticRangesForViewport,
+  sqlServerRoutineDefinitionRangesForViewport,
   tableReferenceKey,
   type SqlSemanticDiagnostic,
 } from "@/lib/sql/semantic/diagnostics";
@@ -3690,18 +3693,49 @@ function sqlSemanticDecorationRanges(currentState: import("@codemirror/state").E
     );
 }
 
+// Mirrors CodeMirror's own root handling: shadow roots only expose
+// `getSelection` on some browsers, otherwise the owner document holds it.
+function editorRootSelection(currentView: EditorViewType): Selection | null {
+  const root = currentView.root as unknown as ShadowRoot & { getSelection?: () => Selection | null };
+  if (root.nodeType !== 11) return (root as unknown as Document).getSelection();
+  if (typeof root.getSelection === "function") return root.getSelection() ?? null;
+  return root.ownerDocument?.getSelection() ?? null;
+}
+
+// See queryEditorDiagnosticCaretAnchor.ts for why the browser caret needs re-anchoring.
+function reanchorCaretAfterDiagnostics(currentView: EditorViewType) {
+  const selection = currentView.state.selection;
+  const target = selection.ranges.length === 1 && selection.main.empty ? currentView.domAtPos(selection.main.head) : null;
+  const domSelection = editorRootSelection(currentView);
+  const reanchor = needsDiagnosticCaretReanchor({
+    hasFocus: currentView.hasFocus,
+    composing: currentView.composing,
+    domRangeCount: domSelection?.rangeCount ?? 0,
+    currentAnchorNode: domSelection?.anchorNode ?? null,
+    currentAnchorOffset: domSelection?.anchorOffset ?? 0,
+    targetNode: target?.node ?? null,
+    targetOffset: target?.offset ?? 0,
+  });
+  if (!reanchor || !domSelection || !target) return;
+  domSelection.collapse(target.node, target.offset);
+}
+
 function reconfigureDiagnostics() {
-  if (!view.value) return;
+  const currentView = view.value;
+  if (!currentView) return;
   if (setSqlDiagnosticsEffect) {
-    view.value.dispatch({
+    currentView.dispatch({
       effects: setSqlDiagnosticsEffect.of(semanticDiagnostics),
     });
-    return;
+  } else {
+    if (!diagnosticComp || !buildSqlDiagnosticExtension) return;
+    currentView.dispatch({
+      effects: diagnosticComp.reconfigure(buildSqlDiagnosticExtension()),
+    });
   }
-  if (!diagnosticComp || !buildSqlDiagnosticExtension) return;
-  view.value.dispatch({
-    effects: diagnosticComp.reconfigure(buildSqlDiagnosticExtension()),
-  });
+  // Diagnostic decorations re-parent the DOM text nodes around the caret; put the
+  // browser's insertion point back on the caret before the next keystroke (#9480).
+  reanchorCaretAfterDiagnostics(currentView);
 }
 
 function setSemanticDiagnostics(next: SqlSemanticDiagnostic[]) {
@@ -3908,7 +3942,11 @@ async function refreshSemanticDiagnostics(options: { preserveOutsideRanges?: boo
     executableStatementRangeCache = executableStatementRangeCacheForDoc(executableStatementRangeCache, currentView.state.doc, props.databaseType, sqlStatementParameterOptions());
   }
   const diagnosticRanges = sqlSemanticDiagnosticRangesForViewport(sql, visibleRanges, props.databaseType, props.databaseType === "sqlserver" ? undefined : executableStatementRangeCache?.ranges, sqlStatementParameterOptions());
-  if (diagnosticRanges.length === 0) {
+  // SQL Server routine batches are excluded from `diagnosticRanges` (see
+  // `sqlServerRoutineDefinitionRangesForViewport`), so they are recomputed here
+  // and stay part of the replaced range set below.
+  const sqlServerRoutineRanges = props.databaseType === "sqlserver" ? sqlServerRoutineDefinitionRangesForViewport(sql, visibleRanges) : [];
+  if (diagnosticRanges.length === 0 && sqlServerRoutineRanges.length === 0) {
     if (!options.preserveOutsideRanges) setSemanticDiagnostics([]);
     return;
   }
@@ -3921,6 +3959,12 @@ async function refreshSemanticDiagnostics(options: { preserveOutsideRanges?: boo
       return !!diagnosticRange && diagnosticRanges.some((range) => rangesOverlap(diagnosticRange, range));
     }),
   );
+  // The analyzer never sees routine batches (the MsSql grammar cannot parse their
+  // parameter list), so run the token-based routine syntax rules instead of leaving
+  // a stored procedure without any check at all (dbx#9315).
+  for (const range of sqlServerRoutineRanges) {
+    nextDiagnostics.push(...offsetSqlSemanticDiagnostics(buildSqlServerRoutineSyntaxDiagnostics(range.sql, props.databaseType), range, sql));
+  }
   const mysqlRoutineAnalysis = props.databaseType === "mysql" && supportsMysqlRoutineSyntaxDiagnostics(sqlDriverProfile.value) ? analyzeMysqlRoutineSyntax(sql) : null;
   if (mysqlRoutineAnalysis) {
     nextDiagnostics.push(
@@ -3986,7 +4030,7 @@ async function refreshSemanticDiagnostics(options: { preserveOutsideRanges?: boo
     }
   }
   if (options.preserveOutsideRanges) {
-    replaceSemanticDiagnosticsInRanges(nextDiagnostics, diagnosticRanges, sql);
+    replaceSemanticDiagnosticsInRanges(nextDiagnostics, [...diagnosticRanges, ...sqlServerRoutineRanges], sql);
   } else {
     setSemanticDiagnostics(nextDiagnostics.sort(compareSqlSemanticDiagnostics));
   }
