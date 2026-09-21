@@ -373,7 +373,7 @@ function scheduleDdlEditorInit() {
 function formatDdlForDisplay(sql: string, dialect: SqlFormatDialect, generated = false): string {
   const unqualified = applyDdlDatabaseQualifier(sql, dialect, databaseType.value, settingsStore.editorSettings.generateSqlIncludeDatabaseName, props.database, props.catalog);
   if (settingsStore.editorSettings.generateSqlQuoteIdentifiers) return unqualified;
-  return generated ? formatGeneratedDdlIdentifierQuotes(unqualified, dialect, false) : omitDdlIdentifierQuotes(unqualified, dialect);
+  return generated ? formatGeneratedDdlIdentifierQuotes(unqualified, dialect, false, { preserveCaseSensitiveIdentifiers: tableStoresCaseSensitiveIdentifiers.value }) : omitDdlIdentifierQuotes(unqualified, dialect);
 }
 
 function ddlRequest() {
@@ -1165,6 +1165,26 @@ const triggerEventOptions = ["INSERT", "UPDATE", "DELETE"];
 const metadataSchema = computed(() => connectionObjectTreeQuerySchema(connection.value, props.database, props.schema));
 const refreshVersion = computed(() => (props.connectionId && props.tableName ? queryStore.tableStructureRefreshVersion(props.connectionId, props.database, props.schema, props.tableName) : 0));
 const isCreateMode = computed(() => !props.tableName);
+/**
+ * Whether the edited table already stores a lowercase or mixed-case identifier.
+ * Oracle folds bare identifiers to uppercase, so dequoting such a name points at
+ * a column that does not exist (`CNAME` instead of `"cName"`, ORA-00904) or
+ * silently creates a differently-cased column for a newly added field (#9649).
+ * Tables whose names are all in the dialect's default case keep the
+ * PL/SQL-Developer-style folding requested in #8997.
+ */
+const tableStoresCaseSensitiveIdentifiers = computed(() => {
+  if (isCreateMode.value) return false;
+  const databaseInfo = connection.value?.database_info;
+  const requiresQuotesForIdentity = (name: string | null | undefined) => !!name && tableStructureIdentifierComparisonKey(name, databaseType.value, databaseInfo).startsWith("quoted:");
+  // 外键的引用侧（被引用 schema/表/列）与约束名一样进入生成的 REFERENCES
+  // 子句，同样需要纳入大小写敏感扫描，否则会被折叠改写身份。
+  const foreignKeyIdentifiers = foreignKeys.value.flatMap((foreignKey) => {
+    const original = foreignKey.original;
+    return original ? [original.name, original.ref_schema, original.ref_table, original.ref_column] : [];
+  });
+  return [props.tableName, ...columns.value.map((column) => column.original?.name), ...indexes.value.map((index) => index.original?.name), ...foreignKeyIdentifiers, ...triggers.value.map((trigger) => trigger.original?.name)].some(requiresQuotesForIdentity);
+});
 const usesSqliteRebuildStrategy = computed(() => !isCreateMode.value && structureCapabilities.value.alterStrategy === "sqlite-rebuild");
 const hasSqliteTypeChange = computed(() => usesSqliteRebuildStrategy.value && hasExistingColumnTypeChange(columns.value));
 const canAddColumn = computed(() => canAddTableStructureColumn(databaseType.value, isCreateMode.value));
