@@ -230,9 +230,22 @@ fn strip_trailing_semicolons(sql: &str) -> String {
 
 fn is_safe_explain_source(sql: &str) -> bool {
     let source = strip_sql_comments(sql).trim_start().to_lowercase();
-    ["select", "with", "table", "values"].iter().any(|keyword| {
-        source == *keyword || source.starts_with(&format!("{keyword} ")) || source.starts_with(&format!("{keyword}\n"))
-    })
+    ["select", "with", "table", "values"].iter().any(|keyword| starts_with_explain_keyword_boundary(&source, keyword))
+}
+
+fn starts_with_explain_keyword_boundary(source: &str, keyword: &str) -> bool {
+    let Some(remainder) = source.strip_prefix(keyword) else {
+        return false;
+    };
+
+    match remainder.chars().next() {
+        None => true,
+        Some(character) if character.is_ascii_alphanumeric() || matches!(character, '_' | '$') => false,
+        // The safety gate permits ASCII whitespace and punctuation after the
+        // leading keyword, but fails closed for non-ASCII continuation chars.
+        Some(character) if character.is_ascii() => true,
+        Some(_) => false,
+    }
 }
 
 fn is_safe_oracle_explain_dml_source(sql: &str) -> bool {
@@ -1058,6 +1071,45 @@ mod tests {
                 reason: None,
             }
         );
+    }
+
+    #[test]
+    fn builds_postgres_explain_sql_for_keyword_boundaries() {
+        for sql in [
+            "SELECT* FROM users",
+            "SELECT\t* FROM users",
+            "SELECT(1)",
+            "VALUES(1)",
+            "SELECT\r\n*\r\nFROM users",
+            "TABLE users",
+        ] {
+            assert_eq!(
+                build_explain_sql(ExplainSqlOptions {
+                    database_type: Some(DatabaseType::Postgres),
+                    format: None,
+                    analyze: None,
+                    sql: sql.to_string(),
+                }),
+                ExplainSqlBuildResult { ok: true, sql: Some(format!("EXPLAIN (FORMAT JSON) {sql}")), reason: None },
+                "expected safe EXPLAIN source: {sql:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_explain_keyword_identifier_prefixes() {
+        for sql in ["SELECTED", "SELECT_foo", "SELECT$foo", "SELECT1", "VALUES_foo", "VALUES1"] {
+            assert_eq!(
+                build_explain_sql(ExplainSqlOptions {
+                    database_type: Some(DatabaseType::Postgres),
+                    format: None,
+                    analyze: None,
+                    sql: sql.to_string(),
+                }),
+                ExplainSqlBuildResult { ok: false, sql: None, reason: Some("unsafe".to_string()) },
+                "expected unsafe EXPLAIN source: {sql:?}"
+            );
+        }
     }
 
     #[test]
