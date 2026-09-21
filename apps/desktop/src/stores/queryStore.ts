@@ -3500,16 +3500,24 @@ export const useQueryStore = defineStore("query", () => {
     return undefined;
   }
 
-  function openPluginWorkbench(pluginId: string, contributionId: string, options: { title?: string; connectionId?: string; database?: string; context?: Record<string, unknown>; forceNew?: boolean } = {}) {
+  function openPluginWorkbench(pluginId: string, contributionId: string, options: { title?: string; connectionId?: string; database?: string; context?: Record<string, unknown>; forceNew?: boolean; refreshContextOnReuse?: boolean } = {}) {
     const contextConnectionId = typeof options.context?.connectionId === "string" ? options.context.connectionId : "";
     const connectionId = options.connectionId || contextConnectionId;
     if (!options.forceNew) {
       const existing = tabs.value.find((tab) => tab.mode === "plugin-workbench" && tab.pluginWorkbench?.pluginId === pluginId && tab.pluginWorkbench?.contributionId === contributionId && pluginTabConnectionId(tab) === connectionId);
       if (existing) {
-        // Reopening surfaces the existing tab as-is. Replacing the context
-        // here (openPluginConnection mints a fresh workbenchId per click)
-        // would deep-reload the plugin webview — a full flash plus losing
-        // the sidecar session binding on the old workbench id.
+        if (options.refreshContextOnReuse && options.context) {
+          existing.pluginWorkbench = {
+            ...existing.pluginWorkbench!,
+            context: snapshotPluginWorkbenchContext(options.context),
+          };
+        }
+        // Reopening normally surfaces the existing tab as-is. Replacing the
+        // context here by default (openPluginConnection mints a fresh
+        // workbenchId per click) would deep-reload the plugin webview — a full
+        // flash plus losing the sidecar session binding on the old workbench
+        // id. Stateless surfaces such as result-view can explicitly opt into
+        // a context refresh without changing the tab identity.
         // A tab created by an older build (or otherwise unregistered) may
         // still be ownerless; land it in the workspace or the group-rendered
         // tab strips can never show it.

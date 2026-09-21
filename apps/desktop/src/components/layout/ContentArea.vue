@@ -1080,6 +1080,7 @@ function openPluginResultView(pluginId: string, contributionId: string, label: s
       sql: resultSqlForGrid(props.activeTab),
       result: { columns: result.columns, rows: cappedRows, truncated: result.rows.length > cappedRows.length },
     },
+    refreshContextOnReuse: true,
   });
 }
 
