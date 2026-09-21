@@ -3494,6 +3494,12 @@ export const useQueryStore = defineStore("query", () => {
     return typeof contextConnectionId === "string" ? contextConnectionId : "";
   }
 
+  function pluginTabPluginId(tab: QueryTab): string | undefined {
+    if (tab.mode === "plugin-workbench") return tab.pluginWorkbench?.pluginId;
+    if (tab.mode === "plugin-filesystem") return tab.pluginFilesystem?.pluginId;
+    return undefined;
+  }
+
   function openPluginWorkbench(pluginId: string, contributionId: string, options: { title?: string; connectionId?: string; database?: string; context?: Record<string, unknown>; forceNew?: boolean } = {}) {
     const contextConnectionId = typeof options.context?.connectionId === "string" ? options.context.connectionId : "";
     const connectionId = options.connectionId || contextConnectionId;
@@ -3962,15 +3968,25 @@ export const useQueryStore = defineStore("query", () => {
 
   const pluginReleaseInFlight = new Set<string>();
   /**
-   * Closing the last plugin tab (workbench or filesystem) bound to a plugin
-   * connection ends that connection: the sidecar session has no remaining
-   * owner, so disconnecting tears the pool down and drops the sidebar's
-   * "connected" dot. Fire-and-forget; concurrent releases for the same
-   * connection coalesce, and a reopen racing the release wins.
+   * Closing the last plugin tab only releases a connection explicitly owned by
+   * the plugin that closed it. Workbench/filesystem tabs can borrow a Host-owned
+   * connection, so a connectionId reference alone is never enough to disconnect.
+   * Fire-and-forget; concurrent releases for the same connection coalesce, and
+   * a reopen racing the release wins.
    */
   function releasePluginConnectionsAfterClose(closedTabs: ReadonlyArray<QueryTab>) {
-    const connectionIds = new Set(closedTabs.filter((tab) => (tab.mode === "plugin-workbench" || tab.mode === "plugin-filesystem") && tab.connectionId).map((tab) => tab.connectionId));
-    for (const connectionId of connectionIds) {
+    const closedPluginTabsByConnection = new Map<string, Set<string>>();
+    for (const tab of closedTabs) {
+      if (tab.mode !== "plugin-workbench" && tab.mode !== "plugin-filesystem") continue;
+      const connectionId = pluginTabConnectionId(tab);
+      const pluginId = pluginTabPluginId(tab);
+      if (!connectionId || !pluginId) continue;
+      const pluginIds = closedPluginTabsByConnection.get(connectionId) ?? new Set<string>();
+      pluginIds.add(pluginId);
+      closedPluginTabsByConnection.set(connectionId, pluginIds);
+    }
+
+    for (const [connectionId, closedPluginIds] of closedPluginTabsByConnection) {
       if (pluginReleaseInFlight.has(connectionId)) continue;
       pluginReleaseInFlight.add(connectionId);
       void (async () => {
@@ -3978,8 +3994,12 @@ export const useQueryStore = defineStore("query", () => {
           // Yield one microtask so a same-tick reopen registers its
           // replacement plugin tab before we tear the connection down.
           await Promise.resolve();
-          if (tabs.value.some((tab) => (tab.mode === "plugin-workbench" || tab.mode === "plugin-filesystem") && tab.connectionId === connectionId)) return;
+          if (tabs.value.some((tab) => (tab.mode === "plugin-workbench" || tab.mode === "plugin-filesystem") && pluginTabConnectionId(tab) === connectionId)) return;
           const connectionStore = useConnectionStore();
+          const config = connectionStore.getConfig(connectionId);
+          // A connection reference is not ownership: only a plugin-backed
+          // connection closed by its owning plugin may be auto-released.
+          if (config?.db_type !== "plugin" || !config.plugin_id || !closedPluginIds.has(config.plugin_id)) return;
           // A user-initiated disconnect that closed these tabs already owns
           // the teardown — don't stack a second one on top of it.
           if (connectionStore.hasDisconnectInFlight(connectionId)) return;
@@ -6856,6 +6876,7 @@ export const useQueryStore = defineStore("query", () => {
                   database: currentDatabase,
                 });
                 const stats = await api.mongoCollectionStats(executionConnectionId, currentDatabase, mongoCommand.collection, mongoCommand.scale, executionId);
+                // SAFETY: The backend returns collection statistics as a JSON object; the API type is broader than the converter's record-shaped input.
                 allResults.push(markQueryResultRowsRaw(annotateMongoResult(mongoCollectionStatsToQueryResult(mongoCommand.metric, stats as unknown as Record<string, unknown>, performance.now() - commandStartedAt))));
                 mongoEditTarget = undefined;
                 queryExecutionLog("info", "mongo-collection-stats:done", {
