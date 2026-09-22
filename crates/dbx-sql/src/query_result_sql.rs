@@ -449,10 +449,20 @@ pub fn build_sorted_query_sql(options: SortedQuerySqlOptions) -> QuerySqlBuildRe
         return err("not_select");
     }
 
+    let uses_hive_subquery_syntax =
+        matches!(options.database_type, Some(DatabaseType::Argo | DatabaseType::Hive | DatabaseType::Impala));
+    if uses_hive_subquery_syntax {
+        let mut column_names = HashSet::new();
+        if options.result_columns.iter().any(|column| !column_names.insert(column.to_lowercase())) {
+            return err("unsupported");
+        }
+    }
+
     let aliases = build_derived_column_aliases(&options.result_columns);
     // Caché/IRIS rejects derived-table column alias lists (`t(col, col)`)
     // outright (SQLCODE -25), regardless of delimited-identifier support.
-    let use_derived_column_aliases = options.database_type != Some(DatabaseType::Mysql)
+    let use_derived_column_aliases = !uses_hive_subquery_syntax
+        && options.database_type != Some(DatabaseType::Mysql)
         && options.database_type != Some(DatabaseType::ClickHouse)
         // Doris accepts the derived-table alias but not its column-name list.
         && options.database_type != Some(DatabaseType::Doris)
@@ -5233,6 +5243,175 @@ WHERE u.id = picked.id;
         });
 
         assert_eq!(result.sql.unwrap(), "SELECT * FROM (SELECT * FROM admin LIMIT 100) t ORDER BY `login_name` ASC;");
+    }
+
+    #[test]
+    fn hive_family_sort_uses_derived_table_alias_without_column_list() {
+        for database_type in [DatabaseType::Argo, DatabaseType::Hive, DatabaseType::Impala] {
+            for direction in [QuerySortDirection::Asc, QuerySortDirection::Desc] {
+                let result = build_sorted_query_sql(SortedQuerySqlOptions {
+                    original_sql: "SELECT id, name FROM users;".to_string(),
+                    database_type: Some(database_type),
+                    result_columns: vec!["id".to_string(), "name".to_string()],
+                    column_index: 1,
+                    column: "name".to_string(),
+                    direction,
+                });
+
+                assert_eq!(
+                    result,
+                    ok(format!("SELECT * FROM (SELECT id, name FROM users) t ORDER BY `name` {};", direction.as_sql())),
+                    "{database_type:?} {direction:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hive_family_sort_preserves_star_queries_and_existing_ordering() {
+        for database_type in [DatabaseType::Argo, DatabaseType::Hive, DatabaseType::Impala] {
+            let result = build_sorted_query_sql(SortedQuerySqlOptions {
+                original_sql: " SELECT * FROM users WHERE active = 1 ORDER BY name DESC LIMIT 100; ".to_string(),
+                database_type: Some(database_type),
+                result_columns: vec!["id".to_string(), "name".to_string()],
+                column_index: 0,
+                column: "id".to_string(),
+                direction: QuerySortDirection::Asc,
+            });
+
+            assert_eq!(
+                result,
+                ok("SELECT * FROM (SELECT * FROM users WHERE active = 1 ORDER BY name DESC LIMIT 100) t ORDER BY `id` ASC;".to_string()),
+                "{database_type:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hive_family_sort_quotes_result_aliases_without_renaming_them() {
+        for database_type in [DatabaseType::Argo, DatabaseType::Hive, DatabaseType::Impala] {
+            for (column, quoted_column) in [
+                ("display_name", "`display_name`"),
+                ("order", "`order`"),
+                ("display name", "`display name`"),
+                ("a.b", "`a.b`"),
+                ("姓名", "`姓名`"),
+                ("user`name", "`user``name`"),
+                ("\"name\"", "`\"name\"`"),
+            ] {
+                let original_sql = format!("SELECT id, name AS {quoted_column} FROM users");
+                let result = build_sorted_query_sql(SortedQuerySqlOptions {
+                    original_sql: original_sql.clone(),
+                    database_type: Some(database_type),
+                    result_columns: vec!["id".to_string(), column.to_string()],
+                    column_index: 1,
+                    column: "name".to_string(),
+                    direction: QuerySortDirection::Desc,
+                });
+
+                assert_eq!(
+                    result,
+                    ok(format!("SELECT * FROM ({original_sql}) t ORDER BY {quoted_column} DESC;")),
+                    "{database_type:?} {column:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hive_family_sort_falls_back_to_requested_column_for_out_of_range_index() {
+        for database_type in [DatabaseType::Argo, DatabaseType::Hive, DatabaseType::Impala] {
+            for result_columns in [vec!["id".to_string(), "display name".to_string()], Vec::new()] {
+                let result = build_sorted_query_sql(SortedQuerySqlOptions {
+                    original_sql: "SELECT id, name AS `display name` FROM users".to_string(),
+                    database_type: Some(database_type),
+                    result_columns,
+                    column_index: usize::MAX,
+                    column: "display name".to_string(),
+                    direction: QuerySortDirection::Asc,
+                });
+
+                assert_eq!(
+                    result,
+                    ok("SELECT * FROM (SELECT id, name AS `display name` FROM users) t ORDER BY `display name` ASC;"
+                        .to_string()),
+                    "{database_type:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hive_family_sort_rejects_duplicate_derived_column_names_without_using_ordinals() {
+        for database_type in [DatabaseType::Argo, DatabaseType::Hive, DatabaseType::Impala] {
+            for result_columns in [["id", "id", "name"], ["ID", "id", "name"], ["姓名", "姓名", "name"]] {
+                for column_index in [0, 1, 2, usize::MAX] {
+                    let result = build_sorted_query_sql(SortedQuerySqlOptions {
+                        original_sql: "SELECT a.id, b.id, a.name FROM a JOIN b ON a.id = b.id".to_string(),
+                        database_type: Some(database_type),
+                        result_columns: result_columns.iter().map(|column| column.to_string()).collect(),
+                        column_index,
+                        column: "name".to_string(),
+                        direction: QuerySortDirection::Desc,
+                    });
+
+                    assert_eq!(result, err("unsupported"), "{database_type:?} {result_columns:?} {column_index}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hive_family_sort_preserves_statement_rejection_boundaries() {
+        for database_type in [DatabaseType::Argo, DatabaseType::Hive, DatabaseType::Impala] {
+            for (original_sql, reason) in [
+                ("", "empty"),
+                (" \n\t", "empty"),
+                (";", "empty"),
+                ("SELECT 1; SELECT 2;", "multi"),
+                ("WITH cte AS (SELECT 1 AS id) SELECT id FROM cte", "with"),
+                ("SHOW TABLES", "not_select"),
+                ("UPDATE users SET id = 2", "not_select"),
+            ] {
+                let result = build_sorted_query_sql(SortedQuerySqlOptions {
+                    original_sql: original_sql.to_string(),
+                    database_type: Some(database_type),
+                    result_columns: vec!["id".to_string()],
+                    column_index: 0,
+                    column: "id".to_string(),
+                    direction: QuerySortDirection::Asc,
+                });
+
+                assert_eq!(result, err(reason), "{database_type:?} {original_sql:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn hive_family_sort_fix_preserves_other_dialects_column_alias_lists() {
+        for (database_type, expected_suffix) in [
+            (None, "t(\"id\", \"id_2\") ORDER BY \"id_2\" DESC;"),
+            (Some(DatabaseType::Jdbc), "t(id, id_2) ORDER BY id_2 DESC;"),
+            (Some(DatabaseType::Postgres), "t(\"id\", \"id_2\") ORDER BY \"id_2\" DESC;"),
+            (Some(DatabaseType::Spark), "t(`id`, `id_2`) ORDER BY `id_2` DESC;"),
+            (Some(DatabaseType::Kyuubi), "t(`id`, `id_2`) ORDER BY `id_2` DESC;"),
+            (Some(DatabaseType::Databricks), "t(`id`, `id_2`) ORDER BY `id_2` DESC;"),
+        ] {
+            let result = build_sorted_query_sql(SortedQuerySqlOptions {
+                original_sql: "SELECT a.id, b.id FROM a JOIN b ON a.id = b.id".to_string(),
+                database_type,
+                result_columns: vec!["id".to_string(), "id".to_string()],
+                column_index: 1,
+                column: "id".to_string(),
+                direction: QuerySortDirection::Desc,
+            });
+
+            assert_eq!(
+                result,
+                ok(format!("SELECT * FROM (SELECT a.id, b.id FROM a JOIN b ON a.id = b.id) {expected_suffix}")),
+                "{database_type:?}"
+            );
+        }
     }
 
     #[test]
