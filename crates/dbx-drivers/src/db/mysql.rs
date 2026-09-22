@@ -1478,10 +1478,12 @@ fn mysql_group_concat_setup_fallback_mode(setup_mode: MySqlSetupMode, error: &st
     }
 
     let lower = error.to_ascii_lowercase();
+    let compact: String = lower.chars().filter(|character| !character.is_ascii_whitespace()).collect();
     let setup_query_rejected = lower.contains("1193")
         || lower.contains("unknown system variable")
         || lower.contains("syntax error")
         || lower.contains("not supported");
+    let setup_value_rejected = lower.contains("error 1231") && lower.contains("can't be set to");
     // SphinxQL / Manticore reject the built-in `group_concat_max_len` setup with a
     // boolean-typed 1064 error. The quoted token after `near` depends on the exact
     // statement text, so accept any boolean rejection from SphinxQL that mentions
@@ -1493,14 +1495,12 @@ fn mysql_group_concat_setup_fallback_mode(setup_mode: MySqlSetupMode, error: &st
     // changes as a forbidden global-variable operation.
     let gateway_session_variable_rejected =
         lower.contains("error 10192 (hy000)") && lower.contains("set global variables is forbidden");
-    // Error echoes of the floor statement always carry the variable name — a
-    // full-statement echo contains it verbatim, and a token quote like
-    // `near 'cast(greatest(...)'` spans the rest of the statement after the
-    // failing token, so the name is still present. Matching on the name alone
-    // keeps user-supplied `sessionVariables` that merely contain `cast(` from
-    // triggering a spurious Standard→Compatible retry.
-    let floor_statement_rejected = lower.contains("group_concat_max_len");
-    if (floor_statement_rejected && setup_query_rejected)
+    // Most error echoes carry the variable name. Doris 2.0 may instead trim the
+    // expression to its tail, so recognize that exact built-in floor signature
+    // without broadly matching user-supplied `cast(` expressions.
+    let floor_statement_rejected = lower.contains("group_concat_max_len")
+        || compact.contains(&format!("..._len,{MYSQL_GROUP_CONCAT_MAX_LEN})asunsigned)"));
+    if (floor_statement_rejected && (setup_query_rejected || setup_value_rejected))
         || sphinxql_setup_query_rejected
         || gateway_session_variable_rejected
     {
@@ -8149,6 +8149,16 @@ mod tests {
     }
 
     #[test]
+    fn mysql_group_concat_doris_truncated_syntax_error_retries_without_session_variable() {
+        let error = "MySQL connection failed: Server error: `ERROR 1105 (HY000): errCode = 2, detailMessage = Syntax error in line 1:\n..._len,1048576) as unsigned)\n                       ^\nEncountered: )\nExpected: '";
+
+        assert_eq!(
+            mysql_group_concat_setup_fallback_mode(MySqlSetupMode::Standard, error),
+            Some(MySqlSetupMode::Compatible)
+        );
+    }
+
+    #[test]
     fn mysql_legacy_charset_fallback_retries_with_utf8_for_old_servers() {
         let error = "MySQL connection failed: Server error: `ERROR 1115 (42000): Unknown character set: 'utf8mb4''";
 
@@ -8316,6 +8326,16 @@ mod tests {
     }
 
     #[test]
+    fn mysql_group_concat_polardbx_value_error_retries_without_session_variable() {
+        let error = "MySQL connection failed: Server error: `ERROR 1231 (HY000): [trace][host][polardbx]Variable group_concat_max_len can't be set to the value of CAST(GREATEST(@@GROUP_CONCAT_MAX_LEN, 1048576) AS UNSIGNED)'";
+
+        assert_eq!(
+            mysql_group_concat_setup_fallback_mode(MySqlSetupMode::Standard, error),
+            Some(MySqlSetupMode::Compatible)
+        );
+    }
+
+    #[test]
     fn mysql_gateway_forbidden_global_variables_error_retries_without_session_variable() {
         let error = "MySQL connection failed: Server error: `ERROR 10192 (HY000): SET GLOBAL VARIABLES is forbidden'";
 
@@ -8382,6 +8402,13 @@ mod tests {
             mysql_group_concat_setup_fallback_mode(
                 MySqlSetupMode::Standard,
                 "MySQL connection failed: Server error: `ERROR 07000 (1105): SQL操作失败 (operate fail)'",
+            ),
+            None
+        );
+        assert_eq!(
+            mysql_group_concat_setup_fallback_mode(
+                MySqlSetupMode::Standard,
+                "MySQL connection failed: Server error: `ERROR 1105 (HY000): Syntax error near ..._len,2097152) as unsigned)'",
             ),
             None
         );
