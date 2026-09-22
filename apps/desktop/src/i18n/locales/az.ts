@@ -2033,6 +2033,8 @@ export default withEnglishFallback({
     localFiltersActive: "{count} yerli dəyər süzgəci",
     localFilterMoreValues: " +{count} əlavə",
     columnVisibility: "Sütunlar",
+    autoFitColumnWidths: "Məzmuna uyğunlaşdır",
+    autoFitColumnWidthsHint: "Bütün görünən sütunları xana məzmununa uyğun ölçüləndirir. Sonra da sütun kənarını sürükləyə bilərsiniz.",
     columnVisibilityHint: "Ən azı bir sütun görünən qalır.",
     columnReorderHint: "Sütunların sırasını dəyişmək üçün sürükləyin.",
     columnReorderSearchHint: "Sütunların sırasını dəyişmək üçün axtarışı təmizləyin.",
