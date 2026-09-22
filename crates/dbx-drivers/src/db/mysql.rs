@@ -1484,6 +1484,11 @@ fn mysql_group_concat_setup_fallback_mode(setup_mode: MySqlSetupMode, error: &st
         || lower.contains("syntax error")
         || lower.contains("not supported");
     let setup_value_rejected = lower.contains("error 1231") && lower.contains("can't be set to");
+    // Gaea tries to parse the built-in floor expression as an integer literal.
+    let gaea_setup_expression_rejected = lower.contains("error 1105 (hy000)")
+        && compact.contains(&format!(
+            "strconv.parseint:parsing\"cast(greatest(@@session.group_concat_max_len,{MYSQL_GROUP_CONCAT_MAX_LEN})asunsigned)\":invalidsyntax"
+        ));
     // SphinxQL / Manticore reject the built-in `group_concat_max_len` setup with a
     // boolean-typed 1064 error. The quoted token after `near` depends on the exact
     // statement text, so accept any boolean rejection from SphinxQL that mentions
@@ -1501,6 +1506,7 @@ fn mysql_group_concat_setup_fallback_mode(setup_mode: MySqlSetupMode, error: &st
     let floor_statement_rejected = lower.contains("group_concat_max_len")
         || compact.contains(&format!("..._len,{MYSQL_GROUP_CONCAT_MAX_LEN})asunsigned)"));
     if (floor_statement_rejected && (setup_query_rejected || setup_value_rejected))
+        || gaea_setup_expression_rejected
         || sphinxql_setup_query_rejected
         || gateway_session_variable_rejected
     {
@@ -8333,6 +8339,30 @@ mod tests {
             mysql_group_concat_setup_fallback_mode(MySqlSetupMode::Standard, error),
             Some(MySqlSetupMode::Compatible)
         );
+    }
+
+    #[test]
+    fn mysql_group_concat_gaea_parse_int_error_retries_without_session_variable() {
+        let error = "MySQL connection failed: Server error: `ERROR 1105 (HY000): strconv.ParseInt: parsing \"cast(greatest(@@session.group_concat_max_len, 1048576) as unsigned)\": invalid syntax'";
+
+        assert_eq!(
+            mysql_group_concat_setup_fallback_mode(MySqlSetupMode::Standard, error),
+            Some(MySqlSetupMode::Compatible)
+        );
+        assert_eq!(mysql_group_concat_setup_fallback_mode(MySqlSetupMode::Compatible, error), None);
+    }
+
+    #[test]
+    fn mysql_group_concat_gaea_parse_int_retry_requires_builtin_expression() {
+        for error in [
+            "Server error: `ERROR 1105 (HY000): strconv.ParseInt: parsing \"cast(greatest(@@session.group_concat_max_len, 2097152) as unsigned)\": invalid syntax'",
+            "Server error: `ERROR 1105 (HY000): strconv.ParseInt: parsing \"cast(greatest(@@session.sql_mode, 1048576) as unsigned)\": invalid syntax'",
+            "Server error: `ERROR 1105 (HY000): strconv.ParseInt: parsing \"cast(greatest(@@session.group_concat_max_len, 1048576) as unsigned)\": invalid value'",
+            "Server error: `ERROR 1105 (HY000): strconv.ParseInt: parsing \"1048576\": invalid syntax'",
+            "Server error: `ERROR 1231 (HY000): strconv.ParseInt: parsing \"cast(greatest(@@session.group_concat_max_len, 1048576) as unsigned)\": invalid syntax'",
+        ] {
+            assert_eq!(mysql_group_concat_setup_fallback_mode(MySqlSetupMode::Standard, error), None, "{error}");
+        }
     }
 
     #[test]
