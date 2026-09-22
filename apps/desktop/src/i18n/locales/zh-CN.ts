@@ -316,6 +316,8 @@ export default withEnglishFallback({
     pluginCenter: "插件中心",
     updatableDriverCount: "可更新驱动数量",
     mcpUpdateAvailable: "MCP 服务有可用更新",
+    alwaysOnTop: "窗口置顶",
+    alwaysOnTopOff: "取消置顶",
     blockDangerousRedisCommands: "拦截危险命令",
     multiDbExecute: "多库执行",
   },

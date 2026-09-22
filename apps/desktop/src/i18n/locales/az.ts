@@ -233,6 +233,8 @@ export default withEnglishFallback({
     driverManager: "Drayver meneceri",
     updatableDriverCount: "Yenilənə bilən drayverlərin sayı",
     mcpUpdateAvailable: "MCP serveri üçün yeniləmə mövcuddur",
+    alwaysOnTop: "Pəncərəni üstə saxla",
+    alwaysOnTopOff: "Üstdə saxlamanı ləğv et",
     blockDangerousRedisCommands: "Təhlükəli əmrləri blokla",
     multiDbExecute: "Bir neçə verilənlər bazasında icra et",
   },

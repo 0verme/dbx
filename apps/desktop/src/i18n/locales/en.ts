@@ -400,6 +400,8 @@ export default {
     pluginCenter: "Plugin Center",
     updatableDriverCount: "Updatable driver count",
     mcpUpdateAvailable: "MCP server update available",
+    alwaysOnTop: "Keep window on top",
+    alwaysOnTopOff: "Don't keep on top",
     blockDangerousRedisCommands: "Block dangerous commands",
     multiDbExecute: "Multi-db execute",
   },

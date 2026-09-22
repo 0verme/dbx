@@ -394,6 +394,8 @@ export default withEnglishFallback({
     pluginCenter: "外掛中心",
     updatableDriverCount: "可更新驅動程式數量",
     mcpUpdateAvailable: "MCP 服務有可用更新",
+    alwaysOnTop: "視窗置頂",
+    alwaysOnTopOff: "取消置頂",
     blockDangerousRedisCommands: "攔截危險命令",
     multiDbExecute: "多庫執行",
   },

@@ -390,6 +390,8 @@ export default withEnglishFallback({
     pluginCenter: "Centro plugin",
     updatableDriverCount: "Driver aggiornabili",
     mcpUpdateAvailable: "Aggiornamento server MCP disponibile",
+    alwaysOnTop: "Mantieni in primo piano",
+    alwaysOnTopOff: "Non mantenere in primo piano",
     blockDangerousRedisCommands: "Blocca comandi pericolosi",
     multiDbExecute: "Esecuzione multi-DB",
   },

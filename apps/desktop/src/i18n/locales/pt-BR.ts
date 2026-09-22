@@ -391,6 +391,8 @@ export default withEnglishFallback({
     pluginCenter: "Central de plugins",
     updatableDriverCount: "Quantidade de drivers atualizáveis",
     mcpUpdateAvailable: "Atualização do servidor MCP disponível",
+    alwaysOnTop: "Manter janela no topo",
+    alwaysOnTopOff: "Não manter no topo",
     blockDangerousRedisCommands: "Bloquear comandos perigosos",
     multiDbExecute: "Execução em múltiplos bancos",
   },

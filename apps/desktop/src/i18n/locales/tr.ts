@@ -235,6 +235,8 @@ export default withEnglishFallback({
     driverManager: "Sürücü Yöneticisi",
     updatableDriverCount: "Güncellenebilir sürücü sayısı",
     mcpUpdateAvailable: "MCP sunucusu güncellemesi mevcut",
+    alwaysOnTop: "Pencereyi üstte tut",
+    alwaysOnTopOff: "Üstte tutmayı kapat",
     blockDangerousRedisCommands: "Tehlikeli komutları engelle",
     multiDbExecute: "Çoklu veritabanı yürütme",
   },

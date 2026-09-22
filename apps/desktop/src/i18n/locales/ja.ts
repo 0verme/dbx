@@ -391,6 +391,8 @@ export default withEnglishFallback({
     pluginCenter: "プラグインセンター",
     updatableDriverCount: "更新可能なドライバー数",
     mcpUpdateAvailable: "MCPサーバーの更新があります",
+    alwaysOnTop: "常に手前に表示",
+    alwaysOnTopOff: "手前表示を解除",
     blockDangerousRedisCommands: "危険なコマンドをブロック",
     multiDbExecute: "複数DB実行",
   },

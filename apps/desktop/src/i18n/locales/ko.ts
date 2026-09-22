@@ -397,6 +397,8 @@ export default withEnglishFallback({
     driverManager: "드라이버 관리자",
     updatableDriverCount: "업데이트 가능한 드라이버 수",
     mcpUpdateAvailable: "MCP 서버 업데이트 가능",
+    alwaysOnTop: "항상 위에 표시",
+    alwaysOnTopOff: "항상 위 표시 해제",
     blockDangerousRedisCommands: "위험한 명령 차단",
     saveSqlFile: "원본 파일에 저장",
     pluginCenter: "플러그인 센터",
