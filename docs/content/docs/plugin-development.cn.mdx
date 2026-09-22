@@ -213,8 +213,23 @@ Manifest 中的路径相对于包根目录，不能以 `/` 开头、不能包含
 | --- | --- | --- |
 | `workbench` | `type`, `id`, `label` | 注册可从侧边栏或插件入口打开的工作台。 |
 | `filesystem-provider` | `type`, `id`, `label`, `schemes` | 注册虚拟文件系统；`root_uri` 例如 `s3://bucket`，能力可选 `read`、`write`、`delete`、`rename`、`mkdir`。 |
-| `context-menu` | `type`, `id`, `label`, `menu: "connection"` | 向连接的右键菜单增加动作。 |
+| `context-menu` | `type`、`id`、`label`、`menu: "connection"` 或 `"table"` | 向 Sidebar Tree 的连接或 table 右键菜单增加动作。 |
 | `result-view` | `type`, `id`, `label` | 注册查询或任务结果视图。 |
+
+`menu: "table"` contribution 当前只在用户对 Sidebar Tree 中的具体 table 节点打开右键菜单时生效。DBX 通过必需的 backend entrypoint 调用 `contextMenu/<contribution-id>`，并传递 table identity：
+
+```json
+{
+  "table": {
+    "connectionId": "connection-id",
+    "database": "example",
+    "schema": "public",
+    "table": "users"
+  }
+}
+```
+
+`database` 和 `schema` 是可选字段；不可用时会省略，不会强制传递空字符串。该 context 只包含对象 identity，不包含 credential、connection string 或原始连接配置。Object Browser 后续可以复用相同 identity contract，但本次版本没有把它作为 table 菜单入口。
 
 同一插件内通过 `id` 互相引用：Connection Provider 的 `workbench` 必须指向一个已声明的工作台，`filesystem_provider` 必须指向一个已声明的文件系统 Provider。图标优先使用 Contribution 的 `icon`，缺失时回退到插件级 `icon`。
 
