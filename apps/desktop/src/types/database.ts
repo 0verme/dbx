@@ -1467,7 +1467,7 @@ export interface SidebarLayout {
   order: SidebarOrderEntry[];
 }
 
-export type TableVGroupOrderEntry = { type: "group"; id: string; children?: TableVGroupOrderEntry[] } | { type: "table"; name: string };
+export type TableVGroupOrderEntry = { type: "group"; id: string; children?: TableVGroupOrderEntry[] } | { type: "table"; name: string; /** 行类型（view/procedure/…）。同名双行容器（包 spec/body、type/type-body）靠它区分成员；缺省 = 按名字匹配（历史数据与表）。 */ rowType?: string };
 
 export interface TableVGroupLayout {
   version?: number;
@@ -1534,6 +1534,8 @@ export interface TreeNode {
   savedSqlFolderId?: string;
   /** Set on synthetic table virtual-group container nodes. */
   vgroupId?: string;
+  /** 投影时盖章的分组类别（tables/views/…），供拖拽落点 O(1) 类别判定。 */
+  vgroupKind?: string;
   meta?: ColumnInfo | IndexInfo | ForeignKeyInfo | TriggerInfo | ConstraintInfo | PartitionInfo | SubpartitionInfo | ExtensionInfo | VectorCollectionMeta | MongoCollectionMeta | CustomTypeTreeMemberMeta;
   loadMore?: {
     parentId: string;
