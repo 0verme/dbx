@@ -1960,6 +1960,7 @@ pub fn run() {
             commands::schema::list_schema_infos,
             commands::schema::list_data_types,
             commands::schema::get_columns,
+            commands::schema::get_plugin_table_metadata,
             commands::schema::get_all_columns,
             commands::schema::get_sqlserver_column_metadata,
             commands::schema::list_indexes,

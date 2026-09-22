@@ -210,6 +210,7 @@ export const getObjectSource = forward("getObjectSource");
 export const getEventInfo = forward("getEventInfo");
 export const getCustomTypeDetails = forward("getCustomTypeDetails");
 export const getColumns = forward("getColumns");
+export const getPluginTableMetadata = forward("getPluginTableMetadata");
 export const getAllColumns = forward("getAllColumns");
 export const getSqlServerColumnMetadata = forward("getSqlServerColumnMetadata");
 export const listDataTypes = forward("listDataTypes");

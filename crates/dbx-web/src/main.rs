@@ -510,6 +510,7 @@ async fn main() {
         .route("/schema/event-info", get(routes::schema::get_event_info))
         .route("/schema/custom-type-details", get(routes::schema::get_custom_type_details))
         .route("/schema/columns", get(routes::schema::list_columns))
+        .route("/plugin/table-metadata", post(routes::schema::get_plugin_table_metadata))
         .route("/schema/all-columns", get(routes::schema::get_all_columns))
         .route("/schema/data-types", get(routes::schema::list_data_types))
         .route("/schema/indexes", get(routes::schema::list_indexes))

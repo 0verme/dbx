@@ -24,10 +24,10 @@ use crate::models::connection::{
 };
 use crate::sql::{starts_with_executable_sql_keyword, starts_with_executable_sql_keyword_for_database};
 use crate::types::{
-    ColumnInfo, CompletionAssistantCandidate, CompletionAssistantCandidateKind, CompletionAssistantMatchMode,
-    CompletionAssistantObjectKind, CompletionAssistantRequest, CompletionAssistantResponse, DatabaseInfo,
-    ForeignKeyInfo, IndexInfo, LargeValueCell, ObjectInfo, ObjectStatistics, QueryMessage, QueryResult,
-    SpatialColumnBuilder, TableInfo, TriggerInfo,
+    ColumnInfo, ColumnMetadataCapabilities, CompletionAssistantCandidate, CompletionAssistantCandidateKind,
+    CompletionAssistantMatchMode, CompletionAssistantObjectKind, CompletionAssistantRequest,
+    CompletionAssistantResponse, DatabaseInfo, ForeignKeyInfo, IndexInfo, LargeValueCell, ObjectInfo, ObjectStatistics,
+    QueryMessage, QueryResult, SpatialColumnBuilder, TableInfo, TriggerInfo,
 };
 use dbx_types::metadata_filter::{table_name_filter_matches, TableNameFilter};
 
@@ -4238,6 +4238,7 @@ where
                 enum_values,
                 character_set: get_opt_str(row, "CHARACTER_SET_NAME").filter(|s| !s.is_empty()),
                 collation: get_opt_str(row, "COLLATION_NAME").filter(|s| !s.is_empty()),
+                metadata_capabilities: Some(ColumnMetadataCapabilities::all_supported()),
             })
         })
         .collect();
@@ -4294,6 +4295,7 @@ where
                     .and_then(|c| c.split_once('_').map(|(charset, _)| charset.to_string()))
                     .filter(|s| !s.is_empty()),
                 collation,
+                metadata_capabilities: Some(ColumnMetadataCapabilities::default_only()),
             })
         })
         .collect();

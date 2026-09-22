@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 mod kingbase;
 mod mongodb_columns;
+pub mod plugin_metadata;
 
 macro_rules! extract_pool {
     ($pool:expr, $variant:ident) => {
@@ -7084,20 +7085,76 @@ async fn get_columns_core_for_session_inner(
     client_session_id: Option<&str>,
     use_client_session_context: bool,
 ) -> Result<Vec<db::ColumnInfo>, String> {
+    get_columns_core_for_session_inner_with_pool(
+        state,
+        connection_id,
+        database,
+        schema,
+        table,
+        client_session_id,
+        use_client_session_context,
+        None,
+        true,
+    )
+    .await
+}
+
+async fn get_columns_core_for_existing_pool(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    schema: &str,
+    table: &str,
+    pool_key: &str,
+) -> Result<Vec<db::ColumnInfo>, String> {
+    get_columns_core_for_session_inner_with_pool(
+        state,
+        connection_id,
+        database,
+        schema,
+        table,
+        None,
+        true,
+        Some(pool_key),
+        false,
+    )
+    .await
+}
+
+async fn get_columns_core_for_session_inner_with_pool(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    schema: &str,
+    table: &str,
+    client_session_id: Option<&str>,
+    use_client_session_context: bool,
+    existing_pool_key: Option<&str>,
+    allow_recovery: bool,
+) -> Result<Vec<db::ColumnInfo>, String> {
     let context_session_id = if use_client_session_context { client_session_id } else { None };
-    retry_metadata_connection_for_session(state, connection_id, Some(database), client_session_id, || async {
-        let pool_key = state
-            .get_or_create_metadata_pool_for_session(connection_id, Some(database), client_session_id)
-            .await?;
+    let existing_pool_key = existing_pool_key.map(str::to_owned);
+    let operation = || async {
+        let pool_key = if let Some(pool_key) = existing_pool_key.as_deref() {
+            pool_key.to_string()
+        } else {
+            state.get_or_create_metadata_pool_for_session(connection_id, Some(database), client_session_id).await?
+        };
         let db_config = connection_config(state, connection_id).await;
+
+        if db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::MongoDb) {
+            let pool_handle = state.pool_handle(&pool_key).await.ok_or("Pool not found")?;
+            return mongodb_columns::get_columns_from_existing_pool(&pool_handle, database, table).await;
+        }
 
         {
             let pool_handle = state.pool_handle(&pool_key).await;
             if let Some(PoolKind::ExternalDriver { config, session, .. }) = pool_handle.as_ref() {
                 let config = config.clone();
                 let session = session.clone();
-                                if uses_presto_like_information_schema_tables(&config.db_type) {
-                    return external_driver_presto_like_columns(session, config.as_ref(), database, schema, table).await;
+                if uses_presto_like_information_schema_tables(&config.db_type) {
+                    return external_driver_presto_like_columns(session, config.as_ref(), database, schema, table)
+                        .await;
                 }
                 let query_oracle_columns_first =
                     should_query_oracle_columns_via_sql_first(&config.db_type, context_session_id);
@@ -7168,25 +7225,29 @@ async fn get_columns_core_for_session_inner(
                 let database = database.to_string();
                 let schema = schema.to_string();
                 let table = table.to_string();
-                                return client.list_columns(database, schema, table).await;
+                return client.list_columns(database, schema, table).await;
             }
             if let Some(client) = extract_pool!(pool_handle.as_ref(), ClickHouse) {
-                                return db::clickhouse_driver::get_columns(&client, clickhouse_metadata_database(database, schema), table)
-                    .await
-                    .map(deduplicate_column_infos);
+                return db::clickhouse_driver::get_columns(
+                    &client,
+                    clickhouse_metadata_database(database, schema),
+                    table,
+                )
+                .await
+                .map(deduplicate_column_infos);
             }
             if let Some(client) = extract_pool!(pool_handle.as_ref(), InfluxDb) {
-                                return db::influxdb_driver::get_columns(&client, database, table).await.map(deduplicate_column_infos);
+                return db::influxdb_driver::get_columns(&client, database, table).await.map(deduplicate_column_infos);
             }
             if let Some(client) = extract_pool!(pool_handle.as_ref(), InfluxDb3) {
-                                return db::influxdb3_driver::get_columns(&client, database, table).await.map(deduplicate_column_infos);
+                return db::influxdb3_driver::get_columns(&client, database, table).await.map(deduplicate_column_infos);
             }
             if let Some(client) = extract_pool!(pool_handle.as_ref(), VictoriaMetrics) {
-                                return db::victoriametrics_driver::get_columns(&client, table).await.map(deduplicate_column_infos);
+                return db::victoriametrics_driver::get_columns(&client, table).await.map(deduplicate_column_infos);
             }
             if let Some(linked) = crate::sql_dialect::parse_sqlserver_linked_schema_ref(schema) {
                 if let Some(client) = extract_pool!(pool_handle.as_ref(), SqlServer) {
-                                        let mut client = lock_sqlserver_metadata_client(&client).await?;
+                    let mut client = lock_sqlserver_metadata_client(&client).await?;
                     return db::sqlserver::get_linked_server_columns(
                         &mut client,
                         &linked.server,
@@ -7201,10 +7262,10 @@ async fn get_columns_core_for_session_inner(
             try_sqlserver!(pool_handle, get_columns, schema, table);
             if let Some(client) = extract_pool!(pool_handle.as_ref(), Agent) {
                 let fallback_config = db_config.clone();
-                                let mut client = client.lock().await;
-                let oracle_sql_config = fallback_config.as_ref().filter(|config| {
-                    should_query_oracle_columns_via_sql_first(&config.db_type, context_session_id)
-                });
+                let mut client = client.lock().await;
+                let oracle_sql_config = fallback_config
+                    .as_ref()
+                    .filter(|config| should_query_oracle_columns_via_sql_first(&config.db_type, context_session_id));
                 let query_oracle_columns_first = oracle_sql_config.is_some();
                 if let Some(config) = oracle_sql_config {
                     match oracle_columns_via_sql(
@@ -7252,7 +7313,9 @@ async fn get_columns_core_for_session_inner(
                                 )
                                 .await
                                 {
-                                    Ok(fallback_columns) if !fallback_columns.is_empty() => return Ok(fallback_columns),
+                                    Ok(fallback_columns) if !fallback_columns.is_empty() => {
+                                        return Ok(fallback_columns)
+                                    }
                                     Ok(_) => {}
                                     Err(error) => {
                                         log::warn!(
@@ -7354,9 +7417,9 @@ async fn get_columns_core_for_session_inner(
             PoolKind::Turso(client) => {
                 db::turso_driver::get_columns(client, schema, table).await.map(deduplicate_column_infos)
             }
-            PoolKind::CloudflareD1(client) => db::cloudflare_d1_driver::get_columns(client, schema, table)
-                .await
-                .map(deduplicate_column_infos),
+            PoolKind::CloudflareD1(client) => {
+                db::cloudflare_d1_driver::get_columns(client, schema, table).await.map(deduplicate_column_infos)
+            }
             PoolKind::Elasticsearch(client) => {
                 db::elasticsearch_driver::get_columns(client, table).await.map(deduplicate_column_infos)
             }
@@ -7371,8 +7434,12 @@ async fn get_columns_core_for_session_inner(
             }
             _ => Ok(vec![]),
         }
-    })
-    .await
+    };
+    if allow_recovery {
+        retry_metadata_connection_for_session(state, connection_id, Some(database), client_session_id, operation).await
+    } else {
+        operation().await
+    }
 }
 
 pub async fn get_sqlserver_column_metadata_core(
@@ -7412,6 +7479,9 @@ fn deduplicate_column_infos(columns: Vec<db::ColumnInfo>) -> Vec<db::ColumnInfo>
             }
             if existing.data_type.trim().is_empty() && !column.data_type.trim().is_empty() {
                 existing.data_type = column.data_type;
+            }
+            if existing.metadata_capabilities != column.metadata_capabilities {
+                existing.metadata_capabilities = None;
             }
         } else {
             result.push(column);

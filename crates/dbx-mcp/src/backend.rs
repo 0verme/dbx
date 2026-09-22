@@ -2563,6 +2563,7 @@ fn infer_document_columns(documents: &[Value]) -> Vec<ColumnInfo> {
             enum_values: None,
             character_set: None,
             collation: None,
+            metadata_capabilities: None,
         })
         .collect()
 }
