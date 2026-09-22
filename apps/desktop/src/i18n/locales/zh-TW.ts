@@ -4000,6 +4000,7 @@ export default withEnglishFallback({
     validity: "有效性",
     valid: "有效",
     invalid: "無效",
+    refreshDiscardConfirm: "重新整理將捨棄未儲存的原始碼修改，是否繼續？",
   },
   structureEditor: {
     mysqlDataTypeHelp: {

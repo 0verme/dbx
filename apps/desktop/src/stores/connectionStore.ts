@@ -2346,7 +2346,19 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function invalidateMetadataCachesForNode(node: TreeNode, options?: { skipObjectCacheInvalidation?: boolean }) {
     if (!node.connectionId) return;
-    const tableName = node.tableName || (node.type === "table" || node.type === "view" || node.type === "materialized_view" || node.type === "mongo-collection" || node.type === "dynamodb-table" ? node.label : undefined);
+    const isObjectLeaf =
+      node.type === "procedure" ||
+      node.type === "function" ||
+      node.type === "sequence" ||
+      node.type === "synonym" ||
+      node.type === "event" ||
+      node.type === "job" ||
+      node.type === "package" ||
+      node.type === "package-body" ||
+      node.type === "type" ||
+      node.type === "type-body" ||
+      node.type === "trigger";
+    const tableName = isObjectLeaf ? node.objectName || node.label : node.tableName || (node.type === "table" || node.type === "view" || node.type === "materialized_view" || node.type === "mongo-collection" || node.type === "dynamodb-table" ? node.label : undefined);
     const match = {
       connectionId: node.connectionId,
       database: node.database || undefined,

@@ -1035,6 +1035,10 @@ function refreshData(): boolean {
     void pluginFilesystemTabRef.value?.refresh();
     return true;
   }
+  if (props.activeTab.objectSource || props.activeTab.sourceLoad) {
+    if (queryStore.isTabDirty(props.activeTab) && !window.confirm(t("objects.refreshDiscardConfirm"))) return false;
+    return queryStore.refreshObjectSourceTab(props.activeTab.id);
+  }
   // Restored data tabs intentionally omit row data, so refresh must work before DataGrid mounts.
   if (canReloadUnavailableDataTab(props.activeTab)) {
     reloadUnavailableDataTab();

@@ -4261,6 +4261,7 @@ export default withEnglishFallback({
     validity: "Validade",
     valid: "Válido",
     invalid: "Inválido",
+    refreshDiscardConfirm: "Atualizar descartará as modificações não salvas no código-fonte. Deseja continuar?",
   },
   structureEditor: {
     mysqlDataTypeHelp: {

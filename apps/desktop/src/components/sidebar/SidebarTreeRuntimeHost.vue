@@ -1395,7 +1395,7 @@ function requestRefreshSelectedNode(): boolean {
 
 function canRefreshTreeNodeShortcut(): boolean {
   const type = activeNode.value.type;
-  if (type === "connection" || type === "database" || type === "schema" || type === "table" || type === "view") {
+  if (type === "connection" || type === "database" || type === "schema" || type === "table" || type === "view" || type === "procedure" || type === "function") {
     return true;
   }
   return isGroupLabel(activeNode.value) && type !== "group-partitions";
@@ -6394,6 +6394,12 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     }
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.changeOpenMode"), action: () => emit("open-settings", "navigation"), icon: Settings2 });
+    items.push({
+      label: t("contextMenu.refreshChildren"),
+      action: refresh,
+      icon: RefreshCw,
+      shortcut: shortcutRefresh,
+    });
     if (!isPackageMember) {
       items.push({ label: "", separator: true });
       items.push({

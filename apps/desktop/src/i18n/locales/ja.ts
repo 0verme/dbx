@@ -4320,6 +4320,7 @@ export default withEnglishFallback({
     validity: "有効性",
     valid: "有効",
     invalid: "無効",
+    refreshDiscardConfirm: "更新すると、保存されていないソースコードの変更が破棄されます。続行しますか？",
   },
   structureEditor: {
     mysqlDataTypeHelp: {
