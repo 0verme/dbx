@@ -2212,9 +2212,15 @@ function executeSqlStatementFromGutter(currentView: EditorViewType, line: { from
   event.preventDefault();
   event.stopPropagation();
   // Gutter play is always scoped to the statement/command for that line, even
-  // when the main editor execute action would run the full document.
+  // when the main editor execute action would run the full document. An explicit
+  // selection overlapping that statement is more specific, so preserve it; a
+  // selection elsewhere in the document must not hijack the click.
   const editorViewportRequestId = executionViewportOwnership.beginRequest();
-  emitExecutionRequest({ ...sqlExecutionSnapshotForRange(currentView, statementRange), editorViewportRequestId });
+  const selection = currentView.state.selection.main;
+  const hasSelectedSql = !selection.empty && currentView.state.sliceDoc(selection.from, selection.to).trim().length > 0;
+  const selectionOverlapsStatement = hasSelectedSql && selection.from < statementRange.to && statementRange.from < selection.to;
+  const executionSnapshot = selectionOverlapsStatement ? sqlExecutionSnapshotFromView(currentView) : sqlExecutionSnapshotForRange(currentView, statementRange);
+  emitExecutionRequest({ ...executionSnapshot, editorViewportRequestId });
   // 不主动聚焦编辑器，否则 CodeMirror 会把屏幕滚回之前的光标位置。
   // currentView.focus();
   return true;
