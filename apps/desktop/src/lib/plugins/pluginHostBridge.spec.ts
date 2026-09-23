@@ -644,7 +644,11 @@ describe("PluginHostBridge", () => {
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const getTableMetadata = vi.fn().mockRejectedValue(new Error(error));
     const bridge = new PluginHostBridge(plugin(["host.schema:read"]), workbench, {}, () => target, {
-      invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), getTableMetadata,
+      invoke: vi.fn(),
+      notify: vi.fn(),
+      sendBinary: vi.fn(),
+      readAsset: vi.fn(),
+      getTableMetadata,
     });
     planCall(bridge, target, "host.getTableMetadata", { connectionId: "c1", table: "users" }, "failure");
     await vi.waitFor(() => expect(messages).toHaveLength(1));
