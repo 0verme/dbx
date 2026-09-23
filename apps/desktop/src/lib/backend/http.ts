@@ -175,6 +175,12 @@ import type {
 } from "@/lib/backend/tauri";
 import type { QueryEditability } from "@/lib/sql/sqlAnalysis";
 import type { CsvQuoteMode } from "@/lib/export/csvQuoteMode";
+import type { MigrationPreflight, MigrationReport } from "./migration";
+export type { MigrationPreflight, MigrationReport } from "./migration";
+export const migrationStatus = (): Promise<MigrationPreflight> => get("/api/migration/status");
+export const migrationStart = (): Promise<MigrationReport> => post("/api/migration/start", {});
+export const migrationRetry = (): Promise<MigrationReport> => post("/api/migration/retry", {});
+export const migrationCleanupBackups = (): Promise<void> => post("/api/migration/cleanup-backups", {});
 import { isTerminalTransferProgress } from "@/lib/backend/transferProgress";
 import type {
   DataGridColumnDistinctValuesSqlOptions,
@@ -316,6 +322,7 @@ async function post<T>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await backendResponseError(res);
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -2380,16 +2387,17 @@ export async function forgetWebdavSyncSecretsPassphrase(): Promise<void> {
   return post("/api/cloud-sync/webdav/forget-sync-secrets-passphrase", {});
 }
 
-export async function webdavSyncUpload(config: WebDavConfig, editorSettings?: unknown, secretsPassphrase?: string): Promise<WebDavSyncSummary> {
+export async function webdavSyncUpload(config: WebDavConfig, editorSettings?: unknown, secretsPassphrase?: string, includeSecrets = false): Promise<WebDavSyncSummary> {
   return post("/api/cloud-sync/webdav/upload", {
     config,
     editorSettings,
     secretsPassphrase,
+    includeSecrets,
   });
 }
 
-export async function webdavSyncDownload(config: WebDavConfig, secretsPassphrase?: string): Promise<WebDavDownloadResult> {
-  return post("/api/cloud-sync/webdav/download", { config, secretsPassphrase });
+export async function webdavSyncDownload(config: WebDavConfig, secretsPassphrase?: string, restoreSecrets = true): Promise<WebDavDownloadResult> {
+  return post("/api/cloud-sync/webdav/download", { config, secretsPassphrase, restoreSecrets });
 }
 
 export async function snippetSyncTest(config: SnippetSyncConfig): Promise<void> {

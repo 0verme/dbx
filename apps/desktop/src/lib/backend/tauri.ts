@@ -12,6 +12,13 @@ function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> 
   assertUpdateAllowsCommand(command);
   return tauriInvoke<T>(command, args);
 }
+
+import type { MigrationPreflight, MigrationReport } from "./migration";
+export type { MigrationPreflight, MigrationReport } from "./migration";
+export const migrationStatus = (): Promise<MigrationPreflight> => invoke("migration_status");
+export const migrationStart = (): Promise<MigrationReport> => invoke("migration_start");
+export const migrationRetry = (): Promise<MigrationReport> => invoke("migration_retry");
+export const migrationCleanupBackups = (): Promise<void> => invoke("migration_cleanup_backups");
 import type { DetachedTabHandoff } from "@/lib/app/detachedTabHandoff";
 import { BackendErrorException, type BackendError } from "@/lib/backend/errorUtils";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -967,16 +974,17 @@ export async function forgetWebdavSyncSecretsPassphrase(): Promise<void> {
   return invoke("forget_webdav_sync_secrets_passphrase");
 }
 
-export async function webdavSyncUpload(config: WebDavConfig, editorSettings?: unknown, secretsPassphrase?: string): Promise<WebDavSyncSummary> {
+export async function webdavSyncUpload(config: WebDavConfig, editorSettings?: unknown, secretsPassphrase?: string, includeSecrets = false): Promise<WebDavSyncSummary> {
   return invoke("webdav_sync_upload", {
     config,
     editorSettings,
     secretsPassphrase,
+    includeSecrets,
   });
 }
 
-export async function webdavSyncDownload(config: WebDavConfig, secretsPassphrase?: string): Promise<WebDavDownloadResult> {
-  return invoke("webdav_sync_download", { config, secretsPassphrase });
+export async function webdavSyncDownload(config: WebDavConfig, secretsPassphrase?: string, restoreSecrets = true): Promise<WebDavDownloadResult> {
+  return invoke("webdav_sync_download", { config, secretsPassphrase, restoreSecrets });
 }
 
 export async function snippetSyncTest(config: SnippetSyncConfig): Promise<void> {

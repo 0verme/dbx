@@ -4293,7 +4293,7 @@ async function testWebDav() {
 
 async function uploadWebDavSnapshot() {
   await runWebDavAction("upload", async () => {
-    const summary = await webdavSyncUpload(currentWebDavConfig(), settingsStore.editorSettings, webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined);
+    const summary = await webdavSyncUpload(currentWebDavConfig(), settingsStore.editorSettings, webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined, webdavSyncSecrets.value);
     return t("settings.syncUploadSuccess", {
       bytes: summary.bytes,
       path: summary.remotePath,
@@ -4304,7 +4304,7 @@ async function uploadWebDavSnapshot() {
 async function downloadWebDavSnapshot() {
   if (!window.confirm(t("settings.syncDownloadConfirm"))) return;
   await runWebDavAction("download", async () => {
-    const result = await webdavSyncDownload(currentWebDavConfig(), webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined);
+    const result = await webdavSyncDownload(currentWebDavConfig(), webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined, webdavSyncSecrets.value);
     if (result.editorSettings && typeof result.editorSettings === "object") {
       settingsStore.updateEditorSettings(result.editorSettings as any);
     }
