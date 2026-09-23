@@ -188,6 +188,14 @@ pub fn session_status_from_last_ok(conn: &mysql_async::Conn) -> Option<MySqlSess
     })
 }
 
+/// Whether the last OK/EOF packet ended the server's whole response. A packet
+/// with `SERVER_MORE_RESULTS_EXISTS` only closed one result set of a response
+/// that is still pending (a `CALL` returning several sets), so its status
+/// flags may not describe the session once the response finishes.
+pub fn last_ok_ends_response(conn: &mysql_async::Conn) -> bool {
+    conn.last_ok_packet().is_some_and(|packet| !packet.status_flags().contains(StatusFlags::SERVER_MORE_RESULTS_EXISTS))
+}
+
 const MYSQL_TCP_KEEPALIVE_MS: u32 = 30_000;
 const MYSQL_SQL_PACKET_MARGIN_MAX_BYTES: usize = 64 * 1024;
 
