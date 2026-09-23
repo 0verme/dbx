@@ -4776,11 +4776,12 @@ async fn execute_result_set_with_text_protocol_on_conn(
             })
             .collect();
 
+        let (spatial_columns, spatial_values) = spatial_columns.finish_with_values(spatial_values);
         return Ok(MySqlQueryResult::exact(QueryResult {
             columns,
             column_types,
             column_sortables: vec![],
-            spatial_columns: spatial_columns.finish(),
+            spatial_columns,
             spatial_values,
             rows: result_rows,
             affected_rows: 0,
@@ -4868,12 +4869,13 @@ async fn execute_result_set_with_text_protocol_on_conn(
         );
     }
 
+    let (spatial_columns, spatial_values) = spatial_columns.finish_with_values(spatial_values);
     Ok(MySqlQueryResult {
         result: QueryResult {
             columns,
             column_types,
             column_sortables: vec![],
-            spatial_columns: spatial_columns.finish(),
+            spatial_columns,
             spatial_values,
             rows: result_rows,
             affected_rows: 0,
@@ -4997,12 +4999,13 @@ async fn execute_result_sets_with_text_protocol_on_conn(
             Vec::new()
         };
         result_set_warnings.push(warnings);
+        let (spatial_columns, spatial_values) = spatial_columns.finish_with_values(spatial_values);
         results.push(MySqlQueryResult {
             result: QueryResult {
                 columns,
                 column_types,
                 column_sortables: vec![],
-                spatial_columns: spatial_columns.finish(),
+                spatial_columns,
                 spatial_values,
                 rows,
                 affected_rows: 0,
@@ -5206,12 +5209,13 @@ async fn execute_result_set_with_prepared_protocol_on_conn(
         );
     }
 
+    let (spatial_columns, spatial_values) = spatial_columns.finish_with_values(spatial_values);
     Ok(MySqlQueryResult {
         result: QueryResult {
             columns,
             column_types,
             column_sortables: vec![],
-            spatial_columns: spatial_columns.finish(),
+            spatial_columns,
             spatial_values,
             rows: result_rows,
             affected_rows: 0,
@@ -5564,11 +5568,12 @@ pub async fn execute_transaction_statement_on_conn(
         // result set before reading the final status or allowing another
         // operation on this physical connection.
         query.drop_result().await.map_err(transaction_error_from_mysql_error)?;
+        let (spatial_columns, spatial_values) = spatial_columns.finish_with_values(spatial_values);
         QueryResult {
             columns,
             column_types,
             column_sortables: Vec::new(),
-            spatial_columns: spatial_columns.finish(),
+            spatial_columns,
             spatial_values,
             rows,
             affected_rows: 0,
