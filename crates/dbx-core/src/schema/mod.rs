@@ -1873,6 +1873,7 @@ fn oracle_object_statistics_from_query_result(result: db::QueryResult) -> Vec<db
                 schema: query_result_cell_string(&row, 1),
                 estimated_rows: query_result_cell_i64(&row, 2),
                 total_bytes: query_result_cell_i64(&row, 3),
+                ..Default::default()
             })
         })
         .collect()
@@ -6376,7 +6377,10 @@ async fn list_object_statistics_once(
             if *mode == MysqlMode::OceanBaseOracle || db_config.as_ref().is_some_and(db::manticoresearch::is_config) {
                 Ok(vec![])
             } else {
-                db::mysql::list_object_statistics(p, database).await
+                let include_mysql_details = db_config.as_ref().is_some_and(|config| {
+                    config.db_type == DatabaseType::Mysql && !db::mysql_compatible::uses_show_metadata(config)
+                });
+                db::mysql::list_object_statistics(p, database, include_mysql_details).await
             }
         }
         PoolKind::Postgres(p) if db_config.as_ref().is_some_and(is_questdb_config) => Ok(vec![]),

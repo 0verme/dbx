@@ -2836,6 +2836,7 @@ pub async fn list_object_statistics(
                 .ok()
                 .flatten()
                 .or_else(|| row.try_get::<i32, _>(2).ok().flatten().map(i64::from)),
+            ..Default::default()
         })
         .filter(|stat| !stat.name.is_empty())
         .collect())

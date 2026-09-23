@@ -7248,6 +7248,7 @@ pub async fn list_object_statistics(pool: &Pool, schema: &str) -> Result<Vec<Obj
             schema: Some(schema.to_string()),
             estimated_rows: row.try_get::<_, i64>(1).ok(),
             total_bytes: row.try_get::<_, i64>(2).ok(),
+            ..Default::default()
         })
         .collect())
 }

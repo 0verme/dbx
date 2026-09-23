@@ -145,12 +145,36 @@ pub struct ExtensionInfo {
     pub schema: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ObjectStatistics {
     pub name: String,
     pub schema: Option<String>,
     pub estimated_rows: Option<i64>,
     pub total_bytes: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_length: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_format: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avg_row_length: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_data_length: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_length: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_increment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_free: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
