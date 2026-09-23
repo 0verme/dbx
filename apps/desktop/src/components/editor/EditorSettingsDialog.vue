@@ -7730,29 +7730,44 @@ onUnmounted(() => {
                     <Label for="tableOpenSortMode">{{ t("settings.tableOpenSortMode") }}</Label>
                     <p class="text-xs text-muted-foreground">{{ t("settings.tableOpenSortDescription") }}</p>
                   </div>
-                  <select id="tableOpenSortMode" v-model="editTableOpenSortMode" class="h-8 rounded-md border bg-background px-2 text-xs">
-                    <option value="none">{{ t("settings.tableSortUnchanged") }}</option>
-                    <option value="database">{{ t("settings.tableSortDatabase") }}</option>
-                    <option value="local">{{ t("settings.tableSortLocal") }}</option>
-                  </select>
+                  <Select v-model="editTableOpenSortMode">
+                    <SelectTrigger id="tableOpenSortMode" class="h-8 w-44 shrink-0 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{{ t("settings.tableSortUnchanged") }}</SelectItem>
+                      <SelectItem value="database">{{ t("settings.tableSortDatabase") }}</SelectItem>
+                      <SelectItem value="local">{{ t("settings.tableSortLocal") }}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
                   <div class="space-y-1">
                     <Label for="tableDatabaseSortDirection">{{ t("settings.tableDatabaseSortDirection") }}</Label>
                   </div>
-                  <select id="tableDatabaseSortDirection" v-model="editTableDatabaseSortDirection" class="h-8 rounded-md border bg-background px-2 text-xs">
-                    <option value="asc">{{ t("settings.tableSortAscending") }}</option>
-                    <option value="desc">{{ t("settings.tableSortDescending") }}</option>
-                  </select>
+                  <Select v-model="editTableDatabaseSortDirection">
+                    <SelectTrigger id="tableDatabaseSortDirection" class="h-8 w-36 shrink-0 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asc">{{ t("settings.tableSortAscending") }}</SelectItem>
+                      <SelectItem value="desc">{{ t("settings.tableSortDescending") }}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
                   <div class="space-y-1">
                     <Label for="tableLocalSortDirection">{{ t("settings.tableLocalSortDirection") }}</Label>
                   </div>
-                  <select id="tableLocalSortDirection" v-model="editTableLocalSortDirection" class="h-8 rounded-md border bg-background px-2 text-xs">
-                    <option value="asc">{{ t("settings.tableSortAscending") }}</option>
-                    <option value="desc">{{ t("settings.tableSortDescending") }}</option>
-                  </select>
+                  <Select v-model="editTableLocalSortDirection">
+                    <SelectTrigger id="tableLocalSortDirection" class="h-8 w-36 shrink-0 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asc">{{ t("settings.tableSortAscending") }}</SelectItem>
+                      <SelectItem value="desc">{{ t("settings.tableSortDescending") }}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div data-settings-search-id="default-auto-keep-results" :class="['settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2', settingsSearchTargetClass('default-auto-keep-results')]">
                   <div class="min-w-0 space-y-1">
