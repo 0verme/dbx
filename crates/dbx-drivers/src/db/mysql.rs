@@ -41,6 +41,7 @@ use crate::mysql_event_sql::MysqlEventInfo;
 pub struct MySqlPool {
     inner: mysql_async::Pool,
     max_connections: usize,
+    checkout_verifications: std::sync::Arc<MySqlCheckoutVerifications>,
 }
 
 impl MySqlPool {
@@ -49,7 +50,11 @@ impl MySqlPool {
         mysql_async::Opts: TryFrom<O>,
         <mysql_async::Opts as TryFrom<O>>::Error: std::error::Error,
     {
-        Self { inner: mysql_async::Pool::new(opts), max_connections: max_connections.max(1) }
+        Self {
+            inner: mysql_async::Pool::new(opts),
+            max_connections: max_connections.max(1),
+            checkout_verifications: Default::default(),
+        }
     }
 
     /// Whether this is a tab-scoped client-session pool. These pools hold a
@@ -86,6 +91,57 @@ impl Deref for MySqlPool {
 pub trait MySqlPoolAccess {
     fn driver_pool(&self) -> &mysql_async::Pool;
     fn checkout_max_connections(&self) -> Option<usize>;
+    /// Liveness evidence for pooled connections; `None` pings every checkout.
+    fn checkout_verifications(&self) -> Option<&MySqlCheckoutVerifications> {
+        None
+    }
+}
+
+/// Connections that passed a `PING` this recently skip the next liveness
+/// `PING`, like the Tomcat JDBC pool's `validationInterval` (3 s by default).
+/// A burst of checkouts (opening a table, paging a grid, loading metadata) then
+/// pays one liveness round trip instead of one each, while a connection that
+/// sat idle longer is still verified and replaced when it died.
+const MYSQL_CHECKOUT_VERIFY_INTERVAL: Duration = Duration::from_secs(3);
+
+/// When each pooled connection, keyed by its server connection id, last passed
+/// a liveness `PING` (the checkout health check or the pool reuse probe).
+#[doc(hidden)]
+#[derive(Debug, Default)]
+pub struct MySqlCheckoutVerifications {
+    verified_at: std::sync::Mutex<HashMap<u32, Instant>>,
+}
+
+impl MySqlCheckoutVerifications {
+    fn is_recent(&self, connection_id: u32, now: Instant) -> bool {
+        let verified_at = self.verified_at.lock().unwrap_or_else(|e| e.into_inner());
+        verified_at
+            .get(&connection_id)
+            .is_some_and(|verified| now.saturating_duration_since(*verified) < MYSQL_CHECKOUT_VERIFY_INTERVAL)
+    }
+
+    fn record(&self, connection_id: u32, now: Instant) {
+        let mut verified_at = self.verified_at.lock().unwrap_or_else(|e| e.into_inner());
+        verified_at.retain(|_, verified| now.saturating_duration_since(*verified) < MYSQL_CHECKOUT_VERIFY_INTERVAL);
+        verified_at.insert(connection_id, now);
+    }
+}
+
+/// Pings a connection checked out of `pool` unless it passed a `PING` within
+/// the verification interval, and remembers a successful `PING`.
+pub async fn verify_pooled_conn<P>(pool: &P, conn: &mut mysql_async::Conn) -> Result<(), mysql_async::Error>
+where
+    P: MySqlPoolAccess + ?Sized,
+{
+    let verifications = pool.checkout_verifications();
+    if verifications.is_some_and(|verifications| verifications.is_recent(conn.id(), Instant::now())) {
+        return Ok(());
+    }
+    conn.ping().await?;
+    if let Some(verifications) = verifications {
+        verifications.record(conn.id(), Instant::now());
+    }
+    Ok(())
 }
 
 pub async fn get_event_info<P: MySqlPoolAccess + ?Sized>(
@@ -133,6 +189,10 @@ impl MySqlPoolAccess for MySqlPool {
 
     fn checkout_max_connections(&self) -> Option<usize> {
         Some(self.max_connections)
+    }
+
+    fn checkout_verifications(&self) -> Option<&MySqlCheckoutVerifications> {
+        Some(&self.checkout_verifications)
     }
 }
 
@@ -4497,9 +4557,16 @@ where
     P: MySqlPoolAccess + ?Sized,
 {
     let start = Instant::now();
+    let verifications = pool.checkout_verifications();
     let mut conn = get_conn_with_timeout_and_cancel(pool, timeout, cancel_token).await?;
+    if verifications.is_some_and(|verifications| verifications.is_recent(conn.id(), Instant::now())) {
+        return Ok(conn);
+    }
     match ping_conn_with_timeout_and_cancel(&mut conn, timeout, cancel_token).await {
         Ok(()) => {
+            if let Some(verifications) = verifications {
+                verifications.record(conn.id(), Instant::now());
+            }
             log::debug!(
                 "[db:health.check:done] elapsed_ms={} timeout_ms={}",
                 start.elapsed().as_millis(),
@@ -4525,6 +4592,9 @@ where
                     let _ = tokio::time::timeout(cleanup_timeout, conn.disconnect()).await;
                 }
                 return Err(err);
+            }
+            if let Some(verifications) = verifications {
+                verifications.record(conn.id(), Instant::now());
             }
             log::info!(
                 "[db:health.check:recovered] elapsed_ms={} timeout_ms={}",
@@ -6502,6 +6572,42 @@ mod tests {
         assert_eq!(exact, Ok("connection"));
         assert_eq!(adjacent, Ok("connection"));
         assert_eq!(configured_five, Err("MySQL get connection timed out".to_string()));
+    }
+
+    #[test]
+    fn checkout_verification_skips_only_a_recently_verified_connection() {
+        let verifications = MySqlCheckoutVerifications::default();
+        let verified = Instant::now();
+        assert!(!verifications.is_recent(7, verified));
+
+        verifications.record(7, verified);
+
+        assert!(verifications.is_recent(7, verified + MYSQL_CHECKOUT_VERIFY_INTERVAL - Duration::from_millis(1)));
+        assert!(!verifications.is_recent(7, verified + MYSQL_CHECKOUT_VERIFY_INTERVAL));
+        assert!(!verifications.is_recent(8, verified));
+    }
+
+    #[test]
+    fn checkout_verification_forgets_expired_connections() {
+        let verifications = MySqlCheckoutVerifications::default();
+        let first = Instant::now();
+        verifications.record(1, first);
+
+        verifications.record(2, first + MYSQL_CHECKOUT_VERIFY_INTERVAL);
+
+        let tracked: Vec<u32> = verifications.verified_at.lock().unwrap().keys().copied().collect();
+        assert_eq!(tracked, vec![2]);
+    }
+
+    #[tokio::test]
+    async fn raw_driver_pool_verifies_every_checkout() {
+        let raw = mysql_async::Pool::new(mysql_async::OptsBuilder::default());
+        let pool = MySqlPool::new(mysql_async::OptsBuilder::default(), 1);
+
+        assert!(raw.checkout_verifications().is_none());
+        assert!(pool.checkout_verifications().is_some());
+        let _ = tokio::time::timeout(Duration::from_secs(1), raw.disconnect()).await;
+        let _ = tokio::time::timeout(Duration::from_secs(1), pool.disconnect()).await;
     }
 
     #[tokio::test]
