@@ -4955,6 +4955,7 @@ export default withEnglishFallback({
       numeric: "NUMERIC 亲和性会尝试先将格式正确的数字文本转换为 INTEGER，再转换为 REAL；它不是独立的 SQLite 存储类。DATE、DATETIME 和 TIME 声明同样具有 NUMERIC 亲和性；应统一使用 ISO-8601 TEXT、儒略日 REAL 或 Unix 时间 INTEGER。",
     },
     nullable: "可为空",
+    notNull: "非空",
     primaryKey: "主键",
     defaultValue: "默认值",
     defaultValuePresets: "默认值预设",

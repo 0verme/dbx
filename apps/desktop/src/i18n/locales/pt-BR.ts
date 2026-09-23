@@ -4602,6 +4602,7 @@ export default withEnglishFallback({
     partitionHashBoundInvalid: "HASH requer módulo > 0 e 0 <= resto < módulo.",
     partitionSqlPreview: "SQL a ser executado",
     partitionNameRequired: "Digite o nome da partição.",
+    notNull: "Não nulo",
   },
   diagram: {
     title: "Diagrama de relacionamentos",

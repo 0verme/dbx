@@ -4666,6 +4666,7 @@ export default withEnglishFallback({
     partitionHashBoundInvalid: "HASH にはモジュラス > 0 が必要で、0 <= 剰余 < モジュラス である必要があります。",
     partitionSqlPreview: "実行される SQL",
     partitionNameRequired: "パーティション名を入力してください。",
+    notNull: "NOT NULL",
   },
   diagram: {
     title: "リレーション図",

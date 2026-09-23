@@ -4587,6 +4587,7 @@ export default withEnglishFallback({
     partitionHashBoundInvalid: "HASH에는 모듈러스 > 0이 필요하며, 0 <= 나머지 < 모듈러스여야 합니다.",
     partitionSqlPreview: "실행될 SQL",
     partitionNameRequired: "파티션 이름을 입력하세요.",
+    notNull: "NOT NULL",
   },
   diagram: {
     title: "관계 다이어그램",
