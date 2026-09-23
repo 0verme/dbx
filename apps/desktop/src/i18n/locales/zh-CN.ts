@@ -1655,6 +1655,13 @@ export default withEnglishFallback({
       confirm: "确定",
       selectFirst: "请选择列表文本",
     },
+    structurePeek: {
+      title: "表结构：{name}",
+      hint: "双击单元格可将内容插入到编辑器光标处",
+      doubleClickInsert: "双击插入到编辑器",
+      drag: "拖动面板",
+      empty: "暂无字段",
+    },
     gotoLine: {
       placeholder: "行号",
       total: "共 {total} 行",
@@ -3488,6 +3495,7 @@ export default withEnglishFallback({
     openDatabaseBrowser: "查看资源对象",
     viewData: "查看数据",
     openInNewDataTab: "新标签页查看",
+    peekStructure: "查看表结构",
     editStructure: "编辑表结构",
     editColumn: "编辑字段",
     editIndex: "编辑索引",

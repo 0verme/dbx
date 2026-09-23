@@ -1741,6 +1741,13 @@ export default {
       confirm: "Confirm",
       selectFirst: "Please select list text",
     },
+    structurePeek: {
+      title: "Structure: {name}",
+      hint: "Double-click a cell to insert its value into the editor",
+      doubleClickInsert: "Double-click to insert",
+      drag: "Drag to move",
+      empty: "No columns",
+    },
     gotoLine: {
       placeholder: "Line number",
       total: "{total} lines",
@@ -3576,6 +3583,7 @@ export default {
     openDatabaseBrowser: "Browse Databases",
     viewData: "View Data",
     openInNewDataTab: "View in New Tab",
+    peekStructure: "View Structure",
     editStructure: "Edit Structure",
     editColumn: "Edit Column",
     editIndex: "Edit Index",

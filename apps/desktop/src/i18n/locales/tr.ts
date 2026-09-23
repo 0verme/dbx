@@ -1527,6 +1527,13 @@ export default withEnglishFallback({
       confirm: "Onayla",
       selectFirst: "Lütfen liste metnini seçin",
     },
+    structurePeek: {
+      title: "Yapı: {name}",
+      hint: "Bir hücreye çift tıklayarak değerini düzenleyiciye ekleyin",
+      doubleClickInsert: "Eklemek için çift tıklayın",
+      drag: "Taşımak için sürükleyin",
+      empty: "Sütun yok",
+    },
     gotoLine: {
       placeholder: "Satır numarası",
       total: "{total} satır",
@@ -3315,6 +3322,7 @@ export default withEnglishFallback({
     openDatabaseBrowser: "Veritabanlarına Gözat",
     viewData: "Verileri Görüntüle",
     openInNewDataTab: "Yeni Sekmede Görüntüle",
+    peekStructure: "Yapıyı Görüntüle",
     editStructure: "Yapıyı Düzenle",
     editColumn: "Sütunu Düzenle",
     editIndex: "Dizini Düzenle",

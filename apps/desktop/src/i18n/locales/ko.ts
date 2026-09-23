@@ -1622,6 +1622,13 @@ export default withEnglishFallback({
       confirm: "확인",
       selectFirst: "목록 텍스트를 먼저 선택하세요",
     },
+    structurePeek: {
+      title: "구조: {name}",
+      hint: "셀을 더블클릭하면 에디터에 삽입됩니다",
+      doubleClickInsert: "더블클릭하여 삽입",
+      drag: "드래그하여 이동",
+      empty: "열 없음",
+    },
     gotoLine: {
       placeholder: "줄 번호",
       total: "총 {total}행",
@@ -3369,6 +3376,7 @@ export default withEnglishFallback({
     openDatabaseBrowser: "데이터베이스 탐색",
     viewData: "데이터 보기",
     openInNewDataTab: "새 탭에서 보기",
+    peekStructure: "구조 보기",
     editStructure: "구조 편집",
     editColumn: "컬럼 편집",
     editIndex: "인덱스 편집",

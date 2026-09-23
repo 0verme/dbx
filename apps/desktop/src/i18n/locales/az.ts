@@ -1526,6 +1526,13 @@ export default withEnglishFallback({
       confirm: "Təsdiqlə",
       selectFirst: "Siyahı mətnini seçin",
     },
+    structurePeek: {
+      title: "Struktur: {name}",
+      hint: "Dəyəri redaktora daxil etmək üçün xanaya iki dəfə klikləyin",
+      doubleClickInsert: "Daxil etmək üçün iki dəfə klikləyin",
+      drag: "Yerini dəyişmək üçün sürükləyin",
+      empty: "Sütun yoxdur",
+    },
     gotoLine: {
       placeholder: "Sətir nömrəsi",
       total: "{total} sətir",
@@ -3342,6 +3349,7 @@ export default withEnglishFallback({
     openDatabaseBrowser: "Verilənlər bazalarına bax",
     viewData: "Məlumatlara bax",
     openInNewDataTab: "Yeni vərəqdə bax",
+    peekStructure: "Struktura bax",
     editStructure: "Strukturu redaktə et",
     editColumn: "Sütunu redaktə et",
     editIndex: "İndeksi redaktə et",
