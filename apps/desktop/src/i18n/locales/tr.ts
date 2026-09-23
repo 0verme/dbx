@@ -2961,6 +2961,7 @@ export default withEnglishFallback({
     truncated: "Bağlam kısaltıldı",
     contextSummary: "{database} · {tables} tablo",
     autoSqlBlocked: "Yapay zekânın ürettiği SQL, otomatik çalıştırmak için fazla riskli göründü. Çalıştırmadan önce elle inceleyin.",
+    redisConsoleUnreachable: "AI komutu bu konuşmaya bağlı Redis konsoluna ulaşamadı. O bağlantının Redis konsolunu açıp yeniden deneyin.",
     writeSqlConfirmationRequired: "Bu SQL veriyi veya şemayı değiştiriyor. Çalıştırmadan önce dikkatle inceleyin.",
     writeSqlConfirmationQuestion: "Bu SQL bir kez çalıştırılsın mı?",
     writeSqlConfirmYes: "Çalıştırmayı onayla",
