@@ -177,6 +177,10 @@ export const savedSqlStorageDir = forward("savedSqlStorageDir");
 export const openSavedSqlStorageDir = forward("openSavedSqlStorageDir");
 export const revealPathInFileManager = forward("revealPathInFileManager");
 export const deleteDatabaseBackupFiles = forward("deleteDatabaseBackupFiles");
+export const databaseBackupCommand = forward("databaseBackupCommand");
+export const databaseBackupBackground = forward("databaseBackupBackground");
+export const downloadDatabaseBackupFile = forward("downloadDatabaseBackupFile");
+export const prepareDatabaseBackupRestore = forward("prepareDatabaseBackupRestore");
 export const isSqliteDatabaseFile = forward("isSqliteDatabaseFile");
 export const backupSqliteDatabase = forward("backupSqliteDatabase");
 export const restoreSqliteDatabase = forward("restoreSqliteDatabase");
@@ -431,6 +435,7 @@ export const listLocalSshKeys = forward("listLocalSshKeys");
 
 // SQL File Execution
 export const previewSqlFile = forward("previewSqlFile");
+export const releaseSqlFilePreview = forward("releaseSqlFilePreview");
 export const executeSqlFile = forward("executeSqlFile");
 export const executeSqlFiles = forward("executeSqlFiles");
 export const cancelSqlFileExecution = forward("cancelSqlFileExecution");
