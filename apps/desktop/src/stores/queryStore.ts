@@ -3657,6 +3657,28 @@ export const useQueryStore = defineStore("query", () => {
     return registerOpenTab(tab);
   }
 
+  // Connectionless plugin tabs inherit their title from the localized
+  // contribution label (sidebar/webview workbench opens and filesystem
+  // browse), so a locale switch leaves them showing the previous language.
+  // Re-resolve them on locale change: connection-bound tabs keep the
+  // connection name, explicit renames (customTitle) win, and a missing
+  // localized label leaves the current title untouched.
+  function localizePluginTabTitles(resolveTitle: (pluginId: string, contributionId: string, surface: "ui" | "filesystem") => string | undefined): void {
+    for (const tab of tabs.value) {
+      const target =
+        tab.mode === "plugin-workbench" && tab.pluginWorkbench
+          ? { pluginId: tab.pluginWorkbench.pluginId, contributionId: tab.pluginWorkbench.contributionId, surface: "ui" as const }
+          : tab.mode === "plugin-filesystem" && tab.pluginFilesystem
+            ? { pluginId: tab.pluginFilesystem.pluginId, contributionId: tab.pluginFilesystem.providerId, surface: "filesystem" as const }
+            : undefined;
+      if (!target || tab.customTitle || pluginTabConnectionId(tab)) continue;
+      const localizedTitle = resolveTitle(target.pluginId, target.contributionId, target.surface)?.trim();
+      if (!localizedTitle) continue;
+      const suffix = / \((\d+)\)$/.exec(tab.title)?.[0] || "";
+      tab.title = `${localizedTitle}${suffix}`;
+    }
+  }
+
   function openPluginFilesystem(pluginId: string, providerId: string, options: { title?: string; connectionId?: string; rootUri?: string; currentUri?: string; forceNew?: boolean } = {}) {
     if (!options.forceNew) {
       const existing = tabs.value.find((tab) => tab.mode === "plugin-filesystem" && tab.pluginFilesystem?.pluginId === pluginId && tab.pluginFilesystem?.providerId === providerId && tab.connectionId === (options.connectionId || ""));
@@ -9133,6 +9155,7 @@ export const useQueryStore = defineStore("query", () => {
     openMqttAdmin,
     openNacosAdmin,
     openPluginWorkbench,
+    localizePluginTabTitles,
     openPluginFilesystem,
     reconnectRestoredPluginTabs,
     openPluginConnection,
