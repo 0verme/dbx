@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 mod kingbase;
 mod mongodb_columns;
 pub mod plugin_metadata;
+#[cfg(test)]
+mod plugin_metadata_tests;
 
 macro_rules! extract_pool {
     ($pool:expr, $variant:ident) => {
@@ -6860,6 +6862,21 @@ async fn retry_metadata_connection_for_session<T, F, Fut>(
     connection_id: &str,
     database: Option<&str>,
     client_session_id: Option<&str>,
+    operation: F,
+) -> Result<T, String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, String>>,
+{
+    run_metadata_connection_for_session(state, connection_id, database, client_session_id, true, operation).await
+}
+
+async fn run_metadata_connection_for_session<T, F, Fut>(
+    state: &AppState,
+    connection_id: &str,
+    database: Option<&str>,
+    client_session_id: Option<&str>,
+    allow_recovery: bool,
     mut operation: F,
 ) -> Result<T, String>
 where
@@ -6876,6 +6893,9 @@ where
         }
         None => None,
     };
+    if !allow_recovery {
+        return operation().await;
+    }
     let mut retried = false;
     let mut missing_pool_retry = false;
     loop {
@@ -7329,6 +7349,8 @@ async fn get_columns_core_for_session_inner_with_pool(
                                     }
                                 }
                             }
+                        }
+                        if let Some(config) = fallback_config.as_ref().filter(|_| existing_pool_key.is_none()) {
                             match native_postgres_metadata_pool(state, connection_id, database, config).await {
                                 Ok(Some(pool)) => {
                                     return db::postgres::get_columns(&pool, schema, table)
@@ -7351,7 +7373,7 @@ async fn get_columns_core_for_session_inner_with_pool(
                         return Ok(deduplicate_column_infos(columns));
                     }
                     Err(agent_error) => {
-                        if let Some(config) = fallback_config.as_ref() {
+                        if let Some(config) = fallback_config.as_ref().filter(|_| existing_pool_key.is_none()) {
                             if let Some(pool) =
                                 native_postgres_metadata_pool(state, connection_id, database, config).await?
                             {
@@ -7435,11 +7457,15 @@ async fn get_columns_core_for_session_inner_with_pool(
             _ => Ok(vec![]),
         }
     };
-    if allow_recovery {
-        retry_metadata_connection_for_session(state, connection_id, Some(database), client_session_id, operation).await
-    } else {
-        operation().await
-    }
+    run_metadata_connection_for_session(
+        state,
+        connection_id,
+        Some(database),
+        client_session_id,
+        allow_recovery,
+        operation,
+    )
+    .await
 }
 
 pub async fn get_sqlserver_column_metadata_core(

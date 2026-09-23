@@ -639,6 +639,19 @@ describe("PluginHostBridge", () => {
     expect(legacyMessages[1]).toMatchObject({ id: "legacy", error: "Host schema metadata API is unavailable" });
   });
 
+  it.each(["Connection session is not open for the requested database", "Query canceled", "metadata provider denied", "DBX metadata pool is busy; please retry"])("forwards schema metadata failures without retrying: %s", async (error) => {
+    const messages: unknown[] = [];
+    const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
+    const getTableMetadata = vi.fn().mockRejectedValue(new Error(error));
+    const bridge = new PluginHostBridge(plugin(["host.schema:read"]), workbench, {}, () => target, {
+      invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), getTableMetadata,
+    });
+    planCall(bridge, target, "host.getTableMetadata", { connectionId: "c1", table: "users" }, "failure");
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(messages[0]).toMatchObject({ id: "failure", error });
+    expect(getTableMetadata).toHaveBeenCalledTimes(1);
+  });
+
   it("opens only the owning plugin filesystem with explicit permission", async () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
