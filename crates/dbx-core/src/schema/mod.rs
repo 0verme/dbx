@@ -7105,7 +7105,7 @@ async fn get_columns_core_for_session_inner(
     client_session_id: Option<&str>,
     use_client_session_context: bool,
 ) -> Result<Vec<db::ColumnInfo>, String> {
-    get_columns_core_for_session_inner_with_pool(
+    Box::pin(get_columns_core_for_session_inner_with_pool(
         state,
         connection_id,
         database,
@@ -7115,7 +7115,7 @@ async fn get_columns_core_for_session_inner(
         use_client_session_context,
         None,
         true,
-    )
+    ))
     .await
 }
 
@@ -7127,7 +7127,7 @@ async fn get_columns_core_for_existing_pool(
     table: &str,
     pool_key: &str,
 ) -> Result<Vec<db::ColumnInfo>, String> {
-    get_columns_core_for_session_inner_with_pool(
+    Box::pin(get_columns_core_for_session_inner_with_pool(
         state,
         connection_id,
         database,
@@ -7137,7 +7137,7 @@ async fn get_columns_core_for_existing_pool(
         true,
         Some(pool_key),
         false,
-    )
+    ))
     .await
 }
 

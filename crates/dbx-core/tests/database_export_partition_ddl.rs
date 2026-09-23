@@ -144,7 +144,7 @@ async fn run_database_export_of_partition_tree_has_no_duplicates_and_replays() {
         split_max_mb: None,
     };
 
-    Box::pin(export_database_sql_core(&state, &request, |_progress| {})).await.expect("export should succeed");
+    export_database_sql_core(&state, &request, |_progress| {}).await.expect("export should succeed");
 
     let exported = std::fs::read_to_string(&file_path).expect("read exported file");
     assert!(!exported.contains("-- ERROR"), "exported SQL should not contain errors:\n{exported}");
