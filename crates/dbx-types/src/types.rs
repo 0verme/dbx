@@ -181,6 +181,26 @@ pub struct ObjectSource {
     pub editable: Option<bool>,
 }
 
+/// Provenance for structured metadata fields that are optional in [`ColumnInfo`].
+/// This stays internal to the metadata mapping path and is not serialized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColumnMetadataCapabilities {
+    pub default: bool,
+    pub length: bool,
+    pub precision: bool,
+    pub scale: bool,
+}
+
+impl ColumnMetadataCapabilities {
+    pub const fn all_supported() -> Self {
+        Self { default: true, length: true, precision: true, scale: true }
+    }
+
+    pub const fn default_only() -> Self {
+        Self { default: true, length: false, precision: false, scale: false }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ColumnInfo {
     pub name: String,
@@ -203,6 +223,8 @@ pub struct ColumnInfo {
     pub character_set: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collation: Option<String>,
+    #[serde(skip)]
+    pub metadata_capabilities: Option<ColumnMetadataCapabilities>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

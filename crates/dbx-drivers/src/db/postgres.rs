@@ -33,12 +33,13 @@ use crate::execution::{await_stream_with_progress_timeout, DbOperationBudget, St
 use crate::models::connection::DatabaseType;
 use crate::sql::starts_with_executable_sql_keyword;
 use crate::types::{
-    ColumnInfo, CompletionAssistantCandidate, CompletionAssistantCandidateKind, CompletionAssistantMatchMode,
-    CompletionAssistantObjectKind, CompletionAssistantRequest, CompletionAssistantResponse, ConstraintInfo,
-    CustomTypeDdl, CustomTypeDetails, CustomTypeDomainConstraint, CustomTypeKind, CustomTypeMember,
-    CustomTypeProperties, DatabaseInfo, DatabaseStorageInfo, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
-    ObjectInfo, ObjectStatistics, OwnerInfo, PgPartitionBound, PgPartitionKind, PgPartitionNode, PgTablePartitioning,
-    QueryMessage, QueryResult, RuleInfo, SchemaInfo, SequenceInfo, SpatialColumnBuilder, TableInfo, TriggerInfo,
+    ColumnInfo, ColumnMetadataCapabilities, CompletionAssistantCandidate, CompletionAssistantCandidateKind,
+    CompletionAssistantMatchMode, CompletionAssistantObjectKind, CompletionAssistantRequest,
+    CompletionAssistantResponse, ConstraintInfo, CustomTypeDdl, CustomTypeDetails, CustomTypeDomainConstraint,
+    CustomTypeKind, CustomTypeMember, CustomTypeProperties, DatabaseInfo, DatabaseStorageInfo, ExtensionInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, ObjectInfo, ObjectStatistics, OwnerInfo, PgPartitionBound,
+    PgPartitionKind, PgPartitionNode, PgTablePartitioning, QueryMessage, QueryResult, RuleInfo, SchemaInfo,
+    SequenceInfo, SpatialColumnBuilder, TableInfo, TriggerInfo,
 };
 
 pub const GAUSSDB_COMPATIBILITY_SQL: &str =
@@ -4711,6 +4712,7 @@ fn column_info_from_row_offset(row: &Row, offset: usize) -> ColumnInfo {
         numeric_scale: row.try_get::<_, Option<i32>>(offset + 8).ok().flatten(),
         character_maximum_length: row.try_get::<_, Option<i32>>(offset + 9).ok().flatten(),
         enum_values: parse_enum_values_from_row(row, offset + 10),
+        metadata_capabilities: Some(ColumnMetadataCapabilities::all_supported()),
         ..Default::default()
     }
 }
@@ -7622,6 +7624,7 @@ fn redshift_columns_from_query_result(result: QueryResult) -> Vec<ColumnInfo> {
                 numeric_scale: query_result_i32(&row, 5),
                 character_maximum_length: query_result_i32(&row, 6),
                 enum_values: None,
+                metadata_capabilities: Some(ColumnMetadataCapabilities::all_supported()),
                 ..Default::default()
             })
         })

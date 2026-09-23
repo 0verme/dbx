@@ -24,6 +24,7 @@ import { collectBrowserSupportInfo } from "@/lib/app/supportInfo";
 // Re-exported below so the HTTP transport shares one definition; imported here
 // for this module's own signatures (a re-export does not bind local names).
 import type { PluginPlanCapabilities, PluginPlanRequest, PluginPlanResult } from "@/types/pluginPlan";
+import type { PluginTableMetadata, PluginTableMetadataRequest } from "@/types/pluginSchemaMetadata";
 
 function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   assertUpdateAllowsCommand(command);
@@ -832,6 +833,7 @@ export async function saveMaxRetries(maxRetries: number): Promise<void> {
 export type { OpenTabsStatePayload, PersistedEditorGroup } from "@/lib/app/openTabsPersistence";
 /** Shared with `@/lib/plugins/pluginHostBridge`; re-exported so the HTTP transport reuses one definition. */
 export type { PluginPlanCapabilities, PluginPlanRequest, PluginPlanResult } from "@/types/pluginPlan";
+export type { PluginColumnMetadata, PluginMetadataFieldAvailability, PluginMetadataFieldCapabilities, PluginTableMetadata, PluginTableMetadataRequest } from "@/types/pluginSchemaMetadata";
 import type { OpenTabsStatePayload } from "@/lib/app/openTabsPersistence";
 import { uuid } from "@/lib/common/utils";
 
@@ -1538,6 +1540,10 @@ export async function getColumns(connectionId: string, database: string, schema:
     catalog,
     clientSessionId,
   });
+}
+
+export async function getPluginTableMetadata(request: PluginTableMetadataRequest): Promise<PluginTableMetadata> {
+  return invoke("get_plugin_table_metadata", { request });
 }
 
 export async function getSqlServerColumnMetadata(connectionId: string, database: string, schema: string, table: string): Promise<SqlServerColumnMetadata[]> {
@@ -4765,14 +4771,14 @@ export async function meilisearchGetDocument(connectionId: string, index: string
   });
 }
 
-export async function meilisearchGetIndexSettings(connectionId: string, index: string): Promise<Record<string, any>> {
+export async function meilisearchGetIndexSettings(connectionId: string, index: string): Promise<MeilisearchIndexSettings> {
   return invoke("meilisearch_get_index_settings", {
     connectionId,
     index,
   });
 }
 
-export async function meilisearchUpdateIndexSettings(connectionId: string, index: string, settings: Record<string, any>): Promise<void> {
+export async function meilisearchUpdateIndexSettings(connectionId: string, index: string, settings: Record<string, unknown>): Promise<void> {
   return invoke("meilisearch_update_index_settings", {
     connectionId,
     index,
@@ -4780,11 +4786,18 @@ export async function meilisearchUpdateIndexSettings(connectionId: string, index
   });
 }
 
-export async function meilisearchGetIndexStats(connectionId: string, index: string): Promise<{ numberOfDocuments: number; isIndexing: boolean; fieldDistribution: Record<string, number> } & Record<string, any>> {
+export async function meilisearchGetIndexStats(connectionId: string, index: string): Promise<{ numberOfDocuments: number; isIndexing: boolean; fieldDistribution: Record<string, number> } & Record<string, unknown>> {
   return invoke("meilisearch_get_index_stats", {
     connectionId,
     index,
   });
+}
+
+export interface MeilisearchIndexSettings {
+  [key: string]: unknown;
+  pagination?: {
+    maxTotalHits?: number;
+  };
 }
 
 export interface MeilisearchIndexOverview {

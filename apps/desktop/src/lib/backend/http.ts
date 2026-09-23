@@ -190,10 +190,12 @@ import type {
   PromptTemplate,
   SshPromptResolution,
   MeilisearchIndexOverview,
+  MeilisearchIndexSettings,
   ElasticsearchIndexMetadataKind,
   ElasticsearchDeleteByQueryResult,
 } from "@/lib/backend/tauri";
 import type { QueryEditability } from "@/lib/sql/sqlAnalysis";
+import type { PluginTableMetadata, PluginTableMetadataRequest } from "@/types/pluginSchemaMetadata";
 import type { CsvQuoteMode } from "@/lib/export/csvQuoteMode";
 import type { MigrationPreflight, MigrationReport } from "./migration";
 export type { MigrationPreflight, MigrationReport } from "./migration";
@@ -1164,6 +1166,10 @@ export async function getCustomTypeDetails(connectionId: string, database: strin
 
 export async function getColumns(connectionId: string, database: string, schema: string, table: string, catalog?: string, clientSessionId?: string): Promise<ColumnInfo[]> {
   return get(`/api/schema/columns?${qs({ connection_id: connectionId, database, schema, table, catalog, client_session_id: clientSessionId })}`);
+}
+
+export async function getPluginTableMetadata(request: PluginTableMetadataRequest): Promise<PluginTableMetadata> {
+  return post("/api/plugin/table-metadata", request);
 }
 
 export async function getSqlServerColumnMetadata(connectionId: string, database: string, schema: string, table: string): Promise<SqlServerColumnMetadata[]> {
@@ -4928,14 +4934,14 @@ export async function meilisearchGetDocument(connectionId: string, index: string
   });
 }
 
-export async function meilisearchGetIndexSettings(connectionId: string, index: string): Promise<Record<string, any>> {
+export async function meilisearchGetIndexSettings(connectionId: string, index: string): Promise<MeilisearchIndexSettings> {
   return post("/api/document-store/meilisearch/settings/get", {
     connectionId,
     index,
   });
 }
 
-export async function meilisearchUpdateIndexSettings(connectionId: string, index: string, settings: Record<string, any>): Promise<void> {
+export async function meilisearchUpdateIndexSettings(connectionId: string, index: string, settings: Record<string, unknown>): Promise<void> {
   return post("/api/document-store/meilisearch/settings/update", {
     connectionId,
     index,
@@ -4943,7 +4949,7 @@ export async function meilisearchUpdateIndexSettings(connectionId: string, index
   });
 }
 
-export async function meilisearchGetIndexStats(connectionId: string, index: string): Promise<{ numberOfDocuments: number; isIndexing: boolean; fieldDistribution: Record<string, number> } & Record<string, any>> {
+export async function meilisearchGetIndexStats(connectionId: string, index: string): Promise<{ numberOfDocuments: number; isIndexing: boolean; fieldDistribution: Record<string, number> } & Record<string, unknown>> {
   return post("/api/document-store/meilisearch/stats", {
     connectionId,
     index,

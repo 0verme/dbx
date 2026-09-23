@@ -1406,6 +1406,55 @@ impl AppState {
         self.connections.read().await.keys().any(|key| pool_key_belongs_to_connection(key, connection_id))
     }
 
+    /// Find an already-registered metadata/workload pool for a metadata read.
+    /// Unlike `get_or_create_metadata_pool_for_session`, this is a pure lookup:
+    /// it never validates credentials, starts an agent, or opens a transport.
+    pub(crate) async fn existing_metadata_pool_key_for_session(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        client_session_id: Option<&str>,
+    ) -> Option<String> {
+        let config = {
+            let configs = self.configs.read().await;
+            configs.get(connection_id).cloned()
+        }?;
+        let pool_database = metadata_pool_database(Some(&config), database);
+        let mut base_pool_keys =
+            vec![base_pool_key_for_with_catalog(Some(config.db_type), connection_id, pool_database, None, false)];
+        // MongoDB document operations use a connection-level pool and send the
+        // requested database in the command. A host connection can therefore
+        // legitimately be registered either under the selected database or
+        // under the connection-level key; probe both without creating either.
+        if config.db_type == DatabaseType::MongoDb {
+            let connection_pool_key =
+                base_pool_key_for_with_catalog(Some(config.db_type), connection_id, None, None, false);
+            if !base_pool_keys.contains(&connection_pool_key) {
+                base_pool_keys.push(connection_pool_key);
+            }
+        }
+        let connections = self.connections.read().await;
+        base_pool_keys
+            .into_iter()
+            .flat_map(|base_pool_key| {
+                [
+                    pool_key_for_session_role(
+                        Some(&config),
+                        base_pool_key.clone(),
+                        client_session_id,
+                        AgentSessionRole::Metadata,
+                    ),
+                    pool_key_for_session_role(
+                        Some(&config),
+                        base_pool_key,
+                        client_session_id,
+                        AgentSessionRole::Workload,
+                    ),
+                ]
+            })
+            .find(|pool_key| connections.pools.contains_key(pool_key))
+    }
+
     /// Mutate the registry atomically. The callback is deliberately
     /// synchronous; asynchronous cleanup must use values returned from it.
     pub async fn update_connection_pools<R>(&self, update: impl FnOnce(&mut ConnectionPoolRegistry) -> R) -> R {
