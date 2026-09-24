@@ -2282,6 +2282,7 @@ function measureColumnHeaderText(text: string): number | undefined {
 }
 
 let columnFormatterForWidth: ((columnIndex: number) => ColumnFormatterConfig | undefined) | undefined;
+const gridViewportWidth = ref(0);
 
 function columnWidthDisplayValue(value: CellValue, columnIndex: number): CellValue {
   const formatter = columnFormatterForWidth?.(columnIndex);
@@ -2301,6 +2302,7 @@ const { initColumnWidths, onResizeStart, autoFitColumn, autoFitAllColumns, rende
   measureHeaderText: measureColumnHeaderText,
   headerMeasurementKey: columnHeaderMeasurementKey,
   rowNumberWidth,
+  viewportWidth: gridViewportWidth,
   displayValue: columnWidthDisplayValue,
 });
 const gridStyle = computed(() => ({
@@ -2312,7 +2314,6 @@ const gridStyle = computed(() => ({
   "--dbx-table-font-size": `${tableFontSize.value}px`,
 }));
 const gridHorizontalScrollLeft = ref(0);
-const gridViewportWidth = ref(0);
 let gridScrollLeftBeforeTranspose = 0;
 let gridScrollTopBeforeKeyboardTranspose: number | null = null;
 let restoreGridScrollTopAfterTranspose = false;
