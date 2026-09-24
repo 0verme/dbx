@@ -9946,6 +9946,8 @@ export default withEnglishFallback({
     },
     launching: "DBX를 시작하는 중…",
     openBackupDir: "백업 위치 열기",
+    keyWillCreate: "최초 마이그레이션 시 생성",
+    keyWillCreateHint: "현재 장치에는 아직 DBX 로컬 암호화 키가 없습니다. “마이그레이션 시작”을 클릭하면 DBX가 영구 키를 생성합니다. 시스템에서 자격 증명 접근 권한 창이 표시되면 접근을 허용해 주세요.",
   },
   solrAdmin: {
     title: "Solr 관리",

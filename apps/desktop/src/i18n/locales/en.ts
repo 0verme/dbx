@@ -10978,6 +10978,8 @@ export default {
     yes: "yes",
     no: "no",
     keyUnavailable: "The device key is unavailable. Allow keychain access or configure a persistent key.",
+    keyWillCreate: "created during first migration",
+    keyWillCreateHint: "DBX has not created a local encryption key on this device yet. Start the migration to create a persistent key, and allow credential-store access if prompted.",
     keyRecoveryHint: "Restore the original key used for this data directory, or configure the same external key that encrypted the existing data. Do not replace it with a new key.",
     progress: "Creating backup, migrating, and verifying. Do not close DBX…",
     failed: "Migration did not complete. Original data has been retained.",

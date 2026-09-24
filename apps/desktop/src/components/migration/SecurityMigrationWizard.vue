@@ -119,7 +119,8 @@ async function diagnostic() {
               <span class="text-muted-foreground">{{ t("migration.backupRequiredLabel") }}</span> {{ status.backupRequired ? t("migration.yes") : t("migration.no") }}
             </div>
             <div>
-              <span class="text-muted-foreground">{{ t("migration.keyProviderLabel") }}</span> {{ status.persistentKeyConfigured ? t("migration.ready") : t("migration.pending") }}
+              <span class="text-muted-foreground">{{ t("migration.keyProviderLabel") }}</span>
+              {{ status.keyStatus === "will_create" ? t("migration.keyWillCreate") : status.persistentKeyConfigured ? t("migration.ready") : t("migration.pending") }}
             </div>
           </div>
           <p v-if="status?.dataDir" class="break-all text-xs text-muted-foreground">
@@ -136,6 +137,7 @@ async function diagnostic() {
             </button>
           </p>
           <p v-if="status?.keyProviderAvailable === false && !status.keyCreationAllowed" class="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{{ t("migration.keyUnavailable") }}</p>
+          <p v-else-if="status?.keyStatus === 'will_create'" class="rounded-lg bg-primary/5 p-3 text-sm text-muted-foreground">{{ t("migration.keyWillCreateHint") }}</p>
           <p v-if="status?.keyFileConfigured === false && status?.persistentKeyConfigured === false && status?.keyCreationAllowed === false" class="text-xs text-muted-foreground">{{ t("migration.keyRecoveryHint") }}</p>
           <div v-if="props.store.state.error" class="space-y-1 rounded-lg bg-destructive/10 p-4 text-sm text-destructive">
             <p>{{ t(`migration.${props.store.state.error === "statusFailed" ? "statusFailed" : props.store.state.error === "cleanupFailed" ? "cleanupFailed" : "failed"}`) }}</p>

@@ -10489,6 +10489,8 @@ export default withEnglishFallback({
     },
     launching: "Iniciando DBX…",
     openBackupDir: "Abrir ubicación de copia de seguridad",
+    keyWillCreate: "Se crea en la primera migración",
+    keyWillCreateHint: "Este dispositivo aún no tiene una clave de cifrado local de DBX. Después de hacer clic en «Iniciar migración», DBX creará una clave persistente; si el sistema muestra una ventana de autorización de acceso a credenciales, permita el acceso.",
   },
   solrAdmin: {
     title: "Administración de Solr",

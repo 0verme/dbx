@@ -10489,6 +10489,8 @@ export default withEnglishFallback({
     },
     launching: "Avvio di DBX in corso…",
     openBackupDir: "Apri posizione backup",
+    keyWillCreate: "Creato durante la prima migrazione",
+    keyWillCreateHint: "Questo dispositivo non dispone ancora di una chiave di crittografia locale DBX. Dopo aver fatto clic su \"Avvia migrazione\", DBX creerà una chiave persistente; se il sistema visualizza una finestra di autorizzazione all'accesso alle credenziali, consenti l'accesso.",
   },
   solrAdmin: {
     title: "Amministrazione Solr",

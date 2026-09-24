@@ -10945,6 +10945,8 @@ export default withEnglishFallback({
     yes: "是",
     no: "否",
     keyUnavailable: "当前设备密钥不可用，请允许钥匙串访问或配置持久化密钥。",
+    keyWillCreate: "首次迁移时创建",
+    keyWillCreateHint: "当前设备还没有 DBX 本地加密密钥。点击“开始迁移”后，DBX 会创建持久化密钥；如果系统弹出凭据访问授权窗口，请允许访问。",
     keyRecoveryHint: "请恢复该数据目录原有的密钥，或配置用于加密现有数据的同一外部密钥。不要使用新密钥替换原密钥。",
     progress: "正在创建备份、迁移并验证，请勿关闭 DBX…",
     failed: "迁移没有完成，原始数据已保留。",

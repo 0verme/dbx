@@ -10485,6 +10485,8 @@ export default withEnglishFallback({
       verifyAdvice: "驗證成功前請保留備份。",
     },
     launching: "正在啟動 DBX…",
+    keyWillCreate: "首次遷移時建立",
+    keyWillCreateHint: "目前裝置還沒有 DBX 本機加密金鑰。點選「開始遷移」後，DBX 會建立持久化金鑰；如果系統彈出認證存取授權視窗，請允許存取。",
   },
   solrAdmin: {
     title: "Solr 管理",

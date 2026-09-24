@@ -10539,6 +10539,8 @@ export default withEnglishFallback({
     retry: "再試行",
     launching: "DBX を起動しています…",
     openBackupDir: "バックアップの場所を開く",
+    keyWillCreate: "初回移行時に作成",
+    keyWillCreateHint: "現在のデバイスにはまだ DBX ローカル暗号化キーがありません。「移行を開始」をクリックすると、DBX が永続化キーを作成します。システムが資格情報アクセスの承認ウィンドウを表示した場合は、アクセスを許可してください。",
   },
   solrAdmin: {
     title: "Solr 管理",
