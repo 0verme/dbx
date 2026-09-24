@@ -5562,7 +5562,7 @@ export default withEnglishFallback({
     sortDesc: "Azalan",
     limit: "Sınır",
     offset: "Konum",
-    resultSummary: "Yaklaşık {count} sonuç · {time} ms",
+    resultSummary: "Yaklaşık {count} sonuç · {duration}",
     viewJson: "JSON",
     viewTable: "Tablo",
     viewGrid: "Izgara",

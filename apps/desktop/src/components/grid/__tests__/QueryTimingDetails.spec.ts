@@ -24,7 +24,7 @@ describe("query timing disclosure", () => {
     app.use(createI18n({ legacy: false, locale: "zh-CN", messages: { "zh-CN": zh } }));
     app.mount(host);
     await nextTick();
-    expect(host.textContent).toBe("7030ms");
+    expect(host.textContent).toBe("7.0 s");
     expect(host.textContent).not.toContain("数据库执行");
     host.querySelector<HTMLButtonElement>("button")!.focus();
     await new Promise((resolve) => setTimeout(resolve, 100));

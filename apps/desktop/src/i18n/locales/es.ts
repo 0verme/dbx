@@ -1986,8 +1986,8 @@ export default withEnglishFallback({
     noNumericData: "No hay datos numéricos disponibles para graficar",
   },
   grid: {
-    agentExecuteTime: "Ejecución: {ms} ms",
-    serverExecuteTime: "Ejecución en BD: {us} µs",
+    agentExecuteTime: "Ejecución: {duration}",
+    serverExecuteTime: "Ejecución en BD: {duration}",
     serverExecuteTimeUnavailable: "Ejecución en BD: no disponible",
     serverExecuteTimeHint:
       "EXECUTE_TIME de OceanBase SQL Audit mide la ejecución del plan en el servidor. Los cursores JDBC muestran la muestra al finalizar la sentencia original; la paginación con consultas independientes solo muestra la suma si todas las páginas tienen muestras. Se solapa con los tiempos de ejecución y espera. No está disponible si el cursor sigue abierto o si los datos de auditoría no se pueden leer o asociar.",
@@ -2014,10 +2014,10 @@ export default withEnglishFallback({
     timingPhase_result: "Procesar resultados (fuera de la espera)",
     timingBackend: "Tiempo informado por el backend (se solapa con las etapas)",
     timingPhase_render: "Actualizar tabla (fuera de la espera)",
-    clientRequestWait: "Espera: {ms} ms",
+    clientRequestWait: "Espera: {duration}",
     clientRequestWaitHint:
       "Tiempo desde que la aplicación de escritorio envía la consulta hasta que recibe el resultado completo. Incluye la lectura de filas, la consulta de auditoría del servidor cuando está disponible y la transferencia; excluye la preparación del SQL y el renderizado de la tabla. Se suma entre las páginas cargadas.",
-    resultViewUpdate: "Actualización de tabla: {ms} ms",
+    resultViewUpdate: "Actualización de tabla: {duration}",
     resultViewUpdateHint: "Tiempo desde que la tabla recibe este resultado hasta que termina la actualización del DOM o se envía el dibujo de Canvas. Excluye la composición de GPU y la presentación en pantalla.",
     rows: "{count} filas",
     totalRows: "Total {count} filas",
@@ -5793,7 +5793,7 @@ export default withEnglishFallback({
     sortDesc: "Descendente",
     limit: "Límite",
     offset: "Desplazamiento",
-    resultSummary: "Aprox. {count} resultados · {time} ms",
+    resultSummary: "Aprox. {count} resultados · {duration}",
     viewJson: "JSON",
     viewTable: "Tabla",
     viewGrid: "Cuadrícula",

@@ -1920,8 +1920,8 @@ export default withEnglishFallback({
     noNumericData: "Nessun dato numerico disponibile per il grafico",
   },
   grid: {
-    agentExecuteTime: "Esecuzione: {ms} ms",
-    serverExecuteTime: "Esecuzione DB: {us} µs",
+    agentExecuteTime: "Esecuzione: {duration}",
+    serverExecuteTime: "Esecuzione DB: {duration}",
     serverExecuteTimeUnavailable: "Esecuzione DB: non disponibile",
     serverExecuteTimeHint:
       "EXECUTE_TIME di OceanBase SQL Audit misura l'esecuzione del piano sul server. I cursori JDBC mostrano il campione al termine dell'istruzione originale; la paginazione con query indipendenti mostra la somma solo se tutte le pagine hanno un campione. Si sovrappone ai tempi di esecuzione e attesa. Non è disponibile se il cursore è ancora aperto o se i dati di audit non possono essere letti o associati.",
@@ -1948,10 +1948,10 @@ export default withEnglishFallback({
     timingPhase_result: "Elaborazione risultati (fuori dal tempo di attesa)",
     timingBackend: "Tempo riportato dal backend (sovrapposto alle fasi)",
     timingPhase_render: "Aggiornamento tabella (fuori dal tempo di attesa)",
-    clientRequestWait: "Attesa: {ms} ms",
+    clientRequestWait: "Attesa: {duration}",
     clientRequestWaitHint:
       "Tempo dall'invio della query dall'applicazione desktop alla ricezione del risultato completo. Include la lettura delle righe, la query di audit del server quando disponibile e il trasferimento; esclude la preparazione SQL e il rendering della tabella. Viene sommato tra le pagine caricate.",
-    resultViewUpdate: "Aggiornamento tabella: {ms} ms",
+    resultViewUpdate: "Aggiornamento tabella: {duration}",
     resultViewUpdateHint: "Tempo dalla ricezione del risultato da parte della tabella al completamento dell'aggiornamento DOM o all'invio del disegno Canvas. Esclude la composizione GPU e la visualizzazione sullo schermo.",
     rows: "{count} righe",
     totalRows: "Totale {count} righe",
@@ -5715,7 +5715,7 @@ export default withEnglishFallback({
     sortDesc: "Decrescente",
     limit: "Limite",
     offset: "Scostamento",
-    resultSummary: "Circa {count} risultati · {time} ms",
+    resultSummary: "Circa {count} risultati · {duration}",
     viewJson: "JSON",
     viewTable: "Tabella",
     viewGrid: "Griglia",

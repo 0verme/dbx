@@ -2,13 +2,14 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatQueryDuration } from "@/lib/format/duration";
 import type { QueryResult } from "@/types/database";
 
 const props = defineProps<{ result: QueryResult; renderMs?: number }>();
 const { t } = useI18n();
 const measured = (value: number | undefined): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
 const format = (value: number | undefined) => (measured(value) ? `${Number(value.toFixed(3))}ms` : t("grid.timingUnavailable"));
-const wait = computed(() => (measured(props.result.client_request_wait_ms) ? `${Math.round(props.result.client_request_wait_ms)}ms` : "—"));
+const wait = computed(() => (measured(props.result.client_request_wait_ms) ? formatQueryDuration(props.result.client_request_wait_ms) : "—"));
 const hasAgentTiming = computed(() => measured(props.result.query_timings_ms?.agent_total));
 const phases = computed(() => {
   const m = props.result.query_timings_ms ?? {};
@@ -57,7 +58,7 @@ const phases = computed(() => {
       </TooltipTrigger>
       <TooltipContent side="top" align="start" class="block max-w-sm max-h-[var(--reka-tooltip-content-available-height)] overflow-y-auto">
         <div class="space-y-2" data-testid="query-timing-details">
-          <p class="font-medium">{{ t("grid.clientRequestWait", { ms: measured(result.client_request_wait_ms) ? Number(result.client_request_wait_ms.toFixed(3)) : t("grid.timingUnavailable") }) }}</p>
+          <p class="font-medium">{{ t("grid.clientRequestWait", { duration: measured(result.client_request_wait_ms) ? formatQueryDuration(result.client_request_wait_ms) : t("grid.timingUnavailable") }) }}</p>
           <p v-if="(result.timing_page_count ?? 1) > 1">{{ t("grid.timingPages", { count: result.timing_page_count }) }}</p>
           <table class="w-full border-collapse text-left" :aria-label="t('grid.timingDetails')">
             <thead class="border-b border-current/20">
