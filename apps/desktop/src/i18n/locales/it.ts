@@ -3,6 +3,7 @@ import { mongodbDatabaseDumpIt as mongoDump } from "./mongodbDatabaseDump";
 import { meilisearchManagementIt } from "./meilisearchManagement";
 import { redisGroupingIt as redisGrouping } from "./redisGrouping";
 import docs from "./docs/it";
+import { dataDictionaryIt as dataDictionary } from "./dataDictionaryMessages";
 import { consulItMessages } from "./consulIt";
 import { nacosAccessControlMessages, nacosAccessControlTabs } from "./nacosAccessControl";
 import { sqlServerTraceMessages as sqlServerTrace } from "./sqlServerTraceMessages";
@@ -167,6 +168,7 @@ export default withEnglishFallback({
     name: "DBX",
   },
   docs,
+  dataDictionary,
   pluginPlatform: {
     shortcutsPluginCenter: "Accanto al centro plugin (menu a discesa)",
     shortcutsToolbar: "Prima di Aggiorna (flottante)",

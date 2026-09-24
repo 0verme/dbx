@@ -601,6 +601,12 @@ export const useConnectionStore = defineStore("connection", () => {
     schema?: string;
     tableName?: string;
   } | null>(null);
+  const dataDictionarySource = ref<{
+    connectionId: string;
+    database: string;
+    schema?: string;
+    tableNames?: string[];
+  } | null>(null);
   const tableImportSource = ref<{
     connectionId: string;
     database: string;
@@ -10080,6 +10086,7 @@ export const useConnectionStore = defineStore("connection", () => {
     sqlFileSource,
     diagramSource,
     docsSource,
+    dataDictionarySource,
     tableImportSource,
     mongoDatabaseDumpSource,
     mongoImportSource,

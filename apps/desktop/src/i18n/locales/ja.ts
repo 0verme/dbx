@@ -1,6 +1,7 @@
 import { withEnglishFallback } from "./fallback";
 import { mongodbDatabaseDumpJa as mongoDump } from "./mongodbDatabaseDump";
 import docs from "./docs/ja";
+import { dataDictionaryJa as dataDictionary } from "./dataDictionaryMessages";
 import { consulJaMessages } from "./consulJa";
 import { nacosAccessControlMessages, nacosAccessControlTabs } from "./nacosAccessControl";
 import { sqlServerTraceMessages as sqlServerTrace } from "./sqlServerTraceMessages";
@@ -168,6 +169,7 @@ export default withEnglishFallback({
     name: "DBX",
   },
   docs,
+  dataDictionary,
   pluginPlatform: {
     shortcutsPluginCenter: "プラグインセンターの右側（ドロップダウン）",
     shortcutsToolbar: "更新ボタンの左側（フローティング）",

@@ -3,6 +3,7 @@ import { withEnglishFallback } from "./fallback";
 import { mongodbDatabaseDumpZhTW as mongoDump } from "./mongodbDatabaseDump";
 import { meilisearchManagementZhTW } from "./meilisearchManagement";
 import docs from "./docs/zh-TW";
+import { dataDictionaryZhTW as dataDictionary } from "./dataDictionaryMessages";
 import { consulZhTWMessages } from "./consulZhTW";
 import { nacosAccessControlMessages, nacosAccessControlTabs } from "./nacosAccessControl";
 import { sqlServerTraceMessages as sqlServerTrace } from "./sqlServerTraceMessages";
@@ -168,6 +169,7 @@ export default withEnglishFallback({
     name: "DBX",
   },
   docs,
+  dataDictionary,
   pluginPlatform: {
     shortcutsPluginCenter: "外掛中心右側（下拉）",
     shortcutsToolbar: "更新按鈕左側（浮動）",

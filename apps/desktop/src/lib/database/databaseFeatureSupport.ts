@@ -198,6 +198,11 @@ export function supportsSchemaDiagram(dbType?: DatabaseType): boolean {
   return supportsDatabaseFeature(dbType, "diagram");
 }
 
+/** Relational engines that can list tables and columns. Independent of diagram support. */
+export function supportsDataDictionary(dbType?: DatabaseType): boolean {
+  return supportsDatabaseFeature(dbType, "metadataBrowse");
+}
+
 export function supportsDatabaseSearch(dbType?: DatabaseType): boolean {
   return supportsDatabaseFeature(dbType, "schemaSearch");
 }

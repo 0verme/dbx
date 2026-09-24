@@ -1,10 +1,12 @@
 import { withEnglishFallback } from "./fallback";
 import docs from "./docs/ru";
+import { dataDictionaryRu as dataDictionary } from "./dataDictionaryMessages";
 import { meilisearchManagementRu } from "./meilisearchManagement";
 
 // Russian locale. Entries omitted here fall back to English at runtime.
 export default withEnglishFallback({
   docs,
+  dataDictionary,
   cellTransform: {
     title: "Предпросмотр преобразования",
     description: "Преобразуйте текущее значение для просмотра или копирования. Исходное значение и черновик редактора не изменяются.",

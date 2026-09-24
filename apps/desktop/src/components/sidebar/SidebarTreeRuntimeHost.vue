@@ -34,6 +34,7 @@ import {
   Eye,
   Upload,
   FileCode,
+  FileText,
   Network,
   PencilRuler,
   Search,
@@ -113,6 +114,7 @@ import {
   supportsAiAssistantContext,
   supportsFieldLineage,
   supportsObjectBrowserTreeNode,
+  supportsDataDictionary,
   supportsSchemaDiagram,
   supportsSqlFileExecution,
   supportsTableImport,
@@ -434,6 +436,7 @@ const {
   openDataCompare,
   openDatabaseExport,
   openDatabaseSearch,
+  openDataDictionary,
   openDiagram,
   openDocs,
   openFieldLineage,
@@ -4704,6 +4707,10 @@ const canOpenDiagram = computed(() => {
   return !!activeNode.value.database && supportsSchemaDiagram(currentDatabaseType());
 });
 
+const canOpenDataDictionary = computed(() => {
+  return !!activeNode.value.connectionId && !!activeNode.value.database && supportsDataDictionary(currentDatabaseType());
+});
+
 const canOpenDatabaseSearch = computed(() => {
   return !!activeNode.value.database && supportsDatabaseSearch(currentDatabaseType());
 });
@@ -5878,6 +5885,9 @@ function buildDatabaseSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     items.push({ label: t("diff.title"), action: openSchemaDiff, icon: ArrowRightLeft });
     items.push({ label: t("dataCompare.title"), action: openDataCompare, icon: ArrowRightLeft });
     items.push({ label: t("contextMenu.exportDatabase"), action: openDatabaseExport, icon: Upload });
+    if (canOpenDataDictionary.value) {
+      items.push({ label: t("dataDictionary.title"), action: openDataDictionary, icon: FileText });
+    }
     const destructiveActions: ContextMenuItem[] = [];
     if (canDropDatabase.value) {
       destructiveActions.push({
@@ -6270,6 +6280,9 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
     items.push(exportDataSubmenu());
     items.push({ label: t("contextMenu.exportDatabase"), action: openDatabaseExport, icon: Upload });
     items.push({ label: t("contextMenu.exportStructure"), action: exportStructure, icon: FileCode });
+    if (canOpenDataDictionary.value) {
+      items.push({ label: t("dataDictionary.title"), action: openDataDictionary, icon: FileText });
+    }
     items.push(copyStructureAsSubmenu());
     if (isTableNotView.value) {
       items.push({ label: "", separator: true });

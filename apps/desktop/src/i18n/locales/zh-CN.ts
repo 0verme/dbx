@@ -1,6 +1,7 @@
 import { redisGroupingZhCN as redisGrouping } from "./redisGrouping";
 import { withEnglishFallback } from "./fallback";
 import docs from "./docs/zh-CN";
+import { dataDictionaryZhCN as dataDictionary } from "./dataDictionaryMessages";
 import { consul } from "./consulZhCN";
 import { meilisearchManagementZhCN } from "./meilisearchManagement";
 import { mongodbDatabaseDumpZhCN as mongoDump } from "./mongodbDatabaseDump";
@@ -90,6 +91,7 @@ export default withEnglishFallback({
     name: "DBX",
   },
   docs,
+  dataDictionary,
   pluginPlatform: {
     shortcutsPluginCenter: "插件中心右侧（下拉）",
     shortcutsToolbar: "更新按钮左侧（浮动）",

@@ -1,5 +1,6 @@
 import { withEnglishFallback } from "./fallback";
 import docs from "./docs/az";
+import { dataDictionaryAz as dataDictionary } from "./dataDictionaryMessages";
 import { consulAzMessages } from "./consulAz";
 import { sqlServerTraceMessages as sqlServerTrace } from "./sqlServerTraceMessages";
 import { meilisearchManagementAz } from "./meilisearchManagement";
@@ -176,6 +177,7 @@ export default withEnglishFallback({
     name: "DBX",
   },
   docs,
+  dataDictionary,
   auth: {
     rateLimited: "{seconds} saniyə sonra yenidən cəhd edin",
     setupTitle: "Giriş parolunu təyin et",
