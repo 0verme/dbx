@@ -2977,6 +2977,7 @@ export default withEnglishFallback({
     jalapenoSponsored: "$1 免费额度",
     jalapenoDescription: "🎉顶尖团队都在用的企业级 AI，现在为你而来！【5折前沿模型】立刻体验！更有【多充多送】羊毛狠狠薅！",
     hualongDescription: "🐉 面向重度 AI 开发者的官方直连中转！Codex/Claude 系列 100% 官方源直供，Token 级账单逐笔可核验，支持企业合同与发票。\n🎉用优惠码 DBX&HUALONG 注册即得 $1 额度！",
+    aicodemirrorDescription: "⚡ AICodeMirror 支持企业级高并发、极速开票、7×24 专属技术支持，新人免费领 8 元额度和首充 8 折。",
     visitPartner: "访问合作伙伴网站",
     getApiKey: "获取 API Key",
     providerStatusActive: "当前",

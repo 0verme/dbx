@@ -3065,6 +3065,7 @@ export default {
     jalapenoSponsored: "$1 free credit",
     jalapenoDescription: "🎉 Enterprise-grade AI trusted by leading teams is now available to you! Try cutting-edge models at 50% off and get more bonus credit when you top up more!",
     hualongDescription: "🐉 Official-source model relay for heavy AI developers! 100% genuine Codex and Claude series with verifiable token-level billing, enterprise contracts, and invoicing.\n🎉Sign up with promo code DBX&HUALONG for $1 free credit!",
+    aicodemirrorDescription: "⚡ AICodeMirror delivers enterprise-grade concurrency, fast invoicing, and 7×24 dedicated support; new users get ¥8 in free credit plus 20% off their first top-up.",
     visitPartner: "Visit partner website",
     getApiKey: "Get API key",
     providerStatusActive: "Active",

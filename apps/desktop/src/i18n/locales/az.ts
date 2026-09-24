@@ -2818,6 +2818,7 @@ export default withEnglishFallback({
     jalapenoDescription: "🎉 Aparıcı komandaların etibar etdiyi müəssisə səviyyəli AI artıq sizin üçün əlçatandır! Ən müasir modelləri 50% endirimlə sınayın və daha çox məbləğ yüklədikcə daha çox bonus kredit qazanın!",
     hualongDescription:
       "🐉 AI ilə intensiv işləyən tərtibatçılar üçün rəsmi mənbəli model vasitəçisi! Yoxlanıla bilən token səviyyəli hesablaşma, müəssisə müqavilələri və hesab-fakturalarla 100% orijinal Codex və Claude seriyaları.\n🎉$1 pulsuz kredit üçün DBX&HUALONG promo kodu ilə qeydiyyatdan keçin!",
+    aicodemirrorDescription: "⚡ AICodeMirror korporativ səviyyəli yüksək paralellik, sürətli faktura və 7×24 xüsusi dəstək təklif edir; yeni istifadəçilər ¥8 pulsuz kredit və ilk dolduruşda 20% endirim qazanır.",
     visitPartner: "Tərəfdaşın saytına keç",
     getApiKey: "API açarı əldə et",
     providerStatusActive: "Aktiv",
