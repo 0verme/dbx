@@ -4148,6 +4148,7 @@ export default withEnglishFallback({
     loadMore: "Cargar más...",
     objectBrowser: "Explorar en el navegador de objetos ({count})",
     extensions: "Extensiones",
+    eventTriggers: "Disparadores de eventos",
     types: "tipo",
     gridfs: "GridFS",
     buckets: "Buckets",
@@ -9051,6 +9052,18 @@ export default withEnglishFallback({
     fileUploaded: "Archivo {fileName} subido.",
     fileDeleted: "Archivo {fileName} eliminado.",
   },
+  eventTrigger: {
+    detailsTitle: "Detalles del disparador de eventos",
+    viewDetails: "Ver detalles",
+    name: "Nombre",
+    event: "Evento",
+    owner: "Propietario",
+    function: "Función",
+    enabled: "Habilitado",
+    tags: "Etiquetas",
+    definition: "Definición",
+  },
+
   extension: {
     installTitle: "Instalar extensión",
     manageTitle: "Administrar extensión",

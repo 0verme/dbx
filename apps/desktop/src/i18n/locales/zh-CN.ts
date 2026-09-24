@@ -4189,7 +4189,20 @@ export default withEnglishFallback({
     loadMore: "加载更多...",
     objectBrowser: "在对象浏览器中查看 ({count})",
     extensions: "扩展",
+    eventTriggers: "事件触发器",
   },
+  eventTrigger: {
+    detailsTitle: "事件触发器详情",
+    viewDetails: "查看详情",
+    name: "名称",
+    event: "事件",
+    owner: "所有者",
+    function: "函数",
+    enabled: "启用状态",
+    tags: "标签",
+    definition: "定义",
+  },
+
   extension: {
     installTitle: "安装扩展",
     manageTitle: "管理扩展",

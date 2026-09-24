@@ -4070,6 +4070,7 @@ export default withEnglishFallback({
     loadMore: "載入更多...",
     objectBrowser: "在物件瀏覽器中檢視 ({count})",
     extensions: "擴展",
+    eventTriggers: "事件觸發器",
     types: "類型",
     gridfs: "GridFS",
     buckets: "Buckets",
@@ -8973,6 +8974,18 @@ export default withEnglishFallback({
     fileUploaded: "已上傳 {fileName}。",
     fileDeleted: "已刪除 {fileName}。",
   },
+  eventTrigger: {
+    detailsTitle: "事件觸發器詳情",
+    viewDetails: "查看詳情",
+    name: "名稱",
+    event: "事件",
+    owner: "擁有者",
+    function: "函式",
+    enabled: "啟用狀態",
+    tags: "標籤",
+    definition: "定義",
+  },
+
   extension: {
     installTitle: "安裝擴展",
     manageTitle: "管理擴展",

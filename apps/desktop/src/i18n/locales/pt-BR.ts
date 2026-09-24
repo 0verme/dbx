@@ -4072,6 +4072,7 @@ export default withEnglishFallback({
     loadMore: "Carregar mais...",
     objectBrowser: "Navegar no Navegador de Objetos ({count})",
     extensions: "Extensões",
+    eventTriggers: "Gatilhos de evento",
     types: "Tipos",
     gridfs: "GridFS",
     buckets: "Buckets",
@@ -8977,6 +8978,18 @@ export default withEnglishFallback({
     fileUploaded: "Arquivo {fileName} enviado.",
     fileDeleted: "Arquivo {fileName} excluído.",
   },
+  eventTrigger: {
+    detailsTitle: "Detalhes do gatilho de evento",
+    viewDetails: "Ver detalhes",
+    name: "Nome",
+    event: "Evento",
+    owner: "Proprietário",
+    function: "Função",
+    enabled: "Habilitado",
+    tags: "Etiquetas",
+    definition: "Definição",
+  },
+
   extension: {
     installTitle: "Instalar extensão",
     manageTitle: "Gerenciar extensão",

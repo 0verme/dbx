@@ -4095,6 +4095,7 @@ export default withEnglishFallback({
     linkedServers: "リンクサーバー",
     materializedViews: "マテリアライズドビュー",
     extensions: "拡張機能",
+    eventTriggers: "イベントトリガー",
     types: "タイプ",
     gridfs: "GridFS",
     buckets: "バケット",
@@ -9025,6 +9026,18 @@ export default withEnglishFallback({
     fileUploaded: "{fileName} をアップロードしました。",
     fileDeleted: "{fileName} を削除しました。",
   },
+  eventTrigger: {
+    detailsTitle: "イベントトリガーの詳細",
+    viewDetails: "詳細を表示",
+    name: "名前",
+    event: "イベント",
+    owner: "所有者",
+    function: "関数",
+    enabled: "有効",
+    tags: "タグ",
+    definition: "定義",
+  },
+
   extension: {
     installTitle: "拡張機能のインストール",
     manageTitle: "拡張機能の管理",

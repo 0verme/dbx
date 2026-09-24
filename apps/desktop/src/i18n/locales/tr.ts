@@ -3867,7 +3867,20 @@ export default withEnglishFallback({
     loadMore: "Daha fazla yükle...",
     objectBrowser: "Nesne Gezgininde Gözat ({count})",
     extensions: "Uzantılar",
+    eventTriggers: "Olay tetikleyicileri",
   },
+  eventTrigger: {
+    detailsTitle: "Olay tetikleyici ayrıntıları",
+    viewDetails: "Ayrıntıları gör",
+    name: "Ad",
+    event: "Olay",
+    owner: "Sahip",
+    function: "Fonksiyon",
+    enabled: "Etkin",
+    tags: "Etiketler",
+    definition: "Tanım",
+  },
+
   extension: {
     manageTitle: "Uzantıları Yönet",
     installTitle: "Uzantı Kur",

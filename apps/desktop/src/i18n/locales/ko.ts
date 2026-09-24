@@ -3960,7 +3960,20 @@ export default withEnglishFallback({
     loadMore: "더 불러오기...",
     objectBrowser: "객체 브라우저에서 탐색 ({count})",
     extensions: "확장",
+    eventTriggers: "이벤트 트리거",
   },
+  eventTrigger: {
+    detailsTitle: "이벤트 트리거 세부 정보",
+    viewDetails: "세부 정보 보기",
+    name: "이름",
+    event: "이벤트",
+    owner: "소유자",
+    function: "함수",
+    enabled: "활성화됨",
+    tags: "태그",
+    definition: "정의",
+  },
+
   extension: {
     manageTitle: "확장 관리",
     installTitle: "확장 설치",

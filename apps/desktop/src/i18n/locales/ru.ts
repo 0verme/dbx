@@ -4137,7 +4137,20 @@ export default withEnglishFallback({
     loadMore: "Загрузить ещё...",
     objectBrowser: "Открыть в обозревателе объектов ({count})",
     extensions: "Расширения",
+    eventTriggers: "Триггеры событий",
   },
+  eventTrigger: {
+    detailsTitle: "Сведения о триггере события",
+    viewDetails: "Просмотреть сведения",
+    name: "Имя",
+    event: "Событие",
+    owner: "Владелец",
+    function: "Функция",
+    enabled: "Включено",
+    tags: "Теги",
+    definition: "Определение",
+  },
+
   extension: {
     manageTitle: "Управление расширениями",
     installTitle: "Установить расширение",
