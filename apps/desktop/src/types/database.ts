@@ -476,6 +476,7 @@ export interface PluginContextMenuContribution {
   description?: string;
   icon?: string;
   menu: PluginContextMenuTarget;
+  action?: PluginOpenWorkbenchTarget;
 }
 
 export interface PluginResultViewContribution {
@@ -490,11 +491,15 @@ export type PluginCommandPresentation = "tab" | "panel";
 export type PluginCommandReuse = "singleton" | "new";
 export type PluginCommandRestore = "none";
 
-/** v1 ships exactly one action (HOST_PLUGIN_UI_SPEC §4.1): open a declared workbench. */
-export interface PluginOpenWorkbenchAction {
+/** Shared wire-level navigation contract used by commands and context-menu contributions. */
+export interface PluginOpenWorkbenchTarget {
   type: "open-workbench";
   /** Workbench contribution of the SAME plugin. */
   workbench: string;
+}
+
+/** v1 command action extends the shared target with command-specific launch behavior. */
+export interface PluginOpenWorkbenchAction extends PluginOpenWorkbenchTarget {
   presentation?: PluginCommandPresentation;
   reuse?: PluginCommandReuse;
   instance_key?: string;

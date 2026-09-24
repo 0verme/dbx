@@ -218,10 +218,10 @@ Action `when` accepts `always`, `create`, or `edit`; `variant` accepts `default`
 | --- | --- | --- |
 | `workbench` | `type`, `id`, `label` | Registers a workbench opened from the sidebar or plugin entry. |
 | `filesystem-provider` | `type`, `id`, `label`, `schemes` | Registers a virtual filesystem; `root_uri` can be `s3://bucket`, with optional `read`, `write`, `delete`, `rename`, and `mkdir` capabilities. |
-| `context-menu` | `type`, `id`, `label`, `menu: "connection"` or `"table"` | Adds an action to a Sidebar Tree connection or table context menu. |
+| `context-menu` | `type`, `id`, `label`, `menu: "connection"` or `"table"`, optional `action` | Adds a backend action or opens a declared Workbench from a Sidebar Tree context menu. |
 | `result-view` | `type`, `id`, `label` | Registers a query or task result view. |
 
-A `menu: "table"` contribution is currently exposed when the user opens a context menu on a concrete table node in the Sidebar Tree. DBX invokes the required backend entrypoint as `contextMenu/<contribution-id>` with the table identity:
+A `menu: "table"` contribution is currently exposed when the user opens a context menu on a concrete table node in the Sidebar Tree. A legacy contribution without `action` invokes the required backend entrypoint as `contextMenu/<contribution-id>` with the table identity:
 
 ```json
 {
@@ -236,9 +236,25 @@ A `menu: "table"` contribution is currently exposed when the user opens a contex
 
 `database` and `schema` are optional and are omitted when unavailable. The context contains no credential, connection string, or raw connection configuration. Object Browser can reuse this identity contract in a later contribution surface, but it is not a table menu surface in this release.
 
+A context-menu contribution can instead declare a host-handled Workbench action:
+
+```json
+{
+  "type": "context-menu",
+  "id": "vendor.example.generate",
+  "label": "Generate test data",
+  "menu": "table",
+  "action": { "type": "open-workbench", "workbench": "vendor.example.main" }
+}
+```
+
+`action.workbench` must reference a `workbench` contribution in the same plugin. The host opens it directly, without invoking the sidecar, and passes the current invocation context as Workbench context. For `menu: "table"`, this is the `TableContext` object above directly (not the backend `{ "table": ... }` envelope); for `menu: "connection"`, it is the existing non-secret connection summary (`id`, `dbType`, `name`, `database`). The host may also provide the standard `connectionId` for tab association. No host, port, username, password, connection string, or raw connection configuration is exposed. Reopening the Workbench refreshes its context with the latest invocation.
+
+Only legacy context-menu contributions without `action` require a backend entrypoint; their `{ "message": "..." }` response continues to show a toast.
+
 Reference contributions by ID: a connection provider's `workbench` must point to a declared workbench and `filesystem_provider` to a declared filesystem provider. A contribution icon takes precedence over the plugin-level icon.
 
-Choose `workbench` for a custom file browser: the plugin owns its list, virtualization, previews, context menus, and split panes. Choose `filesystem_provider` only to use DBX's generic file manager; declaring both defaults to the workbench. `context-menu` invokes `contextMenu/<contribution-id>` on the backend; `result-view` receives a result snapshot in workbench context, and the opened contribution id arrives in the `dbx-plugin-init` payload so one UI entrypoint can serve several workbenches and result views. See the [full contribution protocol](https://github.com/t8y2/dbx/blob/main/plugins/README.md) for payloads.
+Choose `workbench` for a custom file browser: the plugin owns its list, virtualization, previews, context menus, and split panes. Choose `filesystem_provider` only to use DBX's generic file manager; declaring both defaults to the workbench. A legacy `context-menu` invokes `contextMenu/<contribution-id>` on the backend, while a declarative `open-workbench` action opens its same-plugin Workbench directly; `result-view` receives a result snapshot in workbench context, and the opened contribution id arrives in the `dbx-plugin-init` payload so one UI entrypoint can serve several workbenches and result views. See the [full contribution protocol](https://github.com/t8y2/dbx/blob/main/plugins/README.md) for payloads.
 
 ### Filesystem Protocol
 
