@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/composables/useToast";
+import PluginShortcutSettings from "./PluginShortcutSettings.vue";
 import PluginIcon from "@/components/plugins/PluginIcon.vue";
 import * as api from "@/lib/backend/api";
 import { clearPluginIconCache } from "@/lib/plugins/pluginIconResolver";
@@ -1385,6 +1386,7 @@ onBeforeUnmount(() => {
 
       <TabsContent value="settings" class="m-0 min-h-0 flex-1 overflow-y-auto">
         <div class="space-y-4 pb-2">
+          <PluginShortcutSettings />
           <section class="space-y-3 rounded-xl border p-4">
             <div class="flex items-start gap-3">
               <div class="rounded-md bg-primary/10 p-2 text-primary"><FileUp class="size-4" /></div>

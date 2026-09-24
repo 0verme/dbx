@@ -1,3 +1,4 @@
+import { normalizePluginShortcutSettings, type PluginShortcutSettings } from "@/lib/plugins/pluginShortcuts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { aiConfigToItem, generateId, getConfigKey } from "@/lib/ai/aiConfigList";
@@ -963,6 +964,7 @@ export interface EditorSettings {
   queryExportKeysetOptimizationEnabled: boolean;
   updateDownloadSource: UpdateDownloadSource;
   ignoredUpdateVersion: string;
+  pluginShortcuts: PluginShortcutSettings;
   toolbarItems: ToolbarItems;
   objectBrowserShowCheckbox: boolean;
   objectBrowserViewMode: "list" | "grid";
@@ -1235,6 +1237,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   queryExportKeysetOptimizationEnabled: true,
   updateDownloadSource: "official",
   ignoredUpdateVersion: "",
+  pluginShortcuts: normalizePluginShortcutSettings(undefined),
   toolbarItems: { ...DEFAULT_TOOLBAR_ITEMS },
   objectBrowserShowCheckbox: false,
   objectBrowserViewMode: "list",
@@ -1840,6 +1843,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     queryExportKeysetOptimizationEnabled: typeof settings.queryExportKeysetOptimizationEnabled === "boolean" ? settings.queryExportKeysetOptimizationEnabled : DEFAULT_EDITOR_SETTINGS.queryExportKeysetOptimizationEnabled,
     updateDownloadSource: normalizeUpdateDownloadSource(settings.updateDownloadSource),
     ignoredUpdateVersion: typeof settings.ignoredUpdateVersion === "string" ? settings.ignoredUpdateVersion : DEFAULT_EDITOR_SETTINGS.ignoredUpdateVersion,
+    pluginShortcuts: normalizePluginShortcutSettings(settings.pluginShortcuts),
     toolbarItems: normalizeToolbarItems(settings.toolbarItems),
     objectBrowserShowCheckbox: typeof settings.objectBrowserShowCheckbox === "boolean" ? settings.objectBrowserShowCheckbox : DEFAULT_EDITOR_SETTINGS.objectBrowserShowCheckbox,
     objectBrowserViewMode: settings.objectBrowserViewMode === "grid" ? "grid" : DEFAULT_EDITOR_SETTINGS.objectBrowserViewMode,
@@ -2628,6 +2632,7 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.queryExportKeysetOptimizationEnabled !== undefined) editorSettings.value.queryExportKeysetOptimizationEnabled = partial.queryExportKeysetOptimizationEnabled;
     if (partial.updateDownloadSource !== undefined) editorSettings.value.updateDownloadSource = normalizeUpdateDownloadSource(partial.updateDownloadSource);
     if (partial.ignoredUpdateVersion !== undefined) editorSettings.value.ignoredUpdateVersion = typeof partial.ignoredUpdateVersion === "string" ? partial.ignoredUpdateVersion : "";
+    if (partial.pluginShortcuts !== undefined) editorSettings.value.pluginShortcuts = normalizePluginShortcutSettings(partial.pluginShortcuts);
     if (partial.toolbarItems !== undefined) editorSettings.value.toolbarItems = normalizeToolbarItems(partial.toolbarItems);
     if (partial.objectBrowserShowCheckbox !== undefined) editorSettings.value.objectBrowserShowCheckbox = partial.objectBrowserShowCheckbox === true;
     if (partial.objectBrowserViewMode !== undefined) editorSettings.value.objectBrowserViewMode = partial.objectBrowserViewMode === "grid" ? "grid" : "list";

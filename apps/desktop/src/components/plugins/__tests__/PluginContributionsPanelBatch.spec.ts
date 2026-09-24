@@ -56,6 +56,9 @@ vi.mock("@/components/ui/tooltip", async () => {
   return { Tooltip: stub, TooltipContent: stub, TooltipTrigger: stub };
 });
 vi.mock("@/components/plugins/PluginIcon.vue", async () => ({ default: (await import("@/components/grid/__tests__/vueHostHarness")).createPassthroughStub("PluginIcon") }));
+// Shortcut preferences have their own component/store tests. Keep this batch
+// harness scoped to plugin mutations and their exact backend call counts.
+vi.mock("@/components/plugins/PluginShortcutSettings.vue", async () => ({ default: (await import("@/components/grid/__tests__/vueHostHarness")).createPassthroughStub("PluginShortcutSettings") }));
 
 import PluginContributionsPanel from "@/components/plugins/PluginContributionsPanel.vue";
 

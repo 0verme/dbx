@@ -3739,12 +3739,17 @@ export const useQueryStore = defineStore("query", () => {
     return undefined;
   }
 
-  function openPluginWorkbench(pluginId: string, contributionId: string, options: { title?: string; connectionId?: string; database?: string; context?: Record<string, unknown>; forceNew?: boolean; refreshContextOnReuse?: boolean } = {}) {
+  function openPluginWorkbench(pluginId: string, contributionId: string, options: { commandId?: string; title?: string; connectionId?: string; database?: string; context?: Record<string, unknown>; forceNew?: boolean; refreshContextOnReuse?: boolean } = {}) {
     const contextConnectionId = typeof options.context?.connectionId === "string" ? options.context.connectionId : "";
     const connectionId = options.connectionId || contextConnectionId;
     if (!options.forceNew) {
       const existing = tabs.value.find((tab) => tab.mode === "plugin-workbench" && tab.pluginWorkbench?.pluginId === pluginId && tab.pluginWorkbench?.contributionId === contributionId && pluginTabConnectionId(tab) === connectionId);
       if (existing) {
+        // Adopt legacy/bridge-created tabs without changing their live context.
+        // A shared workbench keeps an existing command's provenance on reuse.
+        if (existing.pluginWorkbench!.commandId == null && options.commandId) {
+          existing.pluginWorkbench!.commandId = options.commandId;
+        }
         if (options.refreshContextOnReuse && options.context) {
           existing.pluginWorkbench = {
             ...existing.pluginWorkbench!,
@@ -3792,6 +3797,7 @@ export const useQueryStore = defineStore("query", () => {
       isExplaining: false,
       mode: "plugin-workbench",
       pluginWorkbench: {
+        commandId: options.commandId,
         pluginId,
         contributionId,
         context: options.context ? snapshotPluginWorkbenchContext(options.context) : undefined,

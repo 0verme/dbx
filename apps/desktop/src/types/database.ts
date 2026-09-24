@@ -1948,6 +1948,8 @@ export interface QueryTab {
     | "plugin-workbench"
     | "plugin-filesystem";
   pluginWorkbench?: {
+    /** Host command that created this tab; distinct commands can share a workbench. */
+    commandId?: string;
     pluginId: string;
     contributionId: string;
     context?: Record<string, unknown>;

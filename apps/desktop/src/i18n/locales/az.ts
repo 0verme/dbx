@@ -80,6 +80,19 @@ const consul = {
 };
 
 export default withEnglishFallback({
+  pluginPlatform: {
+    shortcutsPluginCenter: "Plagin mərkəzinin yanında (açılan menyu)",
+    shortcutsToolbar: "Yeniləmə düyməsinin solunda (üzən)",
+    shortcutsToolbarCount: "Görünən nişanların sayı",
+    shortcutsToolbarHint: "0 bütün girişləri menyuya yerləşdirir. Yer çatmadıqda qalanları da menyuya keçir.",
+    shortcutsMore: "Digər plagin qısayolları ({count})",
+    shortcutsLeftTop: "Sol · Yuxarı",
+    shortcutsLeftBottom: "Sol · Aşağı",
+    shortcutsRightTop: "Sağ · Yuxarı",
+    shortcutsRightBottom: "Sağ · Aşağı",
+    shortcutsVisiblePlugins: "Görünən plaginlər",
+    shortcutsResize: "Hündürlüyü dəyişmək üçün sürükləyin; avtomatik hündürlük üçün iki dəfə klikləyin",
+  },
   cellTransform: {
     title: "Çevirmə önizləməsi",
     description: "Cari dəyəri baxmaq və ya köçürmək üçün çevirir. İlkin dəyər və redaktə qaralaması dəyişmir.",

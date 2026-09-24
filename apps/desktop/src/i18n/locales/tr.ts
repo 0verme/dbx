@@ -82,6 +82,19 @@ const consul = {
 };
 
 export default withEnglishFallback({
+  pluginPlatform: {
+    shortcutsPluginCenter: "Eklenti merkezinin yanında (açılır menü)",
+    shortcutsToolbar: "Güncelle düğmesinin solunda (kayan)",
+    shortcutsToolbarCount: "Görünür simge sayısı",
+    shortcutsToolbarHint: "0 tüm girişleri menüye taşır. Alan daraldığında diğerleri de menüye taşınır.",
+    shortcutsMore: "Diğer eklenti kısayolları ({count})",
+    shortcutsLeftTop: "Sol · Üst",
+    shortcutsLeftBottom: "Sol · Alt",
+    shortcutsRightTop: "Sağ · Üst",
+    shortcutsRightBottom: "Sağ · Alt",
+    shortcutsVisiblePlugins: "Görünür eklentiler",
+    shortcutsResize: "Yüksekliği ayarlamak için sürükleyin; otomatik yükseklik için çift tıklayın",
+  },
   cellTransform: {
     title: "Dönüştürme önizlemesi",
     description: "Geçerli değeri görüntülemek veya kopyalamak için dönüştürür. Özgün değer ve düzenleme taslağı değişmez.",
