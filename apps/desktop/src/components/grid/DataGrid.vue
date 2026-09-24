@@ -119,6 +119,8 @@ import {
   hiveTablePropertiesIndicateTransactional,
   isClickHouseExistingRowReadonlyColumn,
   isHiddenGridColumn,
+  isSalesforceExistingRowReadonlyColumn,
+  isSalesforceNewRowReadonlyColumn,
   isTdengineExistingRowReadonlyColumn,
   shouldIncludeSyntheticRowId,
 } from "@/lib/table/tableEditing";
@@ -369,6 +371,7 @@ import { useDataGridColumnFormatter } from "@/composables/useDataGridColumnForma
 import { useDataGridTableMetadataLoaders } from "@/composables/useDataGridTableMetadataLoaders";
 import { DATA_GRID_SERVER_COLUMN_FILTER_LIMIT, useDataGridColumnFilters } from "@/composables/useDataGridColumnFilters";
 import { useDataGridLargeValues } from "@/composables/useDataGridLargeValues";
+import { useSalesforceSaveConfirmation } from "@/composables/useSalesforceSaveConfirmation";
 
 const SqlPreviewPanel = defineAsyncComponent(() => import("@/components/editor/SqlPreviewPanel.vue"));
 const ImagePreviewDialog = defineAsyncComponent(() => import("@/components/grid/ImagePreviewDialog.vue"));
@@ -3797,6 +3800,57 @@ async function refreshSavedRows(request: { dirtyRows: ReadonlyMap<number, Readon
   return true;
 }
 
+// Salesforce applies one REST call per record with no transaction, so every grid
+// save is reviewed here first. The identity lines are advisory only — Salesforce
+// enforces the real object/field permissions, and a failed identity lookup just
+// omits the line rather than blocking the write.
+const {
+  open: salesforceSaveConfirmOpen,
+  updates: salesforceSaveConfirmUpdates,
+  inserts: salesforceSaveConfirmInserts,
+  deletes: salesforceSaveConfirmDeletes,
+  total: salesforceSaveConfirmTotal,
+  targetLabel: salesforceSaveConfirmTarget,
+  statements: salesforceSaveConfirmStatements,
+  request: requestSalesforceSaveConfirmation,
+  confirm: confirmSalesforceSave,
+} = useSalesforceSaveConfirmation();
+const isSalesforceGrid = computed(() => resolvedDatabaseType.value === "salesforce");
+const salesforceIdentity = computed(() => (isSalesforceGrid.value && props.connectionId ? connectionStore.salesforceCurrentUser(props.connectionId) : null));
+const salesforceIdentityLabel = computed(() => {
+  const identity = salesforceIdentity.value;
+  if (!identity) return "";
+  return identity.username || identity.name || identity.email;
+});
+const salesforceSaveConfirmSummary = computed(() => {
+  const parts: string[] = [];
+  if (salesforceSaveConfirmUpdates.value > 0) parts.push(t("grid.salesforceSaveUpdates", { count: salesforceSaveConfirmUpdates.value }));
+  if (salesforceSaveConfirmInserts.value > 0) parts.push(t("grid.salesforceSaveInserts", { count: salesforceSaveConfirmInserts.value }));
+  if (salesforceSaveConfirmDeletes.value > 0) parts.push(t("grid.salesforceSaveDeletes", { count: salesforceSaveConfirmDeletes.value }));
+  return parts.join(" · ");
+});
+// The save dialog names the profile alongside the user: writability comes from
+// the profile's FLS plus record sharing, not from the admin flag alone.
+const salesforceIdentityProfile = computed(() => {
+  const profileName = salesforceIdentity.value?.profileName;
+  return profileName ? t("grid.salesforceSaveProfile", { name: profileName }) : t("toolbar.salesforceIdentityUnknownProfile");
+});
+const salesforceSaveConfirmDetails = computed(() => {
+  const lines = [salesforceSaveConfirmSummary.value, t("grid.salesforceSaveTarget", { object: salesforceSaveConfirmTarget.value || t("grid.salesforceSaveUnknownObject") })];
+  if (salesforceIdentity.value) {
+    const identity = { user: salesforceIdentityLabel.value, profile: salesforceIdentityProfile.value };
+    if (salesforceIdentity.value.isAdmin === true) lines.push(t("grid.salesforceSaveAdminIdentity", identity));
+    else if (salesforceIdentity.value.isAdmin === false) lines.push(t("grid.salesforceSaveNonAdminIdentity", identity));
+    else lines.push(t("grid.salesforceSaveUnknownRights", identity));
+  }
+  return lines.filter((line) => !!line).join("\n");
+});
+const salesforceSaveConfirmSql = computed(() => salesforceSaveConfirmStatements.value.join("\n"));
+watch(salesforceSaveConfirmOpen, (isOpen) => {
+  if (!isOpen || !props.connectionId) return;
+  void connectionStore.loadSalesforceCurrentUser(props.connectionId);
+});
+
 const editor = useDataGridEditor({
   result: computed(() => props.result),
   editable: computed(() => props.editable),
@@ -3821,6 +3875,8 @@ const editor = useDataGridEditor({
   rowStatusFilter,
   dataGridQuickEntryEnabled: computed(() => settingsStore.editorSettings.dataGridQuickEntry),
   confirmDangerousRowDeletion: computed(() => settingsStore.editorSettings.confirmDangerousSqlExecution),
+  // Only Salesforce opts in: its writes cannot be rolled back once issued.
+  confirmSaveRequest: computed(() => (isSalesforceGrid.value ? requestSalesforceSaveConfirmation : undefined)),
   includeDatabaseNameInSaveSql: computed(() => settingsStore.editorSettings.generateSqlIncludeDatabaseName),
   initialEditColumn: firstVisibleColumnIndex,
   cellEditorText: cellEditorTextForValue,
@@ -4018,10 +4074,14 @@ function canEditCellItem(item: RowItem | undefined, columnIndex: number): boolea
   if (isSavingNewRow(item)) return false;
   const column = props.result.columns[columnIndex] ?? "";
   if (customReadonlyColumns.value.has(column.toLowerCase())) return false;
-  if (!item?.isNew && !item?.isDraft) {
-    const sourceColumn = props.sourceColumns?.[columnIndex] ?? column;
+  const sourceColumn = props.sourceColumns?.[columnIndex] ?? column;
+  if (item?.isNew || item?.isDraft) {
+    // A new Salesforce record cannot carry non-createable fields (Id, CreatedDate, …).
+    if (isSalesforceNewRowReadonlyColumn(props.databaseType, sourceColumn, props.tableMeta?.columns ?? [])) return false;
+  } else {
     if (isClickHouseExistingRowReadonlyColumn(props.databaseType, sourceColumn, props.tableMeta?.primaryKeys ?? [], props.tableMeta?.columns ?? [])) return false;
     if (isTdengineExistingRowReadonlyColumn(props.databaseType, column, props.tableMeta?.columns ?? [])) return false;
+    if (isSalesforceExistingRowReadonlyColumn(props.databaseType, sourceColumn, props.tableMeta?.primaryKeys ?? [], props.tableMeta?.columns ?? [])) return false;
   }
   return true;
 }
@@ -14210,6 +14270,18 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
       :loading="dropAllMongoIndexesLoading"
       :close-on-confirm="false"
       @confirm="confirmDropAllMongoIndexes"
+    />
+    <!-- Salesforce applies each record with its own REST call and cannot roll back, so the
+         save is reviewed here first. Cancel (or closing) denies it and keeps the edits staged. -->
+    <DangerConfirmDialog
+      v-model:open="salesforceSaveConfirmOpen"
+      :title="t('grid.salesforceSaveConfirmTitle')"
+      :message="t('grid.salesforceSaveConfirmMessage', { count: salesforceSaveConfirmTotal })"
+      :details-text="salesforceSaveConfirmDetails"
+      :sql="salesforceSaveConfirmSql"
+      :confirm-label="t('grid.salesforceSaveConfirm')"
+      :close-on-confirm="false"
+      @confirm="confirmSalesforceSave"
     />
     <ImagePreviewDialog v-if="imagePreviewMounted" v-model:open="imagePreviewOpen" :src="imagePreviewSrc" :title="imagePreviewTitle" />
     <component v-if="previewDialogOpen && previewDialogConfig" :is="previewDialogConfig.component" v-model:open="previewDialogOpen" v-bind="previewDialogConfig.props" />

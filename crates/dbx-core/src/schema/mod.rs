@@ -676,6 +676,12 @@ async fn list_databases_once(state: &AppState, connection_id: &str) -> Result<Ve
         if let Some(client) = extract_pool!(pool_handle.as_ref(), VictoriaMetrics) {
             return db::victoriametrics_driver::list_databases(&client).await;
         }
+        if let Some(client) = extract_pool!(pool_handle.as_ref(), Salesforce) {
+            // singleDatabase trait: the whole org is one synthesized database
+            // node; sObjects are listed as its tables.
+            let name = client.org_display_name().await;
+            return Ok(vec![db::DatabaseInfo { name, ..Default::default() }]);
+        }
         try_sqlserver!(pool_handle, list_databases);
         if let Some(client) = extract_pool!(pool_handle.as_ref(), Agent) {
             let is_mongo = db_config.as_ref().is_some_and(|config| config.db_type == DatabaseType::MongoDb);
@@ -2682,6 +2688,10 @@ async fn list_tables_once(
         PoolKind::Meilisearch(client) => db::meilisearch_driver::list_indexes(client)
             .await
             .map(|names| collection_names_to_tables(names, "INDEX"))
+            .map(|tables| filter_table_infos(tables, filter, limit, offset, object_types, table_name_filter)),
+        PoolKind::Salesforce(client) => db::salesforce_driver::SfClient::list_tables(client)
+            .await
+            .map(|names| collection_names_to_tables(names, "SOBJECT"))
             .map(|tables| filter_table_infos(tables, filter, limit, offset, object_types, table_name_filter)),
         PoolKind::HBase(client) => db::hbase_driver::list_tables(client, database)
             .await
@@ -7455,6 +7465,9 @@ async fn get_columns_core_for_session_inner_with_pool(
             }
             PoolKind::Meilisearch(client) => {
                 db::meilisearch_driver::get_columns(client, table).await.map(deduplicate_column_infos)
+            }
+            PoolKind::Salesforce(client) => {
+                db::salesforce_driver::SfClient::get_columns(client, table).await.map(deduplicate_column_infos)
             }
             PoolKind::HBase(client) => {
                 db::hbase_driver::get_columns(client, database, table).await.map(deduplicate_column_infos)

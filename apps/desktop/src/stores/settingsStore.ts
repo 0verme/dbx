@@ -86,6 +86,13 @@ export interface McpConnectionPolicy {
   databaseScope: "all" | "selected" | "none";
   allowedDatabases: string[];
   databasePolicies: McpDatabasePolicy[];
+  /**
+   * Per-connection opt-in for AI-agent writes to a Salesforce org. Off by default and
+   * forced off by `readOnly`: SOQL reads need nothing beyond the execution mode, but
+   * Salesforce DML has no transaction and no rollback, so it also requires the
+   * two-step prepare/apply confirmation on every single write.
+   */
+  allowSalesforceDml: boolean;
 }
 
 export interface McpDatabasePolicy {
@@ -174,6 +181,9 @@ export function normalizeMcpGlobalPolicy(policy: Partial<McpGlobalPolicy> | null
         databaseScope,
         allowedDatabases,
         databasePolicies,
+        // Same fail-closed shape as allowDangerousSql: read-only wins, and a policy
+        // saved before the switch existed (field absent) normalizes to off.
+        allowSalesforceDml: rule.readOnly !== true && rule.allowSalesforceDml === true,
       };
       return rules;
     }, {}),
