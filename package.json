@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config apps/desktop/vite.config.ts",
-    "dev:tauri": "tauri dev",
+    "dev:tauri": "node scripts/dev-tauri.mjs",
     "dev:web": "vite --config apps/desktop/vite.config.ts --port 5173 --mode web",
     "dev:backend": "node scripts/dev-backend.mjs",
     "dev:full:win": ".\\scripts\\dev-full.bat",

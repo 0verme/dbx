@@ -186,7 +186,7 @@ async fn official_tools_round_trip_through_dbx_core() {
     let directory = tempfile::tempdir().unwrap();
     let client = mongodb::Client::with_uri_str(&uri).await.unwrap();
     let database = format!("dbx_dump_test_{}", uuid::Uuid::new_v4().simple());
-    let storage = Storage::open(&directory.path().join("storage.db")).await.unwrap();
+    let storage = dbx_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
     let state = AppState::new(storage);
     let connection_id = "mongo-dump-test";
     let config: ConnectionConfig = serde_json::from_value(serde_json::json!({
@@ -403,7 +403,8 @@ async fn official_database_tools_round_trip_through_dbx() {
     db.run_command(doc! { "create": "z_view", "viewOn": "records", "pipeline": [ { "$match": { "score": { "$gte": 1 } } } ], "collation": { "locale": "en", "strength": 2 } }).await.unwrap();
     db.run_command(doc! { "create": "a_nested", "viewOn": "z_view", "pipeline": [], "collation": { "locale": "en", "strength": 2 } }).await.unwrap();
     let collections = ["records", "empty", "capped", "odd/name", "z_view", "a_nested"];
-    let state = AppState::new(Storage::open(&files.path().join("storage.db")).await.unwrap());
+    let state =
+        AppState::new(dbx_core::persistence::test_storage::open(&files.path().join("storage.db")).await.unwrap());
     let connection_id = "database-dump-test";
     let config: ConnectionConfig = serde_json::from_value(serde_json::json!({ "id": connection_id, "name": "Database dump test", "db_type": "mongodb", "host": "127.0.0.1", "port": 27090, "username": "", "password": "", "database": database, "connection_string": uri, "driver_profile": "mongodb-native" })).unwrap();
     state.configs.write().await.insert(connection_id.into(), config);
@@ -776,7 +777,8 @@ async fn legacy_agent_database_round_trip_through_dbx() {
     let (host, port) = endpoint.split_once(':').expect("host:port");
     let files = tempfile::tempdir().unwrap();
     let database = format!("dbx_legacy_{}", uuid::Uuid::new_v4().simple());
-    let state = AppState::new(Storage::open(&files.path().join("storage.db")).await.unwrap());
+    let state =
+        AppState::new(dbx_core::persistence::test_storage::open(&files.path().join("storage.db")).await.unwrap());
     let id = "legacy-dump-test";
     let config: ConnectionConfig = serde_json::from_value(serde_json::json!({ "id": id, "name": "Legacy dump test", "db_type": "mongodb", "host": host, "port": port.parse::<u16>().unwrap(), "username": "", "password": "", "database": database, "driver_profile": "mongodb-legacy" })).unwrap();
     state.configs.write().await.insert(id.into(), config);
@@ -961,7 +963,7 @@ async fn directory_preview_does_not_read_bson_and_source_identity_is_checked_bef
     .unwrap();
     assert_eq!(preview.catalog.collections[0].documents, None);
     assert_eq!(preview.catalog.collections[0].size_bytes, 16);
-    let state = AppState::new(Storage::open(&files.path().join("state.db")).await.unwrap());
+    let state = AppState::new(dbx_core::persistence::test_storage::open(&files.path().join("state.db")).await.unwrap());
     let request: MongoDatabaseRestoreRequest = serde_json::from_value(serde_json::json!({
         "taskId":"validation-test", "connectionId":"missing", "database":"target", "sourceDatabase":"source",
         "sourceRef":preview.source_ref, "dropExisting":true

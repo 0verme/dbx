@@ -4,7 +4,6 @@ use dbx_core::models::connection::{ConnectionConfig, DatabaseType};
 use dbx_core::query::execute_sql_statement;
 use dbx_core::sql::SqlFileRequest;
 use dbx_core::sql_file_import::execute_sql_file_path;
-use dbx_core::storage::Storage;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -51,7 +50,7 @@ async fn live_mysql_selected_table_restore_preserves_unselected_tables() {
     let database = format!("dbx_restore_{suffix}");
     let dir = std::env::temp_dir().join(format!("dbx-selected-restore-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
-    let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+    let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
     let state = AppState::new(storage);
     state.configs.write().await.insert(connection_id.clone(), live_mysql_config(&connection_id));
     execute_sql_statement(&state, &connection_id, "", &format!("CREATE DATABASE `{database}`"), None, None)
@@ -121,7 +120,7 @@ async fn live_mysql_database_export_restores_dependent_views() {
     let database = format!("dbx_export_{suffix}");
     let dir = std::env::temp_dir().join(format!("dbx-live-mysql-export-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
-    let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+    let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
     let state = Arc::new(AppState::new(storage));
     state.configs.write().await.insert(connection_id.clone(), live_mysql_config(&connection_id));
 
@@ -248,7 +247,7 @@ async fn run_live_mysql_database_export_handles_many_tables_including_empty_tabl
     let database = format!("dbx_export_many_{suffix}");
     let dir = std::env::temp_dir().join(format!("dbx-live-mysql-export-many-tables-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
-    let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+    let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
     let state = Arc::new(AppState::new(storage));
     state.configs.write().await.insert(connection_id.clone(), live_mysql_config(&connection_id));
 
@@ -354,7 +353,7 @@ async fn live_mysql_database_export_creates_missing_destination_directory() {
     let database = format!("dbx_export_missing_dir_{suffix}");
     let dir = std::env::temp_dir().join(format!("dbx-live-mysql-export-missing-dir-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
-    let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+    let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
     let state = Arc::new(AppState::new(storage));
     state.configs.write().await.insert(connection_id.clone(), live_mysql_config(&connection_id));
 
@@ -422,7 +421,7 @@ async fn live_mysql_database_export_refuses_to_recreate_a_destination_that_disap
     let database = format!("dbx_export_vanished_dir_{suffix}");
     let dir = std::env::temp_dir().join(format!("dbx-live-mysql-export-vanished-dir-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
-    let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+    let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
     let state = Arc::new(AppState::new(storage));
     state.configs.write().await.insert(connection_id.clone(), live_mysql_config(&connection_id));
 
@@ -504,7 +503,7 @@ async fn live_mysql_database_export_refuses_a_destination_that_vanished_before_i
     let database = format!("dbx_export_precfg_vanished_{suffix}");
     let dir = std::env::temp_dir().join(format!("dbx-live-mysql-export-preconfigured-vanished-dir-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
-    let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+    let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
     let state = Arc::new(AppState::new(storage));
     state.configs.write().await.insert(connection_id.clone(), live_mysql_config(&connection_id));
 

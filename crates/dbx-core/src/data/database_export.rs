@@ -4077,7 +4077,6 @@ mod tests {
     use super::{ExportProgress, LenientExportErrors};
     use crate::connection::AppState;
     use crate::models::connection::DatabaseType;
-    use crate::storage::Storage;
     use crate::types::SpatialColumn;
     use crate::types::{ObjectInfo, ObjectSourceKind, TableInfo};
     use serde_json::{json, Value};
@@ -6510,7 +6509,7 @@ mod tests {
     }
 
     async fn test_app_state(scratch_dir: &std::path::Path) -> AppState {
-        let storage = Storage::open(&scratch_dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&scratch_dir.join("storage.db")).await.unwrap();
         AppState::new(storage)
     }
 

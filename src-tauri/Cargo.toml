@@ -80,6 +80,7 @@ sys-locale = "0.3"
 sysinfo = { version = "0.32", features = ["system"] }
 
 [dev-dependencies]
+dbx-core = { path = "../crates/dbx-core", default-features = false, features = ["test-support"] }
 tauri = { version = "2.10.3", features = ["test"] }
 tempfile = "3"
 

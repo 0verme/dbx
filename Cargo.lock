@@ -2158,6 +2158,7 @@ dependencies = [
  "crc",
  "csv",
  "dbx-ai-provider",
+ "dbx-core",
  "dbx-drivers",
  "dbx-formats",
  "dbx-platform",

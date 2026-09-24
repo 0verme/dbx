@@ -3164,7 +3164,6 @@ mod tests {
     use crate::plugins::{
         InstalledPlugin, PluginDriverManifest, PluginDriverSession, PluginManifest, PluginRuntimeEnv,
     };
-    use crate::storage::Storage;
     use std::collections::HashMap;
     use std::time::Duration;
 
@@ -3295,7 +3294,7 @@ mod tests {
     async fn turso_test_state(base_url: &str) -> (AppState, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("dbx-turso-schema-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new(storage);
         let mut config = test_connection_config(DatabaseType::Turso);
         config.database = Some("main".to_string());
@@ -3623,7 +3622,7 @@ done
         let session = std::sync::Arc::new(
             PluginDriverSession::start_for_test(plugin, "jdbc".to_string(), PluginRuntimeEnv::default()).await.unwrap(),
         );
-        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new(storage);
         let mut config = test_connection_config(DatabaseType::Jdbc);
         config.id = "mysql-wrapper".to_string();
@@ -3785,7 +3784,7 @@ done
         let session = std::sync::Arc::new(
             PluginDriverSession::start_for_test(plugin, "jdbc".to_string(), PluginRuntimeEnv::default()).await.unwrap(),
         );
-        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new(storage);
         let mut config = test_connection_config(DatabaseType::Jdbc);
         config.id = "oracle-synonym".to_string();
@@ -3933,7 +3932,7 @@ done
             let session = std::sync::Arc::new(
                 PluginDriverSession::start_for_test(plugin, "jdbc".into(), PluginRuntimeEnv::default()).await.unwrap(),
             );
-            let state = AppState::new(Storage::open(&dir.join("storage.db")).await.unwrap());
+            let state = AppState::new(crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap());
             let mut config = test_connection_config(DatabaseType::Jdbc);
             config.id = "oracle-ddl".into();
             config.database = Some("demo".into());
@@ -4528,7 +4527,7 @@ done
     async fn metadata_pool_races_retry_once_and_saturation_returns_busy() {
         let dir = std::env::temp_dir().join(format!("dbx-schema-metadata-pool-race-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = crate::storage::Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = crate::connection::AppState::new(storage);
         state.configs.write().await.insert("conn".to_string(), test_connection_config(DatabaseType::Mysql));
 
@@ -4581,7 +4580,7 @@ done
     async fn metadata_pool_snapshot_releases_global_connections_lock() {
         let dir = std::env::temp_dir().join(format!("dbx-schema-metadata-snapshot-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = crate::storage::Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = crate::connection::AppState::new(storage);
         let pool = crate::db::sqlite::connect_path(":memory:").await.unwrap();
         state
@@ -4623,7 +4622,7 @@ done
     async fn metadata_fail_stop_detaches_base_pool_without_client_session() {
         let dir = std::env::temp_dir().join(format!("dbx-schema-metadata-fail-stop-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = crate::storage::Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = crate::connection::AppState::new(storage);
         let mut config = test_connection_config(DatabaseType::Dameng);
         config.id = "conn".to_string();
@@ -4647,7 +4646,7 @@ done
     async fn metadata_timeout_detaches_pool_without_replaying_operation() {
         let dir = std::env::temp_dir().join(format!("dbx-schema-metadata-timeout-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = crate::storage::Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = crate::connection::AppState::new(storage);
         let mut config = test_connection_config(DatabaseType::Dameng);
         config.id = "conn".to_string();
@@ -4676,7 +4675,7 @@ done
     async fn metadata_second_quarantine_detaches_replacement_pool() {
         let dir = std::env::temp_dir().join(format!("dbx-schema-metadata-quarantine-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = crate::storage::Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = crate::connection::AppState::new(storage);
         let mut config = test_connection_config(DatabaseType::Sqlite);
         config.id = "conn".to_string();
@@ -4758,7 +4757,7 @@ for line in sys.stdin:
         runtime.increment_session_count();
         let client =
             crate::db::agent_driver::AgentDriverClient::shared_session(runtime.clone(), "metadata-session".to_string());
-        let storage = crate::storage::Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = crate::connection::AppState::new(storage);
         let mut config = test_connection_config(DatabaseType::Dameng);
         config.id = "conn".to_string();
@@ -5988,7 +5987,7 @@ done
         let session = std::sync::Arc::new(
             PluginDriverSession::start_for_test(plugin, "jdbc".to_string(), PluginRuntimeEnv::default()).await.unwrap(),
         );
-        let state = AppState::new(Storage::open(&dir.join("storage.db")).await.unwrap());
+        let state = AppState::new(crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap());
         let mut config = test_connection_config(DatabaseType::Jdbc);
         config.id = "jdbc-oracle-columns".to_string();
         config.database = Some("demo".to_string());
@@ -6094,7 +6093,7 @@ done
         let session = std::sync::Arc::new(
             PluginDriverSession::start_for_test(plugin, "jdbc".to_string(), PluginRuntimeEnv::default()).await.unwrap(),
         );
-        let state = AppState::new(Storage::open(&dir.join("storage.db")).await.unwrap());
+        let state = AppState::new(crate::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap());
         let mut config = test_connection_config(DatabaseType::Jdbc);
         config.id = "jdbc-mysql-columns".to_string();
         config.database = Some("demo".to_string());

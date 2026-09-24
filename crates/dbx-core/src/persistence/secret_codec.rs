@@ -34,6 +34,8 @@ pub enum SecretKeyPolicy {
     PlatformDefault,
     ManagedDataDir,
     ExternalOnly,
+    #[cfg(any(test, feature = "test-support"))]
+    TestDataDir,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +113,10 @@ impl SecretCodec {
     where
         F: Fn(&str) -> Option<std::ffi::OsString>,
     {
+        #[cfg(any(test, feature = "test-support"))]
+        if matches!(policy, SecretKeyPolicy::TestDataDir) {
+            return Self::resolve_managed_data_dir(data_dir, allow_create);
+        }
         if let Some(path) = env_lookup("DBX_SECRET_KEY_FILE") {
             let path = std::path::PathBuf::from(path);
             let codec = Self::read_key_file(&path, false)?;
@@ -123,31 +129,33 @@ impl SecretCodec {
         }
 
         match policy {
-            SecretKeyPolicy::ManagedDataDir => {
-                let path = managed_key_path(data_dir);
-                match path.symlink_metadata() {
-                    Ok(metadata) if metadata.file_type().is_symlink() => Err("KEY_FILE_UNAVAILABLE".to_string()),
-                    Ok(_) => {
-                        if allow_create {
-                            secure_managed_key_permissions(&path)?;
-                        }
-                        let codec = read_key_file_with_retry(&path, true)?;
-                        Ok(SecretKeyResolution { codec, source: SecretKeySource::ManagedDataDir })
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound && allow_create => {
-                        let codec = create_managed_key(&path)?;
-                        Ok(SecretKeyResolution { codec, source: SecretKeySource::ManagedDataDir })
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                        Err("MISSING_MANAGED_KEY".to_string())
-                    }
-                    Err(_) => Err("KEY_FILE_UNAVAILABLE".to_string()),
-                }
-            }
+            SecretKeyPolicy::ManagedDataDir => Self::resolve_managed_data_dir(data_dir, allow_create),
             SecretKeyPolicy::ExternalOnly => Err("MISSING_EXTERNAL_KEY".to_string()),
+            #[cfg(any(test, feature = "test-support"))]
+            SecretKeyPolicy::TestDataDir => Self::resolve_managed_data_dir(data_dir, allow_create),
             SecretKeyPolicy::PlatformDefault => {
                 Self::resolve_platform_default(default_key_path(), allow_create, platform_keyring_codec)
             }
+        }
+    }
+
+    fn resolve_managed_data_dir(data_dir: &std::path::Path, allow_create: bool) -> Result<SecretKeyResolution, String> {
+        let path = managed_key_path(data_dir);
+        match path.symlink_metadata() {
+            Ok(metadata) if metadata.file_type().is_symlink() => Err("KEY_FILE_UNAVAILABLE".to_string()),
+            Ok(_) => {
+                if allow_create {
+                    secure_managed_key_permissions(&path)?;
+                }
+                let codec = read_key_file_with_retry(&path, true)?;
+                Ok(SecretKeyResolution { codec, source: SecretKeySource::ManagedDataDir })
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && allow_create => {
+                let codec = create_managed_key(&path)?;
+                Ok(SecretKeyResolution { codec, source: SecretKeySource::ManagedDataDir })
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err("MISSING_MANAGED_KEY".to_string()),
+            Err(_) => Err("KEY_FILE_UNAVAILABLE".to_string()),
         }
     }
 
@@ -514,6 +522,18 @@ fn aad(namespace: &str, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn isolated_test_policy_never_reads_process_credentials() {
+        let directory = tempfile::tempdir().unwrap();
+        let resolved =
+            super::SecretCodec::resolve_with_env(super::SecretKeyPolicy::TestDataDir, directory.path(), true, |_| {
+                panic!("test storage must not inspect process credential overrides")
+            })
+            .unwrap();
+        assert_eq!(resolved.source, super::SecretKeySource::ManagedDataDir);
+        assert!(super::managed_key_path(directory.path()).is_file());
+    }
+
     use super::{
         managed_key_path, read_key_file_with_retry, run_secret_service_operation, SecretCodec, SecretKeyPolicy,
         SecretKeySource,

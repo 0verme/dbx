@@ -310,7 +310,8 @@ mod tests {
     #[tokio::test]
     async fn demo_connect_guard_requires_a_pool_equivalent_stored_connection() {
         let directory = tempfile::tempdir().unwrap();
-        let storage = dbx_core::storage::Storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap();
+        let storage =
+            dbx_core::persistence::test_storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap();
         let app = std::sync::Arc::new(dbx_core::connection::AppState::new(storage));
 
         let unknown = stored_config();
@@ -334,7 +335,8 @@ mod tests {
         use axum::routing::{get, post};
 
         let directory = tempfile::tempdir().unwrap();
-        let storage = dbx_core::storage::Storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap();
+        let storage =
+            dbx_core::persistence::test_storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap();
         let app = std::sync::Arc::new(dbx_core::connection::AppState::new(storage));
         let state = {
             let mut web_state = crate::state::WebState::for_tests(app, directory.path().to_path_buf());
@@ -364,7 +366,7 @@ mod tests {
 
         // 关闭开关后同一中间件直接放行。
         let app = std::sync::Arc::new(dbx_core::connection::AppState::new(
-            dbx_core::storage::Storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap(),
+            dbx_core::persistence::test_storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap(),
         ));
         let state = std::sync::Arc::new(crate::state::WebState::for_tests(app, directory.path().to_path_buf()));
         let router = axum::Router::new()

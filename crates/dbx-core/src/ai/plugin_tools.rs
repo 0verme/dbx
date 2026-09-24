@@ -1117,7 +1117,7 @@ mod tests {
     #[tokio::test]
     async fn stale_tool_bindings_cannot_bypass_revoked_ai_access() {
         let root = tempfile::tempdir().unwrap();
-        let storage = crate::storage::Storage::open(&root.path().join("dbx.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&root.path().join("dbx.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         state.storage.set_ai_plugin_tool_plugin_enabled("io.dbx.kafka", true).await.unwrap();
         let set = build_tool_set(

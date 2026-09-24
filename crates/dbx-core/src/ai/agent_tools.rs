@@ -1592,8 +1592,6 @@ mod tests {
     use crate::db::agent_driver::{AgentDriverClient, AgentLaunchSpec};
     #[cfg(unix)]
     use crate::models::connection::{default_redis_key_separator, ConnectionConfig};
-    #[cfg(unix)]
-    use crate::storage::Storage;
 
     #[cfg(unix)]
     async fn spawn_recording_agent(record_path: &std::path::Path) -> (AgentDriverClient, tempfile::NamedTempFile) {
@@ -1789,7 +1787,7 @@ for line in sys.stdin:
         assert!(!confirmed_execute_query.description.contains("confirmed write"));
 
         let temp_dir = tempfile::tempdir().unwrap();
-        let storage = Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         let call = ToolCall {
             id: "mongo-find-one".to_string(),
@@ -1818,7 +1816,7 @@ for line in sys.stdin:
     #[tokio::test]
     async fn mongodb_agent_keeps_all_writes_blocked_after_sql_confirmation() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let storage = Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         let permissions = AgentSqlPermissions {
             allow_writes: true,
@@ -2139,7 +2137,7 @@ for line in sys.stdin:
         let temp_dir = tempfile::tempdir().unwrap();
         let record_path = temp_dir.path().join("agent-requests.jsonl");
         let (client, _script) = spawn_recording_agent(&record_path).await;
-        let storage = Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         let connection = agent_test_connection("dameng-1", "Dameng", DatabaseType::Dameng, "APPDB");
         state.configs.write().await.insert(connection.id.clone(), connection);
@@ -2207,7 +2205,7 @@ for line in sys.stdin:
         let temp_dir = tempfile::tempdir().unwrap();
         let record_path = temp_dir.path().join("agent-requests.jsonl");
         let (client, _script) = spawn_recording_agent(&record_path).await;
-        let storage = Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         let connection = agent_test_connection("mysql-1", "MySQL", DatabaseType::Mysql, "rs_main");
         state.configs.write().await.insert(connection.id.clone(), connection);
@@ -2605,7 +2603,7 @@ for line in sys.stdin:
         let temp_dir = tempfile::tempdir().unwrap();
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let storage = crate::storage::Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
+            let storage = crate::persistence::test_storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
             let state = std::sync::Arc::new(crate::connection::AppState::new(storage));
             let tool_call = ToolCall {
                 id: "call-gct".to_string(),

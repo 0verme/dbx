@@ -402,7 +402,7 @@ mod tests {
         installer
             .install_bytes(&ui_plugin_package("sample.nodata", &[]), PluginInstallPolicy::LocalDevelopment)
             .unwrap();
-        let storage = crate::storage::Storage::open(&root.path().join("dbx.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&root.path().join("dbx.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir_and_app_version(storage, plugin_dir, "0.6.0");
 
         let path = root.path().join("orders.db");

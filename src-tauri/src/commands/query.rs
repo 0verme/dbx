@@ -1037,13 +1037,12 @@ pub fn build_create_user_sql(username: String, password: String, tablespace: Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dbx_core::storage::Storage;
     use std::sync::Arc;
 
     async fn test_app_state() -> Arc<AppState> {
         let dir = std::env::temp_dir().join(format!("dbx-query-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         Arc::new(AppState::new_with_plugin_dir(storage, dir.join("plugins")))
     }
 

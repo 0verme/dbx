@@ -1452,7 +1452,8 @@ mod tests {
     async fn migration_http_gate_blocks_business_until_ready_but_allows_cleanup_handler() {
         use std::sync::{atomic::Ordering, Arc};
         let directory = tempfile::tempdir().unwrap();
-        let storage = dbx_core::storage::Storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap();
+        let storage =
+            dbx_core::persistence::test_storage::open_unmigrated(&directory.path().join("dbx.db")).await.unwrap();
         let app = Arc::new(dbx_core::connection::AppState::new(storage));
         let state = Arc::new(crate::state::WebState::for_tests(app, directory.path().to_path_buf()));
         state.migration_ready.store(false, Ordering::Release);

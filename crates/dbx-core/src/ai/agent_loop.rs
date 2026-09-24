@@ -1690,7 +1690,7 @@ mod tests {
 
     async fn gate_context(session_id: Option<&str>) -> (tempfile::TempDir, AgentLoopContext) {
         let temp_dir = tempfile::tempdir().unwrap();
-        let storage = crate::storage::Storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
+        let storage = crate::persistence::test_storage::open(&temp_dir.path().join("storage.db")).await.unwrap();
         let ctx = AgentLoopContext {
             state: Arc::new(AppState::new(storage)),
             connection_id: "db".to_string(),
