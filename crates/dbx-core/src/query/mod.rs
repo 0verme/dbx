@@ -5306,6 +5306,9 @@ async fn exec_tx_sqlite_inner(
 ) -> Result<db::QueryResult, String> {
     let statements = statements.to_vec();
     let query_timeout = budget.query_timeout;
+    if let Some(worker) = pool.worker() {
+        return exec_tx_sqlite_worker_inner(worker, statements, start, query_timeout).await;
+    }
     tokio::task::spawn_blocking(move || {
         pool.with_connection(|conn| {
             conn.execute_batch("BEGIN").map_err(|e| format!("Failed to begin transaction: {}", e))?;
@@ -5471,6 +5474,55 @@ async fn exec_tx_sqlite_inner(
                 }
             }
         })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+async fn exec_tx_sqlite_worker_inner(
+    worker: Arc<db::sqlite_worker::SqliteWorkerClient>,
+    statements: Vec<String>,
+    start: std::time::Instant,
+    query_timeout: Option<Duration>,
+) -> Result<db::QueryResult, String> {
+    // Detached like the local spawn_blocking path, so a dropped caller cannot leave the
+    // worker connection inside an open transaction. One session keeps other requests out.
+    tokio::spawn(async move {
+        let mut session = worker.session().await;
+        session.query("BEGIN", None).await.map_err(|e| format!("Failed to begin transaction: {e}"))?;
+        // ponytail: the worker cannot interrupt a running statement, so the budget is only
+        // checked between statements; bounding one slow statement needs a worker interrupt op.
+        let within_budget = || match query_timeout {
+            Some(timeout) if start.elapsed() >= timeout => {
+                Err(format!("Query timed out after {} seconds", timeout.as_secs()))
+            }
+            _ => Ok(()),
+        };
+        let outcome: Result<db::QueryResult, String> = async {
+            let mut total_affected = 0;
+            for (i, sql) in statements.iter().enumerate() {
+                within_budget()?;
+                total_affected += session
+                    .query(sql, None)
+                    .await
+                    .map_err(|e| {
+                        query_error_with_omitted_sql_context(&format!("Statement {} failed: {}", i + 1, e), sql)
+                    })?
+                    .affected_rows;
+            }
+            within_budget()?;
+            let committed = session.query("COMMIT", None).await.map_err(|e| format!("COMMIT failed: {e}"))?;
+            Ok(db::QueryResult {
+                affected_rows: total_affected,
+                execution_time_ms: start.elapsed().as_millis(),
+                ..committed
+            })
+        }
+        .await;
+        if outcome.is_err() {
+            let _ = session.query("ROLLBACK", None).await;
+        }
+        outcome
     })
     .await
     .map_err(|e| e.to_string())?
@@ -7302,6 +7354,61 @@ mod tests {
             "legitimate 'interrupt'-text error must not be masked as a timeout: {error}"
         );
         assert!(error.contains("Statement 1 failed") && error.contains("interrupted_at"), "unexpected error: {error}");
+    }
+
+    #[tokio::test]
+    async fn sqlite_ssh_worker_transaction_rolls_back_on_failure_and_commits_on_success() {
+        let remote = Arc::new(Mutex::new(rusqlite::Connection::open_in_memory().expect("open remote SQLite")));
+        remote.lock().unwrap().execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY)").expect("create table");
+        let (client_stream, worker_stream) = tokio::io::duplex(64 * 1024);
+        tokio::spawn(fake_sqlite_ssh_worker(worker_stream, remote.clone()));
+        let pool = db::sqlite::SqliteHandle::from_worker(Arc::new(
+            db::sqlite_worker::SqliteWorkerClient::from_test_stream(client_stream),
+        ));
+        let budget = DbOperationBudget::with_defaults();
+        let row_count =
+            || remote.lock().unwrap().query_row("SELECT COUNT(*) FROM t", [], |row| row.get::<_, i64>(0)).unwrap();
+
+        let error = exec_tx_sqlite_inner(
+            pool.clone(),
+            &["INSERT INTO t VALUES (1)".to_string(), "INSERT INTO missing VALUES (2)".to_string()],
+            std::time::Instant::now(),
+            &budget,
+        )
+        .await
+        .expect_err("second statement fails");
+        assert!(error.contains("Statement 2 failed") && error.contains("no such table: missing"), "{error}");
+        assert_eq!(row_count(), 0);
+
+        let result = exec_tx_sqlite_inner(
+            pool,
+            &["INSERT INTO t VALUES (1)".to_string(), "INSERT INTO t VALUES (2)".to_string()],
+            std::time::Instant::now(),
+            &budget,
+        )
+        .await
+        .expect("transaction commits");
+        assert_eq!(result.affected_rows, 2);
+        assert_eq!(row_count(), 2);
+    }
+
+    /// Answers SQLite worker JSONL requests from a real SQLite connection.
+    async fn fake_sqlite_ssh_worker(stream: tokio::io::DuplexStream, conn: Arc<Mutex<rusqlite::Connection>>) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        let (reader, mut writer) = tokio::io::split(stream);
+        let mut lines = tokio::io::BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let request: serde_json::Value = serde_json::from_str(&line).expect("worker request");
+            let mut response = {
+                let conn = conn.lock().unwrap();
+                match conn.execute_batch(request["sql"].as_str().unwrap_or_default()) {
+                    Ok(()) => serde_json::json!({ "affected_rows": conn.changes() }),
+                    Err(error) => serde_json::json!({ "error": error.to_string() }),
+                }
+            };
+            response["id"] = request["id"].clone();
+            writer.write_all(format!("{response}\n").as_bytes()).await.expect("worker response");
+        }
     }
 
     #[tokio::test]
