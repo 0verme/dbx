@@ -511,7 +511,10 @@ fn aad(namespace: &str, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{managed_key_path, read_key_file_with_retry, run_secret_service_operation, SecretCodec, SecretKeyPolicy, SecretKeySource};
+    use super::{
+        managed_key_path, read_key_file_with_retry, run_secret_service_operation, SecretCodec, SecretKeyPolicy,
+        SecretKeySource,
+    };
     use base64::Engine as _;
     use std::sync::{Mutex, OnceLock};
 
