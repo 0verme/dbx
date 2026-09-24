@@ -5091,6 +5091,7 @@ export default {
     apply: "Apply Changes",
     ready: "Ready",
     saved: "Table structure updated",
+    created: "Table created successfully",
     copySql: "Copy SQL",
     sqliteRebuildNotice: "SQLite retains an inert data snapshot as a backup, then rebuilds the table in one transaction and forcibly CASTs changed columns. Unrepresentable values may become 0/0.0; failures roll back.",
     ddlEditNotice: "The edited DDL runs as a script exactly as written — it is not diffed against the current structure. For an existing table, rewrite it as ALTER (or DROP + CREATE) statements.",

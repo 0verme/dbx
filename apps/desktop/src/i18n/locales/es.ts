@@ -4580,6 +4580,7 @@ export default withEnglishFallback({
     apply: "Aplicar cambios",
     ready: "Listo",
     saved: "Estructura de tabla actualizada",
+    created: "Tabla creada correctamente",
     copySql: "Copiar SQL",
     sqliteRebuildNotice: "SQLite conserva una instantánea de datos inerte como copia de seguridad, reconstruye la tabla en una sola transacción y fuerza CAST en las columnas modificadas. Los valores no representables pueden convertirse en 0/0.0; si ocurre un error, se revierte todo.",
     ddlEditNotice: "El DDL editado se ejecuta como un script tal cual: no se compara con la estructura actual. Para una tabla existente, reescríbelo como sentencias ALTER (o DROP + CREATE).",

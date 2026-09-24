@@ -2865,7 +2865,7 @@ defineExpose({
       <div class="flex-1 min-h-0">
         <TableStructureEditor
           ref="tableStructureEditorRef"
-          :key="activeTab.id"
+          :key="`${activeTab.id}-${activeTab.structureTableName || 'new'}`"
           :connection-id="activeTab.connectionId"
           :database="activeTab.database"
           :catalog="activeTab.catalog"
@@ -2876,7 +2876,7 @@ defineExpose({
           :initial-target="activeTab.structureInitialTarget"
           :draft="activeTab.structureDraft"
           @update:draft="(draft) => (activeTab.structureDraft = draft)"
-          @saved="(commentChanged) => emit('structureEditorSaved', activeTab.id, commentChanged)"
+          @saved="(commentChanged, createdTableName) => emit('structureEditorSaved', activeTab.id, commentChanged, createdTableName)"
           @close="emit('structureEditorClose', activeTab.id)"
           @open-settings="(initialTab, initialSection) => emit('openSettings', initialTab, initialSection)"
           @view-data="onHandleStructureViewData"

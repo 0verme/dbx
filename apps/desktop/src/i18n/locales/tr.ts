@@ -4524,6 +4524,7 @@ export default withEnglishFallback({
     apply: "Değişiklikleri Uygula",
     ready: "Hazır",
     saved: "Tablo yapısı güncellendi",
+    created: "Tablo başarıyla oluşturuldu",
     copySql: "SQL Kopyala",
     sqliteRebuildNotice: "SQLite önce yedek olarak hareketsiz bir veri anlık görüntüsü tutar, ardından tabloyu tek bir işlemde yeniden oluşturur ve değişen sütunları zorla CAST eder. Gösterilemeyen değerler 0/0.0 olabilir; hatalar geri alınır.",
     ddlEditNotice: "Düzenlenen DDL, tam olarak yazıldığı gibi bir betik olarak çalışır — geçerli yapıyla karşılaştırılmaz. Mevcut bir tablo için bunu ALTER (ya da DROP + CREATE) ifadeleri olarak yazın.",

@@ -4620,6 +4620,7 @@ export default withEnglishFallback({
     apply: "Dəyişiklikləri tətbiq et",
     ready: "Hazırdır",
     saved: "Cədvəlin quruluşu yeniləndi",
+    created: "Cədvəl uğurla yaradıldı",
     copySql: "SQL-i kopyala",
     sqliteRebuildNotice: "SQLite verilənlərin dəyişməz anlıq surətini ehtiyat nüsxə kimi saxlayır, sonra cədvəli bir tranzaksiyada yenidən qurur və dəyişdirilmiş sütunlara məcburi CAST tətbiq edir. Təmsil oluna bilməyən dəyərlər 0/0.0 ola bilər; uğursuzluq zamanı dəyişikliklər geri qaytarılır.",
     ddlEditNotice: "Redaktə edilmiş DDL yazıldığı kimi skript olaraq icra olunur — cari quruluşla fərqləri müqayisə edilmir. Mövcud cədvəl üçün onu ALTER (və ya DROP + CREATE) əmrləri kimi yenidən yazın.",

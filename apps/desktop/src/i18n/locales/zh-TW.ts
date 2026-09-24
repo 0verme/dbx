@@ -4313,6 +4313,7 @@ export default withEnglishFallback({
     apply: "套用變更",
     ready: "可執行",
     saved: "資料表結構已更新",
+    created: "資料表建立成功",
     copySql: "複製 SQL",
     sqliteRebuildNotice: "SQLite 會保留一張不含作用中約束的資料快照作為備份表，再於同一交易內重建原表，並使用 CAST 強制轉換已修改型別的欄位；無法表示的值可能變成 0/0.0，執行失敗則整體回復。",
     ddlEditNotice: "編輯後的 DDL 會作為腳本原樣執行，不會與目前表結構做差異比較。對已存在的資料表，請自行改寫為 ALTER（或 DROP + CREATE）陳述式。",

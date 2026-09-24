@@ -5064,6 +5064,7 @@ export default withEnglishFallback({
     apply: "应用变更",
     ready: "可执行",
     saved: "表结构已更新",
+    created: "新建表成功",
     copySql: "复制 SQL",
     sqliteRebuildNotice: "SQLite 会保留一张不带活动约束的数据快照作为备份表，再在同一事务内重建原表，使用 CAST 强制转换类型已修改的字段；无法表示的值可能变为 0/0.0，执行失败则整体回滚。",
     ddlEditNotice: "编辑后的 DDL 会作为脚本原样执行，不会与当前表结构做差异比较。对已存在的表，请自行改写为 ALTER（或 DROP + CREATE）语句。",

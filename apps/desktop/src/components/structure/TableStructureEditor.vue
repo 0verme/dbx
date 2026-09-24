@@ -126,6 +126,7 @@ import {
   toColumnNames,
   copySourceColumnDetails,
   matchesCopySourceColumnSearch,
+  foldCreatedTableName,
 } from "@/lib/table/tableStructureEditorState";
 import { CREATE_DATABASE_CHARSET_OPTIONS, createDatabaseCollationOptionsForCharset, fallbackCreateDatabaseCharsetMetadata, normalizeCreateDatabaseCharsetKey, parseCreateDatabaseCharsetMetadata } from "@/lib/database/createDatabaseCharsetOptions";
 import type { CreateDatabaseCharsetMetadata } from "@/lib/database/createDatabaseCharsetOptions";
@@ -194,7 +195,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "update:draft": [draft: TableStructureEditorDraft | undefined];
-  saved: [commentChanged: boolean];
+  saved: [commentChanged: boolean, createdTableName?: string];
   close: [];
   openSettings: [initialTab?: string, initialSection?: string];
   /** Jump from the DDL view to the table's data tab (issue #6724). */
@@ -4414,7 +4415,7 @@ async function applyChanges() {
       await invalidateObjectDdl(ddlRequest());
       loadedMetadataFacets.clear();
     }
-    toast(t("structureEditor.saved"), 2500);
+    toast(t(isCreateMode.value ? "structureEditor.created" : "structureEditor.saved"), 2500);
     sqlPreviewPending.value = false;
     sqlPreviewLoading.value = false;
     pendingStatements.value = [];
@@ -4428,8 +4429,11 @@ async function applyChanges() {
     ddlDraft.value = null;
     if (isCreateMode.value) {
       clearDraft();
-      emit("saved", tableComment.value !== originalTableComment.value);
-      emit("close");
+      // The created tab must query the name the server actually stored: plain
+      // Oracle names are created unquoted and stored upper-folded, plain
+      // Informix-family names lower-folded, and every quoted name keeps its
+      // exact spelling — mirror the DDL generator's quoting rule here.
+      emit("saved", tableComment.value !== originalTableComment.value, foldCreatedTableName(newTableName.value, databaseType.value));
     } else {
       // Refresh persisted keys after successful renames/additions before metadata reloads.
       persistLocalColumnOrder(false);
