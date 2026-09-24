@@ -9363,6 +9363,8 @@ export default withEnglishFallback({
     shortcutLowercaseSelection: "Преобразовать выделенное в нижний регистр",
     shortcutConvertNamingStyle: "Переключить стиль именования",
     shortcutExPasteSqlInCondition: "ExPaste: вставить как условие IN",
+    showResultSourceDatabase: "Имя набора результатов содержит имя базы данных",
+    showResultSourceDatabaseDescription: "После отключения вкладки наборов результатов будут отображать только имена таблиц; полное имя (включая имя базы данных) по-прежнему можно посмотреть во всплывающей подсказке.",
   },
   driverStore: {
     jreDirRemoveFailed: "Не удалось удалить старый каталог JRE: {path} (исходная ошибка: {error})",

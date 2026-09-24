@@ -7821,6 +7821,8 @@ export default {
     showColumnCommentsInHeaderDescription: "Display table column comments directly below grid column names.",
     showColumnTypesInHeader: "Show column types under names",
     showColumnTypesInHeaderDescription: "Display each column's data type directly below grid column names.",
+    showResultSourceDatabase: "Include database name in result set names",
+    showResultSourceDatabaseDescription: "When off, result set tabs show only the table name; the full name stays visible in the tooltip.",
     dataGridShowTransposeFieldMetadata: "Show field metadata in transpose view",
     dataGridShowTransposeFieldMetadataDescription: "Display enabled column types and comments on separate lines in transpose view. This increases row height.",
     colorizeDataGridCellTypes: "Color-code data grid values",

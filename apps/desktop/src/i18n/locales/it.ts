@@ -7210,6 +7210,8 @@ export default withEnglishFallback({
     showColumnCommentsInHeaderDescription: "Visualizza i commenti delle colonne della tabella direttamente sotto i nomi delle colonne nella griglia.",
     showColumnTypesInHeader: "Mostra i tipi di colonna sotto i nomi",
     showColumnTypesInHeaderDescription: "Visualizza il tipo di dato di ciascuna colonna direttamente sotto i nomi delle colonne nella griglia.",
+    showResultSourceDatabase: "Includi il nome del database nei nomi dei risultati",
+    showResultSourceDatabaseDescription: "Se disattivato, le schede dei risultati mostrano solo il nome della tabella; il nome completo resta visibile nel tooltip.",
     dataGridShowTransposeFieldMetadata: "Mostra i metadati dei campi nella vista trasposta",
     dataGridShowTransposeFieldMetadataDescription: "Visualizza i tipi di colonna e i commenti abilitati su righe separate nella vista trasposta. Questo aumenta l'altezza delle righe.",
     colorizeDataGridCellTypes: "Colora i valori in base al tipo di dato",

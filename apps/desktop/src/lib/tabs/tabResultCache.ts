@@ -74,6 +74,8 @@ interface ColumnarQueryResult {
   truncated?: boolean;
   has_more?: boolean;
   sourceLabel?: string;
+  sourceQualifier?: string;
+  sourceName?: string;
   sourceStatement?: string;
   sourceFrom?: number;
   sourceTo?: number;
@@ -363,6 +365,8 @@ function stripSessionIds(result: QueryResult | undefined): QueryResult | undefin
     session_id: undefined,
     has_more: result.has_more,
     sourceLabel: result.sourceLabel,
+    sourceQualifier: result.sourceQualifier,
+    sourceName: result.sourceName,
     sourceStatement: result.sourceStatement,
     sourceFrom: result.sourceFrom,
     sourceTo: result.sourceTo,
@@ -419,6 +423,8 @@ function toColumnarResult(result: QueryResult | undefined): ColumnarQueryResult 
     truncated: result.truncated,
     has_more: result.has_more,
     sourceLabel: result.sourceLabel,
+    sourceQualifier: result.sourceQualifier,
+    sourceName: result.sourceName,
     sourceStatement: result.sourceStatement,
     sourceFrom: result.sourceFrom,
     sourceTo: result.sourceTo,
@@ -449,6 +455,8 @@ function fromColumnarResult(result: ColumnarQueryResult | undefined): QueryResul
     session_id: undefined,
     has_more: result.has_more,
     sourceLabel: result.sourceLabel,
+    sourceQualifier: result.sourceQualifier,
+    sourceName: result.sourceName,
     sourceStatement: result.sourceStatement,
     sourceFrom: result.sourceFrom,
     sourceTo: result.sourceTo,

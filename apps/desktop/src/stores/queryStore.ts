@@ -75,7 +75,7 @@ import { formatDdlForDisplay } from "@/lib/sql/ddlDisplay";
 import { buildTableSelectSql, quoteTableDataIdentifier } from "@/lib/table/tableSelectSql";
 import { connectionObjectTreeNodeSchema, connectionQueryExecutionSchema, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection, gaussdbCountQueryDopHint, jdbcConnectionUsesDriverRowOffset, metadataSchemaForConnection } from "@/lib/database/jdbcDialect";
 import { frontendQueryTimeoutDelayMs, frontendQueryTimeoutSecsForSql, queryTimeoutSecsForConnection } from "@/lib/sql/queryTimeout";
-import { queryResultNameFromPreamble, queryResultSourceLabel } from "@/lib/sql/queryResultSource";
+import { queryResultNameFromPreamble, queryResultSourceLabel, queryResultSourceNameParts } from "@/lib/sql/queryResultSource";
 import { sqlServerCountUsesLocalTempTable } from "@/lib/query/queryResultCountSession";
 import { stripPaginationRowNumber } from "@/lib/query/queryPaginationResult";
 import { beginDataGridNativeSelectionBlock, finishDataGridNativeSelectionBlock } from "@/lib/dataGrid/dataGridNativeSelection";
@@ -380,6 +380,8 @@ function releaseResultObjectPayload(result: QueryResult): void {
   result.messages = undefined;
   result.error = undefined;
   result.sourceLabel = undefined;
+  result.sourceQualifier = undefined;
+  result.sourceName = undefined;
   result.sourceStatement = undefined;
 }
 
@@ -435,7 +437,12 @@ function annotateQueryResultSources(results: QueryResult[], sql: string, databas
     const documentStatement = sourceOffset === undefined ? undefined : findSourceDocumentStatement(documentStatements, sourceOffset + statement.from);
     const preamble = documentStatement ? sourceDocumentSql!.slice(documentStatement.hitFrom, documentStatement.from) : sql.slice(statement.hitFrom, statement.from);
     const customName = queryResultNameFromPreamble(preamble, { databaseType });
-    if (customName) result.sourceLabel = customName;
+    if (customName) {
+      result.sourceLabel = customName;
+      // 自定义名称（-- name: xxx）优先：清除结构化来源，避免“结果集名称包含数据库名”设置把它替换成表名
+      result.sourceQualifier = undefined;
+      result.sourceName = undefined;
+    }
     const successfulUseDatabase = result.execution_error !== true ? useDatabaseFromStatement(statement.sql, databaseType) : undefined;
     if (successfulUseDatabase) {
       sourceDatabase = successfulUseDatabase;
@@ -650,8 +657,14 @@ function annotateQueryResultSource(result: QueryResult, sourceStatement: string,
     result.sourceFrom = sourceRange.from;
     result.sourceTo = sourceRange.to;
   }
-  const label = databaseType ? queryResultSourceLabel(sourceStatement, { database, databaseType }) : undefined;
-  if (label) result.sourceLabel = label;
+  const parts = databaseType ? queryResultSourceNameParts(sourceStatement, { database, databaseType }) : undefined;
+  if (parts) {
+    // 同时保留结构化来源信息：结果集页签可以按设置只展示对象名，避免退化成字符串切割
+    result.sourceQualifier = parts.qualifier;
+    result.sourceName = parts.name;
+    const label = parts.qualifier ? `${parts.qualifier}.${parts.name}` : parts.name;
+    if (label) result.sourceLabel = label;
+  }
   return result;
 }
 
@@ -1917,6 +1930,7 @@ export const useQueryStore = defineStore("query", () => {
     const run = tab?.resultRuns?.find((item) => item.id === runId);
     if (!tab || !run) return false;
     run.title = trimmed;
+    run.customTitle = true;
     void persistResultRun(tab, run);
     return true;
   }
@@ -2128,12 +2142,17 @@ export const useQueryStore = defineStore("query", () => {
   function captureDisplayedResultRun(tab: QueryTab, sql: string, createdAt = Date.now(), options: ResultRunCaptureOptions = {}) {
     if (tab.mode !== "query" || !tab.result) return;
     const sequence = nextResultRunSequence(tab);
+    // 批次级来源：非活动批次的 payload 会被回收，结果标签命名需要独立保存来源
+    const primaryResult = tab.results?.[0] ?? tab.result;
     const run: NonNullable<QueryTab["resultRuns"]>[number] = {
       id: uuid(),
       title: options.title ?? `Run ${sequence}`,
+      customTitle: !!options.title,
       sequence,
       sql,
       createdAt,
+      sourceLabel: primaryResult?.sourceLabel,
+      sourceName: primaryResult?.sourceName,
       result: tab.result,
       results: tab.results,
       activeResultIndex: tab.activeResultIndex,
@@ -2206,6 +2225,7 @@ export const useQueryStore = defineStore("query", () => {
       ...workerRun,
       id: runId,
       title,
+      customTitle: true,
       sequence: nextResultRunSequence(source),
       multiDbExecution: execution,
       resultCacheKey: undefined,
@@ -2562,6 +2582,9 @@ export const useQueryStore = defineStore("query", () => {
         sql: run.sql,
         createdAt: run.createdAt,
         pinned: run.pinned,
+        customTitle: run.customTitle,
+        sourceLabel: run.sourceLabel,
+        sourceName: run.sourceName,
         activeResultIndex: run.activeResultIndex,
         resultCacheKey: run.resultCacheKey,
         resultEvicted: run.resultEvicted,
@@ -6972,6 +6995,8 @@ export const useQueryStore = defineStore("query", () => {
           const annotateMongoResult = (result: QueryResult): QueryResult => {
             const annotated = annotateQueryResultSource(result, sourceStatement, undefined, undefined, sourceRange);
             if ("collection" in mongoCommand) {
+              annotated.sourceQualifier = currentDatabase || undefined;
+              annotated.sourceName = mongoCommand.collection;
               annotated.sourceLabel = currentDatabase ? `${currentDatabase}.${mongoCommand.collection}` : mongoCommand.collection;
             }
             return annotated;

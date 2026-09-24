@@ -6978,6 +6978,8 @@ export default withEnglishFallback({
     showColumnCommentsInHeaderDescription: "그리드 컬럼 이름 바로 아래에 테이블 컬럼 주석을 표시합니다.",
     showColumnTypesInHeader: "이름 아래에 컬럼 타입 표시",
     showColumnTypesInHeaderDescription: "그리드 컬럼 이름 바로 아래에 각 컬럼의 데이터 타입을 표시합니다.",
+    showResultSourceDatabase: "결과 세트 이름에 데이터베이스 이름 포함",
+    showResultSourceDatabaseDescription: "끄면 결과 세트 탭에 테이블 이름만 표시되며, 전체 이름(데이터베이스 이름 포함)은 툴팁에서 확인할 수 있습니다.",
     dataGridShowTransposeFieldMetadata: "전치 보기에 필드 메타데이터 표시",
     dataGridShowTransposeFieldMetadataDescription: "활성화된 데이터 타입과 주석을 전치 보기의 별도 줄에 표시합니다. 활성화하면 행 높이가 증가합니다.",
     colorizeDataGridCellTypes: "데이터 타입별 값 색상 표시",
