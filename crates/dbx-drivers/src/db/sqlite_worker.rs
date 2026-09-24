@@ -122,6 +122,7 @@ impl SqliteWorkerSession<'_> {
                 affected_rows: affected_rows.unwrap_or(0),
                 execution_time_ms: 0,
                 server_execute_time_us: None,
+                query_timings_ms: None,
                 truncated: truncated.unwrap_or(false),
                 session_id: None,
                 has_more: false,

@@ -1,6 +1,5 @@
 package com.dbx.agent.oceanbaseoracle;
 
-import com.dbx.agent.AgentProtocol;
 import com.dbx.agent.ColumnInfo;
 import com.dbx.agent.CompletionAssistantMatchMode;
 import com.dbx.agent.CompletionAssistantObjectKind;
@@ -141,28 +140,9 @@ class OceanBaseOracleAgentTest {
         Assertions.assertThrows(IllegalArgumentException.class, () -> OceanBaseOracleAgent.queryTimeoutSql(-1));
     }
 
-    @Test
-    void readsServerExecutionOnlyFromOneMatchingAuditRow() {
-        List<String> statements = new ArrayList<>();
-        List<String> parameters = new ArrayList<>();
-        List<Integer> maxRows = new ArrayList<>();
-        Assertions.assertEquals(370L, OceanBaseOracleAgent.serverExecuteTimeUs(
-            auditTimingConnection(1, 500, false, statements, parameters, maxRows), 500, 1001
-        ));
-        Assertions.assertEquals(List.of(1001, 1001), maxRows,
-            "trace and audit statements must preserve the target statement's session row limit");
-        Assertions.assertEquals(List.of("trace-1"), parameters);
-        Assertions.assertTrue(statements.get(1).contains("IS_INNER_SQL = 0 AND IS_EXECUTOR_RPC = 0"));
-        Assertions.assertEquals(null, OceanBaseOracleAgent.serverExecuteTimeUs(auditTimingConnection(0, 500, false, new ArrayList<>(), new ArrayList<>(), new ArrayList<>()), 500, 0));
-        Assertions.assertEquals(null, OceanBaseOracleAgent.serverExecuteTimeUs(auditTimingConnection(2, 500, false, new ArrayList<>(), new ArrayList<>(), new ArrayList<>()), 500, 0));
-        Assertions.assertEquals(null, OceanBaseOracleAgent.serverExecuteTimeUs(auditTimingConnection(1, 1, false, new ArrayList<>(), new ArrayList<>(), new ArrayList<>()), 500, 0));
-        Assertions.assertEquals(null, OceanBaseOracleAgent.serverExecuteTimeUs(auditTimingConnection(1, 500, true, new ArrayList<>(), new ArrayList<>(), new ArrayList<>()), 500, 0));
-    }
-
-
     @ParameterizedTest
     @CsvSource({"10, 1000, false", "1, 1000, false", "1, 1, true", "2, 2, false"})
-    void preservesTheCursorStatementLimitWhenSamplingItsTerminalPage(int pageSize, int maxRows, boolean truncated) {
+    void returnsCursorRowsWithoutAdditionalAuditQueries(int pageSize, int maxRows, boolean truncated) {
         List<Integer> auditLimits = new ArrayList<>();
         List<String> auditSql = new ArrayList<>();
         Connection auditConnection = auditTimingConnection(1, 2, false, auditSql, new ArrayList<>(), auditLimits);
@@ -219,12 +199,13 @@ class OceanBaseOracleAgentTest {
         Assertions.assertEquals(truncated, result.getTruncated());
         Assertions.assertEquals(truncated ? List.of(List.of(1)) : List.of(List.of(1), List.of(2)), rows);
         Assertions.assertEquals(0, queryLimit[0], "the paging cap must not change the JDBC statement limit");
-        Assertions.assertEquals(truncated ? List.of() : List.of(0, 0), auditLimits);
-        Assertions.assertEquals(truncated ? null : Long.valueOf(370), result.getServer_execute_time_us());
+        Assertions.assertTrue(auditSql.isEmpty(), "completed queries must not read trace or audit records");
+        Assertions.assertTrue(auditLimits.isEmpty());
+        Assertions.assertNull(result.getServer_execute_time_us());
     }
 
     @Test
-    void doesNotAuditAnOpenCursorAfterAnotherSessionMethodCanReplaceItsTrace() {
+    void finishesCursorWithoutCreatingDiagnosticStatements() {
         int[] row = {-1};
         ResultSetMetaData meta = proxy(ResultSetMetaData.class, (method, args) -> {
             if ("getColumnCount".equals(method.getName())) return 1;
@@ -259,11 +240,11 @@ class OceanBaseOracleAgentTest {
         Assertions.assertTrue(first.getHas_more());
         Assertions.assertEquals(2, statementsCreated[0]);
 
-        agent.beforeAgentMethod(AgentProtocol.METHOD_LIST_TABLES, null);
+
         QueryPageResult last = agent.fetchQueryPage(first.getSession_id(), 1);
         Assertions.assertFalse(last.getHas_more());
         Assertions.assertNull(last.getServer_execute_time_us());
-        Assertions.assertEquals(2, statementsCreated[0], "no LAST_TRACE_ID query may run for an invalidated cursor");
+        Assertions.assertEquals(2, statementsCreated[0], "no diagnostic query may run when the cursor finishes");
     }
 
     @Test
