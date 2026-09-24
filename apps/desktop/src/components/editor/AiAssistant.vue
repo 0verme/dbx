@@ -327,19 +327,6 @@ let defaultModeInitialized = false;
 let initialConversationStateLoaded = false;
 let initialConversationRestored = false;
 let assistantViewMounted = false;
-watch(
-  () => settings.isAiConfigLoaded,
-  (loaded) => {
-    if (loaded && !defaultModeInitialized) {
-      assistantMode.value = settings.defaultAiMode;
-      // Same apply-once rule as the mode: later setting changes must not
-      // disturb an active conversation.
-      activeAction.value = resolveDefaultActionSelection(settings.defaultAiMode);
-      defaultModeInitialized = true;
-    }
-  },
-  { immediate: true },
-);
 const currentSessionId = ref("");
 const conversationId = ref("");
 const conversations = ref<AiConversation[]>([]);
@@ -367,6 +354,25 @@ const boundConnectionId = computed(() => conversationBinding.value.connectionId)
 const boundConnection = computed(() => (boundConnectionId.value ? connectionStore.getConfig(boundConnectionId.value) : undefined));
 const boundDatabase = computed(() => conversationBinding.value.database);
 const boundSchema = computed(() => conversationBinding.value.schema);
+
+// `immediate` runs this during setup whenever the AI config finished loading
+// before the panel mounted (the usual case: the app loads it at startup), and
+// `resolveDefaultActionSelection` reads `boundConnection`. It must therefore
+// stay below the binding computeds, or setup throws a TDZ ReferenceError and
+// the panel never mounts.
+watch(
+  () => settings.isAiConfigLoaded,
+  (loaded) => {
+    if (loaded && !defaultModeInitialized) {
+      assistantMode.value = settings.defaultAiMode;
+      // Same apply-once rule as the mode: later setting changes must not
+      // disturb an active conversation.
+      activeAction.value = resolveDefaultActionSelection(settings.defaultAiMode);
+      defaultModeInitialized = true;
+    }
+  },
+  { immediate: true },
+);
 
 /**
  * Binding the visible conversation's *active run* is executing against.
