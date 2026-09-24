@@ -181,6 +181,9 @@ import { useTabScroll } from "@/composables/useTabScroll";
 import { useToolbarOverflow } from "@/composables/useToolbarOverflow";
 import { formatElapsedSeconds } from "@/lib/common/elapsedTime";
 import { copyToClipboard } from "@/lib/common/clipboard";
+import { loadObjectDdl } from "@/lib/metadata/objectDdlCache";
+import { formatDdlForDisplay } from "@/lib/sql/ddlDisplay";
+import { sqlObjectNavigationTypeFromTableType } from "@/lib/sql/sqlNavigation";
 import type { CustomSaveHandler } from "@/composables/useDataGridEditor";
 import type { QueryMessage, QueryTab, TableInfoTab, TreeNode, VectorCollectionMeta } from "@/types/database";
 import type { SqlObjectNavigationTarget } from "@/lib/sql/sqlNavigation";
@@ -280,6 +283,7 @@ const colorizeDataGridCellTypes = computed(() => settingsStore.editorSettings.co
 const setColorizeDataGridCellTypes = (value: boolean) => settingsStore.updateEditorSettings({ colorizeDataGridCellTypes: value });
 const { toast } = useToast();
 const DEFAULT_QUERY_RESULTS_PANE_SIZE = 68;
+const ddlRefreshInProgress = ref(false);
 
 onMounted(() => {
   // The watcher below warms the grid for query/data tabs. Keep source-only
@@ -700,6 +704,7 @@ const resultsPaneSize = ref(Number(safeLocalStorageGet("dbx-results-pane-size"))
 const editorPaneSize = computed(() => (props.editorOnly || !resultsPaneOpen.value ? 100 : 100 - resultsPaneSize.value));
 const queryRunningElapsed = ref(0);
 const sourceLoadElapsed = ref(0);
+const ddlLoadElapsed = ref(0);
 
 function toggleResultsPane(): boolean {
   if (props.activeTab.mode !== "query" || !hasQueryOutput.value) return false;
@@ -748,19 +753,27 @@ function pendingSourceLoadStartedAt(): number | undefined {
   return load && !load.error ? load.startedAt : undefined;
 }
 
-// 一个 rAF 循环同时驱动「查询执行中」与「对象源码加载中」两个耗时显示：
+/** DDL 新标签仍在加载（未失败）时的开始时间；与源码加载共用同一个 rAF 循环。 */
+function pendingDdlLoadStartedAt(): number | undefined {
+  const load = props.activeTab.ddlLoad;
+  return load && !load.error ? load.startedAt : undefined;
+}
+
+// 一个 rAF 循环同时驱动「查询执行中」「对象源码加载中」「DDL 加载中」三个耗时显示：
 // issue #9035 的核心体感就是「不知道要等多久」，所以源码加载也要显示已耗时。
 function updateRunningElapsed() {
   const startedAt = props.activeTab.queryExecutionStartedAt;
   queryRunningElapsed.value = props.activeTab.isExecuting && startedAt ? Math.max(0, Date.now() - startedAt) : 0;
   const sourceStartedAt = pendingSourceLoadStartedAt();
   sourceLoadElapsed.value = sourceStartedAt ? Math.max(0, Date.now() - sourceStartedAt) : 0;
+  const ddlStartedAt = pendingDdlLoadStartedAt();
+  ddlLoadElapsed.value = ddlStartedAt ? Math.max(0, Date.now() - ddlStartedAt) : 0;
 }
 
 function startRunningElapsedTimer() {
   stopRunningElapsedTimer();
   updateRunningElapsed();
-  const isTicking = () => (props.activeTab.isExecuting && !!props.activeTab.queryExecutionStartedAt) || pendingSourceLoadStartedAt() !== undefined;
+  const isTicking = () => (props.activeTab.isExecuting && !!props.activeTab.queryExecutionStartedAt) || pendingSourceLoadStartedAt() !== undefined || pendingDdlLoadStartedAt() !== undefined;
   if (!isTicking()) return;
   const updateOnNextFrame = () => {
     updateRunningElapsed();
@@ -773,8 +786,11 @@ function startRunningElapsedTimer() {
 
 const queryRunningElapsedSeconds = computed(() => formatElapsedSeconds(queryRunningElapsed.value));
 const sourceLoadElapsedSeconds = computed(() => formatElapsedSeconds(sourceLoadElapsed.value));
+const ddlLoadElapsedSeconds = computed(() => formatElapsedSeconds(ddlLoadElapsed.value));
 
-watch(() => [props.activeTab.id, props.activeTab.isExecuting, props.activeTab.queryExecutionStartedAt, props.activeTab.sourceLoad?.startedAt, props.activeTab.sourceLoad?.error] as const, startRunningElapsedTimer, { immediate: true });
+watch(() => [props.activeTab.id, props.activeTab.isExecuting, props.activeTab.queryExecutionStartedAt, props.activeTab.sourceLoad?.startedAt, props.activeTab.sourceLoad?.error, props.activeTab.ddlLoad?.startedAt, props.activeTab.ddlLoad?.error] as const, startRunningElapsedTimer, {
+  immediate: true,
+});
 
 onUnmounted(() => {
   stopRunningElapsedTimer();
@@ -973,6 +989,77 @@ function onHandleStructureViewData() {
     database: meta?.database || tab.database,
     schema: meta?.schema || tab.schema,
     type: tab.structureTableType === "view" ? "view" : "table",
+  });
+}
+
+/**
+ * Loads the DDL of the active DDL viewer tab. Serves the toolbar refresh, the
+ * in-place retry, and the initial pending load of a freshly created tab (which
+ * renders the loading state instead of an editor): a pending load that fails
+ * lands in the tab itself with an in-place retry, while a refresh of
+ * already-loaded content only reports through a toast.
+ */
+async function loadActiveDdlViewer(force: boolean) {
+  const tab = props.activeTab;
+  const ddlViewer = tab.ddlViewer;
+  if (!ddlViewer || ddlRefreshInProgress.value) return;
+  ddlRefreshInProgress.value = true;
+  const pendingLoad = !!tab.ddlLoad;
+  if (pendingLoad) tab.ddlLoad = { startedAt: Date.now() };
+  try {
+    const { ddl } = await loadObjectDdl(
+      {
+        connectionId: tab.connectionId,
+        database: tab.database,
+        schema: ddlViewer.schema || tab.database,
+        tableName: ddlViewer.tableName,
+        objectType: ddlViewer.objectType,
+        catalog: tab.catalog,
+      },
+      { force },
+    );
+    const dialect = ddlViewer.formatDialect ?? activeSqlFormatDialect.value;
+    const databaseType = effectiveDatabaseTypeForConnection(connectionStore.getConfig(tab.connectionId) ?? props.activeConnection);
+    const displayed = await formatDdlForDisplay(
+      ddl,
+      {
+        dialect,
+        databaseType,
+        database: tab.database,
+        catalog: tab.catalog,
+        includeDatabaseName: settingsStore.editorSettings.generateSqlIncludeDatabaseName,
+        quoteIdentifiers: settingsStore.editorSettings.generateSqlQuoteIdentifiers,
+        excludeDdlStorage: settingsStore.editorSettings.excludeDdlStorage,
+      },
+      settingsStore.editorSettings.sqlFormatter,
+    );
+    queryStore.updateSql(tab.id, displayed);
+    tab.originalSql = displayed;
+    if (pendingLoad) tab.ddlLoad = undefined;
+  } catch (error: any) {
+    if (pendingLoad) {
+      tab.ddlLoad = { startedAt: Date.now(), error: error?.message || String(error) };
+    } else {
+      toast(t("contextMenu.ddlRefreshFailed", { message: error?.message || String(error) }), 5000);
+    }
+  } finally {
+    ddlRefreshInProgress.value = false;
+  }
+}
+
+function refreshDdlViewer() {
+  void loadActiveDdlViewer(true);
+}
+
+function viewDdlTableData() {
+  const tab = props.activeTab;
+  const ddlViewer = tab.ddlViewer;
+  if (!ddlViewer) return;
+  emit("viewTableData", tab.id, {
+    name: ddlViewer.tableName,
+    database: tab.database,
+    schema: ddlViewer.schema,
+    type: ddlViewer.objectType ? sqlObjectNavigationTypeFromTableType(ddlViewer.objectType) : "table",
   });
 }
 
@@ -1503,15 +1590,34 @@ defineExpose({
       <Splitpanes horizontal class="query-output-splitpanes flex-1 min-h-0 overflow-hidden" @resize="onResultsSplitResize" @resized="onResultsResized">
         <Pane v-if="!resultOnly" class="min-h-0" :size="editorPaneSize" :min-size="resultsPaneOpen ? 15 : 100">
           <div class="h-full flex flex-col relative">
+            <div v-if="activeTab.ddlViewer" class="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+              <Button variant="outline" size="sm" :disabled="ddlRefreshInProgress" @click="refreshDdlViewer">
+                <RefreshCcw class="h-4 w-4" :class="ddlRefreshInProgress ? 'animate-spin' : ''" />
+                {{ t("structureEditor.refresh") }}
+              </Button>
+              <Button variant="outline" size="sm" @click="viewDdlTableData">
+                <TableProperties class="h-4 w-4" />
+                {{ t("contextMenu.viewData") }}
+              </Button>
+            </div>
             <div v-if="activeProductionContext.active" class="production-watermark pointer-events-none absolute inset-0 z-10 grid select-none" aria-hidden="true">
               <span v-for="index in 4" :key="index" class="production-watermark__label whitespace-nowrap font-mono text-6xl font-extrabold text-red-700/[0.12] dark:text-red-200/[0.1]">{{ productionWatermarkText }}</span>
             </div>
             <!-- issue #9035：源码 tab 先出现再加载。pending 期间不挂载编辑器
-                 （还没有内容可编辑，也省下一次 Monaco 初始化），失败则就地重试。 -->
+                 （还没有内容可编辑，也省下一次 Monaco 初始化），失败则就地重试。
+                 issue #9387：DDL 新标签同样先出 tab 再加载，失败就地显示错误。 -->
             <QueryLoadingState v-if="activeTab.sourceLoad && !activeTab.sourceLoad.error" class="relative z-0 flex-1" :elapsed-seconds="sourceLoadElapsedSeconds" />
             <div v-else-if="activeTab.sourceLoad?.error" class="relative z-0 flex flex-1 min-h-0 flex-col items-center justify-center gap-3 px-6 text-sm" data-object-source-load-error>
               <p class="max-w-[80%] text-center break-words text-destructive">{{ activeTab.sourceLoad.error }}</p>
               <Button variant="outline" size="sm" class="gap-1.5" @click="queryStore.retryObjectSourceTab(activeTab.id)">
+                <RotateCcw class="h-4 w-4" />
+                {{ t("common.retry") }}
+              </Button>
+            </div>
+            <QueryLoadingState v-else-if="activeTab.ddlLoad && !activeTab.ddlLoad.error" class="relative z-0 flex-1" :elapsed-seconds="ddlLoadElapsedSeconds" />
+            <div v-else-if="activeTab.ddlLoad?.error" class="relative z-0 flex flex-1 min-h-0 flex-col items-center justify-center gap-3 px-6 text-sm" data-ddl-load-error>
+              <p class="max-w-[80%] text-center break-words text-destructive">{{ t("contextMenu.ddlRefreshFailed", { message: activeTab.ddlLoad.error }) }}</p>
+              <Button variant="outline" size="sm" class="gap-1.5" @click="queryStore.retryDdlViewerTab(activeTab.id)">
                 <RotateCcw class="h-4 w-4" />
                 {{ t("common.retry") }}
               </Button>
@@ -1546,6 +1652,8 @@ defineExpose({
               :initial-selection="activeTab.editorSelection"
               :reveal-request="activeTab.editorRevealRequest"
               :force-word-wrap="activeTab.forceWordWrap"
+              :read-only="!!activeTab.ddlViewer"
+              :hide-execution-controls="!!activeTab.ddlViewer"
               enable-explain-shortcut
               :can-explain="!activeTab.isExecuting && !activeTab.isExplaining && !!executableSql.trim()"
               @update:model-value="emit('editorUpdate', activeTab.id, $event)"
