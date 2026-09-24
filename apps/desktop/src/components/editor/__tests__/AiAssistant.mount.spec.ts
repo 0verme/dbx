@@ -12,6 +12,8 @@ import i18n from "@/i18n";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AiAssistant from "@/components/editor/AiAssistant.vue";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useConnectionStore } from "@/stores/connectionStore";
+import type { ConnectionConfig } from "@/types/database";
 
 vi.mock("@/lib/backend/api", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -22,6 +24,7 @@ vi.mock("@/lib/backend/api", async (importOriginal) => {
     loadAiRuns: empty,
     readUserSkills: empty,
     loadAiConfigs: empty,
+    listPlugins: empty,
     loadPromptTemplates: empty,
     getAiGlobalCustomInstructions: () => Promise.resolve(""),
     saveAiChatSelection: () => Promise.resolve(),
@@ -35,15 +38,16 @@ afterEach(() => {
   while (cleanups.length) cleanups.pop()?.();
 });
 
-async function mountPanel(aiConfigLoaded: boolean): Promise<unknown[]> {
+async function mountPanel(aiConfigLoaded: boolean, connection?: ConnectionConfig) {
   const pinia = createPinia();
   const errors: unknown[] = [];
-  const app = createApp({ render: () => h(TooltipProvider, () => h(AiAssistant)) });
+  const app = createApp({ render: () => h(TooltipProvider, () => h(AiAssistant, { connection })) });
   app.use(pinia);
   app.use(i18n);
   app.config.errorHandler = (error) => errors.push(error);
   app.config.warnHandler = () => {};
   useSettingsStore(pinia).isAiConfigLoaded = aiConfigLoaded;
+  if (connection) useConnectionStore(pinia).connections = [connection];
   const container = document.createElement("div");
   document.body.append(container);
   app.mount(container);
@@ -53,15 +57,32 @@ async function mountPanel(aiConfigLoaded: boolean): Promise<unknown[]> {
   });
   // Let mount-time loads settle so their failures surface here too.
   await new Promise((resolve) => setTimeout(resolve, 20));
-  return errors;
+  return { errors, container };
 }
 
 describe("AiAssistant mount", () => {
   it("opens when the AI config was loaded before the panel mounted", async () => {
-    expect((await mountPanel(true)).map(String)).toEqual([]);
+    expect((await mountPanel(true)).errors.map(String)).toEqual([]);
   });
 
   it("opens while the AI config is still loading", async () => {
-    expect((await mountPanel(false)).map(String)).toEqual([]);
+    expect((await mountPanel(false)).errors.map(String)).toEqual([]);
+  });
+
+  it.each(["plugin", "etcd"] as const)("hides database and schema selectors for %s connections", async (dbType) => {
+    const { errors, container } = await mountPanel(true, { id: "connection", name: "Connection", db_type: dbType, plugin_id: dbType === "plugin" ? "sample.plugin" : undefined, host: "localhost", port: 22, username: "", password: "" });
+    expect(errors.map(String)).toEqual([]);
+    const row = container.querySelector("[data-ai-composer-context-row]");
+    expect(row?.textContent).toContain("Connection");
+    expect(row?.textContent).not.toContain(i18n.global.t("editor.selectDatabase"));
+    expect(row?.classList.contains("ai-prompt-context-row--schema")).toBe(false);
+  });
+
+  it("keeps database and schema selectors for PostgreSQL", async () => {
+    const { errors, container } = await mountPanel(true, { id: "postgres", name: "PostgreSQL", db_type: "postgres", host: "localhost", port: 5432, username: "", password: "" });
+    expect(errors.map(String)).toEqual([]);
+    const row = container.querySelector("[data-ai-composer-context-row]");
+    expect(row?.textContent).toContain(i18n.global.t("editor.selectDatabase"));
+    expect(row?.classList.contains("ai-prompt-context-row--schema")).toBe(true);
   });
 });

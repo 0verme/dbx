@@ -198,6 +198,8 @@ import type {
 } from "@/lib/backend/tauri";
 import type { QueryEditability } from "@/lib/sql/sqlAnalysis";
 import type { PluginTableMetadata, PluginTableMetadataRequest } from "@/types/pluginSchemaMetadata";
+import type { PluginDataGrant, PluginDataQueryRequest, PluginDataQueryResult } from "@/types/pluginData";
+import type { PluginToolPreview } from "@/types/pluginAiTools";
 import type { CsvQuoteMode } from "@/lib/export/csvQuoteMode";
 import type { MigrationPreflight, MigrationReport } from "./migration";
 export type { MigrationPreflight, MigrationReport } from "./migration";
@@ -1680,6 +1682,22 @@ export async function getPluginEstimatedPlan(request: PluginPlanRequest): Promis
   return post<PluginPlanResult>("/api/query/plugin-estimated-plan", request);
 }
 
+/**
+ * Plugin Host API (`host.data:read`): one read-only statement on a connection
+ * the user granted to `pluginId`. The backend enforces permission, grant, and gate.
+ */
+export async function queryPluginData(pluginId: string, request: PluginDataQueryRequest): Promise<PluginDataQueryResult> {
+  return post<PluginDataQueryResult>("/api/plugin/data/query", { pluginId, request });
+}
+
+export async function getPluginDataGrants(pluginId: string): Promise<PluginDataGrant[]> {
+  return post<PluginDataGrant[]>("/api/plugin/data/grants", { pluginId });
+}
+
+export async function setPluginDataGrant(pluginId: string, connectionId: string, granted: boolean): Promise<PluginDataGrant[]> {
+  return post<PluginDataGrant[]>("/api/plugin/data/grant", { pluginId, connectionId, granted });
+}
+
 export async function buildDroppedFilePreviewSql(options: DroppedFilePreviewSqlOptions): Promise<string | undefined> {
   const result = await post<string | null>("/api/query/build-dropped-file-preview-sql", { options });
   return result ?? undefined;
@@ -1979,6 +1997,25 @@ export async function aiStream(sessionId: string, request: AiCompletionRequest, 
 
 export async function aiCancelStream(sessionId: string): Promise<boolean> {
   return post("/api/ai/cancel-stream", { sessionId });
+}
+
+/** Answers a pending plugin tool approval of the agent run `sessionId`; false when nothing was waiting. */
+export async function resolveAiToolApproval(sessionId: string, approvalId: string, approved: boolean): Promise<boolean> {
+  return post("/api/ai/tool-approval", { sessionId, approvalId, approved });
+}
+
+/** Plugin ids whose MCP tools the built-in AI agent may call. */
+export async function getAiPluginToolPlugins(): Promise<string[]> {
+  return get("/api/ai/plugin-tools/plugins");
+}
+
+export async function setAiPluginToolPluginEnabled(pluginId: string, enabled: boolean): Promise<string[]> {
+  return post("/api/ai/plugin-tools/plugins", { pluginId, enabled });
+}
+
+/** Tools the built-in AI would get from a plugin (may start its sidecar). */
+export async function previewPluginAiTools(pluginId: string): Promise<PluginToolPreview> {
+  return post("/api/ai/plugin-tools/preview", { pluginId });
 }
 
 export async function aiTestConnection(config: AiConfig): Promise<AiTestConnectionResult> {

@@ -84,6 +84,29 @@ const consul = {
 
 export default withEnglishFallback({
   pluginPlatform: {
+    dataAccessConsent: '"{name}", "{connection}" bağlantısındaki verileri okumak istiyor. Bu bağlantı açık olduğu sürece eklenti, Eklenti Merkezi\'nden erişimi iptal edene kadar bağlantıda salt okunur sorgular çalıştırabilir. İzin verilsin mi?',
+    dataAccessConsentTitle: "Veri Erişim İsteği",
+    aiTools: {
+      title: "Yerleşik yapay zekâ araçları",
+      description: "DBX yapay zekâ asistanının (Agent modu) açık olan eklenti bağlantılarında bu eklentinin araçlarını çağırmasına izin verir. Salt okunur olarak bildirilmeyen araçlar her çağrıdan önce onayınızı ister ve araç çıktısı yapay zekâ modelinize gönderilir.",
+      preview: "Araçları göster",
+      previewHint: "Eklenti çalışmıyorsa başlatılır.",
+      previewFailed: "Araçlar listelenemedi: {message}",
+      openConnections: "Yapay zekâ şu açık bağlantıları kullanır: {names}",
+      noOpenConnections: "Bu eklentinin açık bağlantısı yok. Yapay zekâdan bu araçları kullanmasını istemeden önce bir bağlantı açın.",
+      noTools: "Bu eklenti yapay zekâ aracı sağlamıyor.",
+      readOnly: "Salt okunur",
+      needsApproval: "Onay gerekir",
+      saveFailed: "Ayar kaydedilemedi: {message}",
+    },
+    dataAccess: {
+      title: "Veri erişimi",
+      description: "Bu eklentinin salt okunur sorgularla okuyabileceği bağlantılar. Eklenti bir bağlantıya ilk kez ihtiyaç duyduğunda size sorar; erişimi burada istediğiniz zaman iptal edebilirsiniz.",
+      none: "Henüz hiçbir bağlantıya izin verilmedi.",
+      revoke: "İptal et",
+      missingConnection: "Silinmiş bağlantı ({id})",
+      revokeFailed: "Erişim iptal edilemedi: {message}",
+    },
     shortcutsPluginCenter: "Eklenti merkezinin yanında (açılır menü)",
     shortcutsToolbar: "Güncelle düğmesinin solunda (kayan)",
     shortcutsToolbarCount: "Görünür simge sayısı",
@@ -3005,6 +3028,21 @@ export default withEnglishFallback({
     proposalConfirmYes: "Evet, devam et",
     proposalConfirmNo: "Hayır, teşekkürler",
     proposalConfirmTitle: "Eylem onayı gerekli",
+    toolApproval: {
+      prompt: "{plugin}, {connection} üzerinde {tool} çalıştırmak istiyor. Aşağıdaki argümanları inceleyin.",
+      approve: "Bir kez izin ver",
+      deny: "Reddet",
+      expiresAt: "Yanıt verilmezse {time} saatinde otomatik olarak reddedilir",
+      waiting: "Onay bekleniyor",
+      answerFailed: "Yanıtınız gönderilemedi: {message}",
+      status: {
+        approved: "Onaylandı",
+        denied: "Reddedildi",
+        timed_out: "Zamanında yanıt verilmedi; çağrı çalıştırılmadı",
+        cancelled: "İptal edildi",
+        expired: "Bu onay artık beklenmiyor",
+      },
+    },
     agentSteps: {
       generated: "SQL üretildi",
       noSql: "SQL bulunamadı",

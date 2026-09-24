@@ -56,6 +56,14 @@ const MCP_HTTP_SERVER_SETTINGS_KEY: &str = "mcp_http_server_settings";
 const MAX_RETRIES_KEY: &str = "max_retries";
 const HISTORY_RETENTION_LIMIT_KEY: &str = "history_retention_limit";
 const SQL_FILE_UPLOAD_MAX_MB_KEY: &str = "sql_file_upload_max_mb";
+/// Plugin ids whose MCP tools the built-in AI agent may call.
+const AI_PLUGIN_TOOL_PLUGINS_KEY: &str = "ai_plugin_tool_plugins";
+/// `{ pluginId: [connectionId, ...] }` — connections a plugin may read through
+/// the `host.data:read` Host API. Written only after an explicit user consent.
+const PLUGIN_DATA_GRANTS_KEY: &str = "plugin_data_grants";
+/// Upper bound for one plugin's persisted data grants; consent is per
+/// connection, so a legitimate plugin never approaches it.
+const MAX_PLUGIN_DATA_GRANTS_PER_PLUGIN: usize = 512;
 const APP_STATE_AI_GLOBAL_INSTRUCTIONS_KEY: &str = "ai_global_custom_instructions";
 const APP_STATE_AI_CHAT_SELECTION_KEY: &str = "ai_chat_selection_v1";
 const SNIPPET_SYNC_IDS_KEY: &str = "snippet_sync_ids";
@@ -3132,6 +3140,56 @@ fn load_history_retention_limit_from_conn(conn: &Connection) -> Result<u32, Stri
     Ok(history_retention_limit_from_settings(&settings))
 }
 
+fn app_settings_map_from_conn(conn: &Connection) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let current: Option<String> = conn
+        .query_row("SELECT settings_json FROM app_settings WHERE id = 1", [], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+    match current {
+        Some(json) => serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&json)
+            .map_err(|e| format!("invalid app settings JSON: {e}")),
+        None => Ok(serde_json::Map::new()),
+    }
+}
+
+fn write_app_settings_map(
+    conn: &Connection,
+    settings: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    let json = serde_json::to_string(settings).map_err(|e| e.to_string())?;
+    conn.execute("INSERT OR REPLACE INTO app_settings (id, settings_json) VALUES (1, ?1)", [json])
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Reads a JSON string array setting, dropping blanks and duplicates so a
+/// hand-edited or partially written value can never widen a permission list.
+fn normalized_string_list(value: Option<&serde_json::Value>) -> Vec<String> {
+    let mut values: Vec<String> = value
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn normalized_setting_id(value: &str, label: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.chars().count() > 256 {
+        return Err(format!("A valid {label} is required"));
+    }
+    Ok(trimmed.to_string())
+}
+
 impl Storage {
     pub async fn save_history_entry(&self, entry: &HistoryEntry) -> Result<(), String> {
         let entry = entry.clone();
@@ -3956,8 +4014,14 @@ impl Storage {
                 .query_row("SELECT settings_json FROM app_settings WHERE id = 1", [], |row| row.get(0))
                 .optional()
                 .map_err(|e| e.to_string())?;
-            let dedicated_keys =
-                [MCP_GLOBAL_POLICY_KEY, MAX_RETRIES_KEY, SQL_FILE_UPLOAD_MAX_MB_KEY, HISTORY_RETENTION_LIMIT_KEY];
+            let dedicated_keys = [
+                MCP_GLOBAL_POLICY_KEY,
+                MAX_RETRIES_KEY,
+                SQL_FILE_UPLOAD_MAX_MB_KEY,
+                HISTORY_RETENTION_LIMIT_KEY,
+                AI_PLUGIN_TOOL_PLUGINS_KEY,
+                PLUGIN_DATA_GRANTS_KEY,
+            ];
             for key in dedicated_keys {
                 settings.remove(key);
             }
@@ -4065,6 +4129,101 @@ impl Storage {
         })
         .await
         .map_err(|e| format!("MCP_POLICY_UNAVAILABLE: {e}"))
+    }
+
+    /// Plugin ids whose MCP tools the built-in AI agent may call. Empty until
+    /// the user enables a plugin in the Plugin Center.
+    pub async fn load_ai_plugin_tool_plugin_ids(&self) -> Result<Vec<String>, String> {
+        let settings = self.load_app_settings_json().await?;
+        Ok(normalized_string_list(settings.get(AI_PLUGIN_TOOL_PLUGINS_KEY)))
+    }
+
+    /// Enables or disables built-in AI access to one plugin's tools and returns
+    /// the updated list. The read-modify-write runs inside one connection
+    /// closure so concurrent settings saves cannot drop the change.
+    pub async fn set_ai_plugin_tool_plugin_enabled(
+        &self,
+        plugin_id: &str,
+        enabled: bool,
+    ) -> Result<Vec<String>, String> {
+        let plugin_id = normalized_setting_id(plugin_id, "plugin id")?;
+        self.with_conn(move |conn| {
+            let mut settings = app_settings_map_from_conn(conn)?;
+            let mut plugin_ids = normalized_string_list(settings.get(AI_PLUGIN_TOOL_PLUGINS_KEY));
+            plugin_ids.retain(|candidate| candidate != &plugin_id);
+            if enabled {
+                plugin_ids.push(plugin_id);
+                plugin_ids.sort();
+            }
+            settings.insert(AI_PLUGIN_TOOL_PLUGINS_KEY.to_string(), serde_json::json!(plugin_ids));
+            write_app_settings_map(conn, &settings)?;
+            Ok(plugin_ids)
+        })
+        .await
+    }
+
+    /// Connections the plugin may read through `host.data:read`.
+    pub async fn load_plugin_data_grants(&self, plugin_id: &str) -> Result<Vec<String>, String> {
+        let settings = self.load_app_settings_json().await?;
+        Ok(normalized_string_list(settings.get(PLUGIN_DATA_GRANTS_KEY).and_then(|grants| grants.get(plugin_id.trim()))))
+    }
+
+    /// Records or revokes the user's consent for one plugin to read one
+    /// connection and returns the plugin's updated grant list.
+    pub async fn set_plugin_data_grant(
+        &self,
+        plugin_id: &str,
+        connection_id: &str,
+        granted: bool,
+    ) -> Result<Vec<String>, String> {
+        let plugin_id = normalized_setting_id(plugin_id, "plugin id")?;
+        let connection_id = normalized_setting_id(connection_id, "connection id")?;
+        self.with_conn(move |conn| {
+            let mut settings = app_settings_map_from_conn(conn)?;
+            let mut all_grants = match settings.remove(PLUGIN_DATA_GRANTS_KEY) {
+                Some(serde_json::Value::Object(grants)) => grants,
+                _ => serde_json::Map::new(),
+            };
+            let mut connection_ids = normalized_string_list(all_grants.get(&plugin_id));
+            connection_ids.retain(|candidate| candidate != &connection_id);
+            if granted {
+                if connection_ids.len() >= MAX_PLUGIN_DATA_GRANTS_PER_PLUGIN {
+                    return Err(format!(
+                        "A plugin can hold at most {MAX_PLUGIN_DATA_GRANTS_PER_PLUGIN} data access grants"
+                    ));
+                }
+                connection_ids.push(connection_id);
+                connection_ids.sort();
+            }
+            if connection_ids.is_empty() {
+                all_grants.remove(&plugin_id);
+            } else {
+                all_grants.insert(plugin_id, serde_json::json!(connection_ids));
+            }
+            if !all_grants.is_empty() {
+                settings.insert(PLUGIN_DATA_GRANTS_KEY.to_string(), serde_json::Value::Object(all_grants));
+            }
+            write_app_settings_map(conn, &settings)?;
+            Ok(connection_ids)
+        })
+        .await
+    }
+
+    /// Drops everything the user granted to a plugin (AI tool access and data
+    /// grants). Called after uninstall so a reinstall starts without consent.
+    pub async fn forget_plugin_permissions(&self, plugin_id: &str) -> Result<(), String> {
+        let plugin_id = normalized_setting_id(plugin_id, "plugin id")?;
+        self.with_conn(move |conn| {
+            let mut settings = app_settings_map_from_conn(conn)?;
+            let mut plugin_ids = normalized_string_list(settings.get(AI_PLUGIN_TOOL_PLUGINS_KEY));
+            plugin_ids.retain(|candidate| candidate != &plugin_id);
+            settings.insert(AI_PLUGIN_TOOL_PLUGINS_KEY.to_string(), serde_json::json!(plugin_ids));
+            if let Some(serde_json::Value::Object(grants)) = settings.get_mut(PLUGIN_DATA_GRANTS_KEY) {
+                grants.remove(&plugin_id);
+            }
+            write_app_settings_map(conn, &settings)
+        })
+        .await
     }
 
     pub async fn load_mcp_http_server_settings(&self) -> Result<McpHttpServerSettings, String> {
@@ -11090,6 +11249,40 @@ mod tests {
         // Values above the cap are clamped so raw DB edits cannot bypass the limit.
         storage.save_max_retries(u32::MAX).await.unwrap();
         assert_eq!(storage.load_max_retries().await.unwrap(), crate::ai::MAX_MAX_RETRIES);
+    }
+
+    #[tokio::test]
+    async fn plugin_ai_tools_and_data_grants_persist_and_survive_legacy_settings_saves() {
+        let path = temp_db_path("plugin-permissions");
+        let storage = Storage::open(&path).await.unwrap();
+        assert!(storage.load_ai_plugin_tool_plugin_ids().await.unwrap().is_empty());
+        assert!(storage.load_plugin_data_grants("io.dbx.chart").await.unwrap().is_empty());
+
+        assert_eq!(storage.set_ai_plugin_tool_plugin_enabled("io.dbx.ssh", true).await.unwrap(), ["io.dbx.ssh"]);
+        storage.set_ai_plugin_tool_plugin_enabled("io.dbx.kafka", true).await.unwrap();
+        storage.set_ai_plugin_tool_plugin_enabled("io.dbx.ssh", true).await.unwrap();
+        assert_eq!(storage.load_ai_plugin_tool_plugin_ids().await.unwrap(), ["io.dbx.kafka", "io.dbx.ssh"]);
+
+        storage.set_plugin_data_grant("io.dbx.chart", "conn-b", true).await.unwrap();
+        assert_eq!(storage.set_plugin_data_grant("io.dbx.chart", "conn-a", true).await.unwrap(), ["conn-a", "conn-b"]);
+        storage.set_plugin_data_grant("io.dbx.other", "conn-a", true).await.unwrap();
+
+        // A settings writer that rebuilds the whole JSON map must not drop the
+        // dedicated permission keys.
+        storage.save_password_hash("hash").await.unwrap();
+        storage.save_app_settings_json(&serde_json::Map::new()).await.unwrap();
+        assert_eq!(storage.load_ai_plugin_tool_plugin_ids().await.unwrap(), ["io.dbx.kafka", "io.dbx.ssh"]);
+        assert_eq!(storage.load_plugin_data_grants("io.dbx.chart").await.unwrap(), ["conn-a", "conn-b"]);
+
+        assert_eq!(storage.set_plugin_data_grant("io.dbx.chart", "conn-b", false).await.unwrap(), ["conn-a"]);
+        assert_eq!(storage.set_ai_plugin_tool_plugin_enabled("io.dbx.kafka", false).await.unwrap(), ["io.dbx.ssh"]);
+        assert!(storage.set_plugin_data_grant("io.dbx.chart", " ", true).await.is_err());
+
+        storage.set_ai_plugin_tool_plugin_enabled("io.dbx.chart", true).await.unwrap();
+        storage.forget_plugin_permissions("io.dbx.chart").await.unwrap();
+        assert_eq!(storage.load_ai_plugin_tool_plugin_ids().await.unwrap(), ["io.dbx.ssh"]);
+        assert!(storage.load_plugin_data_grants("io.dbx.chart").await.unwrap().is_empty());
+        assert_eq!(storage.load_plugin_data_grants("io.dbx.other").await.unwrap(), ["conn-a"]);
     }
 
     #[tokio::test]

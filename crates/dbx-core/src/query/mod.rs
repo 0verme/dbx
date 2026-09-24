@@ -3,6 +3,7 @@ pub mod document_ops;
 pub mod hbase_ops;
 pub mod mongo_ops;
 pub mod object_cache;
+pub mod plugin_data;
 pub mod plugin_plan;
 pub mod query_cancel;
 pub mod redis_ops;

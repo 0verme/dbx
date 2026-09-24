@@ -25,6 +25,8 @@ import { collectBrowserSupportInfo } from "@/lib/app/supportInfo";
 // for this module's own signatures (a re-export does not bind local names).
 import type { PluginPlanCapabilities, PluginPlanRequest, PluginPlanResult } from "@/types/pluginPlan";
 import type { PluginTableMetadata, PluginTableMetadataRequest } from "@/types/pluginSchemaMetadata";
+import type { PluginDataGrant, PluginDataQueryRequest, PluginDataQueryResult } from "@/types/pluginData";
+import type { AiToolApprovalOutcome, PluginToolPreview } from "@/types/pluginAiTools";
 
 function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   assertUpdateAllowsCommand(command);
@@ -601,6 +603,22 @@ export type AgentEvent =
       args: Record<string, unknown>;
     }
   | {
+      /** A plugin tool call that may change state waits for the user's approval; the run is paused. */
+      type: "tool_approval_required";
+      approval_id: string;
+      tool_call_id: string;
+      tool_name: string;
+      plugin_id: string;
+      plugin_name: string;
+      plugin_tool: string;
+      connection_id: string;
+      connection_name: string;
+      /** Exactly the arguments DBX forwards if the user approves. */
+      args: Record<string, unknown>;
+      timeout_secs: number;
+    }
+  | { type: "tool_approval_resolved"; approval_id: string; tool_call_id: string; outcome: AiToolApprovalOutcome }
+  | {
       type: "tool_call_end";
       tool_call_id: string;
       tool_name: string;
@@ -714,6 +732,25 @@ export async function loadAiChatSelection(): Promise<AiChatSelectionState | null
 
 export async function aiCancelStream(sessionId: string): Promise<boolean> {
   return invoke("ai_cancel_stream", { sessionId });
+}
+
+/** Answers a pending plugin tool approval of the agent run `sessionId`; false when nothing was waiting. */
+export async function resolveAiToolApproval(sessionId: string, approvalId: string, approved: boolean): Promise<boolean> {
+  return invoke("ai_resolve_tool_approval", { sessionId, approvalId, approved });
+}
+
+/** Plugin ids whose MCP tools the built-in AI agent may call. */
+export async function getAiPluginToolPlugins(): Promise<string[]> {
+  return invoke("get_ai_plugin_tool_plugins");
+}
+
+export async function setAiPluginToolPluginEnabled(pluginId: string, enabled: boolean): Promise<string[]> {
+  return invoke("set_ai_plugin_tool_plugin_enabled", { pluginId, enabled });
+}
+
+/** Tools the built-in AI would get from a plugin (may start its sidecar). */
+export async function previewPluginAiTools(pluginId: string): Promise<PluginToolPreview> {
+  return invoke("preview_plugin_ai_tools", { pluginId });
 }
 
 export async function saveAiConfigs(configs: AiConfigItem[]): Promise<void> {
@@ -1930,6 +1967,22 @@ export async function getPluginPlanCapabilities(connectionId: string): Promise<P
  */
 export async function getPluginEstimatedPlan(request: PluginPlanRequest): Promise<PluginPlanResult> {
   return invoke<PluginPlanResult>("get_plugin_estimated_plan", { request });
+}
+
+/**
+ * Plugin Host API (`host.data:read`): one read-only statement on a connection
+ * the user granted to `pluginId`. The backend enforces permission, grant, and gate.
+ */
+export async function queryPluginData(pluginId: string, request: PluginDataQueryRequest): Promise<PluginDataQueryResult> {
+  return invoke<PluginDataQueryResult>("query_plugin_data", { pluginId, request });
+}
+
+export async function getPluginDataGrants(pluginId: string): Promise<PluginDataGrant[]> {
+  return invoke<PluginDataGrant[]>("get_plugin_data_grants", { pluginId });
+}
+
+export async function setPluginDataGrant(pluginId: string, connectionId: string, granted: boolean): Promise<PluginDataGrant[]> {
+  return invoke<PluginDataGrant[]>("set_plugin_data_grant", { pluginId, connectionId, granted });
 }
 
 export async function buildDroppedFilePreviewSql(options: DroppedFilePreviewSqlOptions): Promise<string | undefined> {

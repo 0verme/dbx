@@ -1185,8 +1185,8 @@ function openPluginResultView(pluginId: string, contributionId: string, label: s
   if (!result) return;
   // The tab carries the result-view contribution id, not a workbench id: the
   // plugin UI is told which declared surface the user picked, and it receives a
-  // bounded snapshot — plugins re-query through their backend when they need the
-  // full or streamed result set.
+  // bounded snapshot — plugins that need more rows re-run the statement through
+  // `host.queryData` (host.data:read, with the user's consent).
   const cappedRows = result.rows.slice(0, 500);
   queryStore.openPluginWorkbench(pluginId, contributionId, {
     title: label,

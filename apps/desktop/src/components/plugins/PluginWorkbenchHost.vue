@@ -403,6 +403,14 @@ function createBridge() {
       getPlanCapabilities: (connectionId) => api.getPluginPlanCapabilities(connectionId),
       explainPlan: (request) => api.getPluginEstimatedPlan(request),
       getTableMetadata: (context) => api.getPluginTableMetadata(context),
+      // host.data:read — the bridge asks for consent per connection before the
+      // first query; the backend enforces the persisted grant on every call.
+      queryData: (pluginId, request) => api.queryPluginData(pluginId, request),
+      hasDataGrant: async (pluginId, connectionId) => (await api.getPluginDataGrants(pluginId)).some((grant) => grant.connectionId === connectionId),
+      confirmDataAccess: (_pluginId, pluginName, connectionId) => confirmPluginDataAccess(pluginName, connectionId),
+      grantDataAccess: async (pluginId, connectionId) => {
+        await api.setPluginDataGrant(pluginId, connectionId, true);
+      },
       closeTab: () => emit("closeTab"),
       saveFile: (_pluginId, request, data) => savePluginFile(request, data),
       downloadFile: isTauriRuntime() ? downloadPluginFile : undefined,
@@ -440,6 +448,22 @@ function createBridge() {
     if (!connectionId) return;
     await useConnectionStore().repushPluginConnection(connectionId);
   };
+}
+
+/**
+ * Consent for `host.data:read`: names the plugin and the connection so the
+ * user sees exactly what is shared. An allow is persisted as a grant the
+ * Plugin Center can revoke; the web host asks through the browser dialog.
+ */
+async function confirmPluginDataAccess(pluginName: string, connectionId: string): Promise<boolean> {
+  const connectionName = useConnectionStore().getConfig(connectionId)?.name || connectionId;
+  const message = t("pluginPlatform.dataAccessConsent", { name: pluginName, connection: connectionName });
+  const title = t("pluginPlatform.dataAccessConsentTitle");
+  if (isTauriRuntime()) {
+    const { ask } = await import("@tauri-apps/plugin-dialog");
+    return (await ask(message, { title, kind: "warning" })) === true;
+  }
+  return window.confirm(`${title}\n\n${message}`);
 }
 
 /** Keep a plugin-supplied name from smuggling path separators or traversal into the save dialog. */

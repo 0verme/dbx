@@ -82,6 +82,29 @@ const consul = {
 
 export default withEnglishFallback({
   pluginPlatform: {
+    dataAccessConsent: '"{name}" "{connection}" bağlantısındakı məlumatları oxumaq istəyir. Bu bağlantı açıq olduqca plagin, Plagin Mərkəzində girişi ləğv edənə qədər orada yalnız oxuma sorğuları icra edə bilər. İcazə verilsin?',
+    dataAccessConsentTitle: "Məlumat girişi sorğusu",
+    aiTools: {
+      title: "Daxili süni intellekt alətləri",
+      description: "DBX süni intellekt köməkçisinin (Agent rejimi) açıq olan plagin bağlantılarında bu plaginin alətlərini çağırmasına icazə verir. Yalnız oxuma kimi elan edilməyən alətlər hər çağırışdan əvvəl təsdiqinizi istəyir və alət nəticəsi süni intellekt modelinizə göndərilir.",
+      preview: "Alətləri göstər",
+      previewHint: "Plagin işləmirsə, onu başladır.",
+      previewFailed: "Alətlərin siyahısı alınmadı: {message}",
+      openConnections: "Süni intellekt bu açıq bağlantılardan istifadə edəcək: {names}",
+      noOpenConnections: "Bu plaginin açıq bağlantısı yoxdur. Süni intellektdən bu alətləri istifadə etməsini istəməzdən əvvəl bağlantı açın.",
+      noTools: "Bu plagin süni intellekt alətləri təqdim etmir.",
+      readOnly: "Yalnız oxuma",
+      needsApproval: "Təsdiq tələb olunur",
+      saveFailed: "Ayar saxlanılmadı: {message}",
+    },
+    dataAccess: {
+      title: "Məlumat girişi",
+      description: "Bu plaginin yalnız oxuma sorğuları ilə oxuya biləcəyi bağlantılar. Plagin bağlantıya ilk dəfə ehtiyac duyanda sizdən soruşur; girişi burada istənilən vaxt ləğv edə bilərsiniz.",
+      none: "Hələ heç bir bağlantıya icazə verilməyib.",
+      revoke: "Ləğv et",
+      missingConnection: "Silinmiş bağlantı ({id})",
+      revokeFailed: "Giriş ləğv edilmədi: {message}",
+    },
     shortcutsPluginCenter: "Plagin mərkəzinin yanında (açılan menyu)",
     shortcutsToolbar: "Yeniləmə düyməsinin solunda (üzən)",
     shortcutsToolbarCount: "Görünən nişanların sayı",
@@ -3029,6 +3052,21 @@ export default withEnglishFallback({
     proposalConfirmYes: "Bəli, davam et",
     proposalConfirmNo: "Xeyr, təşəkkürlər",
     proposalConfirmTitle: "Əməliyyatın təsdiqi tələb olunur",
+    toolApproval: {
+      prompt: "{plugin} {connection} üzərində {tool} icra etmək istəyir. Aşağıdakı arqumentləri yoxlayın.",
+      approve: "Bir dəfə icazə ver",
+      deny: "Rədd et",
+      expiresAt: "Cavab verilməsə, {time} vaxtı avtomatik rədd ediləcək",
+      waiting: "Təsdiq gözlənilir",
+      answerFailed: "Cavabınız göndərilmədi: {message}",
+      status: {
+        approved: "Təsdiqləndi",
+        denied: "Rədd edildi",
+        timed_out: "Vaxtında cavab verilmədi; çağırış icra edilmədi",
+        cancelled: "Ləğv edildi",
+        expired: "Bu təsdiq artıq gözlənilmir",
+      },
+    },
     agentSteps: {
       generated: "SQL yaradıldı",
       noSql: "SQL tapılmadı",

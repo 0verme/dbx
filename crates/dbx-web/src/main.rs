@@ -733,6 +733,9 @@ async fn serve() {
         .route("/query/get-explain-info", post(routes::query::get_explain_info))
         .route("/query/plugin-plan-capabilities", post(routes::query::get_plugin_plan_capabilities))
         .route("/query/plugin-estimated-plan", post(routes::query::get_plugin_estimated_plan))
+        .route("/plugin/data/query", post(routes::query::query_plugin_data))
+        .route("/plugin/data/grants", post(routes::query::get_plugin_data_grants))
+        .route("/plugin/data/grant", post(routes::query::set_plugin_data_grant))
         .route("/query/build-create-user-sql", post(routes::query::build_create_user_sql))
         .route("/query/build-table-select-sql", post(routes::query::build_table_select_sql))
         .route("/query/build-database-search-sql", post(routes::query::build_database_search_sql))
@@ -1211,6 +1214,12 @@ async fn serve() {
         .route("/ai/stream", post(routes::ai::ai_stream))
         .route("/ai/agent-stream", post(routes::ai::ai_agent_stream))
         .route("/ai/cancel-stream", post(routes::ai::ai_cancel_stream))
+        .route("/ai/tool-approval", post(routes::ai::ai_resolve_tool_approval))
+        .route(
+            "/ai/plugin-tools/plugins",
+            get(routes::ai::get_ai_plugin_tool_plugins).post(routes::ai::set_ai_plugin_tool_plugin_enabled),
+        )
+        .route("/ai/plugin-tools/preview", post(routes::ai::preview_plugin_ai_tools))
         .route("/ai/test-connection", post(routes::ai::ai_test_connection))
         .route("/ai/models", post(routes::ai::ai_list_models))
         .route("/ai/model-effort", post(routes::ai::ai_resolve_model_effort))

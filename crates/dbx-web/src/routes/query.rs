@@ -886,6 +886,59 @@ pub async fn get_plugin_estimated_plan(
     Ok(Json(result))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryPluginDataRequest {
+    pub plugin_id: String,
+    pub request: dbx_core::query::plugin_data::PluginDataQueryRequest,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDataGrantRequest {
+    pub plugin_id: String,
+    #[serde(default)]
+    pub connection_id: String,
+    #[serde(default)]
+    pub granted: bool,
+}
+
+/// Plugin Host API: consent-gated read-only data query (`host.data:read`).
+pub async fn query_plugin_data(
+    State(state): State<Arc<WebState>>,
+    Json(body): Json<QueryPluginDataRequest>,
+) -> Result<Json<dbx_core::query::plugin_data::PluginDataQueryResult>, AppError> {
+    let result = dbx_core::query::plugin_data::query_plugin_data(&state.app, &body.plugin_id, body.request)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(result))
+}
+
+pub async fn get_plugin_data_grants(
+    State(state): State<Arc<WebState>>,
+    Json(body): Json<PluginDataGrantRequest>,
+) -> Result<Json<Vec<dbx_core::query::plugin_data::PluginDataGrant>>, AppError> {
+    let grants = dbx_core::query::plugin_data::list_plugin_data_grants(&state.app, &body.plugin_id)
+        .await
+        .map_err(AppError::from)?;
+    Ok(Json(grants))
+}
+
+pub async fn set_plugin_data_grant(
+    State(state): State<Arc<WebState>>,
+    Json(body): Json<PluginDataGrantRequest>,
+) -> Result<Json<Vec<dbx_core::query::plugin_data::PluginDataGrant>>, AppError> {
+    let grants = dbx_core::query::plugin_data::set_plugin_data_grant(
+        &state.app,
+        &body.plugin_id,
+        &body.connection_id,
+        body.granted,
+    )
+    .await
+    .map_err(AppError::bad_request)?;
+    Ok(Json(grants))
+}
+
 pub async fn build_create_user_sql(Json(req): Json<BuildCreateUserSqlRequest>) -> Result<Json<String>, AppError> {
     Ok(Json(dbx_core::db_admin_sql::build_create_user_sql(&req.username, &req.password, &req.tablespace)))
 }

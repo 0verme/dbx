@@ -55,6 +55,8 @@ const BLOCKED_EXACT: &[&str] = &[
     "app-settings/config/decrypt",
     // 读取服务器本地 ~/.ssh/config
     "ssh/config-hosts",
+    // 插件数据访问授权写入（插件读取已存连接数据的许可）
+    "plugin/data/grant",
 ];
 
 /// 非 GET 请求整族拦截的前缀：插件/JDBC/驱动安装与运行时控制、云同步外发通道。
@@ -76,6 +78,9 @@ const BLOCKED_AI_EXACT: &[&str] = &[
     "ai/test-connection",
     "ai/models",
     "ai/model-effort",
+    // 允许内置 AI 调用插件工具的开关；预览会拉起插件 sidecar
+    "ai/plugin-tools/plugins",
+    "ai/plugin-tools/preview",
 ];
 
 pub(crate) fn is_demo_blocked(method: &Method, suffix: &str) -> bool {
