@@ -319,6 +319,23 @@ fn platform_keyring_codec(allow_create: bool) -> Result<Option<SecretCodec>, Str
 
 #[cfg(all(feature = "os-keyring", target_os = "linux"))]
 fn platform_keyring_codec(allow_create: bool) -> Result<Option<SecretCodec>, String> {
+    run_secret_service_operation(move || secret_service_keyring_codec(allow_create))
+}
+
+#[cfg(any(test, all(feature = "os-keyring", target_os = "linux")))]
+fn run_secret_service_operation<F>(operation: F) -> Result<Option<SecretCodec>, String>
+where
+    F: FnOnce() -> Result<Option<SecretCodec>, String> + Send + 'static,
+{
+    let worker = std::thread::Builder::new()
+        .name("dbx-secret-service".to_string())
+        .spawn(operation)
+        .map_err(|_| "KEYRING_ACCESS_FAILED: secret service worker unavailable".to_string())?;
+    worker.join().map_err(|_| "KEYRING_ACCESS_FAILED: secret service worker failed".to_string())?
+}
+
+#[cfg(all(feature = "os-keyring", target_os = "linux"))]
+fn secret_service_keyring_codec(allow_create: bool) -> Result<Option<SecretCodec>, String> {
     use secret_service::{blocking::SecretService, EncryptionType};
     use std::collections::HashMap;
 
@@ -494,13 +511,95 @@ fn aad(namespace: &str, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{managed_key_path, read_key_file_with_retry, SecretCodec, SecretKeyPolicy, SecretKeySource};
+    use super::{managed_key_path, read_key_file_with_retry, run_secret_service_operation, SecretCodec, SecretKeyPolicy, SecretKeySource};
     use base64::Engine as _;
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn assert_secret_service_runtime_isolated() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("secret.key");
+        let original = SecretCodec::new([7u8; 32]);
+        let envelope = original.encrypt("connection", "password", "existing secret").unwrap();
+        let resolved = SecretCodec::resolve_platform_default(Some(path.clone()), true, |_| {
+            run_secret_service_operation(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                runtime.block_on(async { Ok(Some(SecretCodec::new([7u8; 32]))) })
+            })
+        })
+        .unwrap();
+        assert_eq!(resolved.source, SecretKeySource::PlatformStore);
+        assert_eq!(resolved.codec.decrypt("connection", "password", &envelope).unwrap(), "existing secret");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn secret_service_worker_supports_synchronous_callers() {
+        assert_secret_service_runtime_isolated();
+    }
+
+    #[tokio::test]
+    async fn secret_service_worker_isolates_current_thread_runtime() {
+        assert_secret_service_runtime_isolated();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn secret_service_worker_isolates_multi_thread_runtime() {
+        assert_secret_service_runtime_isolated();
+    }
+
+    #[tokio::test]
+    async fn secret_service_worker_preserves_missing_provider() {
+        assert!(matches!(run_secret_service_operation(|| Ok(None)), Ok(None)));
+    }
+
+    #[tokio::test]
+    async fn secret_service_worker_preserves_access_errors_without_creating_a_fallback() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("secret.key");
+        let result = SecretCodec::resolve_platform_default(Some(path.clone()), true, |_| {
+            run_secret_service_operation(|| Err("KEYRING_ACCESS_FAILED: locked collection".to_string()))
+        });
+        assert!(matches!(result, Err(error) if error == "KEYRING_ACCESS_FAILED: locked collection"));
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn secret_service_worker_panics_do_not_create_a_fallback() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("secret.key");
+        let result = SecretCodec::resolve_platform_default(Some(path.clone()), true, |_| {
+            run_secret_service_operation(|| panic!("secret service failed"))
+        });
+        assert!(matches!(result, Err(error) if error == "KEYRING_ACCESS_FAILED: secret service worker failed"));
+        assert!(!path.exists());
+    }
+
+    #[cfg(all(feature = "os-keyring", target_os = "linux"))]
+    #[test]
+    fn linux_keyring_missing_bus_is_safe_for_sync_and_async_callers() {
+        let _guard = env_lock().lock().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let previous_bus = std::env::var_os("DBUS_SESSION_BUS_ADDRESS");
+        std::env::set_var(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}", directory.path().join("missing-bus").display()),
+        );
+        let mut results = vec![super::platform_keyring_codec(false)];
+        for runtime in [
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap(),
+            tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap(),
+        ] {
+            results.push(runtime.block_on(async { super::platform_keyring_codec(false) }));
+        }
+        restore_env("DBUS_SESSION_BUS_ADDRESS", previous_bus);
+        for result in results {
+            assert!(matches!(result, Ok(None)));
+        }
     }
 
     #[test]
