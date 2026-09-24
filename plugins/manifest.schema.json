@@ -325,7 +325,17 @@
         "label": { "type": "string", "minLength": 1 },
         "description": { "type": "string" },
         "icon": { "$ref": "#/$defs/assetPath" },
-        "menu": { "enum": ["connection", "table"] }
+        "menu": { "enum": ["connection", "table"] },
+        "action": { "$ref": "#/$defs/contextMenuAction" }
+      }
+    },
+    "contextMenuAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "workbench"],
+      "properties": {
+        "type": { "const": "open-workbench" },
+        "workbench": { "$ref": "#/$defs/identifier" }
       }
     },
     "resultViewContribution": {

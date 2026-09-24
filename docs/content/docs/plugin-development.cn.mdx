@@ -232,10 +232,10 @@ Manifest 中的路径相对于包根目录，不能以 `/` 开头、不能包含
 | --- | --- | --- |
 | `workbench` | `type`, `id`, `label` | 注册可从侧边栏或插件入口打开的工作台。 |
 | `filesystem-provider` | `type`, `id`, `label`, `schemes` | 注册虚拟文件系统；`root_uri` 例如 `s3://bucket`，能力可选 `read`、`write`、`delete`、`rename`、`mkdir`。 |
-| `context-menu` | `type`、`id`、`label`、`menu: "connection"` 或 `"table"` | 向 Sidebar Tree 的连接或 table 右键菜单增加动作。 |
+| `context-menu` | `type`、`id`、`label`、`menu: "connection"` 或 `"table"`、可选 `action` | 向 Sidebar Tree 的连接或 table 右键菜单增加后端动作，或打开已声明的 Workbench。 |
 | `result-view` | `type`, `id`, `label` | 注册查询或任务结果视图。 |
 
-`menu: "table"` contribution 当前只在用户对 Sidebar Tree 中的具体 table 节点打开右键菜单时生效。DBX 通过必需的 backend entrypoint 调用 `contextMenu/<contribution-id>`，并传递 table identity：
+`menu: "table"` contribution 当前只在用户对 Sidebar Tree 中的具体 table 节点打开右键菜单时生效。未声明 `action` 的旧式 contribution 会通过必需的 backend entrypoint 调用 `contextMenu/<contribution-id>`，并传递 table identity：
 
 ```json
 {
@@ -250,9 +250,25 @@ Manifest 中的路径相对于包根目录，不能以 `/` 开头、不能包含
 
 `database` 和 `schema` 是可选字段；不可用时会省略，不会强制传递空字符串。该 context 只包含对象 identity，不包含 credential、connection string 或原始连接配置。Object Browser 后续可以复用相同 identity contract，但本次版本没有把它作为 table 菜单入口。
 
+context-menu 也可以声明由 Host 处理的 Workbench action：
+
+```json
+{
+  "type": "context-menu",
+  "id": "vendor.example.generate",
+  "label": "生成测试数据",
+  "menu": "table",
+  "action": { "type": "open-workbench", "workbench": "vendor.example.main" }
+}
+```
+
+`action.workbench` 必须引用同一插件 manifest 中声明的 `workbench`。Host 会直接打开该 Workbench，不调用 sidecar，并将当前 invocation context 作为 Workbench context 传入。`menu: "table"` 传入上面的 `TableContext` 对象本身（不是 backend 的 `{ "table": ... }` envelope）；`menu: "connection"` 传入现有的非敏感 connection summary（`id`、`dbType`、`name`、`database`）。Host 还可能提供用于 tab 关联的标准 `connectionId`。两者都不会暴露 host、port、username、password、connection string 或原始连接配置。再次打开同一个 Workbench 时会用最新 invocation context 刷新其 context。
+
+只有未声明 `action` 的旧式 context-menu 才要求 backend entrypoint；其返回的 `{ "message": "..." }` 仍会显示为 toast。
+
 同一插件内通过 `id` 互相引用：Connection Provider 的 `workbench` 必须指向一个已声明的工作台，`filesystem_provider` 必须指向一个已声明的文件系统 Provider。图标优先使用 Contribution 的 `icon`，缺失时回退到插件级 `icon`。
 
-自定义文件浏览器应使用 `workbench`：列表、虚拟滚动、预览、右键菜单和分栏由插件前端实现。只有希望使用 DBX 通用文件管理器时才选择 `filesystem_provider`；同时声明两者时默认打开工作台。`context-menu` 调用后端 `contextMenu/<contribution-id>`，`result-view` 则在工作台 context 中接收结果快照，被打开的 contribution id 会通过 `dbx-plugin-init` 负载下发，因此单个 UI 入口可以为多个工作台和结果视图服务；具体负载见[完整贡献点协议](https://github.com/t8y2/dbx/blob/main/plugins/README.md)。
+自定义文件浏览器应使用 `workbench`：列表、虚拟滚动、预览、右键菜单和分栏由插件前端实现。只有希望使用 DBX 通用文件管理器时才选择 `filesystem_provider`；同时声明两者时默认打开工作台。未声明 `action` 的旧式 `context-menu` 调用后端 `contextMenu/<contribution-id>`；声明式 `open-workbench` action 则由 Host 直接打开同插件 Workbench。`result-view` 在工作台 context 中接收结果快照，被打开的 contribution id 会通过 `dbx-plugin-init` 负载下发，因此单个 UI 入口可以为多个工作台和结果视图服务；具体负载见[完整贡献点协议](https://github.com/t8y2/dbx/blob/main/plugins/README.md)。
 
 ### 文件系统协议
 
