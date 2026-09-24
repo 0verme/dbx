@@ -2960,6 +2960,8 @@ export default withEnglishFallback({
     builtinProviders: "內建支援",
     partnerProviders: "優質贊助商",
     jalapenoSponsored: "$1 免費額度",
+    hualongSponsored: "$1 免費額度",
+    aicodemirrorSponsored: "8 元免費額度",
     jalapenoDescription: "🎉頂尖團隊都在使用的企業級 AI，現在也為你而來！【5 折前沿模型】立即體驗！還有【儲值越多送越多】的優惠！",
     hualongDescription: "🐉 面向重度 AI 開發者的官方直連中轉！Codex/Claude 系列 100% 官方源直供，Token 級帳單可逐筆核驗，支援企業合約與發票。\n🎉用優惠碼 DBX&HUALONG 註冊即得 $1 額度！",
     aicodemirrorDescription: "⚡ AICodeMirror 支援企業級高併發、極速開票與 7×24 專屬技術支援，新人免費領 8 元額度和首充 8 折。",

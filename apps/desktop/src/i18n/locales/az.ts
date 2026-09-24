@@ -2815,6 +2815,8 @@ export default withEnglishFallback({
     builtinProviders: "Daxili dəstək",
     partnerProviders: "Premium sponsorlar",
     jalapenoSponsored: "$1 pulsuz kredit",
+    hualongSponsored: "$1 pulsuz kredit",
+    aicodemirrorSponsored: "¥8 pulsuz kredit",
     jalapenoDescription: "🎉 Aparıcı komandaların etibar etdiyi müəssisə səviyyəli AI artıq sizin üçün əlçatandır! Ən müasir modelləri 50% endirimlə sınayın və daha çox məbləğ yüklədikcə daha çox bonus kredit qazanın!",
     hualongDescription:
       "🐉 AI ilə intensiv işləyən tərtibatçılar üçün rəsmi mənbəli model vasitəçisi! Yoxlanıla bilən token səviyyəli hesablaşma, müəssisə müqavilələri və hesab-fakturalarla 100% orijinal Codex və Claude seriyaları.\n🎉$1 pulsuz kredit üçün DBX&HUALONG promo kodu ilə qeydiyyatdan keçin!",

@@ -899,6 +899,7 @@ describe("settingsStore AI API key normalization", () => {
       authMethod: "bearer",
       requiresApiKey: true,
       websiteUrl: "https://www.aicodemirror.ai/register?invitecode=DK44NH",
+      badgeKey: "ai.aicodemirrorSponsored",
     });
   });
 
