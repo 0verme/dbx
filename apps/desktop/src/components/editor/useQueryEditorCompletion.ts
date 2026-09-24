@@ -42,6 +42,7 @@ import { completionLabelPresentation } from "@/lib/editor/sqlCompletionPresentat
 import { supportsDatabaseNameCompletion } from "@/lib/database/databaseFeatureSupport";
 import { sqlSnippetDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { oracleDatabaseLinkCompletionContext, oracleDatabaseLinkCompletionItems } from "@/lib/sql/oracleDatabaseLinkCompletion";
+import { isOracleCompletionDatabase } from "@/lib/sql/oracleCompletionSession";
 import { buildRedisCompletionItemsFromContext, getRedisCompletionContext, getRedisCompletionResultValidFor, shouldAutoOpenRedisCompletion, takesKeyArgument } from "@/lib/redis/redisCompletion";
 import type { SqlCompletionColumn, SqlCompletionContext, SqlCompletionForeignKey, SqlCompletionItem, SqlCompletionObject } from "@/lib/sql/sqlCompletion";
 import type { CompletionAssistantObjectKind, SqlServerCompletionContext } from "@/types/database";
@@ -995,7 +996,7 @@ export function useQueryEditorCompletion(options: QueryEditorCompletionOptions) 
       completionContext,
       knownDatabases: databaseNames,
     });
-    const globalOracleTableSearch = props.databaseType === "oracle" && completionContext.suggestTables && !completionContext.qualifier;
+    const globalOracleTableSearch = isOracleCompletionDatabase(props.databaseType) && completionContext.suggestTables && !completionContext.qualifier;
     const tables = schemaLookupDatabase
       ? []
       : shouldLoadTables
@@ -1157,7 +1158,7 @@ export function useQueryEditorCompletion(options: QueryEditorCompletionOptions) 
       knownDatabases: databaseNames,
     });
     if (!localOnlyMetadata && !schemaLookupDatabase && (completionContext.suggestTables || (!!completionContext.qualifier && !isReferencedTableQualifier(completionContext)))) {
-      const globalOracleTableSearch = props.databaseType === "oracle" && completionContext.suggestTables && !completionContext.qualifier;
+      const globalOracleTableSearch = isOracleCompletionDatabase(props.databaseType) && completionContext.suggestTables && !completionContext.qualifier;
       const refreshEpoch = completionEpoch;
       queueTableCompletionRefresh(async () => {
         if (refreshEpoch !== completionEpoch) return;
@@ -1270,7 +1271,7 @@ export function useQueryEditorCompletion(options: QueryEditorCompletionOptions) 
     if (parts.length === 0) {
       // Oracle resolves unqualified routines across all schemas (owner semantics).
       // openGauss keeps the PG search_path scope for the unqualified case.
-      if (props.databaseType === "oracle") return [{ schema: props.schema, globalSearch: true }];
+      if (isOracleCompletionDatabase(props.databaseType)) return [{ schema: props.schema, globalSearch: true }];
       return [{ schema: props.schema }];
     }
     if (parts.length === 1) {
@@ -1366,7 +1367,7 @@ export function useQueryEditorCompletion(options: QueryEditorCompletionOptions) 
       completionContext,
       knownDatabases: databaseNames,
     });
-    const globalOracleTableSearch = props.databaseType === "oracle" && completionContext.suggestTables && !completionContext.qualifier;
+    const globalOracleTableSearch = isOracleCompletionDatabase(props.databaseType) && completionContext.suggestTables && !completionContext.qualifier;
     let tables = schemaLookupDatabase
       ? []
       : shouldLoadTables
@@ -1385,7 +1386,7 @@ export function useQueryEditorCompletion(options: QueryEditorCompletionOptions) 
     let completionObjects = shouldLoadObjects ? (localOnlyMetadata ? lookupLocalCompletionObjectsForContext(completionContext, scope) : await listCompletionObjectsForContext(completionContext, scope)) : scopedCachedCompletionObjects;
     if (epoch !== completionEpoch) return null;
 
-    if (!props.catalog && props.databaseType !== "oracle" && !localOnlyMetadata && completionContext.qualifier && completionObjects.length === 0) {
+    if (!props.catalog && !isOracleCompletionDatabase(props.databaseType) && !localOnlyMetadata && completionContext.qualifier && completionObjects.length === 0) {
       const target = routineCompletionTargetForContext(completionContext, scope);
       const schemaObjects = await connectionStore.listCompletionObjects(props.connectionId!, target.database, target.mask, MAX_COMPLETION_TABLES, target.schema, undefined, false, scope.schema);
       if (schemaObjects.length > 0) {

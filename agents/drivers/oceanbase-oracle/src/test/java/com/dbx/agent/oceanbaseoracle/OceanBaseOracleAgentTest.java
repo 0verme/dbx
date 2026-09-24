@@ -2,6 +2,10 @@ package com.dbx.agent.oceanbaseoracle;
 
 import com.dbx.agent.AgentProtocol;
 import com.dbx.agent.ColumnInfo;
+import com.dbx.agent.CompletionAssistantMatchMode;
+import com.dbx.agent.CompletionAssistantObjectKind;
+import com.dbx.agent.CompletionAssistantRequest;
+import com.dbx.agent.CompletionAssistantResponse;
 import com.dbx.agent.ConnectParams;
 import com.dbx.agent.ExecuteQueryOptions;
 import com.dbx.agent.MetadataListConstraints;
@@ -458,6 +462,64 @@ class OceanBaseOracleAgentTest {
         Assertions.assertEquals("FUNCTION", objects.get(0).getObject_type());
         Assertions.assertTrue(sql.get(0).contains("OBJECT_TYPE IN (?)"), sql.get(0));
         Assertions.assertTrue(sql.get(0).contains("ROWNUM <= ?"), sql.get(0));
+    }
+
+    @Test
+    void globalCompletionTableSearchOmitsOwnerFilter() {
+        CompletionAssistantRequest request = completionRequest("DWD", null, "STAG", true);
+        OceanBaseOracleAgent.CompletionTablesQuery query = OceanBaseOracleAgent.buildCompletionTablesQuery(request, "DWD", 21);
+
+        Assertions.assertTrue(query.sql.contains("FROM ALL_OBJECTS"), query.sql);
+        Assertions.assertTrue(query.sql.contains("FROM ALL_SYNONYMS"), query.sql);
+        Assertions.assertTrue(query.sql.contains("UPPER(o.OBJECT_NAME) LIKE ?"), query.sql);
+        Assertions.assertFalse(query.sql.contains("UPPER(o.OWNER) = ?"), query.sql);
+        Assertions.assertFalse(query.sql.contains("UPPER(s.OWNER) = ?"), query.sql);
+        Assertions.assertTrue(query.sql.contains("ROWNUM <= ?"), query.sql);
+        Assertions.assertEquals(List.of("STAG%", "STAG%", "DWD", "STAG", 21), query.args);
+    }
+
+    @Test
+    void completionTableSearchFoldsLowercaseMasksForFuzzyMatch() {
+        CompletionAssistantRequest request = completionRequest("dwd", null, "ord", true);
+        setField(request, "match_mode", CompletionAssistantMatchMode.CONTAINS);
+        OceanBaseOracleAgent.CompletionTablesQuery query = OceanBaseOracleAgent.buildCompletionTablesQuery(request, "dwd", 21);
+
+        Assertions.assertTrue(query.sql.contains("UPPER(o.OBJECT_NAME) LIKE ?"), query.sql);
+        Assertions.assertTrue(query.sql.contains("UPPER(OWNER) = ?"), query.sql);
+        Assertions.assertTrue(query.sql.contains("UPPER(OBJECT_NAME) = ?"), query.sql);
+        Assertions.assertFalse(query.sql.contains("LIKE UPPER(?)"), query.sql);
+        Assertions.assertEquals(List.of("%ORD%", "%ORD%", "DWD", "ORD", 21), query.args);
+    }
+
+    @Test
+    void scopedCompletionTableSearchFiltersOwnerCaseInsensitively() {
+        CompletionAssistantRequest request = completionRequest("dwd", "staging", "ord", false);
+        OceanBaseOracleAgent.CompletionTablesQuery query = OceanBaseOracleAgent.buildCompletionTablesQuery(request, "dwd", 21);
+
+        Assertions.assertTrue(query.sql.contains("UPPER(o.OWNER) = ?"), query.sql);
+        Assertions.assertTrue(query.sql.contains("UPPER(s.OWNER) = ?"), query.sql);
+        Assertions.assertEquals(List.of("ORD%", "STAGING", "ORD%", "STAGING", "DWD", "ORD", 21), query.args);
+    }
+
+    @Test
+    void completionAssistantSearchReturnsGlobalTableCandidates() {
+        List<String> sql = new ArrayList<>();
+        OceanBaseOracleAgent agent = new OceanBaseOracleAgent();
+        TestSupport.setPrivateConnection(agent, preparedConnection(sql, resultSet(
+            new String[]{"OWNER", "OBJECT_NAME", "OBJECT_TYPE", "TARGET_OWNER", "TARGET_NAME"},
+            new Object[][]{
+                {"DWD", "ORDERS", "TABLE", null, null},
+                {"STAGING", "ORDERS", "TABLE", null, null}
+            }
+        )));
+
+        CompletionAssistantResponse response = agent.completionAssistantSearch(completionRequest("DWD", null, "ORD", true));
+
+        Assertions.assertEquals(2, response.getCandidates().size());
+        Assertions.assertEquals("ORDERS", response.getCandidates().get(0).getName());
+        Assertions.assertEquals("DWD", response.getCandidates().get(0).getSchema());
+        Assertions.assertEquals("STAGING", response.getCandidates().get(1).getSchema());
+        Assertions.assertFalse(sql.get(0).contains("UPPER(o.OWNER) = ?"), sql.get(0));
     }
 
     @Test
@@ -1465,6 +1527,33 @@ class OceanBaseOracleAgentTest {
             }
         }
         return null;
+    }
+
+    private static CompletionAssistantRequest completionRequest(
+        String schema,
+        String parentSchema,
+        String mask,
+        boolean globalSearch
+    ) {
+        CompletionAssistantRequest request = new CompletionAssistantRequest();
+        setField(request, "database", "OBORCL");
+        setField(request, "schema", schema);
+        setField(request, "parent_schema", parentSchema);
+        setField(request, "mask", mask);
+        setField(request, "global_search", globalSearch);
+        setField(request, "max_results", 20);
+        setField(request, "object_kinds", List.of(CompletionAssistantObjectKind.TABLE, CompletionAssistantObjectKind.VIEW));
+        return request;
+    }
+
+    private static void setField(Object target, String name, Object value) {
+        try {
+            var field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static <T> T proxy(Class<T> type, MethodHandler handler) {
