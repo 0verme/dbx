@@ -6,7 +6,9 @@
 //! Secret Service). `DBX_SECRET_KEY` and `DBX_SECRET_KEY_FILE` are supported
 //! for headless deployments. A per-user key file remains as a compatibility
 //! fallback for installations created before native credential storage was
-//! enabled; the key is always outside the database and never enters a sync file.
+//! enabled; on key-file-first platforms it may also be provisioned
+//! automatically when no credential store is reachable. The key is always
+//! outside the database and never enters a sync file.
 
 use aes_gcm::{
     aead::{rand_core::RngCore, Aead, KeyInit, OsRng},
@@ -158,6 +160,17 @@ impl SecretCodec {
         if let Some(error) = compatibility_error {
             return Err(error);
         }
+        // Auto-provisioning the per-user fallback key is reserved for
+        // key-file platforms (Linux without a reachable Secret Service). On
+        // macOS and Windows the OS credential store is canonical: when the
+        // platform provider is absent (keyring feature compiled out, e.g.
+        // `--no-default-features` runs), writing a competing global key file
+        // next to real installations would strand them behind the wrong key,
+        // because this file outranks the keychain on every later launch.
+        // Test builds are exempt so unit tests keep working without the
+        // native backend; `default_key_path` sandboxes their key to the
+        // system temp directory in that case.
+        #[cfg(any(not(any(target_os = "macos", target_os = "windows")), test))]
         if allow_create {
             if let Some(path) = compatibility_path {
                 let codec = create_key_file(&path, false)?;
@@ -433,6 +446,12 @@ fn read_key_file_with_retry(path: &std::path::Path, reject_symlink: bool) -> Res
 }
 
 fn default_key_path() -> Option<std::path::PathBuf> {
+    // Unit tests must never read or create the developer's real per-user key
+    // file; their auto-provisioned fallback lives in the system temp dir.
+    #[cfg(test)]
+    {
+        return Some(std::env::temp_dir().join("dbx-test-secret.key"));
+    }
     #[cfg(target_os = "macos")]
     if let Ok(home) = std::env::var("HOME") {
         return Some(std::path::PathBuf::from(home).join("Library/Application Support/dbx/secret.key"));
