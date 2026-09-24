@@ -459,6 +459,21 @@ export function aiProviderLabel(provider: AiProvider, t: (key: string) => string
 
 export const AI_PROVIDER_PARTNER_PRESETS: readonly AiPartnerProviderPreset[] = [
   {
+    id: "aicodemirror",
+    label: "AICodeMirror",
+    iconPath: "/icons/ai/aicodemirror.png",
+    group: "partner",
+    provider: "openai-compatible",
+    endpoint: "https://api.aicodemirror.ai/v1",
+    model: "",
+    apiStyle: "completions",
+    authMethod: "bearer",
+    requiresApiKey: true,
+    websiteUrl: "https://www.aicodemirror.ai/register?invitecode=DK44NH",
+    apiKeyUrl: "https://www.aicodemirror.ai/register?invitecode=DK44NH",
+    descriptionKey: "ai.aicodemirrorDescription",
+  },
+  {
     id: "jalapeno-cloud",
     label: "Jalapeno Cloud",
     iconPath: "/icons/ai/jalapeno-cloud.png",
@@ -489,21 +504,6 @@ export const AI_PROVIDER_PARTNER_PRESETS: readonly AiPartnerProviderPreset[] = [
     websiteUrl: "https://api.hualong.online/register?promo=DBX%26HUALONG",
     apiKeyUrl: "https://api.hualong.online/register?promo=DBX%26HUALONG",
     descriptionKey: "ai.hualongDescription",
-  },
-  {
-    id: "aicodemirror",
-    label: "AICodeMirror",
-    iconPath: "/icons/ai/aicodemirror.png",
-    group: "partner",
-    provider: "openai-compatible",
-    endpoint: "https://api.aicodemirror.ai/v1",
-    model: "",
-    apiStyle: "completions",
-    authMethod: "bearer",
-    requiresApiKey: true,
-    websiteUrl: "https://www.aicodemirror.ai/register?invitecode=DK44NH",
-    apiKeyUrl: "https://www.aicodemirror.ai/register?invitecode=DK44NH",
-    descriptionKey: "ai.aicodemirrorDescription",
   },
 ];
 
