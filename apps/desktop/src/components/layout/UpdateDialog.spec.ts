@@ -615,7 +615,7 @@ describe("UpdateDialog aggregate update center", () => {
     await mountDialog(0, {}, undefined, {
       driverUpdates: [{ db_type: "mysql", label: "MySQL", version: "9.0.0", installed_version: "8.0.0", update_available: true }],
       jdbcUpdate: { installed: true, version: "0.1.0", latest_version: "0.2.0", update_available: true, compatible: true, path: "/tmp/jdbc" },
-      mcpUpdate: { installed: true, npm_available: true, current_version: "1.0.0", latest_version: "1.1.0", update_available: true },
+      mcpUpdate: { installed: true, installation_source: "npm", npm_available: true, npm_installed: true, current_version: "1.0.0", latest_version: "1.1.0", update_available: true },
       pluginUpdates: [
         {
           key: "official:example",

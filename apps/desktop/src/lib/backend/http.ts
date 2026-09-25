@@ -5200,7 +5200,9 @@ export async function fetchChangelog(lang?: string): Promise<import("@/lib/app/c
 export async function checkMcpServerStatus(): Promise<import("@/lib/backend/tauri").McpServerStatus> {
   return {
     installed: false,
+    installation_source: null,
     npm_available: false,
+    npm_installed: false,
     node_path: null,
     node_version: null,
     current_version: null,
@@ -5221,8 +5223,16 @@ export async function installMcpServer(): Promise<string> {
   throw new Error("MCP Server installation is only available in the desktop app.");
 }
 
+export async function installNativeMcpServer(): Promise<string> {
+  throw new Error("Native MCP Server installation is only available in the desktop app.");
+}
+
 export async function uninstallMcpServer(): Promise<string> {
   throw new Error("MCP Server uninstallation is only available in the desktop app.");
+}
+
+export async function uninstallNpmMcpServer(): Promise<string> {
+  throw new Error("MCP Server npm fallback removal is only available in the desktop app.");
 }
 
 export async function getSystemProxyUrl(): Promise<string | null> {
