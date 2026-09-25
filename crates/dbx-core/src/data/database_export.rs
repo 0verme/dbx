@@ -212,7 +212,7 @@ fn exports_schema_wide_objects(request: &DatabaseExportRequest) -> bool {
 }
 
 /// MySQL lists triggers and events as schema-wide objects (see
-/// `crates/dbx-drivers/src/db/mysql.rs`), which is what the export writes out. Other
+/// `crates/dbx-driver-mysql/src/mysql.rs`), which is what the export writes out. Other
 /// engines either report triggers per table (PostgreSQL) or not at all, so their export
 /// stays unchanged.
 fn exports_mysql_trigger_objects(db_type: DatabaseType) -> bool {
