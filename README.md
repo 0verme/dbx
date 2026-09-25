@@ -2,7 +2,7 @@
   <p style="font-size: 18px; white-space: nowrap;"><strong>100+ databases in 25 MB. Desktop, Docker, CLI, built-in AI assistant, and MCP Server.</strong></p>
 
   <p>
-    <img src="https://dl.dbxio.com/assets/readme-hero-20260820.png" alt="DBX screenshot" width="820" />
+    <img src="https://dl.dbxio.com/assets/readme-hero-20260925.png" alt="DBX screenshot" width="820" />
   </p>
 
   <p>
