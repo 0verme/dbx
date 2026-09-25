@@ -7907,7 +7907,7 @@ export default withEnglishFallback({
     checkUpdates: "立即检查",
     updateAll: "一键更新",
     updateClient: "DBX",
-    updateDrivers: "数据库驱动",
+    updateDrivers: "驱动",
     updateJdbc: "JDBC",
     updateMcp: "MCP",
     updatePlugins: "插件",

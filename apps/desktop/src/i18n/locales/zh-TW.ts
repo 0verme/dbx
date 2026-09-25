@@ -6558,7 +6558,7 @@ export default withEnglishFallback({
     checkUpdates: "立即檢查",
     updateAll: "更新全部",
     updateClient: "DBX",
-    updateDrivers: "資料庫驅動程式",
+    updateDrivers: "驅動程式",
     updateJdbc: "JDBC",
     updateMcp: "MCP",
     updatePlugins: "外掛",
