@@ -402,6 +402,15 @@ describe("UpdateDialog release notes safety", () => {
     expect(document.body.querySelector("script, img")).toBeNull();
     expect(Array.from(document.body.querySelectorAll("a")).every((anchor) => anchor.href.startsWith("https://"))).toBe(true);
   });
+
+  it("hides HTML comments such as the CNB mirror marker instead of rendering them as text", async () => {
+    await mountDialog(0, { releaseNotes: "### 安装\n- 条目\n\n<!-- dbx-cnb-mirror -->\n> 国内下载：[CNB 镜像](https://cnb.cool/dbxio.com/dbx/-/releases)" });
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('a[href^="https://cnb.cool"]')).not.toBeNull();
+    });
+    expect(document.body.textContent).not.toContain("dbx-cnb-mirror");
+    expect(document.body.textContent).not.toContain("<!--");
+  });
 });
 
 describe("UpdateDialog older versions", () => {
