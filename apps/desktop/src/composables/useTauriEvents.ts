@@ -25,10 +25,19 @@ export function useTauriEvents(deps: {
     );
   }
 
-  function setupTauriListeners() {
-    import("@tauri-apps/api/event")
+  function setupTauriListeners(): Promise<void> {
+    return import("@tauri-apps/api/event")
       .then(({ listen }) => {
-        listen<{ connection_id: string; database: string; schema?: string; table: string }>("mcp-open-table", async (event) => {
+        const registrations: Promise<void>[] = [];
+        const track = (registration: Promise<() => void>) => {
+          registrations.push(
+            registration.then((unlisten) => {
+              unlistenHandles.push(unlisten);
+            }),
+          );
+        };
+
+        track(listen<{ connection_id: string; database: string; schema?: string; table: string }>("mcp-open-table", async (event) => {
           try {
             const { connection_id, database, schema, table } = event.payload;
             if (!connectionStore.connections.length) await connectionStore.initFromDisk();
@@ -47,9 +56,9 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] mcp-open-table error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen<{ connection_id: string }>("mcp-open-connection-workbench", async (event) => {
+        track(listen<{ connection_id: string }>("mcp-open-connection-workbench", async (event) => {
           try {
             const { connection_id } = event.payload;
             if (!connectionStore.connections.length) await connectionStore.initFromDisk();
@@ -65,12 +74,12 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] mcp-open-connection-workbench error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
         // Plugins report live transport state through plugin events; when an
         // SSH session dies, flip the sidebar entry offline so the tree stops
         // showing a connection that no longer exists.
-        listen<{ method: string; params: { state?: string; connectionId?: string } }>("dbx-plugin-event", async (event) => {
+        track(listen<{ method: string; params: { state?: string; connectionId?: string } }>("dbx-plugin-event", async (event) => {
           try {
             const payload = event.payload ?? ({} as typeof event.payload);
             if (payload.method !== "ssh/session/state" || payload.params?.state !== "disconnected") return;
@@ -82,17 +91,17 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] dbx-plugin-event (ssh/session/state) error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen("mcp-reload-connections", async () => {
+        track(listen("mcp-reload-connections", async () => {
           try {
             await connectionStore.initFromDisk();
           } catch (e) {
             console.error("[DBX] mcp-reload-connections error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen<{
+        track(listen<{
           connection_id: string;
           database: string;
           sql: string;
@@ -109,9 +118,9 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] mcp-execute-query error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen<string[]>("dbx-open-sql-files", async (event) => {
+        track(listen<string[]>("dbx-open-sql-files", async (event) => {
           try {
             for (const path of event.payload) {
               await deps.openSqlFilePath(path);
@@ -120,9 +129,9 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] dbx-open-sql-files error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen<string[]>("dbx-open-db-files", async (event) => {
+        track(listen<string[]>("dbx-open-db-files", async (event) => {
           try {
             for (const path of event.payload) {
               await deps.openDbFilePath(path);
@@ -131,9 +140,9 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] dbx-open-db-files error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen<string[]>("dbx-open-connection-links", async (event) => {
+        track(listen<string[]>("dbx-open-connection-links", async (event) => {
           try {
             for (const url of event.payload) {
               await deps.openConnectionDeepLink(url);
@@ -142,9 +151,9 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] dbx-open-connection-links error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen<string[]>("dbx-open-ai-config-links", async (event) => {
+        track(listen<string[]>("dbx-open-ai-config-links", async (event) => {
           try {
             for (const url of event.payload) {
               await deps.openAiConfigDeepLink(url);
@@ -153,9 +162,9 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] dbx-open-ai-config-links error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen<string[]>("dbx-open-plugin-install-links", async (event) => {
+        track(listen<string[]>("dbx-open-plugin-install-links", async (event) => {
           try {
             for (const url of event.payload) {
               await deps.openPluginInstallDeepLink(url);
@@ -164,18 +173,20 @@ export function useTauriEvents(deps: {
           } catch (e) {
             console.error("[DBX] dbx-open-plugin-install-links error:", e);
           }
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
-        listen("dbx-close-active-tab", () => {
+        track(listen("dbx-close-active-tab", () => {
           deps.closeActiveSurface();
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
 
         // A plugin was installed/rolled back from its already-replaced runtime:
         // open workbench tabs still render the previous UI bundle until they
         // reload, so hand them the new identity to pick up.
-        listen<{ pluginId: string; version: string }>("plugin-runtime-replaced", (event) => {
+        track(listen<{ pluginId: string; version: string }>("plugin-runtime-replaced", (event) => {
           if (event.payload?.pluginId) deps.refreshPluginWorkbenches(event.payload.pluginId);
-        }).then((unlisten) => unlistenHandles.push(unlisten));
+        }));
+
+        return Promise.allSettled(registrations).then(() => {});
       })
       .catch(() => {});
   }
