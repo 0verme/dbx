@@ -177,6 +177,7 @@ import type { SqlInsertMode } from "@/lib/export/sqlInsertMode";
 import { queryResultExportBaseName } from "@/lib/export/saveTextFile";
 import { applyMongoGridChangesToDocument, applyMongoGridChangesToDocumentBaseline, serializeMongoDocumentId, type MongoInputValue } from "@/lib/mongo/mongoDocumentValues";
 import { buildMongoQueryResultOperations, formatMongoQueryResultOperationPreview } from "@/lib/mongo/mongoQueryResultEditing";
+import { buildInfluxDbV1DeleteStatements, canDeleteInfluxDbV1Row, resolveInfluxDbV1DeleteTarget } from "@/lib/influxdb/influxDbV1Delete";
 import type { DataGridSortMode } from "@/lib/dataGrid/dataGridSort";
 import { isDataGridToolbarCompact, type DataGridReloadIntent } from "@/lib/dataGrid/dataGridToolbar";
 import { useTabScroll } from "@/composables/useTabScroll";
@@ -714,6 +715,45 @@ const mongoQueryResultSaveHandler = computed<CustomSaveHandler | undefined>(() =
   };
 
   return { save, preview, applySavedChanges, canInsert: false, canDelete: true, supportsInsert: false, readonlyColumns: [target.idColumn], targetLabel: target.collection };
+});
+const influxDbV1DeleteSaveHandler = computed<CustomSaveHandler | undefined>(() => {
+  const tab = props.activeTab;
+  const result = tab.result;
+  const tableMeta = activeTableMeta.value;
+  const connection = connectionStore.getConfig(tab.connectionId) ?? props.activeConnection;
+  const database = activeDataTabExecutionDatabase.value;
+  if (tab.mode !== "data" || tab.tableMetaPending || !result || !tableMeta || !tab.connectionId || !database.trim()) return undefined;
+
+  const target = resolveInfluxDbV1DeleteTarget({
+    connection,
+    measurement: tableMeta.tableName,
+    tableColumns: tableMeta.columns,
+    resultColumns: result.columns,
+  });
+  if (!target) return undefined;
+
+  const preview: NonNullable<CustomSaveHandler["preview"]> = async (changes) => buildInfluxDbV1DeleteStatements(target, changes);
+  const save: CustomSaveHandler["save"] = async (changes) => {
+    const statements = buildInfluxDbV1DeleteStatements(target, changes);
+    if (statements.length === 0) throw new Error("InfluxDB deletion requires at least one guarded statement.");
+    for (const statement of statements) {
+      await api.executeQuery(tab.connectionId, database, statement);
+    }
+  };
+
+  return {
+    save,
+    preview,
+    canInsert: false,
+    canUpdate: false,
+    canDelete: true,
+    canDeleteRow: (_sourceIndex, row) => canDeleteInfluxDbV1Row(target, row),
+    confirmation: "influxdb-v1-delete",
+    reloadOnFailure: true,
+    supportsInsert: false,
+    readonlyColumns: [...result.columns],
+    targetLabel: target.measurement,
+  };
 });
 const resultsPaneOpen = ref(false);
 const resultsPaneSize = ref(Number(safeLocalStorageGet("dbx-results-pane-size")) || DEFAULT_QUERY_RESULTS_PANE_SIZE);
@@ -2748,7 +2788,8 @@ defineExpose({
           :initial-order-by-input="activeTab.orderByInput"
           :sql="activeTab.sql"
           :loading="activeTab.isExecuting"
-          :editable="!activeTab.tableMetaPending && isTableDataEditable(activeEffectiveDatabaseType, activeTableMeta?.primaryKeys ?? [], activeTableMeta?.tableType)"
+          :editable="!activeTab.tableMetaPending && (isTableDataEditable(activeEffectiveDatabaseType, activeTableMeta?.primaryKeys ?? [], activeTableMeta?.tableType) || !!influxDbV1DeleteSaveHandler)"
+          :custom-save-handler="influxDbV1DeleteSaveHandler"
           context="table-data"
           :initial-where-input="activeTab.whereInput"
           :database-type="activeEffectiveDatabaseType"
