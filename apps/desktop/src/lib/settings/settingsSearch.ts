@@ -276,6 +276,8 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
   { id: "sync-secrets", category: "sync", titleKey: "settings.syncSecrets", targetId: "sync" },
   { id: "sync-secrets-passphrase", category: "sync", titleKey: "settings.syncSecretsPassphrase", targetId: "sync" },
   { id: "ai-config", category: "ai", titleKey: "ai.configList", targetId: "ai" },
+  { id: "ai-conversation-font-family", category: "ai", titleKey: "ai.conversationFontFamily", descriptionKey: "ai.conversationTypographyDescription", targetId: "ai-typography" },
+  { id: "ai-conversation-font-size", category: "ai", titleKey: "ai.conversationFontSize", descriptionKey: "ai.conversationTypographyDescription", targetId: "ai-typography" },
   { id: "ai-prompts", category: "ai", titleKey: "ai.promptTemplates", descriptionKey: "ai.promptTemplatesDescription", targetId: "ai" },
   { id: "ai-default-mode", category: "ai", titleKey: "ai.defaultAiMode", descriptionKey: "ai.defaultAiModeDescription", targetId: "ai" },
   { id: "ai-default-auto-routing", category: "ai", titleKey: "ai.defaultAutoRouting", descriptionKey: "ai.defaultAutoRoutingDescription", targetId: "ai" },
