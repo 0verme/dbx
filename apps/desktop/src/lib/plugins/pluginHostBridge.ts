@@ -10,6 +10,7 @@ const HOST_MESSAGE_SOURCE = "dbx-host";
 const BRIDGE_VERSION = 1;
 const MAX_BRIDGE_PAYLOAD_BYTES = 2 * 1024 * 1024;
 const MAX_BRIDGE_BINARY_BYTES = 8 * 1024 * 1024;
+const MAX_CLIPBOARD_IMAGE_BASE64_BYTES = 24 * 1024 * 1024;
 // Distinct from the sidecar binary cap: saved files go straight from the
 // plugin iframe to disk and never traverse plugin frames.
 const MAX_BRIDGE_SAVE_BYTES = 512 * 1024 * 1024;
@@ -34,7 +35,7 @@ export interface PluginClipboardAuditEntry {
   at: number;
   /** Request outcome: granted (content returned), denied (user or no consent surface). */
   outcome: "granted" | "denied" | "rate-limited";
-  /** Content length in UTF-16 code units; the content itself is never stored. */
+  /** Returned payload size (text code units or decoded image bytes); content is never stored. */
   length: number;
 }
 
@@ -87,6 +88,13 @@ export interface PluginWorkbenchContext {
   schema?: string;
   values?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+export interface PluginClipboardImage {
+  contentType: "image/png";
+  dataBase64: string;
+  width: number;
+  height: number;
 }
 
 export interface PluginSaveFileRequest {
@@ -197,6 +205,8 @@ export interface PluginHostBridgeApi {
    * further user interaction, so it is permission-gated.
    */
   clipboardRead?(pluginId: string): Promise<string>;
+  /** Read and PNG-encode the current clipboard image. Shares the clipboard-read permission and consent gate. */
+  clipboardReadImage?(pluginId: string): Promise<PluginClipboardImage>;
   /**
    * Session consent prompt for the first clipboard read of a bridge lifetime.
    * Resolves true to allow (and remember for the workbench session), false to
@@ -204,6 +214,10 @@ export interface PluginHostBridgeApi {
    * surface; a host that cannot ask must not silently allow.
    */
   confirmClipboardRead?(pluginId: string, pluginName: string): Promise<boolean> | boolean;
+  /** Register a short-lived, plugin-scoped custom-protocol media source. */
+  openMedia?(pluginId: string, method: string, params: Record<string, unknown>): Promise<string>;
+  /** Revoke a media source token previously returned by openMedia. */
+  closeMedia?(pluginId: string, token: string): Promise<void>;
   /** Native open dialog; resolves opened read handles (null selection → empty list). */
   pickFiles?(pluginId: string, options: PluginPickFilesOptions): Promise<PluginFileHandleMeta[]>;
   /** Stream a chunk from an opened read handle. */
@@ -235,6 +249,7 @@ interface PluginRequestMessage {
 
 export class PluginHostBridge {
   private downloads = new Set<string>();
+  private mediaTokens = new Set<string>();
   private context: PluginWorkbenchContext;
   private locale: string;
   private theme?: PluginBridgeTheme;
@@ -311,6 +326,8 @@ export class PluginHostBridge {
     if ((this.initSignals.load && this.initSignals.ready) || (signal === "load" && this.initSignals.load)) {
       for (const downloadId of this.downloads) void this.api.cancelDownload?.(this.plugin.manifest.id, downloadId).catch(() => undefined);
       this.downloads.clear();
+      for (const token of this.mediaTokens) void this.api.closeMedia?.(this.plugin.manifest.id, token).catch(() => undefined);
+      this.mediaTokens.clear();
       this.initGeneration += 1;
       this.initSignals = { load: false, ready: false };
       this.initStarted = false;
@@ -341,6 +358,8 @@ export class PluginHostBridge {
     this.disposed = true;
     for (const downloadId of this.downloads) void this.api.cancelDownload?.(this.plugin.manifest.id, downloadId).catch(() => undefined);
     this.downloads.clear();
+    for (const token of this.mediaTokens) void this.api.closeMedia?.(this.plugin.manifest.id, token).catch(() => undefined);
+    this.mediaTokens.clear();
   }
 
   private disposed = false;
@@ -404,6 +423,8 @@ export class PluginHostBridge {
         // host omits these, and a web host has neither.
         clipboardWrite: !!this.api.copyText,
         clipboardRead: !!this.api.clipboardRead,
+        clipboardImageRead: !!this.api.clipboardReadImage,
+        mediaUrl: !!this.api.openMedia && !!this.api.closeMedia,
       },
       context: snapshotPluginWorkbenchContext(this.context),
     });
@@ -517,6 +538,21 @@ export class PluginHostBridge {
       await this.api.sendBinary(this.plugin.manifest.id, channel, requireBase64(input.dataBase64));
       return null;
     }
+    if (method === "host.mediaOpen") {
+      if (!this.api.openMedia || !this.api.closeMedia) throw new Error("Host media URLs are unavailable");
+      const input = requireRecord(params, "media params");
+      const backendMethod = requireProtocolName(input.method, "media backend method");
+      const backendParams = requireRecord(input.params, "media backend params");
+      const token = await this.api.openMedia(this.plugin.manifest.id, backendMethod, backendParams);
+      this.mediaTokens.add(token);
+      return { token };
+    }
+    if (method === "host.mediaClose") {
+      const input = requireRecord(params, "media close params");
+      const token = requireProtocolName(input.token, "media token");
+      if (this.mediaTokens.delete(token)) await this.api.closeMedia?.(this.plugin.manifest.id, token);
+      return null;
+    }
     if (method === "ui.readAsset") {
       const input = requireRecord(params, "ui.readAsset params");
       return this.api.readAsset(this.plugin.manifest.id, requireSafeAssetPath(input.path));
@@ -612,28 +648,25 @@ export class PluginHostBridge {
       // `host.clipboard:read` (writes stay on ungated host.copy).
       this.requirePermission("host.clipboard:read");
       if (!this.api.clipboardRead) throw new Error("Host clipboard read is unavailable");
-      const now = Date.now();
-      if (!clipboardReadGateAllows(this.clipboardReadGate, now)) {
-        recordClipboardRead(this.clipboardReadGate, now, "rate-limited", 0);
-        throw new Error("Clipboard read rate limit exceeded; retry in a moment");
-      }
-      // Session consent: the first read asks the user through the host's
-      // dialog surface; a denial is remembered for this workbench session (an
-      // iframe reload rebuilds the bridge and asks again). A host without a
-      // consent surface denies rather than silently allowing.
-      if (this.clipboardReadGate.consented === null) {
-        const answer = this.api.confirmClipboardRead ? await this.api.confirmClipboardRead(this.plugin.manifest.id, this.plugin.manifest.name) : false;
-        this.clipboardReadGate.consented = answer === true;
-        if (!this.clipboardReadGate.consented) {
-          recordClipboardRead(this.clipboardReadGate, now, "denied", 0);
-          throw new Error("Clipboard read was denied for this plugin session");
-        }
-      }
+      const now = await this.requireClipboardRead();
       const text = await this.api.clipboardRead(this.plugin.manifest.id);
       if (typeof text !== "string") throw new Error("Host clipboard read returned a non-string value");
       const clamped = text.length > MAX_BRIDGE_PAYLOAD_BYTES ? text.slice(0, MAX_BRIDGE_PAYLOAD_BYTES) : text;
       recordClipboardRead(this.clipboardReadGate, now, "granted", clamped.length);
       return { text: clamped };
+    }
+    if (method === "host.clipboardReadImage") {
+      this.requirePermission("host.clipboard:read");
+      if (!this.api.clipboardReadImage) throw new Error("Host clipboard image read is unavailable");
+      const now = await this.requireClipboardRead();
+      const image = await this.api.clipboardReadImage(this.plugin.manifest.id);
+      if (image.contentType !== "image/png" || !Number.isSafeInteger(image.width) || image.width <= 0 || !Number.isSafeInteger(image.height) || image.height <= 0) {
+        throw new Error("Host clipboard image returned invalid metadata");
+      }
+      const dataBase64 = requireBase64(image.dataBase64);
+      if (dataBase64.length > MAX_CLIPBOARD_IMAGE_BASE64_BYTES) throw new Error("Clipboard image exceeds the 18 MiB upload limit");
+      recordClipboardRead(this.clipboardReadGate, now, "granted", Math.floor(dataBase64.length * 0.75));
+      return { ...image, dataBase64 };
     }
     if (method === "host.pickFiles") {
       // Same trust level as host.saveFile: the bytes only flow after the user
@@ -707,6 +740,23 @@ export class PluginHostBridge {
       return null;
     }
     throw new Error(`Unsupported plugin host method '${method}'`);
+  }
+
+  private async requireClipboardRead(): Promise<number> {
+    const now = Date.now();
+    if (!clipboardReadGateAllows(this.clipboardReadGate, now)) {
+      recordClipboardRead(this.clipboardReadGate, now, "rate-limited", 0);
+      throw new Error("Clipboard read rate limit exceeded; retry in a moment");
+    }
+    if (this.clipboardReadGate.consented === null) {
+      const answer = this.api.confirmClipboardRead ? await this.api.confirmClipboardRead(this.plugin.manifest.id, this.plugin.manifest.name) : false;
+      this.clipboardReadGate.consented = answer === true;
+      if (!this.clipboardReadGate.consented) {
+        recordClipboardRead(this.clipboardReadGate, now, "denied", 0);
+        throw new Error("Clipboard read was denied for this plugin session");
+      }
+    }
+    return now;
   }
 
   private requirePermission(permission: string): void {
@@ -1080,6 +1130,16 @@ export function pluginSdkSource(initialTheme?: PluginBridgeTheme): string {
           const result = await request('host.clipboardRead');
           return (result && typeof result === 'object' && typeof result.text === 'string') ? result.text : '';
         },
+        readImage: async () => request('host.clipboardReadImage'),
+      }),
+      media: Object.freeze({
+        open: async (method, params) => {
+          const result = await request('host.mediaOpen', { method, params });
+          const token = result && typeof result === 'object' && typeof result.token === 'string' ? result.token : '';
+          if (!token) throw new Error('Host returned an invalid media token');
+          return { token, url: new URL('__media/' + encodeURIComponent(token), document.baseURI).href };
+        },
+        close: (token) => request('host.mediaClose', { token }),
       }),
       // Persistent per-plugin key-value state; gate on capabilities.storage
       // (older hosts omit it) and declare the host.storage permission.

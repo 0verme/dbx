@@ -1116,6 +1116,47 @@ describe("PluginHostBridge", () => {
     expect(result?.text).toHaveLength(2 * 1024 * 1024);
   });
 
+  it("shares clipboard consent with image reads and validates the image payload", async () => {
+    const messages: unknown[] = [];
+    const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
+    const send = (bridge: PluginHostBridge, id: string, method: string, params?: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const clipboardReadImage = vi.fn().mockResolvedValue({ contentType: "image/png", dataBase64: "AQIDBA==", width: 1, height: 1 });
+    const bridge = new PluginHostBridge(plugin(["host.clipboard:read"]), workbench, {}, () => target, {
+      invoke: vi.fn(),
+      notify: vi.fn(),
+      sendBinary: vi.fn(),
+      readAsset: vi.fn(),
+      clipboardReadImage,
+      confirmClipboardRead: vi.fn().mockResolvedValue(true),
+    });
+    send(bridge, "image-ok", "host.clipboardReadImage");
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(clipboardReadImage).toHaveBeenCalledWith("sample");
+    expect(messages[0]).toMatchObject({ id: "image-ok", result: { contentType: "image/png", dataBase64: "AQIDBA==", width: 1, height: 1 } });
+  });
+
+  it("opens and revokes plugin-scoped media URLs", async () => {
+    const messages: unknown[] = [];
+    const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
+    const send = (bridge: PluginHostBridge, id: string, method: string, params?: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const openMedia = vi.fn().mockResolvedValue("550e8400-e29b-41d4-a716-446655440000");
+    const closeMedia = vi.fn().mockResolvedValue(undefined);
+    const bridge = new PluginHostBridge(plugin(), workbench, {}, () => target, {
+      invoke: vi.fn(),
+      notify: vi.fn(),
+      sendBinary: vi.fn(),
+      readAsset: vi.fn(),
+      openMedia,
+      closeMedia,
+    });
+    send(bridge, "media-open", "host.mediaOpen", { method: "filesystem/media/read", params: { uri: "s3://bucket/video.mp4" } });
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(openMedia).toHaveBeenCalledWith("sample", "filesystem/media/read", { uri: "s3://bucket/video.mp4" });
+    send(bridge, "media-close", "host.mediaClose", { token: "550e8400-e29b-41d4-a716-446655440000" });
+    await vi.waitFor(() => expect(messages).toHaveLength(2));
+    expect(closeMedia).toHaveBeenCalledWith("sample", "550e8400-e29b-41d4-a716-446655440000");
+  });
+
   it("asks session consent before the first clipboard read and remembers a denial for the bridge lifetime", async () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
@@ -1345,11 +1386,14 @@ describe("PluginHostBridge", () => {
     expect(clipboardReadGateAllows(createClipboardReadGate(), 0)).toBe(true);
   });
 
-  it("exposes the sandbox clipboard namespace mapping writeText to host.copy and readText to host.clipboardRead", () => {
+  it("exposes clipboard image reads and plugin media URLs in the sandbox SDK", () => {
     const source = pluginSdkSource();
     expect(source).toContain("clipboard: Object.freeze({");
     expect(source).toContain("writeText: (text) => request('host.copy', { text })");
     expect(source).toContain("request('host.clipboardRead')");
+    expect(source).toContain("readImage: async () => request('host.clipboardReadImage')");
+    expect(source).toContain("request('host.mediaOpen', { method, params })");
+    expect(source).toContain("request('host.mediaClose', { token })");
   });
 
   it("routes host.storage through the owning plugin, caps values, and needs the declared permission", async () => {
