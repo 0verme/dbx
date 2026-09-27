@@ -482,6 +482,14 @@ describe("normalizeEditorSettings", () => {
     expect(invalid.dataGridBooleanDisplayMode).toBe("dropdown");
   });
 
+  it("normalizes the persistent data grid column width mode", () => {
+    expect(DEFAULT_EDITOR_SETTINGS.dataGridColumnWidthMode).toBe("fill");
+    expect(normalizeEditorSettings({}).dataGridColumnWidthMode).toBe("fill");
+    expect(normalizeEditorSettings({ dataGridColumnWidthMode: "fill" }).dataGridColumnWidthMode).toBe("fill");
+    expect(normalizeEditorSettings({ dataGridColumnWidthMode: "content" }).dataGridColumnWidthMode).toBe("content");
+    expect(normalizeEditorSettings({ dataGridColumnWidthMode: "invalid" as any }).dataGridColumnWidthMode).toBe("fill");
+  });
+
   it("defaults the cell detail hover button on and preserves only boolean values", () => {
     expect(normalizeEditorSettings({}).dataGridCellDetailButtonVisible).toBe(true);
     expect(normalizeEditorSettings({ dataGridCellDetailButtonVisible: true }).dataGridCellDetailButtonVisible).toBe(true);

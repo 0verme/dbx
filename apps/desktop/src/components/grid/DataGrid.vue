@@ -2266,6 +2266,7 @@ function scrollToColumnIndex(columnIndex: number) {
 
 // --- Column resize composable ---
 const columnWidthDensity = computed(() => settingsStore.editorSettings.columnWidthDensity);
+const columnWidthMode = computed(() => settingsStore.editorSettings.dataGridColumnWidthMode ?? "fill");
 const tableFontFamily = computed(() => settingsStore.editorSettings.tableFontFamily);
 const columnWidthCacheKey = computed(() => props.columnWidthCacheKey?.trim() || props.cacheKey?.trim() || undefined);
 const columnStructureSignature = computed(() => createDataGridColumnStructureSignature(props.result.columns, props.result.column_types));
@@ -2317,6 +2318,7 @@ const { initColumnWidths, onResizeStart, autoFitColumn, autoFitAllColumns, rende
   sourceRows: computed(() => props.result.rows),
   columnIndexes: visibleColumnIndexes,
   density: columnWidthDensity,
+  widthMode: columnWidthMode,
   compactColumnHeaderActions,
   columnIndexIndicators: visibleColumnIndexIndicators,
   cacheKey: columnWidthCacheKey,

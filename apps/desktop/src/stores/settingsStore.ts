@@ -676,6 +676,8 @@ const STRUCTURE_EDITOR_DENSITIES = ["compact", "standard", "comfortable"] as con
 export type StructureEditorDensity = (typeof STRUCTURE_EDITOR_DENSITIES)[number];
 const COLUMN_WIDTH_DENSITIES = ["compact", "standard", "comfortable"] as const;
 export type ColumnWidthDensity = (typeof COLUMN_WIDTH_DENSITIES)[number];
+const DATA_GRID_COLUMN_WIDTH_MODES = ["fill", "content"] as const;
+export type DataGridColumnWidthMode = (typeof DATA_GRID_COLUMN_WIDTH_MODES)[number];
 const CELL_DETAIL_PANEL_LAYOUTS = ["bottom", "right"] as const;
 export type CellDetailPanelLayout = (typeof CELL_DETAIL_PANEL_LAYOUTS)[number];
 const TAB_LAYOUT_MODES = ["scroll", "wrap"] as const;
@@ -881,6 +883,7 @@ export interface EditorSettings {
   showIndexIndicatorsInHeader: boolean;
   compactColumnHeaderActions: boolean;
   columnWidthDensity: ColumnWidthDensity;
+  dataGridColumnWidthMode: DataGridColumnWidthMode;
   dataGridQuickEntry: boolean;
   dataGridFilterEditorView: DataGridFilterEditorView;
   dataGridToolbarLayout: DataGridToolbarLayout;
@@ -1162,6 +1165,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   showIndexIndicatorsInHeader: true,
   compactColumnHeaderActions: true,
   columnWidthDensity: "standard",
+  dataGridColumnWidthMode: "fill",
   dataGridQuickEntry: false,
   dataGridFilterEditorView: "quick",
   dataGridToolbarLayout: "single",
@@ -1301,6 +1305,10 @@ function normalizeStructureEditorDensity(value: unknown): StructureEditorDensity
 }
 function normalizeColumnWidthDensity(value: unknown): ColumnWidthDensity {
   return COLUMN_WIDTH_DENSITIES.includes(value as ColumnWidthDensity) ? (value as ColumnWidthDensity) : DEFAULT_EDITOR_SETTINGS.columnWidthDensity;
+}
+
+function normalizeDataGridColumnWidthMode(value: unknown): DataGridColumnWidthMode {
+  return DATA_GRID_COLUMN_WIDTH_MODES.includes(value as DataGridColumnWidthMode) ? (value as DataGridColumnWidthMode) : DEFAULT_EDITOR_SETTINGS.dataGridColumnWidthMode;
 }
 
 function normalizeTabLayout(value: unknown): TabLayoutMode {
@@ -1719,6 +1727,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     showIndexIndicatorsInHeader: settings.showIndexIndicatorsInHeader ?? DEFAULT_EDITOR_SETTINGS.showIndexIndicatorsInHeader,
     compactColumnHeaderActions: settings.compactColumnHeaderActions ?? DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions,
     columnWidthDensity: normalizeColumnWidthDensity(settings.columnWidthDensity),
+    dataGridColumnWidthMode: normalizeDataGridColumnWidthMode(settings.dataGridColumnWidthMode),
     dataGridQuickEntry: settings.dataGridQuickEntry ?? DEFAULT_EDITOR_SETTINGS.dataGridQuickEntry,
     dataGridFilterEditorView: normalizeDataGridFilterEditorView(settings.dataGridFilterEditorView),
     dataGridToolbarLayout: normalizeDataGridToolbarLayout(settings.dataGridToolbarLayout),
@@ -2557,6 +2566,7 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.showIndexIndicatorsInHeader !== undefined) editorSettings.value.showIndexIndicatorsInHeader = partial.showIndexIndicatorsInHeader;
     if (partial.compactColumnHeaderActions !== undefined) editorSettings.value.compactColumnHeaderActions = partial.compactColumnHeaderActions;
     if (partial.columnWidthDensity !== undefined) editorSettings.value.columnWidthDensity = normalizeColumnWidthDensity(partial.columnWidthDensity);
+    if (partial.dataGridColumnWidthMode !== undefined) editorSettings.value.dataGridColumnWidthMode = normalizeDataGridColumnWidthMode(partial.dataGridColumnWidthMode);
     if (partial.dataGridQuickEntry !== undefined) editorSettings.value.dataGridQuickEntry = partial.dataGridQuickEntry;
     if (partial.dataGridFilterEditorView !== undefined) editorSettings.value.dataGridFilterEditorView = normalizeDataGridFilterEditorView(partial.dataGridFilterEditorView);
     if (partial.dataGridToolbarLayout !== undefined) editorSettings.value.dataGridToolbarLayout = normalizeDataGridToolbarLayout(partial.dataGridToolbarLayout);
