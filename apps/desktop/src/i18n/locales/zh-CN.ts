@@ -7323,7 +7323,7 @@ export default withEnglishFallback({
     selectedCount: "已选择 {selected} 个 (共 {total} 个)",
     saveConfig: "保存配置",
     loadConfig: "加载配置",
-    options: "选项",
+    options: "比较选项",
     ddlCompare: "DDL 比较",
     deployScript: "部署脚本",
     deployScriptDesc: "所选对象的 SQL 脚本",
@@ -7548,6 +7548,9 @@ export default withEnglishFallback({
     tableFilterPriorityExclude: "排除优先",
     tableFilterPriorityInclude: "包含优先",
     options: {
+      objectScopeSection: "对象范围",
+      tableStructureSection: "表结构",
+      behaviorSection: "比较行为",
       tables: "比较表",
       primaryKeys: "比较主键",
       foreignKeys: "比较外键",

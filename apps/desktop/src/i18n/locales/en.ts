@@ -7423,7 +7423,7 @@ export default {
     selectedCount: "{selected} selected of {total}",
     saveConfig: "Save config",
     loadConfig: "Load config",
-    options: "Options",
+    options: "Compare options",
     ddlCompare: "DDL compare",
     deployScript: "Deploy script",
     deployScriptAll: "All deploy scripts",
@@ -7582,6 +7582,9 @@ export default {
     tableFilterPriorityExclude: "Exclude wins",
     tableFilterPriorityInclude: "Include wins",
     options: {
+      objectScopeSection: "Object scope",
+      tableStructureSection: "Table structure",
+      behaviorSection: "Comparison behavior",
       tables: "Compare tables",
       primaryKeys: "Compare primary keys",
       foreignKeys: "Compare foreign keys",
