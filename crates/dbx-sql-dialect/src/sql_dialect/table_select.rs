@@ -302,6 +302,7 @@ pub fn build_table_data_select_sql_with_database(
             database_type,
             &options.columns,
             tdengine_should_include_tbname(database_type, options.table_type.as_deref()),
+            options.identifier_quote.as_deref(),
         )
     };
     let rownum_select_columns = quoted_table_columns_or_star(database_type, &options.columns);
@@ -556,6 +557,9 @@ pub fn uses_connection_identifier_quote(database_type: Option<DatabaseType>, ide
         // Kingbase — when no quote was reported the callers fall back to
         // `quote_table_identifier`, whose static mapping is GoogleSQL-correct.
         || database_type == Some(DatabaseType::Spanner)
+        // Kyuubi normally uses Hive-family backticks, but a Trino-backed
+        // session reports the ANSI double quote through connection info.
+        || (database_type == Some(DatabaseType::Kyuubi) && identifier_quote.is_some())
         || (database_type == Some(DatabaseType::Informix) && identifier_quote.is_some())
         || (matches!(database_type, Some(DatabaseType::Gaussdb | DatabaseType::OpenGauss | DatabaseType::Postgres))
             && identifier_quote.is_some())
@@ -734,6 +738,7 @@ pub(super) fn build_select_columns(
     database_type: Option<DatabaseType>,
     columns: &[String],
     include_tdengine_tbname: bool,
+    identifier_quote: Option<&str>,
 ) -> String {
     if columns.is_empty() {
         if database_type == Some(DatabaseType::Tdengine) && include_tdengine_tbname {
@@ -784,7 +789,11 @@ pub(super) fn build_select_columns(
     columns
         .iter()
         .map(|column| {
-            let ident = quote_table_identifier(database_type, column);
+            let ident = if database_type == Some(DatabaseType::Kyuubi) {
+                quote_table_data_identifier(database_type, column, identifier_quote)
+            } else {
+                quote_table_identifier(database_type, column)
+            };
             if database_type == Some(DatabaseType::Hive) {
                 format!("{ident} AS {ident}")
             } else {
