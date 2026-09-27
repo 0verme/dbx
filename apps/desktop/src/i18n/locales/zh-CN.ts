@@ -7560,6 +7560,7 @@ export default withEnglishFallback({
       cascadeDelete: "使用级联删除",
       sequenceLastValues: "比较序列最后值",
       compareColumnOrder: "比较字段顺序",
+      compareCharset: "比较字符集和排序规则",
       ignoreTableNameCase: "忽略表名大小写",
       ignoreColumnNameCase: "忽略字段名大小写",
       detectRenames: "检测重命名",

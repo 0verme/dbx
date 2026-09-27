@@ -7594,6 +7594,7 @@ export default {
       cascadeDelete: "Use CASCADE delete",
       sequenceLastValues: "Compare sequence last values",
       compareColumnOrder: "Compare column order",
+      compareCharset: "Compare character sets and collations",
       ignoreTableNameCase: "Ignore table name case",
       ignoreColumnNameCase: "Ignore column name case",
       detectRenames: "Detect renames",
