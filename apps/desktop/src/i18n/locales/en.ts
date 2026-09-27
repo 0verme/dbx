@@ -365,6 +365,7 @@ export default {
     emptyDirectory: "This directory is empty.",
     loadMore: "Load more",
     fileManagerHint: "Double-click a directory to open it, or a file to preview up to 256 KB.",
+    filePreviewResize: "Drag or use the arrow keys to resize the file preview; double-click to reset",
     loadingPreview: "Loading preview",
     previewTruncated: "Preview truncated at 256 KB",
     previewSelectedFileHint: "Double-click the selected file to load its preview.",

@@ -281,6 +281,7 @@ export default withEnglishFallback({
     emptyDirectory: "此目录为空。",
     loadMore: "加载更多",
     fileManagerHint: "双击目录可打开，双击文件可预览最多 256 KB 的内容。",
+    filePreviewResize: "拖动或使用方向键调整文件预览宽度，双击恢复默认值",
     loadingPreview: "正在加载预览",
     previewTruncated: "预览已在 256 KB 处截断",
     previewSelectedFileHint: "双击所选文件以加载预览。",
