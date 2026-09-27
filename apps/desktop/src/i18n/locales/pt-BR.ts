@@ -2705,6 +2705,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "Backup de banco de dados: {name}",
     sqlFileTitle: "Arquivo SQL: {name}",
     dataTransferTitle: "Transferência de dados: {name}",
+    dataGenerationTitle: "Geração de dados: {name}",
     objectsCount: "{current} / {total} objetos",
     tablesCount: "{current} / {total} tabelas",
     statementsCount: "{done} com sucesso, {failed} com falha",

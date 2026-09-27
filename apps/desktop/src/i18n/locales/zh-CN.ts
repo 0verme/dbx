@@ -2784,6 +2784,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "数据库备份：{name}",
     sqlFileTitle: "SQL 文件：{name}",
     dataTransferTitle: "数据传输：{name}",
+    dataGenerationTitle: "数据生成：{name}",
     objectsCount: "{current} / {total} 个对象",
     tablesCount: "{current} / {total} 张表",
     statementsCount: "成功 {done}，失败 {failed}",

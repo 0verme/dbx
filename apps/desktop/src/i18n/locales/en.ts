@@ -2872,6 +2872,7 @@ export default {
     databaseBackupTitle: "Database backup: {name}",
     sqlFileTitle: "SQL file: {name}",
     dataTransferTitle: "Data transfer: {name}",
+    dataGenerationTitle: "Data generation: {name}",
     multiDbExecutionTitle: "Multi-database execution: {name}",
     schemaDiffTitle: "Schema compare: {name}",
     dataCompareTitle: "Data compare: {name}",

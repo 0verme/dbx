@@ -2780,6 +2780,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "Copia de seguridad: {name}",
     sqlFileTitle: "Archivo SQL: {name}",
     dataTransferTitle: "Transferencia de datos: {name}",
+    dataGenerationTitle: "Generación de datos: {name}",
     multiDbExecutionTitle: "Ejecución en varias bases de datos: {name}",
     multiDbTargets: "Destinos {completed}/{total}, correctos {success}, fallidos {failed}",
     openTask: "Abrir tarea",

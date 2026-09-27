@@ -2729,6 +2729,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "データベースバックアップ: {name}",
     sqlFileTitle: "SQLファイル: {name}",
     dataTransferTitle: "データ転送: {name}",
+    dataGenerationTitle: "データ生成: {name}",
     objectsCount: "{current} / {total} オブジェクト",
     tablesCount: "{current} / {total} テーブル",
     statementsCount: "{done}成功、{failed}失敗",

@@ -2503,6 +2503,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "Veritabanı yedeği: {name}",
     sqlFileTitle: "SQL dosyası: {name}",
     dataTransferTitle: "Veri aktarımı: {name}",
+    dataGenerationTitle: "Veri üretimi: {name}",
     multiDbExecutionTitle: "Çoklu veritabanı yürütme: {name}",
     multiDbTargets: "Hedefler {completed}/{total}, başarılı {success}, başarısız {failed}",
     openTask: "Görevi aç",

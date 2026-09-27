@@ -2508,6 +2508,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "Verilənlər bazasının ehtiyat nüsxəsi: {name}",
     sqlFileTitle: "SQL faylı: {name}",
     dataTransferTitle: "Məlumat ötürülməsi: {name}",
+    dataGenerationTitle: "Məlumat yaradılması: {name}",
     multiDbExecutionTitle: "Bir neçə verilənlər bazasında icra: {name}",
     schemaDiffTitle: "Sxem müqayisəsi: {name}",
     dataCompareTitle: "Məlumat müqayisəsi: {name}",

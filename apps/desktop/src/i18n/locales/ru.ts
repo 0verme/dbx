@@ -2730,6 +2730,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "Резервное копирование базы данных: {name}",
     sqlFileTitle: "Файл SQL: {name}",
     dataTransferTitle: "Передача данных: {name}",
+    dataGenerationTitle: "Генерация данных: {name}",
     multiDbExecutionTitle: "Выполнение в нескольких базах данных: {name}",
     schemaDiffTitle: "Сравнение схем: {name}",
     dataCompareTitle: "Сравнение данных: {name}",

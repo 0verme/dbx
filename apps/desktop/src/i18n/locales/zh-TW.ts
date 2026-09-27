@@ -2703,6 +2703,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "資料庫備份：{name}",
     sqlFileTitle: "SQL 檔案：{name}",
     dataTransferTitle: "資料傳輸：{name}",
+    dataGenerationTitle: "資料產生：{name}",
     objectsCount: "{current} / {total} 個物件",
     tablesCount: "{current} / {total} 張資料表",
     statementsCount: "{done} 成功，{failed} 失敗",

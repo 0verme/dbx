@@ -2612,6 +2612,7 @@ export default withEnglishFallback({
     databaseBackupTitle: "데이터베이스 백업: {name}",
     sqlFileTitle: "SQL 파일: {name}",
     dataTransferTitle: "데이터 이전: {name}",
+    dataGenerationTitle: "데이터 생성: {name}",
     objectsCount: "{current} / {total} 객체",
     tablesCount: "{current} / {total} 테이블",
     statementsCount: "{done}개 성공, {failed}개 실패",
