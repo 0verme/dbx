@@ -72,6 +72,7 @@ const FEATURE_MESSAGES: FeatureMessages[] = [
   { feature: "sidebar search skip hint", keys: ["sidebar.searchConnectionSkipped"] },
   { feature: "PostgreSQL legacy TLS", keys: ["connection.postgresLegacyTls", "connection.postgresLegacyTlsHint"] },
   { feature: "settings search sections", keys: ["settings.syncWebDavWebDescription", "settings.performanceSection"] },
+  { feature: "SQL table completion schema qualification (#9219)", keys: ["settings.tableCompletionSchemaQualification*"], translated: true },
   { feature: "Redis batch expiration", keys: under("redis", ["batchExpiry", "batchExpiryTitle", "batchExpirySelected", "batchExpiryApply", "batchExpirySuccess", "batchExpiryPartial"]) },
   {
     feature: "plugin AI tools and data access",

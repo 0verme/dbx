@@ -295,6 +295,7 @@ describe("settings search", () => {
       { titleKey: "settings.sidebarObjectInfoMode", category: "navigation", targetId: "navigation" },
       { titleKey: "settings.insertSpaceAfterCompletion", category: "editor", targetId: "editor" },
       { titleKey: "settings.completionTriggerMode", category: "editor", targetId: "editor" },
+      { titleKey: "settings.tableCompletionSchemaQualification", category: "editor", targetId: "editor" },
       { titleKey: "settings.autoAliasTables", category: "editor", targetId: "editor" },
       { titleKey: "settings.clickTableNavigationTarget", category: "navigation", targetId: "navigation" },
       { titleKey: "settings.prefillNewQueryWithSelect", category: "navigation", targetId: "navigation" },

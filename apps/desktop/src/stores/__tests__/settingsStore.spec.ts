@@ -224,6 +224,13 @@ describe("normalizeEditorSettings", () => {
     expect(normalizeEditorSettings({ autoAliasTables: false }).autoAliasTables).toBe(false);
   });
 
+  it("defaults table completion schema qualification to collision and preserves valid modes", () => {
+    expect(normalizeEditorSettings({}).tableCompletionSchemaQualification).toBe("collision");
+    expect(normalizeEditorSettings({ tableCompletionSchemaQualification: "never" }).tableCompletionSchemaQualification).toBe("never");
+    expect(normalizeEditorSettings({ tableCompletionSchemaQualification: "always" }).tableCompletionSchemaQualification).toBe("always");
+    expect(normalizeEditorSettings({ tableCompletionSchemaQualification: "invalid" } as any).tableCompletionSchemaQualification).toBe("collision");
+  });
+
   it("enables a trailing space after completion by default and preserves the opt-out", () => {
     expect(normalizeEditorSettings({}).insertSpaceAfterCompletion).toBe(true);
     expect(normalizeEditorSettings({ insertSpaceAfterCompletion: false }).insertSpaceAfterCompletion).toBe(false);
@@ -1132,6 +1139,22 @@ describe("settingsStore persisted settings initialization", () => {
     await store.updateEditorSettingsAndPersist({ dataGridAutoHideFilterBuilder: true } as any);
     expect(store.editorSettings.dataGridKeepFilterEditorExpanded).toBe(false);
     expect(saveEditorSettings).toHaveBeenLastCalledWith(expect.objectContaining({ dataGridKeepFilterEditorExpanded: false }));
+  });
+
+  it("persists table completion schema qualification updates", async () => {
+    const loadEditorSettings = vi.fn().mockResolvedValue({});
+    const saveEditorSettings = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("@/lib/backend/api", () => ({ loadEditorSettings, saveEditorSettings }));
+
+    const { useSettingsStore } = await import("@/stores/settingsStore");
+    const store = useSettingsStore();
+    await store.initEditorSettings();
+    saveEditorSettings.mockClear();
+
+    await store.updateEditorSettingsAndPersist({ tableCompletionSchemaQualification: "always" });
+
+    expect(store.editorSettings.tableCompletionSchemaQualification).toBe("always");
+    expect(saveEditorSettings).toHaveBeenLastCalledWith(expect.objectContaining({ tableCompletionSchemaQualification: "always" }));
   });
 
   it("loads and persists the substitution switch without discarding syntax overrides", async () => {
