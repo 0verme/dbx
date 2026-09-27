@@ -6043,6 +6043,7 @@ export default withEnglishFallback({
     overallProgress: "Genel ilerleme",
     dataTransfer: "Veri Aktarımı",
     runInBackground: "Arka planda çalıştır",
+    backgroundStarted: "Aktarım arka planda başlatıldı. İlerlemeyi arka plan görevlerinde görüntüleyebilirsiniz.",
     newTask: "Yeni aktarım",
     editConfig: "Yapılandırmayı düzenle",
     retry: "Yeniden dene",

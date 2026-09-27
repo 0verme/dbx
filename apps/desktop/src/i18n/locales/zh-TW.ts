@@ -5431,6 +5431,7 @@ export default withEnglishFallback({
     tableNameCaseLower: "小寫",
     tableNameCaseUpper: "大寫",
     runInBackground: "背景執行",
+    backgroundStarted: "傳輸已在背景開始，可在背景任務中查看進度。",
     newTask: "新增傳輸",
     editConfig: "編輯配置",
     retry: "重試",

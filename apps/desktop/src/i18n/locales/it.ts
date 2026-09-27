@@ -6121,6 +6121,7 @@ export default withEnglishFallback({
     overallProgress: "Progresso complessivo",
     dataTransfer: "Trasferimento Dati",
     runInBackground: "Esegui in background",
+    backgroundStarted: "Il trasferimento è iniziato in background. Puoi verificarne l'avanzamento nelle attività in background.",
     newTask: "Nuovo trasferimento",
     editConfig: "Modifica config",
     retry: "Riprova",

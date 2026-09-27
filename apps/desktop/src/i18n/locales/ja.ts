@@ -6142,6 +6142,7 @@ export default withEnglishFallback({
     overallProgress: "全体の進捗",
     dataTransfer: "データ転送",
     runInBackground: "バックグラウンドで実行",
+    backgroundStarted: "転送をバックグラウンドで開始しました。進行状況はバックグラウンドタスクで確認できます。",
     newTask: "新規転送",
     editConfig: "設定を編集",
     retry: "リトライ",

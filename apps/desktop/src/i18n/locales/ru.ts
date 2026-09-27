@@ -7280,6 +7280,7 @@ export default withEnglishFallback({
     overallProgress: "Общий прогресс",
     dataTransfer: "Перенос данных",
     runInBackground: "Выполнить в фоне",
+    backgroundStarted: "Перенос запущен в фоновом режиме. Ход выполнения можно посмотреть в фоновых задачах.",
     newTask: "Новый перенос",
     editConfig: "Изменить конфигурацию",
     retry: "Повторить",

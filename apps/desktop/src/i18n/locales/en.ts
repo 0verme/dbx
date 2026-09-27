@@ -6760,6 +6760,7 @@ export default {
     overallProgress: "Overall progress",
     dataTransfer: "Data Transfer",
     runInBackground: "Run in background",
+    backgroundStarted: "Transfer started in the background. View progress in Background Tasks.",
     newTask: "New transfer",
     editConfig: "Edit config",
     retry: "Retry",

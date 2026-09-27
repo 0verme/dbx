@@ -5848,6 +5848,7 @@ export default withEnglishFallback({
     overallProgress: "전체 진행률",
     dataTransfer: "데이터 이전",
     runInBackground: "백그라운드에서 실행",
+    backgroundStarted: "전송이 백그라운드에서 시작되었습니다. 백그라운드 작업에서 진행 상황을 확인할 수 있습니다.",
     newTask: "새 이전",
     editConfig: "설정 편집",
     retry: "다시 시도",

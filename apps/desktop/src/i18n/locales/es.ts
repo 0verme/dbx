@@ -6198,6 +6198,7 @@ export default withEnglishFallback({
     swap: "Intercambiar origen y destino",
     targetSchema: "Esquema de destino",
     runInBackground: "Ejecutar en segundo plano",
+    backgroundStarted: "La transferencia comenzó en segundo plano. Consulta el progreso en Tareas en segundo plano.",
     newTask: "Nueva transferencia",
     editConfig: "Editar config",
     retry: "Reintentar",

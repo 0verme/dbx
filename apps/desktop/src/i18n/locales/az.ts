@@ -6159,6 +6159,7 @@ export default withEnglishFallback({
     overallProgress: "Ümumi gedişat",
     dataTransfer: "Məlumatların köçürülməsi",
     runInBackground: "Arxa planda işlət",
+    backgroundStarted: "Köçürmə arxa planda başladı. Gedişatı fon tapşırıqlarında izləyə bilərsiniz.",
     newTask: "Yeni köçürmə",
     editConfig: "Konfiqurasiyanı redaktə et",
     retry: "Yenidən cəhd et",

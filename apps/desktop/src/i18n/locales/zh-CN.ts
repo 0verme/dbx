@@ -6727,6 +6727,7 @@ export default withEnglishFallback({
     overallProgress: "整体进度",
     dataTransfer: "数据传输",
     runInBackground: "后台运行",
+    backgroundStarted: "传输已在后台开始，可在后台任务中查看进度。",
     newTask: "新建传输",
     editConfig: "编辑配置",
     retry: "重新传输",
