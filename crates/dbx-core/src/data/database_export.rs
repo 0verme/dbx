@@ -22,7 +22,7 @@ use crate::transfer::{
     keyset_pagination_sql_with_identifier_quote, quote_identifier, quote_postgres_string_literal,
     wrap_dameng_identity_insert_sql_for_table,
 };
-use crate::types::{ObjectSourceKind, SpatialColumn};
+use crate::types::{ObjectSourceKind, SpatialColumn, SqlExportColumnSelection};
 
 static EXPORT_CANCELLED: std::sync::LazyLock<RwLock<HashSet<String>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashSet::new()));
@@ -1442,6 +1442,164 @@ pub(crate) fn is_internal_export_column(database_type: Option<DatabaseType>, col
     // physical table column and must never propagate into exports.
     crate::sql_dialect::uses_synthetic_row_id(database_type)
         && column.eq_ignore_ascii_case(crate::sql_dialect::DBX_ROWID_COLUMN)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SqlExportProjection {
+    entries: Vec<(usize, usize)>,
+}
+
+impl SqlExportProjection {
+    pub(crate) fn resolve(
+        columns: &[String],
+        selected_columns: Option<&[SqlExportColumnSelection]>,
+    ) -> Result<Self, String> {
+        let Some(selected_columns) = selected_columns else {
+            return Ok(Self { entries: (0..columns.len()).map(|index| (index, index)).collect() });
+        };
+        if selected_columns.is_empty() {
+            return Err("Select at least one column for SQL export.".to_string());
+        }
+
+        let mut entries = Vec::with_capacity(selected_columns.len());
+        let mut used = HashSet::with_capacity(selected_columns.len());
+        let mut indexes_by_name = HashMap::<&str, Vec<usize>>::new();
+        for (index, name) in columns.iter().enumerate() {
+            indexes_by_name.entry(name.as_str()).or_default().push(index);
+        }
+        for selected in selected_columns {
+            let current_index = indexes_by_name
+                .get(selected.name.as_str())
+                .and_then(|indexes| indexes.get(selected.name_occurrence))
+                .copied()
+                .ok_or_else(|| format!("Selected SQL export column was not found: {}", selected.name))?;
+            if !used.insert(current_index) {
+                return Err(format!("SQL export column was selected more than once: {}", selected.name));
+            }
+            entries.push((current_index, selected.source_index));
+        }
+        Ok(Self { entries })
+    }
+
+    pub(crate) fn project<T: Clone + Default>(&self, values: &[T]) -> Vec<T> {
+        self.entries.iter().map(|(current_index, _)| values.get(*current_index).cloned().unwrap_or_default()).collect()
+    }
+
+    pub(crate) fn project_request<T: Clone + Default>(&self, values: &[T]) -> Vec<T> {
+        self.entries.iter().map(|(_, request_index)| values.get(*request_index).cloned().unwrap_or_default()).collect()
+    }
+
+    pub(crate) fn project_owned<T: Default>(&self, mut values: Vec<T>) -> Vec<T> {
+        self.entries.iter().map(|(index, _)| values.get_mut(*index).map(std::mem::take).unwrap_or_default()).collect()
+    }
+
+    pub(crate) fn project_spatial_columns(&self, columns: &[SpatialColumn]) -> Vec<SpatialColumn> {
+        let spatial_by_index: HashMap<_, _> = columns.iter().map(|column| (column.column_index, column)).collect();
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(projected_index, (current_index, _))| {
+                spatial_by_index
+                    .get(current_index)
+                    .map(|column| SpatialColumn { column_index: projected_index, srid: column.srid })
+            })
+            .collect()
+    }
+
+    pub(crate) fn project_insert_options(
+        &self,
+        mut options: BuildExportInsertStatementsOptions,
+    ) -> BuildExportInsertStatementsOptions {
+        options.columns = self.project_owned(options.columns);
+        options.column_types = self.project_owned(options.column_types);
+        options.column_extras = self.project_owned(options.column_extras);
+        options.spatial_columns = self.project_spatial_columns(&options.spatial_columns);
+        options.spatial_values = options.spatial_values.into_iter().map(|row| self.project_owned(row)).collect();
+        options.rows = options.rows.into_iter().map(|row| self.project_owned(row)).collect();
+        options
+    }
+}
+
+#[cfg(test)]
+mod sql_export_projection_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn selection(index: usize, name: &str, occurrence: usize) -> SqlExportColumnSelection {
+        SqlExportColumnSelection { source_index: index, name: name.into(), name_occurrence: occurrence }
+    }
+
+    #[test]
+    fn omitted_selection_keeps_every_column_but_empty_selection_is_rejected() {
+        let columns = vec!["id".into(), "name".into()];
+        let projection = SqlExportProjection::resolve(&columns, None).unwrap();
+        assert_eq!(projection.project(&columns), columns);
+        assert!(SqlExportProjection::resolve(&columns, Some(&[])).unwrap_err().contains("at least one"));
+    }
+
+    #[test]
+    fn duplicate_names_follow_occurrence_after_reordering() {
+        let columns = vec!["id".into(), "id".into(), "name".into()];
+        let projection =
+            SqlExportProjection::resolve(&columns, Some(&[selection(3, "id", 1), selection(2, "name", 0)])).unwrap();
+        assert_eq!(projection.project(&[json!(1), json!(2), json!("Ada")]), vec![json!(2), json!("Ada")]);
+        assert_eq!(projection.project_request(&[0, 1, 2, 3]), vec![3, 2]);
+    }
+
+    #[test]
+    fn missing_and_repeated_column_identities_are_rejected() {
+        let columns = vec!["id".into()];
+        assert!(SqlExportProjection::resolve(&columns, Some(&[selection(0, "id", 1)]))
+            .unwrap_err()
+            .contains("not found"));
+        assert!(SqlExportProjection::resolve(&columns, Some(&[selection(0, "name", 0)]))
+            .unwrap_err()
+            .contains("not found"));
+        assert!(SqlExportProjection::resolve(&columns, Some(&[selection(0, "id", 0), selection(1, "id", 0)]))
+            .unwrap_err()
+            .contains("more than once"));
+    }
+
+    #[test]
+    fn insert_projection_aligns_types_extras_spatial_data_and_values() {
+        let columns = vec!["id".into(), "shape".into(), "blob".into(), "optional".into()];
+        let projection = SqlExportProjection::resolve(
+            &columns,
+            Some(&[selection(2, "blob", 0), selection(1, "shape", 0), selection(3, "optional", 0)]),
+        )
+        .unwrap();
+        let options = BuildExportInsertStatementsOptions {
+            database_type: Some(DatabaseType::Mysql),
+            identifier_quote: None,
+            schema: None,
+            table_name: Some("items".into()),
+            qualified_table_name: None,
+            columns: columns.clone(),
+            column_types: vec![Some("int".into()), Some("geometry".into()), Some("blob".into()), Some("text".into())],
+            column_extras: vec![Some("auto_increment".into()), None, None, None],
+            spatial_columns: vec![SpatialColumn { column_index: 1, srid: Some(4326) }],
+            spatial_values: vec![vec![None, Some(4326), None, None]],
+            rows: vec![vec![json!(1), json!("POINT(1 2)"), json!([0, 255]), Value::Null]],
+            batch_size: Some(100),
+        };
+        let projected = projection.project_insert_options(options);
+        assert_eq!(columns, vec!["id", "shape", "blob", "optional"]);
+        assert_eq!(projected.columns, vec!["blob", "shape", "optional"]);
+        assert_eq!(projected.column_types, vec![Some("blob".into()), Some("geometry".into()), Some("text".into())]);
+        assert_eq!(projected.column_extras, vec![None, None, None]);
+        assert_eq!(projected.spatial_columns[0].column_index, 1);
+        assert_eq!(projected.spatial_values, vec![vec![None, Some(4326), None]]);
+        assert_eq!(projected.rows, vec![vec![json!([0, 255]), json!("POINT(1 2)"), Value::Null]]);
+    }
+
+    #[test]
+    fn wide_duplicate_selection_preserves_every_position() {
+        let columns = vec!["value".to_string(); 10000];
+        let selected: Vec<_> = (0..columns.len()).map(|index| selection(index, "value", index)).collect();
+        let projection = SqlExportProjection::resolve(&columns, Some(&selected)).unwrap();
+        let values: Vec<_> = (0..columns.len()).collect();
+        assert_eq!(projection.project_owned(values.clone()), values);
+    }
 }
 
 fn is_postgres_tsvector_export_column(database_type: Option<DatabaseType>, column_type: Option<&str>) -> bool {
