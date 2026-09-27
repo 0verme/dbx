@@ -6350,6 +6350,12 @@ fn effective_transfer_database_type(config: &ConnectionConfig) -> DatabaseType {
     if config.db_type != DatabaseType::Jdbc {
         return config.db_type;
     }
+    // The OceanBase JDBC URL and driver class are shared by MySQL and Oracle
+    // compatibility modes, so neither is a safe mode discriminator. The
+    // connection form persists this explicit profile only for Oracle mode.
+    if config.driver_profile.as_deref().is_some_and(|profile| profile.trim().eq_ignore_ascii_case("oceanbase-oracle")) {
+        return DatabaseType::OceanbaseOracle;
+    }
     if config.driver_profile.as_deref().is_some_and(|profile| profile.eq_ignore_ascii_case("gbase8s")) {
         return DatabaseType::Jdbc;
     }
@@ -16200,6 +16206,68 @@ SELECT 1 FROM dual"#
         assert!(sql.starts_with("INSERT ALL\nINTO "));
         assert!(sql.ends_with("SELECT 1 FROM dual"));
         assert!(!sql.contains("),\n("));
+    }
+
+    #[test]
+    fn oceanbase_oracle_jdbc_profile_routes_create_table_through_oracle_mode() {
+        let config = jdbc_transfer_config(
+            "jdbc:oceanbase://localhost:2883/ORCL",
+            "com.oceanbase.jdbc.Driver",
+            "OceanBase-Oracle",
+        );
+        let target_db = effective_transfer_database_type(&config);
+
+        assert_eq!(target_db, DatabaseType::OceanbaseOracle);
+
+        let ddl = generate_create_table_ddl(
+            &[
+                test_column("INSUPROKEY", "VARCHAR2(36 BYTE)"),
+                test_column("PREMIUM", "NUMBER(14,2)"),
+                test_column("DETAIL", "CLOB"),
+            ],
+            "PRPDINSURANCEPLANPROM",
+            "CPRPALL",
+            "CPRPALL",
+            &target_db,
+            &DatabaseType::Oracle,
+            None,
+            None,
+        );
+
+        assert_eq!(
+            ddl,
+            "CREATE TABLE \"CPRPALL\".\"PRPDINSURANCEPLANPROM\" (\n  \"INSUPROKEY\" VARCHAR(36 byte),\n  \"PREMIUM\" DECIMAL(14,2),\n  \"DETAIL\" CLOB\n)"
+        );
+    }
+
+    #[test]
+    fn oceanbase_jdbc_url_without_oracle_profile_stays_generic() {
+        for profile in ["", "oceanbase"] {
+            let config =
+                jdbc_transfer_config("jdbc:oceanbase://localhost:2883/test", "com.oceanbase.jdbc.Driver", profile);
+            let target_db = effective_transfer_database_type(&config);
+
+            assert_eq!(target_db, DatabaseType::Jdbc, "profile: {profile}");
+
+            let ddl = generate_create_table_ddl(
+                &[test_column("INSUPROKEY", "VARCHAR2(36 BYTE)"), test_column("PREMIUM", "NUMBER(14,2)")],
+                "PRPDINSURANCEPLANPROM",
+                "CPRPALL",
+                "CPRPALL",
+                &target_db,
+                &DatabaseType::Oracle,
+                None,
+                None,
+            );
+            assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS "), "profile {profile}: {ddl}");
+            assert!(ddl.contains("\"INSUPROKEY\" VARCHAR(36)"), "profile {profile}: {ddl}");
+            assert!(ddl.contains("\"PREMIUM\" NUMERIC"), "profile {profile}: {ddl}");
+        }
+
+        let mut mysql_mode =
+            jdbc_transfer_config("jdbc:oceanbase://localhost:2883/test", "com.oceanbase.jdbc.Driver", "oceanbase");
+        mysql_mode.db_type = DatabaseType::Mysql;
+        assert_eq!(effective_transfer_database_type(&mysql_mode), DatabaseType::Mysql);
     }
 
     #[test]
