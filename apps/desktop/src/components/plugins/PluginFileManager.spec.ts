@@ -16,7 +16,12 @@ vi.mock("vue-virtual-scroller", () => ({
     inheritAttrs: false,
     props: { items: { type: Array, default: () => [] } },
     setup(props, { attrs, slots }) {
-      return () => h("div", attrs, (props.items as unknown[]).flatMap((item) => slots.default?.({ item }) ?? []));
+      return () =>
+        h(
+          "div",
+          attrs,
+          (props.items as unknown[]).flatMap((item) => slots.default?.({ item }) ?? []),
+        );
     },
   }),
 }));

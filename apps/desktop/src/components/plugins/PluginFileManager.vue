@@ -305,14 +305,7 @@ defineExpose({ refresh: () => load(currentUri.value) });
         <div v-else-if="!sortedEntries.length" class="flex h-full items-center justify-center text-sm text-muted-foreground">{{ t("pluginPlatform.emptyDirectory") }}</div>
         <RecycleScroller v-else data-file-list class="plugin-file-list min-h-0 min-w-0 flex-1 overflow-x-hidden text-sm" :items="sortedEntries" :item-size="46" :buffer="300" key-field="uri">
           <template #default="{ item: entry }">
-            <button
-              type="button"
-              class="plugin-file-row grid h-[46px] w-full min-w-0 items-center gap-3 border-b px-3 text-left hover:bg-muted/50"
-              :class="selected?.uri === entry.uri ? 'bg-muted' : ''"
-              :data-file-entry-uri="entry.uri"
-              @click="selected = entry"
-              @dblclick="activateEntry(entry)"
-            >
+            <button type="button" class="plugin-file-row grid h-[46px] w-full min-w-0 items-center gap-3 border-b px-3 text-left hover:bg-muted/50" :class="selected?.uri === entry.uri ? 'bg-muted' : ''" :data-file-entry-uri="entry.uri" @click="selected = entry" @dblclick="activateEntry(entry)">
               <span class="flex min-w-0 items-center gap-2">
                 <Folder v-if="entry.kind === 'directory'" class="size-4 shrink-0 text-amber-500" />
                 <FileCode2 v-else-if="entry.contentType?.startsWith('text/')" class="size-4 shrink-0 text-sky-500" />
