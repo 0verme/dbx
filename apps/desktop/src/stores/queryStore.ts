@@ -115,7 +115,7 @@ import { createSavedSqlEditorPosition, initSavedSqlEditorPositions, restoreSaved
 import { isDetachedWindow, resolveWindowContext } from "@/lib/app/windowContext";
 import { normalizeDetachedTabRuntime, type DetachedTabHandoff, type DetachedTabRuntimeState } from "@/lib/app/detachedTabHandoff";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
-import { resolveSavedSqlExecutionTarget, savedSqlExecutionTargetFromTab, type SavedSqlExecutionTarget, type SavedSqlOpenTargetMode } from "@/lib/savedSql/savedSqlExecutionTarget";
+import { resolveSavedSqlExecutionTarget, savedSqlExecutionTargetFromFile, savedSqlExecutionTargetFromTab, type SavedSqlExecutionTarget, type SavedSqlOpenTargetMode } from "@/lib/savedSql/savedSqlExecutionTarget";
 import { safeLocalStorageGet, safeLocalStorageRemove } from "@/lib/backend/safeStorage";
 import { sqlTextFingerprint } from "@/lib/sql/sqlTextFingerprint";
 import { loadEditableObjectSourceForEditor } from "@/lib/table/objectSourceLoad";
@@ -5336,6 +5336,18 @@ export const useQueryStore = defineStore("query", () => {
     updateSchema(tab.id, target.schema, options);
   }
 
+  function syncSavedSqlExecutionTargets(files: readonly SavedSqlFile[]) {
+    const targetsByFileId = new Map(files.map((file) => [file.id, savedSqlExecutionTargetFromFile(file)]));
+    let synchronized = 0;
+    for (const tab of tabs.value) {
+      const target = tab.savedSqlId ? targetsByFileId.get(tab.savedSqlId) : undefined;
+      if (!target) continue;
+      applySavedSqlExecutionTarget(tab, target);
+      synchronized++;
+    }
+    return synchronized;
+  }
+
   function openSavedSql(file: SavedSqlFile, options: OpenSavedSqlOptions = {}) {
     const targetMode = options.targetMode ?? useSettingsStore().editorSettings.savedSqlOpenTargetMode;
     const currentTarget = targetMode === "current" ? currentSavedSqlExecutionTarget() : undefined;
@@ -9393,6 +9405,7 @@ export const useQueryStore = defineStore("query", () => {
     openExternalSqlFile,
     openSavedSql,
     hydrateSavedSqlTabs,
+    syncSavedSqlExecutionTargets,
     togglePinnedTab,
     reorderTab,
     createExecutionTargetGuard,
