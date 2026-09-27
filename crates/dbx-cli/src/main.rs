@@ -1,3 +1,5 @@
+mod agent_skill;
+
 use std::{env, path::PathBuf, process::ExitCode, sync::Arc};
 
 use dbx_core::{
@@ -100,8 +102,10 @@ struct Flags {
     out: Option<PathBuf>,
     notes: Option<PathBuf>,
     lang: Option<String>,
+    skills_dir: Option<PathBuf>,
     allow_writes: bool,
     allow_dangerous: bool,
+    force: bool,
     help: bool,
     version: bool,
 }
@@ -191,6 +195,7 @@ async fn run(argv: Vec<String>) -> Result<String, (CliError, bool)> {
     if flags.args.is_empty() || flags.help || flags.args.first().is_some_and(|arg| arg == "help") {
         return Ok(format!("{}\n", usage()));
     }
+    validate_agent_only_flags(&flags).map_err(|error| (error, json_output))?;
     if flags.args[0] == "doctor" {
         ensure_arg_count(&flags.args, 1, "dbx doctor").map_err(|error| (error, json_output))?;
         let diagnostics = diagnostics().await;
@@ -199,6 +204,10 @@ async fn run(argv: Vec<String>) -> Result<String, (CliError, bool)> {
     if flags.args[0] == "capabilities" {
         ensure_arg_count(&flags.args, 1, "dbx capabilities").map_err(|error| (error, json_output))?;
         return format_capabilities(flags.format).map_err(|error| (error, json_output));
+    }
+    if flags.args[0] == "agent" {
+        return agent_skill::run(&flags.args, flags.format, flags.skills_dir.as_deref(), flags.force)
+            .map_err(|error| (error, json_output));
     }
 
     let backend: Arc<dyn DbxBackend> = if let Ok(base_url) = env::var("DBX_WEB_URL") {
@@ -593,8 +602,10 @@ fn parse_flags(argv: &[String]) -> Result<Flags, CliError> {
         out: None,
         notes: None,
         lang: None,
+        skills_dir: None,
         allow_writes: false,
         allow_dangerous: false,
+        force: false,
         help: false,
         version: false,
     };
@@ -640,8 +651,10 @@ fn parse_flags(argv: &[String]) -> Result<Flags, CliError> {
             "--out" => flags.out = Some(PathBuf::from(option_value(argv, &mut index, "--out")?)),
             "--notes" => flags.notes = Some(PathBuf::from(option_value(argv, &mut index, "--notes")?)),
             "--lang" => flags.lang = Some(option_value(argv, &mut index, "--lang")?),
+            "--skills-dir" => flags.skills_dir = Some(PathBuf::from(option_value(argv, &mut index, "--skills-dir")?)),
             "--allow-writes" => flags.allow_writes = true,
             "--allow-dangerous-sql" => flags.allow_dangerous = true,
+            "--force" => flags.force = true,
             value if value.starts_with('-') => {
                 return Err(CliError::new("UNKNOWN_OPTION", format!("Unknown option: {value}")))
             }
@@ -686,6 +699,19 @@ fn duration_ms(value: &str, option: &'static str) -> Result<u64, CliError> {
         .ok_or_else(|| {
             CliError::new("INVALID_OPTION", format!("{option} must be a positive duration such as 500ms, 10s, or 1m."))
         })
+}
+
+fn validate_agent_only_flags(flags: &Flags) -> Result<(), CliError> {
+    if flags.args.first().is_some_and(|arg| arg == "agent") {
+        return Ok(());
+    }
+    if flags.skills_dir.is_some() {
+        return Err(CliError::new("INVALID_OPTION", "--skills-dir is only supported by dbx agent commands."));
+    }
+    if flags.force {
+        return Err(CliError::new("INVALID_OPTION", "--force is only supported by dbx agent setup."));
+    }
+    Ok(())
 }
 
 fn ensure_arg_count(args: &[String], count: usize, command: &'static str) -> Result<(), CliError> {
@@ -1001,7 +1027,7 @@ fn csv_cell(value: &str) -> String {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  dbx doctor [--json]\n  dbx capabilities [--json]\n  dbx connections list [--json]\n  dbx schema list <connection> [--schema name] [--json]\n  dbx schema describe <connection> <table> [--schema name] [--json]\n  dbx query <connection> <sql> [--file path] [--limit n] [--timeout 10s] [--allow-writes] [--allow-dangerous-sql] [--json]\n  dbx context <connection> [--schema name] [--tables a,b] [--max-tables n] [--json]\n  dbx dbml <connection> [--out path] [--notes path] [--schema name] [--database name] [--tables a,b]\n  dbx docs <connection> [--out path] [--notes path] [--lang code] [--schema name] [--database name] [--tables a,b]\n  dbx open <connection> <table> [--schema name] [--database name] [--json]"
+    "Usage:\n  dbx doctor [--json]\n  dbx capabilities [--json]\n  dbx agent setup [--skills-dir path] [--force] [--json]\n  dbx agent status [--skills-dir path] [--json]\n  dbx connections list [--json]\n  dbx schema list <connection> [--schema name] [--json]\n  dbx schema describe <connection> <table> [--schema name] [--json]\n  dbx query <connection> <sql> [--file path] [--limit n] [--timeout 10s] [--allow-writes] [--allow-dangerous-sql] [--json]\n  dbx context <connection> [--schema name] [--tables a,b] [--max-tables n] [--json]\n  dbx dbml <connection> [--out path] [--notes path] [--schema name] [--database name] [--tables a,b]\n  dbx docs <connection> [--out path] [--notes path] [--lang code] [--schema name] [--database name] [--tables a,b]\n  dbx open <connection> <table> [--schema name] [--database name] [--json]"
 }
 
 #[cfg(test)]
@@ -1135,6 +1161,31 @@ mod tests {
         assert_eq!(flags.max_rows, Some(50));
         assert_eq!(flags.timeout_ms, Some(10_000));
         assert!(flags.format == OutputFormat::Json);
+    }
+
+    #[test]
+    fn parses_agent_skill_setup_flags() {
+        let flags =
+            parse_flags(&args(&["agent", "setup", "--skills-dir", "/tmp/skills", "--force", "--json"])).unwrap();
+        assert_eq!(flags.args, args(&["agent", "setup"]));
+        assert_eq!(flags.skills_dir.as_deref(), Some(std::path::Path::new("/tmp/skills")));
+        assert!(flags.force);
+        assert_eq!(flags.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn agent_commands_appear_in_usage_text() {
+        assert!(usage().contains("dbx agent setup"));
+        assert!(usage().contains("dbx agent status"));
+    }
+
+    #[test]
+    fn rejects_agent_only_flags_for_other_commands() {
+        let force = parse_flags(&args(&["query", "local", "select 1", "--force"])).unwrap();
+        assert_eq!(validate_agent_only_flags(&force).unwrap_err().code, "INVALID_OPTION");
+
+        let skills_dir = parse_flags(&args(&["doctor", "--skills-dir", "/tmp/skills"])).unwrap();
+        assert_eq!(validate_agent_only_flags(&skills_dir).unwrap_err().code, "INVALID_OPTION");
     }
 
     #[test]
