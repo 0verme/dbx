@@ -1186,7 +1186,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   showIndexIndicatorsInHeader: true,
   compactColumnHeaderActions: true,
   columnWidthDensity: "standard",
-  dataGridColumnWidthMode: "fill",
+  dataGridColumnWidthMode: "content",
   dataGridQuickEntry: false,
   dataGridFilterEditorView: "quick",
   dataGridToolbarLayout: "single",
