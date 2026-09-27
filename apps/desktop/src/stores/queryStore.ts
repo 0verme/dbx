@@ -61,6 +61,7 @@ import { refreshLoadedMongoIndexes } from "@/lib/mongo/mongoIndexMetadata";
 import { redisCommandResultToQueryResult } from "@/lib/redis/redisQueryResult";
 import { nextRedisCommandDb } from "@/lib/redis/redisCommandSession";
 import { isRedisMutatingCommand } from "@/lib/redis/redisCommandTable";
+import { formatRedisConsoleValue } from "@/lib/redis/redisValuePresentation";
 import { usesAgentCursorForQuery } from "@/lib/database/databaseDriverManifest";
 import { connectionIsDorisFamilyCatalogCapable, defaultAutoCommitForDbType, supportsClearableQuerySchema, supportsTransaction, usesOracleStickyTransactionState, usesProvenReadOnlyStickyTransactionState } from "@/lib/database/databaseFeatureSupport";
 import { canInsertTableRows, canUseKeylessRowPredicate, DBX_ROWID_COLUMN, editablePrimaryKeys, shouldIncludeSyntheticRowId, usesSyntheticRowIdKey } from "@/lib/table/tableEditing";
@@ -388,6 +389,7 @@ function releaseResultObjectPayload(result: QueryResult): void {
   result.mongo_copy_documents = undefined;
   result.large_value_cells = undefined;
   result.elasticsearch_raw_body = undefined;
+  result.redis_console_output = undefined;
   result.messages = undefined;
   result.error = undefined;
   result.sourceLabel = undefined;
@@ -6884,7 +6886,18 @@ export const useQueryStore = defineStore("query", () => {
             (rows) => {
               const current = findExecutionTab(id);
               if (current?.executionId !== executionId) return;
-              current.result = markQueryResultRowsRaw(annotateQueryResultSource({ columns: ["MONITOR"], rows: rows.map((message) => [message]), affected_rows: 0, execution_time_ms: performance.now() - startedAt }, "MONITOR"));
+              current.result = markQueryResultRowsRaw(
+                annotateQueryResultSource(
+                  {
+                    columns: ["MONITOR"],
+                    rows: rows.map((message) => [message]),
+                    affected_rows: 0,
+                    execution_time_ms: performance.now() - startedAt,
+                    redis_console_output: rows.map((message) => formatRedisConsoleValue(message)).join("\n"),
+                  },
+                  "MONITOR",
+                ),
+              );
               current.results = undefined;
               current.activeResultIndex = undefined;
               current.queryEditabilityReason = undefined;

@@ -1310,6 +1310,8 @@ export interface QueryResult {
    *  this carries the raw HTTP response body so the UI can toggle between
    *  the tabular view and the original JSON. */
   elasticsearch_raw_body?: string;
+  /** Preformatted Redis command output retained alongside the default grid rows. */
+  redis_console_output?: string;
   sourceLabel?: string;
   /** 结果集来源的库名 / schema（与 sourceLabel 同时写入），供结果集页签按设置决定是否展示。 */
   sourceQualifier?: string;
@@ -1822,11 +1824,15 @@ export interface QueryPageJumpProgress {
 
 export type TabOutputView = "result" | "summary" | "explain" | "chart" | "messages" | "profile";
 
+export type RedisResultViewMode = "grid" | "console";
+
 export type TabPageUiState = Record<string, unknown>;
 
 /** UI-only state that must survive an inactive tab's component being unmounted. */
 export interface TabUiState {
   activeOutputView?: TabOutputView;
+  /** Redis query results default to grid; a per-tab override selects command-line output. */
+  redisResultViewMode?: RedisResultViewMode;
   resultPaneOpen?: boolean;
   /** Small JSON-compatible snapshots owned by special-page components. */
   page?: Record<string, TabPageUiState>;
