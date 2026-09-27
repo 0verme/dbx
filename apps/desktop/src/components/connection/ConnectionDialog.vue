@@ -148,7 +148,7 @@ import {
 } from "@lucide/vue";
 import { buildDraftVisibleDatabasesConnectionId, connectionCanChooseVisibleDatabases, initialVisibleDatabaseSelection, visibleObjectFiltersNeedReset } from "@/lib/connection/connectionVisibleDatabases";
 import { canSaveVisibleDatabaseSelection, connectionUsesVisibleSchemaFilter, filterDatabaseNamesForVisiblePicker, filterSchemaNamesForVisiblePicker, normalizeVisibleDatabaseSelection, buildDraftVisibleSchemasConnectionId, normalizeVisibleSchemaSelection } from "@/lib/database/visibleDatabases";
-import { isSchemaAware, isSingleDatabase } from "@/lib/database/databaseFeatureSupport";
+import { isSchemaAware, isSingleDatabase, supportsDataDictionary } from "@/lib/database/databaseFeatureSupport";
 import { normalizeConnectionScope, normalizeConnectionTimeouts } from "@/lib/connection/connectionSubmitNormalization";
 import { databaseConnectionFormKind } from "@/lib/database/databaseDriverManifest";
 import VisibleSchemasDialog from "@/components/sidebar/VisibleSchemasDialog.vue";
@@ -231,6 +231,7 @@ const DREMIO_ARROW_FLIGHT_SQL_JDBC_DRIVER_CLASS = "org.apache.arrow.driver.jdbc.
 const DREMIO_LEGACY_JDBC_URL = "jdbc:dremio:direct=127.0.0.1:31010";
 const DREMIO_LEGACY_JDBC_DRIVER_CLASS = "com.dremio.jdbc.Driver";
 const DEFAULT_SSH_USER = "root";
+const DIRECT_SIDEBAR_OBJECT_TYPES = new Set<DatabaseType>(["redis", "etcd", "zookeeper", "consul", "mongodb", "dynamodb", "elasticsearch", "easysearch", "meilisearch", "solr", "milvus", "qdrant", "weaviate", "chromadb", "mq", "mqtt", "nacos", "plugin"]);
 const ETCD_GRPC_MAX_INBOUND_DEFAULT_MIB = 32;
 const ETCD_GRPC_MAX_INBOUND_MIN_MIB = 1;
 const ETCD_GRPC_MAX_INBOUND_MAX_MIB = 256;
@@ -441,6 +442,7 @@ const defaultForm = (): ConnectionForm => ({
   docs_notes_path: undefined,
   read_only: false,
   show_system_schemas: false,
+  sidebar_auto_load_all_tables: false,
   is_production: false,
   production_databases: [],
   visible_databases: undefined,
@@ -632,6 +634,7 @@ function sshLayersForConfig(config: LegacyConnectionConfig): SshTunnelConfig[] {
 }
 
 const form = ref(defaultForm());
+const supportsAutomaticTableLoading = computed(() => supportsDataDictionary(form.value.db_type) && !DIRECT_SIDEBAR_OBJECT_TYPES.has(form.value.db_type));
 const redisKeyTemplatesText = ref("");
 const noteTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const showGaussdbConnectionMode = computed(() => form.value.db_type === "gaussdb");
@@ -3110,6 +3113,7 @@ watch(
         docs_notes_path: config.docs_notes_path,
         read_only: config.read_only || false,
         show_system_schemas: config.show_system_schemas || false,
+        sidebar_auto_load_all_tables: config.sidebar_auto_load_all_tables === true,
         is_production: config.is_production || false,
         production_databases: config.production_databases || [],
         visible_databases: config.visible_databases,
@@ -5141,6 +5145,7 @@ function connectionConfigForSubmit(id: string, generatedName = "", validatePlugi
     config.visible_databases = Array.isArray(config.visible_databases) && config.visible_databases.length > 0 ? config.visible_databases : undefined;
   }
   if (!config.show_system_schemas) config.show_system_schemas = undefined;
+  if (!config.sidebar_auto_load_all_tables) config.sidebar_auto_load_all_tables = undefined;
   if (config.visible_schemas && Object.keys(config.visible_schemas).length === 0) config.visible_schemas = undefined;
   if (config.agent_java_options && config.agent_java_options.length === 0) config.agent_java_options = undefined;
   // Pasted credentials may carry invisible characters that trim() keeps (#9043).
@@ -9877,6 +9882,16 @@ function openExternalUrl(url: string) {
                     <input type="checkbox" v-model="form.show_system_schemas" class="mr-0" />
                     <span class="text-xs text-muted-foreground">{{ t("connection.showSystemSchemasHint") }}</span>
                   </label>
+                </div>
+                <div v-if="supportsAutomaticTableLoading" class="grid grid-cols-4 items-start gap-4">
+                  <Label :class="connectionLabelSmallPaddedClass">{{ t("connection.tableLoading") }}</Label>
+                  <div class="col-span-3 grid gap-1.5">
+                    <label class="flex cursor-pointer items-center gap-2">
+                      <Switch v-model="form.sidebar_auto_load_all_tables" />
+                      <span class="text-sm font-medium">{{ t("connection.autoLoadAllTables") }}</span>
+                    </label>
+                    <p class="text-xs leading-5 text-muted-foreground">{{ t("connection.autoLoadAllTablesHint") }}</p>
+                  </div>
                 </div>
                 <!-- Documentation notes are a relational-only feature, so this
                      follows the same isSchemaAware gate as the row above. -->

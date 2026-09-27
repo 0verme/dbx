@@ -87,7 +87,18 @@ import { canTreeNodePin, canTreeNodeShowExpander } from "@/lib/sidebar/sidebarTr
 import { sidebarConnectionVisibleFilterMenu } from "@/lib/sidebar/sidebarVisibleFilterMenu";
 import { supportsSidebarObjectNameFilter } from "@/lib/sidebar/sidebarObjectNameFilter";
 import { connectionGroupDestinationRows } from "@/lib/sidebar/sidebarLayout";
-import { hasTableVGroupEntries, isTableVGroupContainerNode, isTableVGroupGroupableRowType, resolveTableVGroupScopeFromNode, selectedTableVGroupMoveTargets, tableVGroupDestinationRows, tableVGroupPathForTable, tableVGroupScopeKey, tableVGroupsEnabled } from "@/lib/table/tableVGroup";
+import {
+  hasTableTreeLoadMore,
+  hasTableVGroupEntries,
+  isTableVGroupContainerNode,
+  isTableVGroupGroupableRowType,
+  resolveTableVGroupScopeFromNode,
+  selectedTableVGroupMoveTargets,
+  tableVGroupDestinationRows,
+  tableVGroupPathForTable,
+  tableVGroupScopeKey,
+  tableVGroupsEnabled,
+} from "@/lib/table/tableVGroup";
 import { objectTypesForGroupNode } from "@/lib/table/tableTree";
 import { loadSidebarObjectGroup } from "@/lib/sidebar/sidebarObjectGroupRouting";
 import { requestObjectBrowserSearchFocus } from "@/lib/tabs/objectBrowserSearchFocus";
@@ -883,7 +894,8 @@ async function toggle(requestId = beginNavigationRequest()) {
   // particular, schema-level trigger/type groups have no tableName, so they
   // must use the generic object loader rather than the table-trigger loader.
   const databaseObjectGroup = !!objectTypesForGroupNode(node.type);
-  if (databaseObjectGroup && connectionStore.canUseLoadedTreeNodeToggle(node)) {
+  const needsConfiguredTablePageDrain = node.type === "group-tables" && connectionStore.getConfig(node.connectionId || "")?.sidebar_auto_load_all_tables === true && hasTableTreeLoadMore(node.children ?? []);
+  if (databaseObjectGroup && connectionStore.canUseLoadedTreeNodeToggle(node) && !needsConfiguredTablePageDrain) {
     node.isExpanded = !node.isExpanded;
     if (wasExpanded && shouldReleaseCollapsedTreeNodeChildren()) connectionStore.releaseCollapsedTreeNodeChildren(node.id);
     emitNodeToggled(node, wasExpanded);

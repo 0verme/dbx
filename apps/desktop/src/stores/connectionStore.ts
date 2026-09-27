@@ -1721,6 +1721,7 @@ export const useConnectionStore = defineStore("connection", () => {
       docs_notes_path: config.docs_notes_path?.trim() ? config.docs_notes_path.trim() : undefined,
       transport_layers: Array.isArray(config.transport_layers) ? config.transport_layers : [],
       show_system_schemas: config.show_system_schemas === true,
+      sidebar_auto_load_all_tables: config.sidebar_auto_load_all_tables === true,
       connect_timeout_secs: connectTimeoutInherit ? settingsStore.editorSettings.globalConnectTimeoutSecs : config.connect_timeout_secs || 10,
       connect_timeout_inherit: connectTimeoutInherit,
       query_timeout_secs: queryTimeoutInherit ? settingsStore.editorSettings.globalQueryTimeoutSecs : (config.query_timeout_secs ?? DEFAULT_QUERY_TIMEOUT_SECS),
@@ -6471,9 +6472,9 @@ export const useConnectionStore = defineStore("connection", () => {
     );
   }
 
-  async function loadObjectGroupChildren(node: TreeNode, options?: LoadTreeOptions): Promise<void> {
+  async function loadObjectGroupFirstPage(node: TreeNode, options?: LoadTreeOptions): Promise<void> {
     if (options?.sidebarSearch) {
-      return withSidebarSearchLoad(node.connectionId, () => loadObjectGroupChildren(node, { ...options, sidebarSearch: false }));
+      return withSidebarSearchLoad(node.connectionId, () => loadObjectGroupFirstPage(node, { ...options, sidebarSearch: false }));
     }
     // Queued search/refresh tasks can outlive disconnect, which removes their nodes.
     if (!treeNodeInSidebarTree(node)) return;
@@ -6501,7 +6502,7 @@ export const useConnectionStore = defineStore("connection", () => {
     if (!options?.force && !searchFilter && !options?.sidebarTableSearchParentId && !tableNameFilterForScope) {
       if (await hydrateTreeNodeFromCache(node, objectGroupCacheKey(node))) {
         forgetFilteredObjectGroupChildren(node.id);
-        void loadObjectGroupChildren(node, { ...options, force: true }).catch(() => undefined);
+        void loadObjectGroupFirstPage(node, { ...options, force: true }).catch(() => undefined);
         return;
       }
     }
@@ -6622,6 +6623,23 @@ export const useConnectionStore = defineStore("connection", () => {
       },
       options,
     );
+  }
+
+  function shouldAutoLoadAllTableGroupChildren(node: TreeNode, options?: LoadTreeOptions): boolean {
+    if (node.type !== "group-tables" || !node.connectionId) return false;
+    if (getConfig(node.connectionId)?.sidebar_auto_load_all_tables !== true) return false;
+    // Search projections have their own bounded/paged lifecycle. Automatically
+    // draining those pages would turn a filter operation into an unbounded load
+    // and could replace the unfiltered snapshot that clearing search restores.
+    return !options?.sidebarSearch && !options?.sidebarTableSearchParentId && !activeTreeLoadSearchFilter(options);
+  }
+
+  async function loadObjectGroupChildren(node: TreeNode, options?: LoadTreeOptions): Promise<void> {
+    if (shouldAutoLoadAllTableGroupChildren(node, options)) {
+      await loadAllObjectGroupChildren(node, options);
+      return;
+    }
+    await loadObjectGroupFirstPage(node, options);
   }
 
   async function loadCustomTypeChildren(node: TreeNode, options?: LoadTreeOptions) {
@@ -6971,14 +6989,15 @@ export const useConnectionStore = defineStore("connection", () => {
     );
   }
 
-  async function loadAllObjectGroupChildren(parent: TreeNode) {
+  async function loadAllObjectGroupChildren(parent: TreeNode, initialLoadOptions?: LoadTreeOptions) {
     if (!parent.connectionId || !hasTreeNodeDatabaseContext(parent)) return;
     if (!objectTypesForGroupNode(parent.type)) return;
     const liveParent = treeNodeInSidebarTree(parent);
     if (!liveParent) return;
-    if (!isTreeNodeChildrenLoaded(liveParent.id) || filteredObjectGroupChildrenIds.has(liveParent.id)) {
+    if (initialLoadOptions?.force || !isTreeNodeChildrenLoaded(liveParent.id) || filteredObjectGroupChildrenIds.has(liveParent.id)) {
       let isPreparedPageCurrent: (() => boolean) | undefined;
-      await loadObjectGroupChildren(liveParent, {
+      await loadObjectGroupFirstPage(liveParent, {
+        ...initialLoadOptions,
         force: true,
         searchFilter: "",
         allowGlobalSearchMismatch: true,

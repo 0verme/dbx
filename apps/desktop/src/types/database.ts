@@ -105,6 +105,8 @@ export interface ConnectionConfig {
   visible_database_patterns?: string[];
   visible_schemas?: Record<string, string[]>;
   show_system_schemas?: boolean;
+  /** Load every page when the sidebar's Tables group is opened for this connection. */
+  sidebar_auto_load_all_tables?: boolean;
   attached_databases?: AttachedDatabaseConfig[];
   init_script?: string;
   color?: string;

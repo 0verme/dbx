@@ -259,6 +259,42 @@ describe("SidebarTreeRuntimeHost expansion", () => {
     expect(connectionStore.loadObjectGroupChildren).not.toHaveBeenCalled();
   });
 
+  it("routes an opted-in partial table group back through the loader", async () => {
+    const group: TreeNode = {
+      id: "mysql:basic:__tables",
+      label: "tree.tables",
+      type: "group-tables",
+      connectionId: "mysql",
+      database: "basic",
+      isExpanded: false,
+      children: [
+        { id: "mysql:basic:orders", label: "orders", type: "table", connectionId: "mysql", database: "basic" },
+        {
+          id: "mysql:basic:__tables:__load_more:1000",
+          label: "tree.loadMore",
+          type: "load-more",
+          connectionId: "mysql",
+          database: "basic",
+          loadMore: { parentId: "mysql:basic:__tables", offset: 1000, pageSize: 1000 },
+        },
+      ],
+    };
+    connectionStore.getConfig.mockReturnValue({ db_type: "mysql", name: "connection", sidebar_auto_load_all_tables: true });
+
+    const host = ref<InstanceType<typeof SidebarTreeRuntimeHost> | null>(null);
+    const app = createApp(defineComponent({ setup: () => () => h(SidebarTreeRuntimeHost, { ref: host, node: group, depth: 0 }) }));
+    mountedApps.push(app);
+    const container = document.createElement("div");
+    document.body.append(container);
+    app.use(i18n);
+    app.mount(container);
+
+    host.value?.toggleNode(group);
+
+    await vi.waitFor(() => expect(connectionStore.loadObjectGroupChildren).toHaveBeenCalledWith(group, undefined));
+    expect(group.isExpanded).toBe(true);
+  });
+
   it("publishes a rendered group collapse and synchronizes the live tree", async () => {
     const liveGroup: TreeNode = {
       id: "connection:database:__tables",

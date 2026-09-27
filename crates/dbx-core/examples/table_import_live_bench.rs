@@ -173,6 +173,7 @@ fn connection_config(id: &str, database: BenchDatabase) -> Result<ConnectionConf
         visible_database_patterns: None,
         visible_schemas: None,
         show_system_schemas: false,
+        sidebar_auto_load_all_tables: false,
         attached_databases: Vec::new(),
         init_script: None,
         color: None,
