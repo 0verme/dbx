@@ -7999,7 +7999,7 @@ export default {
     upToDate: "Up to date",
     openDriverManager: "Open Driver Manager",
     openPluginCenter: "Open Plugin Center",
-    openMcpSettings: "Open MCP settings",
+    openMcpSettings: "MCP Settings",
     updateRestartHint: "Component updates run after a successful DBX upgrade restart. Active connections can postpone driver updates until it is safe.",
     updateDownloadSource: "Update download source",
     updateDownloadSourceDescription: "Choose where app updates, database agents, drivers, and managed JREs are downloaded from. The official source is recommended; CNB can be faster on mainland China networks.",

@@ -7308,7 +7308,7 @@ export default withEnglishFallback({
     upToDate: "最新です",
     openDriverManager: "ドライバー管理を開く",
     openPluginCenter: "プラグインセンターを開く",
-    openMcpSettings: "MCP 設定を開く",
+    openMcpSettings: "MCP 設定",
     updateRestartHint: "コンポーネントの更新は、DBX の更新後に正常に再起動したあとで実行されます。アクティブな接続がある場合、ドライバーの更新は安全になるまで延期されます。",
     debugLoggingEnabled: "デバッグログを有効にする",
     debugLoggingEnabledDescription: "トラブルシューティング時に、より詳細なローカル診断ログを記録します。デフォルトでは無効です。",

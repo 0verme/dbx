@@ -7327,7 +7327,7 @@ export default withEnglishFallback({
     upToDate: "Ən son versiyadadır",
     openDriverManager: "Sürücü idarəetməsini aç",
     openPluginCenter: "Plagin mərkəzini aç",
-    openMcpSettings: "MCP parametrlərini aç",
+    openMcpSettings: "MCP parametrləri",
     updateRestartHint: "Komponent yeniləmələri DBX uğurla yenilənib yenidən başladıqdan sonra icra olunur. Aktiv əlaqələr sürücü yeniləmələrini təhlükəsiz vaxta qədər təxirə sala bilər.",
     updateDownloadSource: "Yeniləmələrin endirmə mənbəyi",
     updateDownloadSourceDescription: "Tətbiq yeniləmələrinin, verilənlər bazası agentlərinin, drayverlərin və idarə olunan JRE-lərin haradan endiriləcəyini seçin. Rəsmi mənbə tövsiyə olunur; CNB materik Çin şəbəkələrində daha sürətli ola bilər.",

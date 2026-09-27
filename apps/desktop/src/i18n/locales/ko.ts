@@ -7053,7 +7053,7 @@ export default withEnglishFallback({
     upToDate: "최신 버전",
     openDriverManager: "드라이버 관리 열기",
     openPluginCenter: "플러그인 센터 열기",
-    openMcpSettings: "MCP 설정 열기",
+    openMcpSettings: "MCP 설정",
     updateRestartHint: "구성 요소 업데이트는 DBX 업데이트 후 다시 시작이 완료되면 실행됩니다. 활성 연결이 있으면 드라이버 업데이트가 안전한 시점까지 연기될 수 있습니다.",
     updateDownloadSource: "업데이트 다운로드 소스",
     updateDownloadSourceDescription: "앱 업데이트, 데이터베이스 에이전트, 드라이버, 관리 JRE를 다운로드할 위치를 선택하세요. 공식 소스를 권장합니다. 중국 본토 네트워크에서는 CNB가 더 빠를 수 있습니다.",

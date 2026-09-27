@@ -6601,7 +6601,7 @@ export default withEnglishFallback({
     upToDate: "已是最新",
     openDriverManager: "開啟驅動程式管理",
     openPluginCenter: "開啟外掛中心",
-    openMcpSettings: "開啟 MCP 設定",
+    openMcpSettings: "MCP 設定",
     updateRestartHint: "元件更新會在 DBX 成功更新並重新啟動後執行。作用中的連線佔用驅動程式時，會暫緩驅動程式更新直到安全時機。",
     debugLoggingEnabled: "啟用偵錯日誌",
     debugLoggingEnabledDescription: "開啟後在本機記錄更詳細的使用者側診斷日誌，回報問題時可暫時開啟；預設關閉。",

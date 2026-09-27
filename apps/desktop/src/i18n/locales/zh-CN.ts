@@ -7965,7 +7965,7 @@ export default withEnglishFallback({
     upToDate: "已是最新",
     openDriverManager: "打开驱动管理",
     openPluginCenter: "打开插件中心",
-    openMcpSettings: "打开 MCP 设置",
+    openMcpSettings: "MCP 设置",
     updateRestartHint: "组件更新会在 DBX 成功升级并重启后执行。活动连接占用驱动时，会暂缓驱动更新直到安全时机。",
     updateDownloadSource: "更新下载源",
     updateDownloadSourceDescription: "选择应用更新、数据库 Agent、驱动和托管 JRE 的下载来源。官方源为推荐选项，CNB 适合国内网络环境。",

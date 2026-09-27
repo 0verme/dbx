@@ -7209,7 +7209,7 @@ export default withEnglishFallback({
     upToDate: "Güncel",
     openDriverManager: "Sürücü Yöneticisi'ni aç",
     openPluginCenter: "Eklenti merkezini aç",
-    openMcpSettings: "MCP ayarlarını aç",
+    openMcpSettings: "MCP ayarları",
     updateRestartHint: "Bileşen güncellemeleri, DBX başarıyla güncellenip yeniden başlatıldıktan sonra çalıştırılır. Etkin bağlantılar sürücü güncellemelerini güvenli olana kadar erteleyebilir.",
     updateDownloadSource: "Güncelleme indirme kaynağı",
     updateDownloadSourceDescription: "Uygulama güncellemelerinin, veritabanı agent'larının, sürücülerin ve yönetilen JRE'lerin nereden indirileceğini seçin. Resmî kaynak önerilir; Çin anakarası ağlarında CNB daha hızlı olabilir.",

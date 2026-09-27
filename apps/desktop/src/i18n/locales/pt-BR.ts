@@ -7279,7 +7279,7 @@ export default withEnglishFallback({
     upToDate: "Atualizado",
     openDriverManager: "Abrir gerenciador de drivers",
     openPluginCenter: "Abrir central de plugins",
-    openMcpSettings: "Abrir configurações do MCP",
+    openMcpSettings: "Configurações do MCP",
     updateRestartHint: "As atualizações dos componentes são executadas após o DBX reiniciar com sucesso após uma atualização. Conexões ativas podem adiar as atualizações de drivers até que seja seguro.",
     updateDownloadSource: "Fonte de download de atualização",
     updateDownloadSourceDescription: "Escolha de onde os instaladores de atualização no aplicativo são baixados. A fonte oficial é recomendada; CNB pode ser mais rápido em redes da China continental.",
