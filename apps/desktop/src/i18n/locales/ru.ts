@@ -1464,7 +1464,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeRejected: "Вы отклонили ключ хоста {host}:{port}; подключение прервано, учётные данные не отправлены.",
     sshHostKeyNoticeLearnFailed: "Не удалось сохранить ключ хоста {host}:{port} — хост считается доверенным только для этого сеанса, и при следующем подключении потребуется повторная проверка.",
     sshHostKeyNoticeGeneric: "Не удалось проверить ключ хоста SSH для {host}:{port}.",
-    sqliteTransportSshOnly: "Удалённый SQLite поддерживает только переходы SSH. Слои прокси и HTTP-туннеля использовать нельзя.",
+    sqliteTransportSshOnly: "Удалённый SQLite поддерживает слои прокси HTTP CONNECT или SOCKS5 только перед конечным переходом SSH. Слои HTTP-туннеля не поддерживаются.",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "Введите абсолютный путь на последнем переходе SSH.",
     sqliteSshCipherUnsupportedHint: "Зашифрованные базы данных SQLite (SQLCipher) пока не поддерживаются через SSH.",

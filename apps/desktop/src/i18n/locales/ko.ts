@@ -1390,7 +1390,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeRejected: "{host}:{port}의 호스트 키를 거부했습니다. 연결이 중단되고 자격 증명이 전송되지 않았습니다.",
     sshHostKeyNoticeLearnFailed: "{host}:{port}의 호스트 키를 저장할 수 없습니다 — 이 호스트는 이 세션에만 신뢰되며 다음에 다시 확인을 요청받습니다.",
     sshHostKeyNoticeGeneric: "{host}:{port}의 SSH 호스트 키 검증에 실패했습니다.",
-    sqliteTransportSshOnly: "원격 SQLite는 SSH 홉만 지원합니다. 프록시 및 HTTP 터널 계층은 사용할 수 없습니다.",
+    sqliteTransportSshOnly: "원격 SQLite는 최종 SSH 홉 앞에 HTTP CONNECT 또는 SOCKS5 프록시 계층을 지원합니다. HTTP 터널 계층은 지원되지 않습니다.",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "마지막 SSH 홉의 절대 경로를 입력하세요.",
     sqliteSshCipherUnsupportedHint: "SSH를 통한 암호화(SQLCipher)된 SQLite 데이터베이스 연결은 아직 지원되지 않습니다.",

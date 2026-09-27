@@ -1496,7 +1496,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeRejected: "你已拒绝 {host}:{port} 的主机密钥验证，连接已中止，凭据未发送。",
     sshHostKeyNoticeLearnFailed: "无法保存 {host}:{port} 的主机密钥 — 该主机仅在本次会话内受信任，下次连接仍需重新确认。",
     sshHostKeyNoticeGeneric: "SSH 主机 {host}:{port} 的密钥验证失败。",
-    sqliteTransportSshOnly: "远程 SQLite 只支持 SSH 跳板，不能使用代理或 HTTP 隧道。",
+    sqliteTransportSshOnly: "远程 SQLite 支持在最终 SSH 跳板前配置 HTTP CONNECT 或 SOCKS5 代理，但不支持 HTTP 隧道层。",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "请填写最后一跳 SSH 主机上的绝对路径。",
     sqliteSshCipherUnsupportedHint: "暂不支持通过 SSH 打开加密（SQLCipher）的 SQLite 数据库。",

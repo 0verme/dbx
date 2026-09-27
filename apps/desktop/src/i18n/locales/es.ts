@@ -1540,7 +1540,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeChanged: "La clave del host {host}:{port} ha cambiado, puede haber un ataque de intermediario. Si es esperado, elimine el registro antiguo y vuelva a conectar.",
     sshHostKeyNoticeRejected: "Ha rechazado la verificación de la clave del host {host}:{port}. La conexión se ha abortado, no se enviaron credenciales.",
     sshHostKeyNoticeGeneric: "Falló la verificación de la clave del host SSH {host}:{port}.",
-    sqliteTransportSshOnly: "SQLite remoto solo admite saltos SSH. No se pueden usar capas de proxy ni túnel HTTP.",
+    sqliteTransportSshOnly: "SQLite remoto admite capas de proxy HTTP CONNECT o SOCKS5 solo antes de un salto SSH final. No se admiten capas de túnel HTTP.",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "Introduce una ruta absoluta en el último salto SSH.",
     sqliteSshCipherUnsupportedHint: "Las bases de datos SQLite cifradas (SQLCipher) aún no son compatibles a través de SSH.",

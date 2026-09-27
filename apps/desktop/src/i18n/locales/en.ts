@@ -1579,7 +1579,7 @@ export default {
     sshHostKeyNoticeRejected: "You rejected the host key for {host}:{port}; the connection was aborted and no credentials were sent.",
     sshHostKeyNoticeLearnFailed: "Could not save the host key for {host}:{port} — the host is trusted for this session only and you will be asked to verify it again next time.",
     sshHostKeyNoticeGeneric: "SSH host key verification failed for {host}:{port}.",
-    sqliteTransportSshOnly: "Remote SQLite only supports SSH hops. Proxy and HTTP tunnel layers cannot be used.",
+    sqliteTransportSshOnly: "Remote SQLite supports HTTP CONNECT or SOCKS5 proxy layers only before a final SSH hop. HTTP tunnel layers are not supported.",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "Enter an absolute path on the final SSH hop.",
     sqliteSshCipherUnsupportedHint: "Encrypted (SQLCipher) SQLite databases are not supported over SSH yet.",

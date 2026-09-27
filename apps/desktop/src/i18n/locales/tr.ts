@@ -1277,7 +1277,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeRejected: "{host}:{port} için sunucu anahtarını reddettiniz; bağlantı iptal edildi ve hiçbir kimlik bilgisi gönderilmedi.",
     sshHostKeyNoticeLearnFailed: "{host}:{port} için sunucu anahtarı kaydedilemedi — sunucuya yalnızca bu oturum için güvenilecek ve bir sonraki seferde yeniden doğrulamanız istenecek.",
     sshHostKeyNoticeGeneric: "{host}:{port} için SSH sunucu anahtarı doğrulaması başarısız oldu.",
-    sqliteTransportSshOnly: "Uzak SQLite yalnızca SSH atlamalarını destekler. Proxy ve HTTP tünel katmanları kullanılamaz.",
+    sqliteTransportSshOnly: "Uzak SQLite, yalnızca son SSH atlamasından önce HTTP CONNECT veya SOCKS5 proxy katmanlarını destekler. HTTP tünel katmanları desteklenmez.",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "Son SSH atlamasındaki mutlak bir yol girin.",
     sqliteSshCipherUnsupportedHint: "Şifrelenmiş (SQLCipher) SQLite veritabanları henüz SSH üzerinden desteklenmiyor.",

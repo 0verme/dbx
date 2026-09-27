@@ -1275,7 +1275,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeRejected: "{host}:{port} üçün host açarını rədd etdiniz; əlaqə dayandırıldı və kimlik məlumatları göndərilmədi.",
     sshHostKeyNoticeLearnFailed: "{host}:{port} üçün host açarını yadda saxlamaq mümkün olmadı — hosta yalnız bu sessiya üçün etibar edilir və növbəti dəfə onu yenidən yoxlamağınız istəniləcək.",
     sshHostKeyNoticeGeneric: "{host}:{port} üçün SSH host açarının yoxlanması uğursuz oldu.",
-    sqliteTransportSshOnly: "Uzaq SQLite yalnız SSH keçidlərini dəstəkləyir. Proksi və HTTP tuneli qatlarından istifadə etmək mümkün deyil.",
+    sqliteTransportSshOnly: "Uzaq SQLite son SSH keçidindən əvvəl HTTP CONNECT və ya SOCKS5 proksi qatlarını dəstəkləyir. HTTP tuneli qatları dəstəklənmir.",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "Son SSH keçidində mütləq yol daxil edin.",
     sqliteSshCipherUnsupportedHint: "Şifrələnmiş (SQLCipher) SQLite verilənlər bazaları SSH üzərindən hələ dəstəklənmir.",

@@ -1485,7 +1485,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeChanged: "主機 {host}:{port} 的金鑰已變更，可能存在中間人攻擊。如確屬預期，請刪除舊記錄後重新連線。",
     sshHostKeyNoticeRejected: "您已拒絕 {host}:{port} 的主機金鑰驗證，連線已中止，憑證未發送。",
     sshHostKeyNoticeGeneric: "SSH 主機 {host}:{port} 的金鑰驗證失敗。",
-    sqliteTransportSshOnly: "遠端 SQLite 僅支援 SSH 跳板，無法使用代理或 HTTP 通道。",
+    sqliteTransportSshOnly: "遠端 SQLite 支援在最終 SSH 跳板前設定 HTTP CONNECT 或 SOCKS5 代理，但不支援 HTTP 通道層。",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "請填寫最後一跳 SSH 主機上的絕對路徑。",
     sqliteSshCipherUnsupportedHint: "暫不支援透過 SSH 開啟加密（SQLCipher）的 SQLite 資料庫。",

@@ -918,7 +918,7 @@ async fn save_connection_configs(
     removed_ids: Vec<String>,
 ) -> Result<(), String> {
     for config in configs {
-        if config.db_type == DatabaseType::Sqlite && !db::sqlite_worker::sqlite_ssh_worker_requested(config) {
+        if config.db_type == DatabaseType::Sqlite && !db::sqlite_worker::sqlite_remote_worker_requested(config) {
             db::sqlite::validate_persistent_attachments(
                 &config.host,
                 &config.password,
@@ -1093,12 +1093,14 @@ async fn connect_sqlite_from_config_with_state(
     connection_id: &str,
     config: &ConnectionConfig,
 ) -> Result<db::sqlite::SqliteHandle, String> {
-    if db::sqlite_worker::sqlite_ssh_worker_requested(config) {
+    if db::sqlite_worker::sqlite_remote_worker_requested(config) {
         let state =
             state.ok_or_else(|| "Remote SQLite over SSH is only available in the DBX Desktop app".to_string())?;
         let transport_layers = state.resolved_transport_layers(config).await?;
         let worker = db::sqlite_worker::connect_sqlite_worker(
             &state.tunnels,
+            &state.proxy_tunnels,
+            &state.http_tunnels,
             &state.agent_manager,
             state.storage.data_dir(),
             connection_id,
@@ -1740,7 +1742,7 @@ pub async fn connect_db(
     client_attempt: Option<u64>,
 ) -> Result<String, String> {
     let config = config.canonicalized();
-    if config.db_type == DatabaseType::Sqlite && !db::sqlite_worker::sqlite_ssh_worker_requested(&config) {
+    if config.db_type == DatabaseType::Sqlite && !db::sqlite_worker::sqlite_remote_worker_requested(&config) {
         db::sqlite::validate_persistent_attachments(
             &config.host,
             &config.password,
@@ -2190,7 +2192,7 @@ pub async fn connection_final_proxy_port(
         return Err("Connection has no configured transport layers".to_string());
     }
     if runtime_config.db_type == DatabaseType::Sqlite
-        && !db::sqlite_worker::sqlite_ssh_worker_requested(&runtime_config)
+        && !db::sqlite_worker::sqlite_remote_worker_requested(&runtime_config)
     {
         db::sqlite::validate_persistent_attachments(
             &runtime_config.host,

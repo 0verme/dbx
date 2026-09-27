@@ -2623,10 +2623,12 @@ impl AppState {
                 PoolKind::Postgres(pg_pool)
             }
             DatabaseType::Sqlite => {
-                if db::sqlite_worker::sqlite_ssh_worker_requested(&db_config) {
+                if db::sqlite_worker::sqlite_remote_worker_requested(&db_config) {
                     let transport_layers = self.resolved_transport_layers(&db_config).await?;
                     let worker = db::sqlite_worker::connect_sqlite_worker(
                         &self.tunnels,
+                        &self.proxy_tunnels,
+                        &self.http_tunnels,
                         &self.agent_manager,
                         self.storage.data_dir(),
                         connection_id,
@@ -3423,7 +3425,7 @@ impl AppState {
         config: &ConnectionConfig,
     ) -> Result<ConnectionEndpoint, String> {
         let transport_layers = self.resolved_transport_layers(config).await?;
-        if transport_layers.is_empty() || db::sqlite_worker::sqlite_ssh_worker_requested(config) {
+        if transport_layers.is_empty() || db::sqlite_worker::sqlite_remote_worker_requested(config) {
             return Ok(ConnectionEndpoint::direct(config.host.clone(), config.port));
         }
         if config.uses_oracle_tns() {
@@ -5248,6 +5250,8 @@ impl AppState {
         self.http_tunnels.stop_tunnels_with_prefix(&redis_sentinel_prefix).await;
         let sqlite_worker_prefix = db::sqlite_worker::sqlite_worker_chain_id(connection_id);
         self.tunnels.stop_tunnels_with_prefix(&sqlite_worker_prefix).await;
+        self.proxy_tunnels.stop_tunnels_with_prefix(&sqlite_worker_prefix).await;
+        self.http_tunnels.stop_tunnels_with_prefix(&sqlite_worker_prefix).await;
         db::transport_layer_tunnel::stop_transport_layers(
             connection_id,
             layer_count,

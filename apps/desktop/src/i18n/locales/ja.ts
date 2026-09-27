@@ -1474,7 +1474,7 @@ export default withEnglishFallback({
     sshHostKeyNoticeChanged: "ホスト {host}:{port} のキーが変更されました。中間者攻撃の可能性があります。予期された変更である場合は、古いレコードを削除して再接続してください。",
     sshHostKeyNoticeRejected: "ホスト {host}:{port} のホストキー検証を拒否しました。接続は中止され、資格情報は送信されませんでした。",
     sshHostKeyNoticeGeneric: "SSHホスト {host}:{port} のキー検証に失敗しました。",
-    sqliteTransportSshOnly: "リモート SQLite は SSH ホップのみ対応です。プロキシ層や HTTP トンネルは使用できません。",
+    sqliteTransportSshOnly: "リモート SQLite では、最後の SSH ホップの前に HTTP CONNECT または SOCKS5 プロキシを配置できます。HTTP トンネルレイヤーはサポートされません。",
     sqliteRemotePathPlaceholder: "/var/lib/app/data.db",
     sqliteRemotePathHint: "最終 SSH ホップ上の絶対パスを入力してください。",
     sqliteSshCipherUnsupportedHint: "SSH 経由での暗号化（SQLCipher）SQLite データベースの接続にはまだ対応していません。",
