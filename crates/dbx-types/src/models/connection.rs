@@ -2784,11 +2784,7 @@ mod tests {
         value["sidebar_auto_load_all_tables"] = serde_json::json!(true);
         let configured: ConnectionConfig = serde_json::from_value(value).unwrap();
         assert!(configured.sidebar_auto_load_all_tables);
-        assert!(
-            serde_json::to_value(configured).unwrap()["sidebar_auto_load_all_tables"]
-                .as_bool()
-                .unwrap()
-        );
+        assert!(serde_json::to_value(configured).unwrap()["sidebar_auto_load_all_tables"].as_bool().unwrap());
     }
 
     fn mysql_config(username: &str, password: &str, database: Option<&str>) -> ConnectionConfig {
