@@ -426,12 +426,8 @@ function createBridge() {
       confirmClipboardRead: isTauriRuntime()
         ? (_pluginId, pluginName) => import("@tauri-apps/plugin-dialog").then(({ ask }) => ask(t("pluginPlatform.clipboardReadConsent", { name: pluginName }), { title: t("pluginPlatform.clipboardReadConsentTitle"), kind: "warning" }).then((allowed) => allowed === true))
         : undefined,
-      openMedia: isTauriRuntime()
-        ? (pluginId, method, params) => tauriFileApi().then(({ openPluginMedia }) => openPluginMedia(pluginId, method, params))
-        : undefined,
-      closeMedia: isTauriRuntime()
-        ? (pluginId, token) => tauriFileApi().then(({ closePluginMedia }) => closePluginMedia(pluginId, token))
-        : undefined,
+      openMedia: isTauriRuntime() ? (pluginId, method, params) => tauriFileApi().then(({ openPluginMedia }) => openPluginMedia(pluginId, method, params)) : undefined,
+      closeMedia: isTauriRuntime() ? (pluginId, token) => tauriFileApi().then(({ closePluginMedia }) => closePluginMedia(pluginId, token)) : undefined,
       pickFiles: (pluginId, options) => pickPluginFiles(pluginId, options),
       readFileChunk: (pluginId, handleId, offset, length) => readPluginFileChunkById(pluginId, handleId, offset, length),
       beginFileSave: (pluginId, request) => beginPluginFileSave(pluginId, request),
