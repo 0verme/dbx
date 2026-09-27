@@ -58,6 +58,7 @@ const FEATURE_MESSAGES: FeatureMessages[] = [
   { feature: "process list batch terminate", keys: under("processList", ["batchTerminate", "batchTerminateTitle", "batchTerminateConfirm", "batchTerminateRunning", "batchTerminateSummary"]) },
   { feature: "cached result fallback", keys: ["grid.cachedResultUnavailable", "grid.reexecuteQuery"] },
   { feature: "Nacos global replace", keys: ["nacos.contentReplace*", "nacos.replaceHistory.*"], locales: EXCEPT_AZ_TR, translated: true },
+  { feature: "Nacos instance health and availability (#10116)", keys: under("nacos", ["serviceInstancesAllHealthy", "serviceInstancesPartiallyHealthy", "serviceInstancesNoHealthyInstances", "serviceInstancesNoInstances", "online", "offline"]) },
   { feature: "SQLite table rebuild notice", keys: ["structureEditor.sqliteRebuildNotice"] },
   { feature: "custom types", keys: ["customType.kinds.composite", "customType.tabs.properties", "customType.members.empty", "customType.properties.empty", "customType.ddl.empty", "customType.ddl.incomplete", "contextMenu.viewDetails"], translated: true },
   { feature: "Dameng object compilation", keys: ["contextMenu.compileObjectFailedTitle", "contextMenu.compileObjectFailedMessage"], locales: EXCEPT_AZ_TR, translated: true },
