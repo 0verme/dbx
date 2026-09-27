@@ -101,7 +101,7 @@ import { buildRenameObjectSql, supportsObjectRename } from "@/lib/table/objectRe
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { generateDatabaseExportId } from "@/lib/export/databaseExport";
 import { buildXlsxHeaderOverrides, hasXlsxHeaderComments, type XlsxExportOptions, type XlsxHeaderMode } from "@/lib/export/xlsxHeader";
-import { showSqlInsertModeDialog, type SqlInsertMode } from "@/lib/export/sqlInsertMode";
+import { showSqlInsertModeDialog, type SqlInsertDialect, type SqlInsertMode } from "@/lib/export/sqlInsertMode";
 import { copyToClipboard, eventTargetAllowsAppClipboardShortcut } from "@/lib/common/clipboard";
 import {
   defaultPasteTableMode,
@@ -2321,14 +2321,14 @@ async function exportDataLegacy(row: ObjectBrowserRow, format: "json") {
   }
 }
 
-async function exportData(row: ObjectBrowserRow, format: "csv" | "json" | "sql") {
+async function exportData(row: ObjectBrowserRow, format: "csv" | "json" | "sql", insertDialect: SqlInsertDialect = "source") {
   if (format === "json") {
     await exportDataLegacy(row, format);
     return;
   }
   const sqlExportOptions = format === "sql" ? await showSqlInsertModeDialog({ allowSplit: true }) : undefined;
   if (format === "sql" && sqlExportOptions === null) return;
-  await exportTableData(row, format, undefined, "name", true, sqlExportOptions?.insertMode ?? "batch", sqlExportOptions?.splitMaxMb);
+  await exportTableData(row, format, undefined, "name", true, sqlExportOptions?.insertMode ?? "batch", sqlExportOptions?.splitMaxMb, insertDialect);
 }
 
 function showObjectBrowserXlsxHeaderDialog(hasComments: boolean): Promise<XlsxExportOptions | null> {
@@ -2371,7 +2371,7 @@ async function exportDataXlsx(row: ObjectBrowserRow) {
   await exportTableData(row, "xlsx", columnInfos, exportOptions.headerMode, exportOptions.autoFilter);
 }
 
-async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx" | "sql", columnInfos?: ColumnInfo[], headerMode: XlsxHeaderMode = "name", autoFilter = true, insertMode: SqlInsertMode = "batch", splitMaxMb?: number) {
+async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx" | "sql", columnInfos?: ColumnInfo[], headerMode: XlsxHeaderMode = "name", autoFilter = true, insertMode: SqlInsertMode = "batch", splitMaxMb?: number, insertDialect: SqlInsertDialect = "source") {
   const schema = row.schema || selectedSchema.value;
   const splitSqlOutput = format === "sql" && splitMaxMb !== undefined;
 
@@ -2446,7 +2446,7 @@ async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx" | "
       tableName: row.name,
       filePath,
       format,
-      ...(format === "sql" ? { insertMode, splitMaxMb } : {}),
+      ...(format === "sql" ? { insertMode, insertDialect, splitMaxMb } : {}),
       csvQuoteMode: settingsStore.editorSettings.csvQuoteMode,
       columns,
       columnComments: format === "xlsx" ? columnComments : undefined,
@@ -3373,7 +3373,10 @@ function exportDataSubmenu(item: ObjectBrowserRow): ContextMenuItem {
     { label: "CSV", action: () => exportData(item, "csv") },
     { label: "JSON", action: () => exportData(item, "json") },
   ];
-  if (!isVictoriaMetrics.value) formats.push({ label: "SQL INSERT", action: () => exportData(item, "sql") });
+  if (!isVictoriaMetrics.value) {
+    formats.push({ label: "SQL INSERT", action: () => exportData(item, "sql", "source") });
+    formats.push({ label: t("contextMenu.standardSqlInsert"), action: () => exportData(item, "sql", "standard") });
+  }
   formats.push({ label: "XLSX", action: () => exportDataXlsx(item) });
   return {
     label: t("contextMenu.exportData"),

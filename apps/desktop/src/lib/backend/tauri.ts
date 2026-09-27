@@ -51,7 +51,7 @@ import { decodeMeilisearchDocumentPage, decodeMeilisearchSearchResult, type Meil
 import type { XuguTablespaceInfo } from "@/types/database";
 import type { CreatedKey, EnqueuedTaskSummary, KeyCreateInput, KeyListItem, KeyPage, KeyUpdateInput, MeilisearchCreateIndexInput, MeilisearchSystemOverview, MeilisearchTask, TaskListInput, TaskPage, TaskSelector } from "@/types/meilisearchManagement";
 import type { CsvQuoteMode } from "@/lib/export/csvQuoteMode";
-import type { SqlInsertMode } from "@/lib/export/sqlInsertMode";
+import type { SqlInsertDialect, SqlInsertMode } from "@/lib/export/sqlInsertMode";
 
 /** Normalize Tauri rejections once at the public backend boundary. */
 async function invokeBackend<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -172,7 +172,7 @@ import type {
   TableAdminSqlOptions,
   VacuumTableSqlOptions,
 } from "@/lib/database/dbAdminSql";
-import type { BuildDatabaseSqlExportOptions, BuildExportInsertStatementsOptions } from "@/lib/export/databaseExport";
+import type { BuildDatabaseSqlExportOptions, BuildExportInsertStatementsOptions, BuildExportSqlInsertOptions } from "@/lib/export/databaseExport";
 
 export interface SshPromptResolution {
   id: string;
@@ -2259,7 +2259,7 @@ export async function buildExportInsertStatements(options: BuildExportInsertStat
   return invoke("build_export_insert_statements", { options });
 }
 
-export async function buildExportSqlInsert(options: BuildExportInsertStatementsOptions): Promise<string> {
+export async function buildExportSqlInsert(options: BuildExportSqlInsertOptions): Promise<string> {
   return invoke("build_export_sql_insert", { options });
 }
 
@@ -5748,6 +5748,7 @@ export interface DatabaseExportRequest {
   failOnError?: boolean;
   preventOverwrite?: boolean;
   outputCompression?: "none" | "gzip";
+  insertDialect?: SqlInsertDialect;
   snapshotSessionId?: string;
   batchSize: number;
   splitMaxMb?: number;
@@ -5788,6 +5789,7 @@ export interface TableExportRequest {
   filePath: string;
   format: "csv" | "xlsx" | "json" | "markdown" | "sql" | "txt";
   insertMode?: SqlInsertMode;
+  insertDialect?: SqlInsertDialect;
   csvQuoteMode?: CsvQuoteMode;
   columns?: string[];
   columnTypes?: Array<string | null | undefined>;
