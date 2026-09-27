@@ -93,7 +93,7 @@ import { uuid } from "@/lib/common/utils";
 import { isMacOS, isWindows } from "@/lib/backend/platform";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { openQueryResultArchiveFile } from "@/lib/query/queryResultArchiveFile";
-import { rememberExternalSqlFileTarget, resolveExternalSqlFileTarget, unassociatedExternalSqlFileTarget } from "@/lib/sql/externalSqlFileTarget";
+import { activeTabExternalSqlFileTarget, rememberExternalSqlFileTarget, resolveExternalSqlFileTarget, resolveExternalSqlFileTargetForActiveTab, unassociatedExternalSqlFileTarget, type ExternalSqlFileTarget } from "@/lib/sql/externalSqlFileTarget";
 import { externalSqlFileOpenErrorMessage, externalSqlEditorMaxBytes, isSqlFilePath, readBrowserSqlFile, sqlFileTitleFromPath } from "@/lib/sql/sqlFileOpen";
 import type { ConnectionConfig, DatabaseType, ObjectBrowserFilter, ObjectSourceKind, QueryTab, TabOutputView, TreeNode } from "@/types/database";
 import type { PluginCenterFocus } from "@/lib/plugins/pluginCenterNavigation";
@@ -2435,8 +2435,7 @@ async function saveActiveSqlAsLocalFile() {
   if (tab) await saveExternalSqlTabAs(tab);
 }
 
-function applyExternalSqlFileTarget(tab: QueryTab, path: string) {
-  const target = resolveExternalSqlFileTarget(path, (savedConnectionId) => !!connectionStore.getConfig(savedConnectionId), unassociatedExternalSqlFileTarget());
+function applyExternalSqlTarget(tab: QueryTab, target: ExternalSqlFileTarget) {
   if (target.connectionId !== tab.connectionId) {
     queryStore.updateConnection(tab.id, target.connectionId, target.database);
   }
@@ -2447,6 +2446,13 @@ function applyExternalSqlFileTarget(tab: QueryTab, path: string) {
   // updateConnection/updateCatalog/updateDatabase all reset the schema, so the
   // remembered schema has to be reapplied after them.
   if (target.schema !== tab.schema) queryStore.updateSchema(tab.id, target.schema);
+}
+
+function applyExternalSqlFileTarget(tab: QueryTab, path: string) {
+  applyExternalSqlTarget(
+    tab,
+    resolveExternalSqlFileTargetForActiveTab(path, queryStore.tabs, tab.id, (connectionId) => connectionStore.getConfig(connectionId)),
+  );
 }
 
 async function openSqlFile() {
@@ -2477,6 +2483,10 @@ async function openSqlFile() {
         if (!file) return;
         try {
           queryStore.updateSql(tab.id, await readBrowserSqlFile(file, externalSqlEditorMaxBytes(settingsStore.editorSettings.externalSqlEditorMaxMb)));
+          applyExternalSqlTarget(
+            tab,
+            activeTabExternalSqlFileTarget(queryStore.tabs, tab.id, (connectionId) => connectionStore.getConfig(connectionId)),
+          );
         } catch (e: any) {
           toast(t("toolbar.sqlOpenFailed", { message: externalSqlFileOpenErrorMessage(e, (key, params) => t(key, params)) }), 5000);
         }
@@ -2520,6 +2530,8 @@ async function openSqlFilePath(path: string) {
   try {
     await desktopOpenTabsRestorationBarrier?.settled;
     const snapshot = await api.readExternalSqlFileSnapshot(path, externalSqlEditorMaxBytes(settingsStore.editorSettings.externalSqlEditorMaxMb));
+    // Startup and OS-open events have no initiating editor tab. Keep new files
+    // unassociated even if persisted tab restoration has since selected one.
     const target = resolveExternalSqlFileTarget(path, (savedConnectionId) => !!connectionStore.getConfig(savedConnectionId), unassociatedExternalSqlFileTarget());
     queryStore.openExternalSqlFile(target.connectionId, target.database, path, snapshot.content, snapshot.version, target.catalog, target.schema);
   } catch (e: any) {
@@ -3290,7 +3302,7 @@ async function handleQuickOpenSelect(item: any) {
   if (item.type === "content_match" && item.filePath) {
     try {
       const snapshot = await api.readExternalSqlFileSnapshot(item.filePath, externalSqlEditorMaxBytes(settingsStore.editorSettings.externalSqlEditorMaxMb));
-      const target = resolveExternalSqlFileTarget(item.filePath, (savedConnectionId) => !!connectionStore.getConfig(savedConnectionId), unassociatedExternalSqlFileTarget());
+      const target = resolveExternalSqlFileTargetForActiveTab(item.filePath, queryStore.tabs, queryStore.activeTabId, (connectionId) => connectionStore.getConfig(connectionId));
       queryStore.openExternalSqlFile(target.connectionId, target.database, item.filePath, snapshot.content, snapshot.version, target.catalog, target.schema, { line: item.line ?? 1, column: item.column });
     } catch (e: any) {
       toast(
@@ -3304,7 +3316,7 @@ async function handleQuickOpenSelect(item: any) {
   if (item.type === "sql_file" && item.filePath) {
     try {
       const snapshot = await api.readExternalSqlFileSnapshot(item.filePath, externalSqlEditorMaxBytes(settingsStore.editorSettings.externalSqlEditorMaxMb));
-      const target = resolveExternalSqlFileTarget(item.filePath, (savedConnectionId) => !!connectionStore.getConfig(savedConnectionId), unassociatedExternalSqlFileTarget());
+      const target = resolveExternalSqlFileTargetForActiveTab(item.filePath, queryStore.tabs, queryStore.activeTabId, (connectionId) => connectionStore.getConfig(connectionId));
       queryStore.openExternalSqlFile(target.connectionId, target.database, item.filePath, snapshot.content, snapshot.version, target.catalog, target.schema);
     } catch (e: any) {
       toast(
