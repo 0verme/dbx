@@ -1909,6 +1909,7 @@ const codeMirrorLifecycle = useQueryEditorCodeMirror({
               dialect: sqlBehaviorDialect(),
               language: queryEditorSelectionLanguage(),
               composing: isEditorComposing(currentView),
+              selectStringContent: settingsStore.editorSettings.doubleClickStringSelectionMode !== "word",
             }),
           ),
         ),

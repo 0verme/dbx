@@ -35,6 +35,7 @@ export const EDITOR_SETTINGS_DRAFT_KEYS = [
   "showWhitespace",
   "ddlOpenMode",
   "vimModeEnabled",
+  "doubleClickStringSelectionMode",
   "autoCloseBrackets",
   "sqlSemanticDiagnosticsMode",
   "confirmDangerousSqlExecution",
