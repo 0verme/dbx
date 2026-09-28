@@ -134,6 +134,7 @@ export interface DataGridConditionalUpdateSqlOptions {
 }
 
 export interface HiveTablePropertiesSqlOptions {
+  databaseType?: DatabaseType;
   schema?: string;
   tableName: string;
   propertyName: string;

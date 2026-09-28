@@ -34,6 +34,7 @@
   "teradata": "0.1.63",
   "tdengine": "0.1.50",
   "trino": "0.1.68",
+  "transwarp": "0.1.0",
   "vastbase": "0.1.51",
   "vertica": "0.1.63",
   "mongodb": "0.1.71",

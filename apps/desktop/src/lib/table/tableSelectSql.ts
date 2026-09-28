@@ -109,6 +109,7 @@ export function quoteTableIdentifier(databaseType: DatabaseType | undefined, nam
     databaseType === "clickhouse" ||
     databaseType === "hive" ||
     databaseType === "argo" ||
+    databaseType === "transwarp" ||
     databaseType === "kyuubi" ||
     databaseType === "impala" ||
     databaseType === "spark" ||
@@ -152,6 +153,7 @@ function requiresIdentifierQuote(databaseType: DatabaseType | undefined, name: s
     case "clickhouse":
     case "hive":
     case "argo":
+    case "transwarp":
     case "kyuubi":
     case "impala":
     case "spark":

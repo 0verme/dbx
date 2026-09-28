@@ -325,6 +325,7 @@ macro_rules! agent_connection_pool_database_type {
             | DatabaseType::Kyuubi
             | DatabaseType::Impala
             | DatabaseType::Argo
+            | DatabaseType::Transwarp
             | DatabaseType::Spark
             | DatabaseType::Db2
             | DatabaseType::Informix

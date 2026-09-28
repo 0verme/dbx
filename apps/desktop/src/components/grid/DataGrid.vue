@@ -3409,13 +3409,14 @@ const canDeleteExistingRows = computed(() => !!props.customSaveHandler || canDel
 watch(
   () => [props.databaseType, props.connectionId, props.database, props.tableMeta?.schema, props.tableMeta?.tableName],
   async () => {
-    if (props.databaseType !== "hive" || !props.connectionId || !props.database || !props.tableMeta) {
+    if ((props.databaseType !== "hive" && props.databaseType !== "transwarp") || !props.connectionId || !props.database || !props.tableMeta) {
       hiveTableTransactional.value = undefined;
       return;
     }
     try {
       const sql = await buildHiveTablePropertiesSql({
-        schema: props.tableMeta.schema,
+        databaseType: props.databaseType,
+        schema: props.tableMeta.schema || props.database,
         tableName: props.tableMeta.tableName,
         propertyName: "transactional",
       });

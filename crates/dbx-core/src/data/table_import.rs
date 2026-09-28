@@ -4891,7 +4891,7 @@ fn effective_import_batch_size(db_type: &DatabaseType, requested: usize) -> usiz
     let max_rows = match db_type {
         DatabaseType::Oracle | DatabaseType::OceanbaseOracle => MAX_ORACLE_IMPORT_BATCH_ROWS,
         DatabaseType::Iris => 1,
-        DatabaseType::CloudflareD1 => 100,
+        DatabaseType::CloudflareD1 | DatabaseType::Transwarp => 100,
         DatabaseType::SqlServer => 1000,
         DatabaseType::Sqlite => SQLITE_APPEND_COMMIT_ROWS,
         _ => usize::MAX,
@@ -5204,6 +5204,7 @@ fn text_data_type(db_type: &DatabaseType) -> &'static str {
         DatabaseType::Oracle | DatabaseType::OceanbaseOracle | DatabaseType::Dameng => "CLOB",
         DatabaseType::ClickHouse => "String",
         DatabaseType::Hive
+        | DatabaseType::Transwarp
         | DatabaseType::Kyuubi
         | DatabaseType::Trino
         | DatabaseType::PrestoSql
@@ -12083,6 +12084,42 @@ mod tests {
                 row_count: 1,
             },
         ]);
+    }
+
+    #[test]
+    fn transwarp_import_batches_preserve_values_across_multiple_statements() {
+        let mappings = vec!["id", "label", "payload"]
+            .into_iter()
+            .map(|name| TableImportColumnMapping {
+                source_column: name.to_string(),
+                target_column: name.to_string(),
+                target_data_type: None,
+            })
+            .collect::<Vec<_>>();
+        let data = ParsedImportFile {
+            columns: vec!["id".into(), "label".into(), "payload".into()],
+            rows: (0..205)
+                .map(|index| {
+                    vec![
+                        serde_json::json!(index),
+                        if index == 101 { serde_json::Value::Null } else { serde_json::json!("dbx\u{4e2d}\u{6587}'s") },
+                        serde_json::json!(r#"{"key":[1,2]}"#),
+                    ]
+                })
+                .collect(),
+            total_rows: 205,
+            effective_encoding: None,
+        };
+        let batches =
+            build_import_insert_batches(&data, &mappings, &[], "events", "analytics", &DatabaseType::Transwarp, 500)
+                .unwrap();
+        assert_eq!(batches.iter().map(|batch| batch.row_count).collect::<Vec<_>>(), vec![100, 100, 5]);
+        assert!(batches.iter().all(|batch| batch
+            .sql
+            .starts_with("INSERT INTO `analytics`.`events` (`id`, `label`, `payload`)\nSELECT ")));
+        assert!(batches[0].sql.contains("dbx\u{4e2d}\u{6587}''s"));
+        assert!(batches[1].sql.contains("SELECT 101, NULL"));
+        assert!(batches[2].sql.contains("SELECT 204,"));
     }
 
     #[test]

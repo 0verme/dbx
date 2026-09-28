@@ -341,6 +341,8 @@ pub struct DataGridConditionalUpdateSqlOptions {
 #[serde(rename_all = "camelCase")]
 pub struct HiveTablePropertiesSqlOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
     pub table_name: String,
     pub property_name: String,
@@ -1159,6 +1161,15 @@ pub fn build_data_grid_conditional_update_sql(options: DataGridConditionalUpdate
 }
 
 pub fn build_hive_table_properties_sql(options: HiveTablePropertiesSqlOptions) -> String {
+    if options.database_type == Some(DatabaseType::Transwarp)
+        && options.property_name.eq_ignore_ascii_case("transactional")
+    {
+        let database = options.schema.as_deref().unwrap_or("default").replace('\'', "''");
+        let table = options.table_name.replace('\'', "''");
+        return format!(
+            "SELECT transactional FROM system.tables_v WHERE database_name = '{database}' AND table_name = '{table}'"
+        );
+    }
     let table = qualified_table_name(Some(DatabaseType::Hive), options.schema.as_deref(), &options.table_name);
     let property = options.property_name.replace('\'', "''");
     format!("SHOW TBLPROPERTIES {table} ('{property}')")
@@ -1755,7 +1766,11 @@ fn build_data_grid_save_statements(
             .join(", ");
         statements.push(data_grid_statement(
             options.database_type,
-            format!("INSERT INTO {table} ({columns}) VALUES ({values})"),
+            if options.database_type == Some(DatabaseType::Transwarp) {
+                format!("INSERT INTO {table} ({columns}) SELECT {values}")
+            } else {
+                format!("INSERT INTO {table} ({columns}) VALUES ({values})")
+            },
         ));
     }
 
@@ -1875,7 +1890,11 @@ fn build_data_grid_rollback_statements(
         } else {
             statements.push(data_grid_statement(
                 options.database_type,
-                format!("INSERT INTO {table} ({columns}) VALUES ({values})"),
+                if options.database_type == Some(DatabaseType::Transwarp) {
+                    format!("INSERT INTO {table} ({columns}) SELECT {values}")
+                } else {
+                    format!("INSERT INTO {table} ({columns}) VALUES ({values})")
+                },
             ));
         }
     }
@@ -6435,6 +6454,7 @@ mod tests {
     fn builds_hive_table_properties_sql() {
         assert_eq!(
             build_hive_table_properties_sql(HiveTablePropertiesSqlOptions {
+                database_type: None,
                 schema: Some("default".to_string()),
                 table_name: "events".to_string(),
                 property_name: "transactional".to_string(),
@@ -6570,6 +6590,53 @@ mod tests {
             include_database_name: false,
         };
         assert_eq!(effective_columns(&postgres_options), vec![Some("events.id".to_string())]);
+    }
+
+    #[test]
+    fn transwarp_grid_insert_and_restore_use_select_syntax() {
+        let options = DataGridSaveStatementOptions {
+            database_type: Some(DatabaseType::Transwarp),
+            identifier_quote: None,
+            server_version: None,
+            table_meta: DataGridTableMeta {
+                catalog: None,
+                database: None,
+                schema: Some("default".to_string()),
+                table_name: "events".to_string(),
+                primary_keys: vec![],
+                columns: Some(vec![column("id", "int", true, None), column("name", "string", true, None)]),
+            },
+            columns: vec!["id".to_string(), "name".to_string()],
+            source_columns: None,
+            rows: vec![vec![json!(1), json!("before")]],
+            dirty_rows: vec![],
+            deleted_rows: vec![0],
+            new_rows: vec![vec![json!(2), json!("after")]],
+            include_database_name: false,
+        };
+        let result = prepare_data_grid_save(options);
+        assert!(result
+            .statements
+            .iter()
+            .any(|sql| sql.contains("INSERT INTO `default`.`events` (`id`, `name`) SELECT 2, 'after'")));
+        assert!(result
+            .rollback_statements
+            .iter()
+            .any(|sql| sql.contains("INSERT INTO `default`.`events` (`id`, `name`) SELECT 1, 'before'")));
+    }
+
+    #[test]
+    fn transwarp_transactional_property_uses_system_table() {
+        let sql = build_hive_table_properties_sql(HiveTablePropertiesSqlOptions {
+            database_type: Some(DatabaseType::Transwarp),
+            schema: Some("analytics".to_string()),
+            table_name: "events".to_string(),
+            property_name: "transactional".to_string(),
+        });
+        assert_eq!(
+            sql,
+            "SELECT transactional FROM system.tables_v WHERE database_name = 'analytics' AND table_name = 'events'"
+        );
     }
 
     #[test]

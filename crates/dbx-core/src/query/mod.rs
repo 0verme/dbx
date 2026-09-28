@@ -2899,7 +2899,7 @@ async fn execute_sql_statement_with_options_typed_inner(
         || crate::sql::has_executable_sql(sql),
         |db_type| crate::sql::has_executable_sql_for_database(sql, db_type),
     );
-    if !has_executable_sql {
+    if !has_executable_sql && options.result_session_id.is_none() {
         return Ok(empty_query_result(0));
     }
 

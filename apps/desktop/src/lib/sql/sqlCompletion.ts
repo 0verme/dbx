@@ -1439,7 +1439,7 @@ type SqlCompletionApplyDialect = "mysql" | "postgres" | "sqlserver" | "oracle" |
 // QueryEditor may use another dialect as a CodeMirror syntax fallback.
 // Completion apply text must still follow the connected database's identifier
 // folding and quoting rules.
-const MYSQL_LIKE_IDENTIFIER_DATABASES = new Set<DatabaseType>(["mysql", "clickhouse", "hive", "argo", "kyuubi", "impala", "spark", "databend", "tdengine", "access", "doris", "starrocks"]);
+const MYSQL_LIKE_IDENTIFIER_DATABASES = new Set<DatabaseType>(["mysql", "clickhouse", "hive", "argo", "transwarp", "kyuubi", "impala", "spark", "databend", "tdengine", "access", "doris", "starrocks"]);
 const POSTGRES_LIKE_IDENTIFIER_DATABASES = new Set<DatabaseType>(["postgres", "redshift", "gaussdb", "kingbase", "highgo", "uxdb", "vastbase", "kwdb", "opengauss"]);
 export const ORACLE_COMPAT_IDENTIFIER_DATABASES = new Set<DatabaseType>(["oracle", "oceanbase-oracle", "yashandb", "oscar", "xugu"]);
 const UPPER_FOLDING_IDENTIFIER_DATABASES = new Set<DatabaseType>(["dameng", "db2"]);
@@ -3256,7 +3256,7 @@ function lastTopLevelKeywordIndex(sql: string, keyword: string): number {
 // unquoted token as a table reference there is a false-positive risk. Everything else defaults
 // to Unicode support (MySQL/Postgres/SQL Server/SQLite/DuckDB and the many Chinese-vendor
 // engines this product supports legitimately use non-ASCII unquoted identifiers).
-const ASCII_ONLY_UNQUOTED_IDENTIFIER_DATABASES = new Set<DatabaseType>(["clickhouse", "snowflake", "bigquery", "hive", "argo", "spark", "trino", "prestosql", "impala", "db2", "teradata"]);
+const ASCII_ONLY_UNQUOTED_IDENTIFIER_DATABASES = new Set<DatabaseType>(["clickhouse", "snowflake", "bigquery", "hive", "argo", "transwarp", "spark", "trino", "prestosql", "impala", "db2", "teradata"]);
 
 // Dialects where a bare "--" needs trailing whitespace/EOL to start a comment, since MySQL
 // reserves unspaced "--" for double-negation (e.g. `SELECT 1--1`). Scoped to mysql itself plus

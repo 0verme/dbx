@@ -1782,6 +1782,7 @@ export interface TableStructureEditorDraft {
   originalMysqlAutoIncrementValue?: string;
   mysqlTableEngine?: string;
   originalMysqlTableEngine?: string;
+  physicalOptions?: import("@/lib/table/tablePhysicalOptions").TablePhysicalOptionsDraft;
   tableOwner?: string;
   originalTableOwner?: string;
   columns: import("@/lib/table/tableStructureEditorSql").EditableStructureColumn[];

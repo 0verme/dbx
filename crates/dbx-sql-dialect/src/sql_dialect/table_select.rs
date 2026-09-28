@@ -782,7 +782,13 @@ pub(super) fn build_select_columns(
     // natively and users can narrow the projection by editing the SQL.
     if !matches!(
         database_type,
-        Some(DatabaseType::Hive | DatabaseType::Kyuubi | DatabaseType::Impala | DatabaseType::Argo)
+        Some(
+            DatabaseType::Hive
+                | DatabaseType::Kyuubi
+                | DatabaseType::Impala
+                | DatabaseType::Argo
+                | DatabaseType::Transwarp
+        )
     ) {
         return "*".to_string();
     }
