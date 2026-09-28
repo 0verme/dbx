@@ -3119,6 +3119,7 @@ export default withEnglishFallback({
         getSampleData: "Örnek veri al",
         listCollections: "Koleksiyonları listele",
         browseCollection: "Koleksiyona gözat",
+        executeRedisCommand: "Redis komutunu çalıştır",
       },
     },
     proxy: "Proxy",

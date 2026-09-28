@@ -3418,6 +3418,7 @@ export default withEnglishFallback({
         getSampleData: "Ottieni dati di esempio",
         listCollections: "Elenca collezioni",
         browseCollection: "Sfoglia collezioni",
+        executeRedisCommand: "Esegui comando Redis",
       },
     },
     proxy: "Proxy",

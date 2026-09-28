@@ -3143,6 +3143,7 @@ export default withEnglishFallback({
         getSampleData: "Nümunə məlumatları al",
         listCollections: "Kolleksiyaları siyahıla",
         browseCollection: "Kolleksiyaya bax",
+        executeRedisCommand: "Redis əmrini icra et",
       },
     },
     proxy: "Proksi",

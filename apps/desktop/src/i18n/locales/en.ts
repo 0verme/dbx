@@ -3511,6 +3511,7 @@ export default {
         getSampleData: "Get sample data",
         listCollections: "List collections",
         browseCollection: "Browse collection",
+        executeRedisCommand: "Run Redis command",
       },
     },
     proxy: "Proxy",
