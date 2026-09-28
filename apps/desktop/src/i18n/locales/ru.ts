@@ -173,6 +173,7 @@ export default withEnglishFallback({
     sortByUpdatesFirst: "Сначала с обновлениями",
     allRepositories: "Все репозитории",
     marketplaceGuideTitle: "Плагины поддерживаются сообществом разработчиков",
+    showFewerTags: "Свернуть",
     marketplaceGuideDescription: "По вопросам о плагинах или для запроса функций создайте issue в собственном репозитории плагина (ссылка на исходный репозиторий есть на карточке плагина); основной репозиторий DBX принимает только вопросы о самом приложении.",
     loadingMarketplace: "Загрузка магазина плагинов",
     noMarketplacePlugins: "Нет плагинов для отображения",
