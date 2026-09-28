@@ -11617,6 +11617,21 @@ mod tests {
     }
 
     #[test]
+    fn starrocks_csv_json_array_import_uses_typed_json_expression() {
+        let plan = CompiledImportPlan {
+            mapped_source_indexes: vec![0],
+            target_columns: vec!["organization_path".to_string()],
+            column_types: vec![Some("array<json>".to_string())],
+        };
+        let rows = vec![vec![serde_json::json!(r#"[{"lvl1_org_code":"50001963","nested":{"enabled":true}}]"#)]];
+
+        assert_eq!(
+            import_value_rows_sql(&rows, &plan, &DatabaseType::StarRocks, false, None),
+            vec![r#"(CAST(PARSE_JSON('[{"lvl1_org_code":"50001963","nested":{"enabled":true}}]') AS ARRAY<JSON>))"#]
+        );
+    }
+
+    #[test]
     fn import_conflict_policy_keeps_default_and_skip_sql_unchanged() {
         let plan = CompiledImportPlan {
             mapped_source_indexes: vec![0, 1],

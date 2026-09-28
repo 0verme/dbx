@@ -2939,6 +2939,9 @@ pub fn escape_value_typed(val: &serde_json::Value, db_type: &DatabaseType, colum
             }
         }
         serde_json::Value::String(s) => {
+            if let Some(json_array_literal) = format_starrocks_json_array_sql_literal(s, db_type, column_type) {
+                return json_array_literal;
+            }
             if let Some(integer_literal) = normalize_integer_literal(s, db_type, column_type) {
                 return integer_literal;
             }
@@ -3006,6 +3009,30 @@ pub fn escape_value_typed(val: &serde_json::Value, db_type: &DatabaseType, colum
             format!("'{}'", s.replace('\\', "\\\\").replace('\'', "''"))
         }
     }
+}
+
+fn format_starrocks_json_array_sql_literal(
+    value: &str,
+    db_type: &DatabaseType,
+    column_type: Option<&str>,
+) -> Option<String> {
+    if *db_type != DatabaseType::StarRocks || !column_type.is_some_and(is_starrocks_json_array_type) {
+        return None;
+    }
+    let parsed = serde_json::from_str::<serde_json::Value>(value.trim()).ok()?;
+    if !parsed.is_array() {
+        return None;
+    }
+    let json = parsed.to_string().replace('\\', "\\\\").replace('\'', "''");
+    Some(format!("CAST(PARSE_JSON('{json}') AS ARRAY<JSON>)"))
+}
+
+fn is_starrocks_json_array_type(column_type: &str) -> bool {
+    column_type
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect::<String>()
+        .eq_ignore_ascii_case("array<json>")
 }
 
 fn is_mysql_bit_type(column_type: &str) -> bool {
