@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, watch, type Component } from "vue";
 import { uuid } from "@/lib/common/utils";
-import { deferUntilPanelResizeEnd } from "@/lib/app/panelResizeState";
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
+import { deferUntilPanelResizeEnd } from "@/lib/app/panelResizeState";
 import {
   ArrowDown,
   ArrowUp,
@@ -6022,7 +6022,6 @@ async function openExternalUrl(url: string) {
                 @update:model-value="(v) => changeConnection(v)"
               />
               <template v-if="boundConnection && showAiDatabaseSelector">
-                <Database class="h-3 w-3 shrink-0 text-foreground/40" />
                 <Popover
                   @update:open="
                     (open: boolean) => {
@@ -6031,7 +6030,8 @@ async function openExternalUrl(url: string) {
                   "
                 >
                   <PopoverTrigger as-child>
-                    <Button variant="ghost" :title="selectedDatabaseLabel" :class="['h-5 min-w-0 max-w-64 justify-start border-0 p-0 px-1 text-xs font-normal text-foreground/80 shadow-none', showAiSchemaSelector && 'flex-1']">
+                    <Button variant="ghost" :title="selectedDatabaseLabel" :aria-label="selectedDatabaseLabel" :class="['ai-database-selector-trigger h-5 min-w-0 max-w-64 justify-start gap-1 border-0 p-0 px-1 text-xs font-normal text-foreground/80 shadow-none', showAiSchemaSelector && 'flex-1']">
+                      <Database class="ai-database-selector-icon h-3 w-3 shrink-0 text-foreground/40" />
                       <span class="truncate">{{ selectedDatabaseLabel }}</span>
                     </Button>
                   </PopoverTrigger>
@@ -6687,12 +6687,9 @@ async function openExternalUrl(url: string) {
   font-size: var(--dbx-ai-content-font-size, 0.75rem);
 }
 
-.ai-prompt-context-row--compact .ai-prompt-context-spacer {
-  flex: 0 0 0;
-}
-
 .ai-prompt-context-row--compact .ai-template-selector-trigger,
-.ai-prompt-context-row--compact .ai-skills-selector-trigger {
+.ai-prompt-context-row--compact .ai-skills-selector-trigger,
+.ai-prompt-context-row--compact .ai-database-selector-trigger {
   flex: 0 0 1.5rem;
   width: 1.5rem;
   max-width: 1.5rem;
@@ -6704,7 +6701,8 @@ async function openExternalUrl(url: string) {
 .ai-prompt-context-row--compact .ai-template-selector-label,
 .ai-prompt-context-row--compact .ai-template-selector-chevron,
 .ai-prompt-context-row--compact .ai-skills-selector-label,
-.ai-prompt-context-row--compact .ai-skills-selector-count {
+.ai-prompt-context-row--compact .ai-skills-selector-count,
+.ai-prompt-context-row--compact .ai-database-selector-trigger > span {
   display: none;
 }
 

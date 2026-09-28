@@ -271,5 +271,8 @@ describe("AiAssistant mount", () => {
     const row = container.querySelector("[data-ai-composer-context-row]");
     expect(row?.textContent).toContain(i18n.global.t("editor.selectDatabase"));
     expect(row?.classList.contains("ai-prompt-context-row--schema")).toBe(true);
+    const databaseTrigger = container.querySelector<HTMLButtonElement>(".ai-database-selector-trigger");
+    expect(databaseTrigger?.getAttribute("aria-label")).toBeTruthy();
+    expect(databaseTrigger?.querySelector(".ai-database-selector-icon")).not.toBeNull();
   });
 });
