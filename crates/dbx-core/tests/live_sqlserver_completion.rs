@@ -1301,6 +1301,7 @@ async fn live_sqlserver_sql_file_import_executes_go_batches() {
         execution_id: format!("live-sqlserver-file-{suffix}"),
         connection_id: connection_id.to_string(),
         database: database.clone(),
+        schema: None,
         file_path: "fixture.sql".to_string(),
         continue_on_error: false,
         selected_tables: None,

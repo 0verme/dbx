@@ -1297,6 +1297,7 @@ INSERT INTO install_check (id) VALUES (1), (2);
         execution_id: format!("exec-{suffix}"),
         connection_id: config.id.clone(),
         database: String::new(),
+        schema: None,
         file_path: std::env::temp_dir()
             .join(format!("issue-2356-mysql-install-{suffix}.sql"))
             .to_string_lossy()
@@ -1386,6 +1387,7 @@ INSERT INTO children (parent_id) VALUES (LAST_INSERT_ID());
         execution_id: format!("exec-{suffix}"),
         connection_id: config.id.clone(),
         database: String::new(),
+        schema: None,
         file_path: std::env::temp_dir()
             .join(format!("issue-7738-mysql-order-{suffix}.sql"))
             .to_string_lossy()
@@ -1462,6 +1464,7 @@ async fn live_sql_file_import_preserves_raw_mysql_binary_literal_bytes() {
         execution_id: format!("exec-{suffix}"),
         connection_id: config.id.clone(),
         database: String::new(),
+        schema: None,
         file_path: std::env::temp_dir().join(format!("mysql-binary-dump-{suffix}.sql")).to_string_lossy().into_owned(),
         continue_on_error: false,
         selected_tables: None,

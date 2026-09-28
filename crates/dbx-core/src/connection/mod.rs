@@ -8654,6 +8654,21 @@ mod tests {
     }
 
     #[test]
+    fn connection_root_schema_databases_keep_the_configured_database() {
+        for database_type in [DatabaseType::Oracle, DatabaseType::Dameng, DatabaseType::OceanbaseOracle] {
+            let mut config = mysql_config(Some("tenant_service"));
+            config.db_type = database_type;
+
+            let scoped = database_connection_config(&config, Some("APP"));
+
+            assert_eq!(scoped.database.as_deref(), Some("tenant_service"));
+        }
+
+        let mysql = database_connection_config(&mysql_config(Some("tenant_service")), Some("analytics"));
+        assert_eq!(mysql.database.as_deref(), Some("analytics"));
+    }
+
+    #[test]
     fn oracle_reuses_connection_scoped_pool_for_schema_database_keys() {
         assert_eq!(
             super::base_pool_key_for(Some(DatabaseType::Oracle), "oracle-conn", Some("ORCLPDB1"), false),

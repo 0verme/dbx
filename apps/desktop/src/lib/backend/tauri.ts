@@ -5267,6 +5267,7 @@ export interface SqlFileRequest {
   executionId: string;
   connectionId: string;
   database: string;
+  schema?: string;
   filePath: string;
   continueOnError: boolean;
   txnSessionId?: string;

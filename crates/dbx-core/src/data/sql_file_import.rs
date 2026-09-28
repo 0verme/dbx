@@ -589,7 +589,7 @@ async fn set_relational_constraints_enabled(
         &request.connection_id,
         &request.database,
         sql,
-        None,
+        request.schema.as_deref(),
         Some(token.clone()),
         QueryExecutionOptions::default(),
     )
@@ -604,10 +604,13 @@ async fn sql_file_transaction_schema(state: &AppState, request: &SqlFileRequest)
     let sessions = state.transaction_sessions.read().await;
     let session =
         sessions.get(session_id).ok_or("SQL file transaction session not found; no statements were retried")?;
-    if session.connection_id != request.connection_id || session.database != request.database {
+    if session.connection_id != request.connection_id
+        || session.database != request.database
+        || request.schema.as_ref().is_some_and(|schema| session.schema.as_ref() != Some(schema))
+    {
         return Err("SQL file target does not match its manual transaction".to_string());
     }
-    Ok(session.schema.clone())
+    Ok(request.schema.clone().or_else(|| session.schema.clone()))
 }
 
 async fn with_sql_file_transaction<T>(
@@ -2592,7 +2595,7 @@ async fn execute_sql_file_statement(
         &request.connection_id,
         &request.database,
         sql,
-        None,
+        request.schema.as_deref(),
         Some(child_token),
         QueryExecutionOptions { execution_id: Some(execution_id), timeout_secs, ..Default::default() },
     )
@@ -2704,6 +2707,7 @@ mod tests {
             execution_id: "file-missing-session".to_string(),
             connection_id: "unconfigured".to_string(),
             database: String::new(),
+            schema: None,
             file_path: String::new(),
             continue_on_error: false,
             selected_tables: None,
@@ -3056,6 +3060,7 @@ mod tests {
                 execution_id: "file-progress".to_string(),
                 connection_id: "unconfigured".to_string(),
                 database: String::new(),
+                schema: None,
                 file_path: path.to_string_lossy().to_string(),
                 continue_on_error: false,
                 selected_tables: None,
@@ -3488,6 +3493,7 @@ mod tests {
             execution_id: "gauss-stop-on-error".to_string(),
             connection_id: "gauss-stream".to_string(),
             database: String::new(),
+            schema: None,
             file_path: path.to_string_lossy().to_string(),
             continue_on_error: true,
             selected_tables: None,

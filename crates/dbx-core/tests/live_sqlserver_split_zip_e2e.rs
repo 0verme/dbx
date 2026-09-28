@@ -210,6 +210,7 @@ async fn manual_e2e_sqlserver_default_split_zip_export_then_import_skip_relation
         execution_id: format!("e2e-import-{}", uuid::Uuid::new_v4()),
         connection_id: import_connection_id.to_string(),
         database: import_database.to_string(),
+        schema: None,
         file_path: extracted_paths[0].to_string_lossy().to_string(),
         continue_on_error: false,
         txn_session_id: None,
