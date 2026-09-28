@@ -116,6 +116,7 @@ const SETTINGS_TRANSFER_CATEGORY_KEYS: Record<SettingsTransferCategoryId, readon
     "tabLayout",
     "tabPlacement",
     "tabGroupMode",
+    "colorizeConnectionTabs",
     "tabSortMode",
     "sidebarActivation",
     "sidebarObjectDisplay",

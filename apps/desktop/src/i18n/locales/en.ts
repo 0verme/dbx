@@ -7968,6 +7968,8 @@ export default {
     tabLayoutScrollDescription: "Tabs scroll horizontally in one row when overflowing.",
     tabLayoutWrap: "Multi-row wrap",
     tabLayoutWrapDescription: "Tabs wrap to multiple rows to show all at once.",
+    colorizeConnectionTabs: "Color tabs by connection",
+    colorizeConnectionTabsDescription: "Use each connection’s configured color for editor tabs.",
     tabPlacement: "Tab bar position",
     tabPlacementTop: "Top",
     tabPlacementBottom: "Bottom",

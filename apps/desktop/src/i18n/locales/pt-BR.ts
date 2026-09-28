@@ -7248,6 +7248,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "As abas rolam horizontalmente quando excedem o espaço.",
     tabLayoutWrap: "Quebra em múltiplas linhas",
     tabLayoutWrapDescription: "As abas quebram em múltiplas linhas para exibir todas.",
+    colorizeConnectionTabs: "Colorir abas por conexão",
+    colorizeConnectionTabsDescription: "Usar a cor configurada de cada conexão nas abas do editor.",
     tabPlacement: "Posição da barra de abas",
     tabPlacementTop: "Superior",
     tabPlacementBottom: "Inferior",

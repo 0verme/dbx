@@ -7022,6 +7022,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "탭이 넘칠 때 한 행에서 가로로 스크롤됩니다.",
     tabLayoutWrap: "다중 행 줄바꿈",
     tabLayoutWrapDescription: "탭이 여러 행으로 줄바꿈되어 모두 한 번에 표시됩니다.",
+    colorizeConnectionTabs: "연결별로 탭 색상 표시",
+    colorizeConnectionTabsDescription: "각 연결에 설정된 색상을 편집기 탭에 사용합니다.",
     tabPlacement: "탭 표시줄 위치",
     tabPlacementTop: "위쪽",
     tabPlacementBottom: "아래쪽",

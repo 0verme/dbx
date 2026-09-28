@@ -7322,6 +7322,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "Las pestañas se desplazan horizontalmente al desbordarse.",
     tabLayoutWrap: "Ajuste multilínea",
     tabLayoutWrapDescription: "Las pestañas se ajustan en varias filas para mostrarlas todas.",
+    colorizeConnectionTabs: "Colorear pestañas por conexión",
+    colorizeConnectionTabsDescription: "Usar el color configurado de cada conexión para las pestañas del editor.",
     tabPlacement: "Posición de la barra de pestañas",
     tabPlacementTop: "Arriba",
     tabPlacementBottom: "Abajo",

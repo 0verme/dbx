@@ -8474,6 +8474,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "При переполнении вкладки прокручиваются горизонтально в одну строку.",
     tabLayoutWrap: "Перенос на несколько строк",
     tabLayoutWrapDescription: "Вкладки переносятся на несколько строк, показывая все сразу.",
+    colorizeConnectionTabs: "Раскрашивать вкладки по подключению",
+    colorizeConnectionTabsDescription: "Использовать настроенный цвет каждого подключения для вкладок редактора.",
     tabPlacement: "Расположение панели вкладок",
     tabPlacementTop: "Сверху",
     tabPlacementBottom: "Снизу",

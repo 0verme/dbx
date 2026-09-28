@@ -7246,6 +7246,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "Le schede scorrono orizzontalmente quando traboccano.",
     tabLayoutWrap: "Righe multiple",
     tabLayoutWrapDescription: "Le schede vanno a capo su più righe per mostrarle tutte.",
+    colorizeConnectionTabs: "Colora le schede in base alla connessione",
+    colorizeConnectionTabsDescription: "Usa il colore configurato di ogni connessione per le schede dell'editor.",
     tabPlacement: "Posizione barra schede",
     tabPlacementTop: "In alto",
     tabPlacementBottom: "In basso",

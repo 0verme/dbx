@@ -7934,6 +7934,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "标签页超出一行时水平滚动显示。",
     tabLayoutWrap: "多行平铺",
     tabLayoutWrapDescription: "标签页超出一行时自动换行，平铺显示所有标签。",
+    colorizeConnectionTabs: "按连接颜色区分标签页",
+    colorizeConnectionTabsDescription: "使用连接配置的颜色显示编辑器标签页。",
     tabPlacement: "标签栏位置",
     tabPlacementTop: "上方",
     tabPlacementBottom: "下方",

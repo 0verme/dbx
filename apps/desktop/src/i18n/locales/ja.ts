@@ -7277,6 +7277,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "タブが1行に収まらないとき水平スクロールします。",
     tabLayoutWrap: "複数行折り返し",
     tabLayoutWrapDescription: "タブが1行に収まらないとき折り返してすべて表示します。",
+    colorizeConnectionTabs: "接続ごとにタブを色分け",
+    colorizeConnectionTabsDescription: "各接続に設定された色をエディターのタブに使用します。",
     tabPlacement: "タブバーの位置",
     tabPlacementTop: "上",
     tabPlacementBottom: "下",

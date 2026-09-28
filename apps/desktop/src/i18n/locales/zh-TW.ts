@@ -6570,6 +6570,8 @@ export default withEnglishFallback({
     tabLayoutScrollDescription: "標籤頁超出一行時水平滾動顯示。",
     tabLayoutWrap: "多行平鋪",
     tabLayoutWrapDescription: "標籤頁超出一行時自動換行，平鋪顯示所有標籤。",
+    colorizeConnectionTabs: "依連線顏色區分分頁",
+    colorizeConnectionTabsDescription: "使用每個連線設定的顏色顯示編輯器分頁。",
     tabPlacement: "標籤欄位置",
     tabPlacementTop: "上方",
     tabPlacementBottom: "下方",
