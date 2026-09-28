@@ -290,6 +290,8 @@ pub struct DataGridColumnDistinctValuesSqlOptions {
     pub limit: Option<usize>,
     #[serde(default)]
     pub include_counts: bool,
+    #[serde(default)]
+    pub exclude_nulls: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1035,6 +1037,9 @@ pub fn build_data_grid_column_distinct_values_sql(options: DataGridColumnDistinc
     if !predicate.is_empty() {
         predicates.push(format!("({predicate})"));
     }
+    if options.exclude_nulls {
+        predicates.push(format!("{column} IS NOT NULL"));
+    }
     if let Some(search_predicate) = data_grid_column_distinct_values_search_predicate(&options) {
         predicates.push(search_predicate);
     }
@@ -1194,6 +1199,9 @@ fn build_neo4j_data_grid_column_distinct_values_sql(options: &DataGridColumnDist
     let predicate = crate::sql_dialect::normalize_where_input(options.where_input.as_deref());
     if !predicate.is_empty() {
         predicates.push(predicate);
+    }
+    if options.exclude_nulls {
+        predicates.push(format!("{column} IS NOT NULL"));
     }
     if let Some(search) = options.search_value.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
         predicates.push(format!(
@@ -5990,8 +5998,9 @@ mod tests {
                 search_value: Some("act".to_string()),
                 limit: None,
                 include_counts: true,
+                exclude_nulls: true,
             }),
-            "SELECT \"status\" AS dbx_value, COUNT(*) AS dbx_count FROM \"public\".\"users\" WHERE (deleted_at IS NULL) AND \"status\" LIKE '%act%' GROUP BY \"status\" ORDER BY dbx_count DESC, dbx_value LIMIT 1000"
+            "SELECT \"status\" AS dbx_value, COUNT(*) AS dbx_count FROM \"public\".\"users\" WHERE (deleted_at IS NULL) AND \"status\" IS NOT NULL AND \"status\" LIKE '%act%' GROUP BY \"status\" ORDER BY dbx_count DESC, dbx_value LIMIT 1000"
         );
         assert_eq!(
             build_data_grid_column_distinct_values_sql(DataGridColumnDistinctValuesSqlOptions {
@@ -6008,8 +6017,9 @@ mod tests {
                 search_value: None,
                 limit: Some(25),
                 include_counts: false,
+                exclude_nulls: true,
             }),
-            "SELECT TOP (25) [status] AS dbx_value FROM [users] GROUP BY [status] ORDER BY dbx_value"
+            "SELECT TOP (25) [status] AS dbx_value FROM [users] WHERE [status] IS NOT NULL GROUP BY [status] ORDER BY dbx_value"
         );
         assert_eq!(
             build_data_grid_column_distinct_values_sql(DataGridColumnDistinctValuesSqlOptions {
@@ -6026,6 +6036,7 @@ mod tests {
                 search_value: Some("42".to_string()),
                 limit: Some(25),
                 include_counts: true,
+                exclude_nulls: false,
             }),
             "SELECT TOP (25) [id] AS dbx_value, COUNT(*) AS dbx_count FROM [users] WHERE [id] = 42 GROUP BY [id] ORDER BY dbx_count DESC, dbx_value"
         );
@@ -6044,6 +6055,7 @@ mod tests {
                 search_value: None,
                 limit: Some(25),
                 include_counts: true,
+                exclude_nulls: false,
             }),
             "SELECT [status] AS dbx_value, COUNT(*) AS dbx_count FROM [users] GROUP BY [status] ORDER BY dbx_count DESC, dbx_value"
         );
@@ -6062,6 +6074,7 @@ mod tests {
                 search_value: None,
                 limit: Some(10),
                 include_counts: true,
+                exclude_nulls: false,
             }),
             "SELECT * FROM (SELECT \"KIND\" AS dbx_value, COUNT(*) AS dbx_count FROM \"APP\".\"EVENTS\" GROUP BY \"KIND\" ORDER BY dbx_count DESC, dbx_value) WHERE ROWNUM <= 10"
         );
@@ -6080,6 +6093,7 @@ mod tests {
                 search_value: None,
                 limit: Some(25),
                 include_counts: false,
+                exclude_nulls: false,
             }),
             "SELECT \"STATUS\" AS dbx_value FROM \"USERS\" WHERE (DELETED_AT IS NULL) GROUP BY \"STATUS\" ORDER BY dbx_value ROWS 25"
         );
@@ -6099,6 +6113,7 @@ mod tests {
                 search_value: None,
                 limit: Some(10),
                 include_counts: false,
+                exclude_nulls: false,
             }),
             "SELECT `status` AS dbx_value FROM `iceberg_catalog`.`sales`.`orders` GROUP BY `status` ORDER BY dbx_value LIMIT 10"
         );
@@ -6117,6 +6132,7 @@ mod tests {
                 search_value: None,
                 limit: Some(10),
                 include_counts: true,
+                exclude_nulls: false,
             }),
             "SELECT `status` AS dbx_value, COUNT(*) AS dbx_count FROM `hive_catalog`.`orders` GROUP BY `status` ORDER BY dbx_count DESC, dbx_value LIMIT 10"
         );
@@ -6136,8 +6152,28 @@ mod tests {
                 search_value: None,
                 limit: Some(10),
                 include_counts: false,
+                exclude_nulls: false,
             }),
             "SELECT `status` AS dbx_value FROM `orders` GROUP BY `status` ORDER BY dbx_value LIMIT 10"
+        );
+        assert_eq!(
+            build_data_grid_column_distinct_values_sql(DataGridColumnDistinctValuesSqlOptions {
+                database_type: Some(DatabaseType::Neo4j),
+                driver_profile: None,
+                identifier_quote: None,
+                catalog: None,
+                database: None,
+                schema: None,
+                table_name: "User".to_string(),
+                column_name: "status".to_string(),
+                column_info: Some(column("status", "string", true, None)),
+                where_input: Some("n.active = true".to_string()),
+                search_value: None,
+                limit: Some(10),
+                include_counts: true,
+                exclude_nulls: true,
+            }),
+            "MATCH (n:`User`) WHERE n.active = true AND n.`status` IS NOT NULL RETURN n.`status` AS dbx_value, count(*) AS dbx_count ORDER BY dbx_count DESC, dbx_value LIMIT 10"
         );
     }
 
