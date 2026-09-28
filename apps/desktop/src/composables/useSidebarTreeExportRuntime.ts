@@ -33,6 +33,7 @@ import {
 } from "@/components/sidebar/sidebarTreeDialogState";
 import type { CsvQuoteMode } from "@/lib/export/csvQuoteMode";
 import type { SqlInsertDialect } from "@/lib/export/sqlInsertMode";
+import { uuid } from "@/lib/common/utils";
 
 type StructureCopyFormat = "tsv" | "markdown";
 
@@ -355,6 +356,8 @@ export function useSidebarTreeExportRuntime(options: SidebarTreeExportRuntimeOpt
     try {
       await connectionStore.ensureConnected(connectionId);
       const queryColumns = config.db_type === "neo4j" ? (await api.getColumns(connectionId, database, target.metadataSchema, target.tableName, target.catalog)).map((column) => column.name) : undefined;
+      const useAgentCursor = config.db_type === "cassandra";
+      const clientSessionId = useAgentCursor ? `table-export:${uuid()}` : undefined;
       const result = await fetchTableDataForExport({
         databaseType: target.databaseType,
         identifierQuote: target.identifierQuote,
@@ -362,7 +365,17 @@ export function useSidebarTreeExportRuntime(options: SidebarTreeExportRuntimeOpt
         tableName: target.tableName,
         tableType: target.tableType,
         columns: queryColumns,
-        executePage: (sql) => api.executeQuery(connectionId, database, sql),
+        useAgentCursor,
+        executePage: (sql, cursorOptions) => (cursorOptions ? api.executeQuery(connectionId, database, sql, undefined, undefined, { ...cursorOptions, clientSessionId, catalog: target.catalog, timeoutSecs: config.query_timeout_secs }) : api.executeQuery(connectionId, database, sql)),
+        closeCursor: useAgentCursor
+          ? async (sessionId) => {
+              try {
+                if (sessionId) await api.closeQuerySession(connectionId, database, sessionId, clientSessionId, target.catalog);
+              } finally {
+                await api.closeClientConnectionSession(connectionId, database, clientSessionId!, target.catalog);
+              }
+            }
+          : undefined,
       });
 
       const outputPath = await resolveTableExportOutputPath(target, "json", outputDirectory);

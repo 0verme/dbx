@@ -2290,16 +2290,31 @@ function tableDdlObjectType(type: ObjectBrowserRow["type"]): ObjectSourceKind | 
 }
 
 async function exportDataLegacy(row: ObjectBrowserRow, format: "json") {
+  const { connection, database, catalog } = props;
+  const { id: connectionId, db_type: databaseType, query_timeout_secs: timeoutSecs } = connection;
+  const exportDatabaseType = effectiveDatabaseType.value;
   try {
     const schema = row.schema || selectedSchema.value;
-    const queryColumns = props.connection.db_type === "neo4j" ? (await api.getColumns(props.connection.id, props.database, schema || props.database, row.name, props.catalog)).map((column) => column.name) : undefined;
+    const queryColumns = databaseType === "neo4j" ? (await api.getColumns(connectionId, database, schema || database, row.name, catalog)).map((column) => column.name) : undefined;
+    const useAgentCursor = databaseType === "cassandra";
+    const clientSessionId = useAgentCursor ? `table-export:${generateDatabaseExportId()}` : undefined;
     const result = await fetchTableDataForExport({
-      databaseType: effectiveDatabaseType.value,
-      identifierQuote: connectionStore.connectionIdentifierQuote?.(props.connection.id),
+      databaseType: exportDatabaseType,
+      identifierQuote: connectionStore.connectionIdentifierQuote?.(connectionId),
       schema,
       tableName: row.name,
       columns: queryColumns,
-      executePage: (sql) => api.executeQuery(props.connection.id, props.database, sql),
+      useAgentCursor,
+      executePage: (sql, cursorOptions) => (cursorOptions ? api.executeQuery(connectionId, database, sql, undefined, undefined, { ...cursorOptions, clientSessionId, catalog, timeoutSecs }) : api.executeQuery(connectionId, database, sql)),
+      closeCursor: useAgentCursor
+        ? async (sessionId) => {
+            try {
+              if (sessionId) await api.closeQuerySession(connectionId, database, sessionId, clientSessionId, catalog);
+            } finally {
+              await api.closeClientConnectionSession(connectionId, database, clientSessionId!, catalog);
+            }
+          }
+        : undefined,
     });
 
     if (format === "json") {
