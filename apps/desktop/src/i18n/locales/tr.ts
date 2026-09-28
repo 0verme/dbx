@@ -7600,7 +7600,7 @@ export default withEnglishFallback({
     ddlOpenModeTab: "Yeni sekme",
     doubleClickStringSelectionMode: "Dize içinde çift tıklama",
     doubleClickStringSelectionModeDescription: "Bir dize değişmezi içinde çift tıklandığında tüm değerin mi yoksa yalnızca imlecin altındaki sözcüğün mü seçileceğini belirler",
-    doubleClickStringSelectionModeContent: "Tüm değeri seç (varsayılan)",
+    doubleClickStringSelectionModeContent: "Tüm değeri seç",
     doubleClickStringSelectionModeWord: "Yalnızca sözcüğü seç",
     vimMode: "Vim modu",
     vimModeDescription: "SQL düzenleyicisinde Vim biçemli kipli düzenleme kullan",
