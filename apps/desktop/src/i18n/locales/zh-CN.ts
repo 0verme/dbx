@@ -9182,7 +9182,7 @@ export default withEnglishFallback({
     runtimeActions: "操作",
     runtimeStop: "停止",
     runtimeRestart: "重启",
-    runtimeControlConnectionOwned: "关闭数据库连接后即可停止此运行时。",
+    runtimeControlConnectionOwned: "关闭相关连接后即可停止此运行时。",
     runtimeStopSuccess: "{label} 运行时已停止",
     runtimeStopFailed: "停止 {label} 失败: {error}",
     runtimeRestartSuccess: "{label} 运行时已重启",

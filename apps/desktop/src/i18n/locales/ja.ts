@@ -8518,7 +8518,7 @@ export default withEnglishFallback({
     runtimeActions: "操作",
     runtimeStop: "停止",
     runtimeRestart: "再起動",
-    runtimeControlConnectionOwned: "このランタイムを停止するにはデータベース接続を閉じてください。",
+    runtimeControlConnectionOwned: "このランタイムを停止するには、関連する接続を閉じてください。",
     runtimeStopSuccess: "{label} ランタイムを停止しました",
     runtimeStopFailed: "{label} の停止に失敗しました: {error}",
     runtimeRestartSuccess: "{label} ランタイムを再起動しました",

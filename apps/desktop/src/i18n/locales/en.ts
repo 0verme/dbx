@@ -9219,7 +9219,7 @@ export default {
     runtimeActions: "Actions",
     runtimeStop: "Stop",
     runtimeRestart: "Restart",
-    runtimeControlConnectionOwned: "Close the database connection to stop this runtime.",
+    runtimeControlConnectionOwned: "Close the associated connection to stop this runtime.",
     runtimeStopSuccess: "{label} runtime stopped",
     runtimeStopFailed: "Failed to stop {label}: {error}",
     runtimeRestartSuccess: "{label} runtime restarted",

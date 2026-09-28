@@ -8220,7 +8220,7 @@ export default withEnglishFallback({
     runtimeActions: "작업",
     runtimeStop: "중지",
     runtimeRestart: "다시 시작",
-    runtimeControlConnectionOwned: "이 런타임을 중지하려면 데이터베이스 연결을 닫으세요.",
+    runtimeControlConnectionOwned: "이 런타임을 중지하려면 관련 연결을 닫으세요.",
     runtimeStopSuccess: "{label} 런타임 중지됨",
     runtimeStopFailed: "{label} 중지 실패: {error}",
     runtimeRestartSuccess: "{label} 런타임 다시 시작됨",

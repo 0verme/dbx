@@ -8476,7 +8476,7 @@ export default withEnglishFallback({
     runtimeActions: "Azioni",
     runtimeStop: "Arresta",
     runtimeRestart: "Riavvia",
-    runtimeControlConnectionOwned: "Chiudi la connessione al database per arrestare questo runtime.",
+    runtimeControlConnectionOwned: "Chiudi la connessione associata per arrestare questo runtime.",
     runtimeStopSuccess: "Runtime {label} arrestato",
     runtimeStopFailed: "Arresto di {label} non riuscito: {error}",
     runtimeRestartSuccess: "Runtime {label} riavviato",

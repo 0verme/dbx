@@ -7779,7 +7779,7 @@ export default withEnglishFallback({
     runtimeActions: "操作",
     runtimeStop: "停止",
     runtimeRestart: "重新啟動",
-    runtimeControlConnectionOwned: "關閉資料庫連線後即可停止此執行環境。",
+    runtimeControlConnectionOwned: "關閉相關連線後即可停止此執行環境。",
     runtimeStopSuccess: "{label} 執行環境已停止",
     runtimeStopFailed: "停止 {label} 失敗： {error}",
     runtimeRestartSuccess: "{label} 執行環境已重新啟動",

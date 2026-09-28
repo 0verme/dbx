@@ -8476,7 +8476,7 @@ export default withEnglishFallback({
     runtimeActions: "Ações",
     runtimeStop: "Parar",
     runtimeRestart: "Reiniciar",
-    runtimeControlConnectionOwned: "Feche a conexão de banco de dados para parar este runtime.",
+    runtimeControlConnectionOwned: "Feche a conexão associada para parar este runtime.",
     runtimeStopSuccess: "Runtime {label} parado",
     runtimeStopFailed: "Falha ao parar {label}: {error}",
     runtimeRestartSuccess: "Runtime {label} reiniciado",

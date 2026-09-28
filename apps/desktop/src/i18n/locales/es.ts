@@ -8550,7 +8550,7 @@ export default withEnglishFallback({
     runtimeActions: "Acciones",
     runtimeStop: "Detener",
     runtimeRestart: "Reiniciar",
-    runtimeControlConnectionOwned: "Cierra la conexión de base de datos para detener este runtime.",
+    runtimeControlConnectionOwned: "Cierra la conexión asociada para detener este runtime.",
     runtimeStopSuccess: "Runtime de {label} detenido",
     runtimeStopFailed: "Error al detener {label}: {error}",
     runtimeRestartSuccess: "Runtime de {label} reiniciado",

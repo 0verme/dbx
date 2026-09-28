@@ -8504,7 +8504,7 @@ export default withEnglishFallback({
     runtimeActions: "Əməliyyatlar",
     runtimeStop: "Dayandır",
     runtimeRestart: "Yenidən başlat",
-    runtimeControlConnectionOwned: "Bu icra mühitini dayandırmaq üçün verilənlər bazası əlaqəsini bağlayın.",
+    runtimeControlConnectionOwned: "Bu icra mühitini dayandırmaq üçün əlaqəli bağlantını bağlayın.",
     runtimeStopSuccess: "{label} icra mühiti dayandırıldı",
     runtimeStopFailed: "{label} dayandırıla bilmədi: {error}",
     runtimeRestartSuccess: "{label} icra mühiti yenidən başladıldı",

@@ -9711,7 +9711,7 @@ export default withEnglishFallback({
     runtimeActions: "Действия",
     runtimeStop: "Остановить",
     runtimeRestart: "Перезапустить",
-    runtimeControlConnectionOwned: "Закройте подключение к базе данных, чтобы остановить эту среду выполнения.",
+    runtimeControlConnectionOwned: "Закройте связанное подключение, чтобы остановить эту среду выполнения.",
     runtimeStopSuccess: "Среда выполнения {label} остановлена",
     runtimeStopFailed: "Не удалось остановить {label}: {error}",
     runtimeRestartSuccess: "Среда выполнения {label} перезапущена",

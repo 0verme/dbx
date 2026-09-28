@@ -8374,7 +8374,7 @@ export default withEnglishFallback({
     runtimeActions: "İşlemler",
     runtimeStop: "Durdur",
     runtimeRestart: "Yeniden başlat",
-    runtimeControlConnectionOwned: "Bu çalışma zamanını durdurmak için veritabanı bağlantısını kapatın.",
+    runtimeControlConnectionOwned: "Bu çalışma zamanını durdurmak için ilgili bağlantıyı kapatın.",
     runtimeStopSuccess: "{label} çalışma zamanı durduruldu",
     runtimeStopFailed: "{label} durdurulamadı: {error}",
     runtimeRestartSuccess: "{label} çalışma zamanı yeniden başlatıldı",
