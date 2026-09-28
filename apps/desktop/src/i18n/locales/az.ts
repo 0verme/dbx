@@ -86,7 +86,7 @@ export default withEnglishFallback({
     dataAccessConsentTitle: "Məlumat girişi sorğusu",
     aiTools: {
       title: "Daxili süni intellekt alətləri",
-      description: "DBX süni intellekt köməkçisinin (Agent rejimi) açıq olan plagin bağlantılarında bu plaginin alətlərini çağırmasına icazə verir. Yalnız oxuma kimi elan edilməyən alətlər hər çağırışdan əvvəl təsdiqinizi istəyir və alət nəticəsi süni intellekt modelinizə göndərilir.",
+      description: "Standart olaraq söndürüldü: DBX süni intellekt köməkçisi (Agent rejimi) yalnız bu açar yanık olduqda açıq plagin bağlantılarında bu plaginin alətlərini çağıra bilər. Salt oxunan olmayan alətlər hər çağrıda təsdiq istəyir.",
       preview: "Alətləri göstər",
       previewHint: "Plagin işləmirsə, onu başladır.",
       previewFailed: "Alətlərin siyahısı alınmadı: {message}",
@@ -8278,6 +8278,9 @@ export default withEnglishFallback({
     mcpToolRemoveConnection: "Əlaqəni çıxar",
     mcpToolOpenTable: "Cədvəli DBX-də aç",
     mcpToolExecuteAndShow: "İcra et və DBX-də göstər",
+    mcpToolPluginList: "Plugin catalog",
+    mcpToolPluginTools: "Plugin tool listing",
+    mcpToolPluginCall: "Call plugin tools",
     supportInfoTitle: "Dəstək məlumatları",
     supportInfoDescription: "Problem bildirərkən və ya kömək istəyərkən bu mühit təfərrüatlarını kopyalayın.",
     supportInfoCopy: "Dəstək məlumatlarını kopyala",

@@ -88,7 +88,7 @@ export default withEnglishFallback({
     dataAccessConsentTitle: "Veri Erişim İsteği",
     aiTools: {
       title: "Yerleşik yapay zekâ araçları",
-      description: "DBX yapay zekâ asistanının (Agent modu) açık olan eklenti bağlantılarında bu eklentinin araçlarını çağırmasına izin verir. Salt okunur olarak bildirilmeyen araçlar her çağrıdan önce onayınızı ister ve araç çıktısı yapay zekâ modelinize gönderilir.",
+      description: "Varsayılan olarak kapalıdır: DBX yapay zekâ asistanı (Agent modu), yalnızca bu düğme açıkken açık eklenti bağlantılarında bu eklentinin araçlarını çağırabilir. Salt okunur olmayan araçlar her çağrıda onay ister.",
       preview: "Araçları göster",
       previewHint: "Eklenti çalışmıyorsa başlatılır.",
       previewFailed: "Araçlar listelenemedi: {message}",
@@ -8176,6 +8176,9 @@ export default withEnglishFallback({
     mcpToolRemoveConnection: "Bağlantıyı kaldır",
     mcpToolOpenTable: "Tabloyu DBX'te aç",
     mcpToolExecuteAndShow: "Çalıştır ve DBX'te göster",
+    mcpToolPluginList: "Plugin catalog",
+    mcpToolPluginTools: "Plugin tool listing",
+    mcpToolPluginCall: "Call plugin tools",
     supportInfoTitle: "Destek bilgileri",
     supportInfoDescription: "Sorun bildirirken ya da yardım isterken bu ortam ayrıntılarını kopyalayın.",
     supportInfoCopy: "Destek bilgilerini kopyala",

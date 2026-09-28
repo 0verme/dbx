@@ -60,8 +60,14 @@ const MAX_RETRIES_KEY: &str = "max_retries";
 const HISTORY_RETENTION_LIMIT_KEY: &str = "history_retention_limit";
 const MCP_HISTORY_RETENTION_LIMIT_KEY: &str = "mcp_history_retention_limit";
 const SQL_FILE_UPLOAD_MAX_MB_KEY: &str = "sql_file_upload_max_mb";
-/// Plugin ids whose MCP tools the built-in AI agent may call.
+/// Plugin ids whose MCP tools the built-in AI agent may call. The opt-in
+/// list is the single source: a plugin contributes AI tools only after the
+/// user enabled it in the Plugin Center.
 const AI_PLUGIN_TOOL_PLUGINS_KEY: &str = "ai_plugin_tool_plugins";
+/// Plugin ids the user explicitly turned off in the Plugin Center; they stay
+/// excluded even if they reappear on the opt-in list, so a revocation
+/// survives restarts and plugin updates.
+const AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY: &str = "ai_plugin_tool_disabled_plugins";
 /// `{ pluginId: [connectionId, ...] }` — connections a plugin may read through
 /// the `host.data:read` Host API. Written only after an explicit user consent.
 const PLUGIN_DATA_GRANTS_KEY: &str = "plugin_data_grants";
@@ -4347,9 +4353,19 @@ impl Storage {
         Ok(normalized_string_list(settings.get(AI_PLUGIN_TOOL_PLUGINS_KEY)))
     }
 
+    /// Plugin ids the user explicitly turned off for the built-in AI agent.
+    /// Only records explicit revocations; combined with the enabled list and
+    /// the manifest `mcp` declarations it yields the effective AI tool set.
+    pub async fn load_ai_plugin_tool_disabled_plugin_ids(&self) -> Result<Vec<String>, String> {
+        let settings = self.load_app_settings_json().await?;
+        Ok(normalized_string_list(settings.get(AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY)))
+    }
+
     /// Enables or disables built-in AI access to one plugin's tools and returns
     /// the updated list. The read-modify-write runs inside one connection
-    /// closure so concurrent settings saves cannot drop the change.
+    /// closure so concurrent settings saves cannot drop the change. Disabling
+    /// also records the opt-out so a detection-enabled plugin (the default)
+    /// stays off across restarts and plugin updates.
     pub async fn set_ai_plugin_tool_plugin_enabled(
         &self,
         plugin_id: &str,
@@ -4361,8 +4377,19 @@ impl Storage {
             let mut plugin_ids = normalized_string_list(settings.get(AI_PLUGIN_TOOL_PLUGINS_KEY));
             plugin_ids.retain(|candidate| candidate != &plugin_id);
             if enabled {
-                plugin_ids.push(plugin_id);
+                plugin_ids.push(plugin_id.clone());
                 plugin_ids.sort();
+                // Re-enable after an explicit opt-out of a manifest-declared plugin.
+                let mut disabled = normalized_string_list(settings.get(AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY));
+                disabled.retain(|candidate| candidate != &plugin_id);
+                settings.insert(AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY.to_string(), serde_json::json!(disabled));
+            } else {
+                let mut disabled = normalized_string_list(settings.get(AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY));
+                if !disabled.contains(&plugin_id) {
+                    disabled.push(plugin_id.clone());
+                    disabled.sort();
+                }
+                settings.insert(AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY.to_string(), serde_json::json!(disabled));
             }
             settings.insert(AI_PLUGIN_TOOL_PLUGINS_KEY.to_string(), serde_json::json!(plugin_ids));
             write_app_settings_map(conn, &settings)?;
@@ -4427,6 +4454,9 @@ impl Storage {
             let mut plugin_ids = normalized_string_list(settings.get(AI_PLUGIN_TOOL_PLUGINS_KEY));
             plugin_ids.retain(|candidate| candidate != &plugin_id);
             settings.insert(AI_PLUGIN_TOOL_PLUGINS_KEY.to_string(), serde_json::json!(plugin_ids));
+            let mut disabled = normalized_string_list(settings.get(AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY));
+            disabled.retain(|candidate| candidate != &plugin_id);
+            settings.insert(AI_PLUGIN_TOOL_DISABLED_PLUGINS_KEY.to_string(), serde_json::json!(disabled));
             if let Some(serde_json::Value::Object(grants)) = settings.get_mut(PLUGIN_DATA_GRANTS_KEY) {
                 grants.remove(&plugin_id);
             }
@@ -12019,6 +12049,9 @@ mod tests {
 
         assert_eq!(storage.set_plugin_data_grant("io.dbx.chart", "conn-b", false).await.unwrap(), ["conn-a"]);
         assert_eq!(storage.set_ai_plugin_tool_plugin_enabled("io.dbx.kafka", false).await.unwrap(), ["io.dbx.ssh"]);
+        // Disabling records an explicit opt-out (manifest-declared plugins are
+        // enabled by default, so the opt-out must persist separately).
+        assert_eq!(storage.load_ai_plugin_tool_disabled_plugin_ids().await.unwrap(), ["io.dbx.kafka"]);
         assert!(storage.set_plugin_data_grant("io.dbx.chart", " ", true).await.is_err());
 
         storage.set_ai_plugin_tool_plugin_enabled("io.dbx.chart", true).await.unwrap();
@@ -12026,6 +12059,10 @@ mod tests {
         assert_eq!(storage.load_ai_plugin_tool_plugin_ids().await.unwrap(), ["io.dbx.ssh"]);
         assert!(storage.load_plugin_data_grants("io.dbx.chart").await.unwrap().is_empty());
         assert_eq!(storage.load_plugin_data_grants("io.dbx.other").await.unwrap(), ["conn-a"]);
+        // Re-enabling clears the recorded opt-out again.
+        storage.set_ai_plugin_tool_plugin_enabled("io.dbx.kafka", true).await.unwrap();
+        assert_eq!(storage.load_ai_plugin_tool_plugin_ids().await.unwrap(), ["io.dbx.kafka", "io.dbx.ssh"]);
+        assert!(storage.load_ai_plugin_tool_disabled_plugin_ids().await.unwrap().is_empty());
     }
 
     #[tokio::test]

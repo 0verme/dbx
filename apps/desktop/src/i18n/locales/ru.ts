@@ -122,7 +122,7 @@ export default withEnglishFallback({
     dataAccessConsentTitle: "Запрос доступа к данным",
     aiTools: {
       title: "Встроенные инструменты ИИ",
-      description: "Разрешает ИИ-ассистенту DBX (режим Agent) вызывать инструменты этого плагина на открытых подключениях плагина. Инструменты, не объявленные как только для чтения, запрашивают ваше подтверждение перед каждым вызовом, а их вывод отправляется вашей модели ИИ.",
+      description: "По умолчанию выключено: ИИ-ассистент DBX (режим Agent) может вызывать инструменты этого плагина в открытых подключениях, только пока переключатель включён. Инструменты без признака «только чтение» по-прежнему требуют подтверждения каждого вызова.",
       preview: "Показать инструменты",
       previewHint: "Запускает плагин, если он не работает.",
       previewFailed: "Не удалось получить список инструментов: {message}",
@@ -9499,6 +9499,9 @@ export default withEnglishFallback({
     mcpToolRemoveConnection: "Удалить подключение",
     mcpToolOpenTable: "Открыть таблицу в DBX",
     mcpToolExecuteAndShow: "Выполнить и показать в DBX",
+    mcpToolPluginList: "Plugin catalog",
+    mcpToolPluginTools: "Plugin tool listing",
+    mcpToolPluginCall: "Call plugin tools",
     supportInfoTitle: "Информация для поддержки",
     supportInfoDescription: "Скопируйте эти сведения о среде при создании обращений или запросе помощи.",
     supportInfoCopy: "Скопировать информацию для поддержки",

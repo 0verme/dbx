@@ -175,7 +175,7 @@ export default withEnglishFallback({
     dataAccessConsentTitle: "Solicitação de acesso a dados",
     aiTools: {
       title: "Ferramentas de IA integradas",
-      description: "Permite que o assistente de IA do DBX (modo Agent) use as ferramentas deste plugin nas conexões do plugin que você tem abertas. Ferramentas não declaradas como somente leitura pedem sua aprovação antes de cada chamada, e a saída delas é enviada ao seu modelo de IA.",
+      description: "Desativado por padrão: o assistente de IA do DBX (modo Agent) só pode usar as ferramentas deste plugin nas conexões abertas enquanto o interruptor estiver ligado. Ferramentas não somente leitura continuarão pedindo aprovação a cada chamada.",
       preview: "Ver ferramentas",
       previewHint: "Inicia o plugin se ele não estiver em execução.",
       previewFailed: "Não foi possível listar as ferramentas: {message}",
@@ -8227,6 +8227,9 @@ export default withEnglishFallback({
     mcpToolRemoveConnection: "Remover conexão",
     mcpToolOpenTable: "Abrir tabela no DBX",
     mcpToolExecuteAndShow: "Executar e mostrar no DBX",
+    mcpToolPluginList: "Plugin catalog",
+    mcpToolPluginTools: "Plugin tool listing",
+    mcpToolPluginCall: "Call plugin tools",
     supportInfoTitle: "Informações de suporte",
     supportInfoDescription: "Copie estes detalhes do ambiente ao abrir issues ou pedir ajuda.",
     supportInfoCopy: "Copiar informações",

@@ -97,7 +97,7 @@ export default withEnglishFallback({
     dataAccessConsentTitle: "数据访问请求",
     aiTools: {
       title: "内置 AI 工具",
-      description: "允许 DBX AI 助手（Agent 模式）在你已打开的该插件连接上调用插件工具。未声明为只读的工具每次调用前都会请求你确认，工具输出会发送给你配置的 AI 模型。",
+      description: "默认关闭：仅在此开关开启期间，DBX AI 助手（Agent 模式）才能在你已打开的该插件连接上调用其工具。未声明为只读的工具每次调用前仍会请求你确认，工具输出会发送给你配置的 AI 模型。",
       preview: "查看工具",
       previewHint: "插件未运行时会先启动它。",
       previewFailed: "无法获取工具列表：{message}",
@@ -8979,6 +8979,9 @@ export default withEnglishFallback({
     mcpToolRemoveConnection: "删除连接",
     mcpToolOpenTable: "在 DBX 中打开表",
     mcpToolExecuteAndShow: "在 DBX 中执行并展示",
+    mcpToolPluginList: "插件目录",
+    mcpToolPluginTools: "插件工具清单",
+    mcpToolPluginCall: "调用插件工具",
     supportInfoTitle: "支持信息",
     supportInfoDescription: "提交 issue 或寻求帮助时，可复制这些环境信息。",
     supportInfoCopy: "复制支持信息",

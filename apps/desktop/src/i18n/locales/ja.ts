@@ -175,7 +175,7 @@ export default withEnglishFallback({
     dataAccessConsentTitle: "データアクセスの要求",
     aiTools: {
       title: "組み込み AI ツール",
-      description: "DBX AI アシスタント（Agent モード）が、開いているこのプラグインの接続でプラグインのツールを呼び出せるようにします。読み取り専用と宣言されていないツールは呼び出しのたびに承認を求め、ツールの出力は設定した AI モデルに送信されます。",
+      description: "デフォルトはオフです：このスイッチが有効な間のみ、DBX AIアシスタント（Agentモード）が開いているこのプラグインの接続でツールを呼び出せます。読み取り専用以外のツールは毎回承認を求めます。",
       preview: "ツールを表示",
       previewHint: "プラグインが実行されていない場合は起動します。",
       previewFailed: "ツール一覧を取得できませんでした: {message}",
@@ -8222,6 +8222,9 @@ export default withEnglishFallback({
     mcpToolRemoveConnection: "接続を削除",
     mcpToolOpenTable: "DBX でテーブルを開く",
     mcpToolExecuteAndShow: "DBX で実行して表示",
+    mcpToolPluginList: "Plugin catalog",
+    mcpToolPluginTools: "Plugin tool listing",
+    mcpToolPluginCall: "Call plugin tools",
     updateDownloadSource: "アップデートのダウンロード元",
     updateDownloadSourceDescription: "アプリ内アップデートのインストーラーのダウンロード元を選択します。公式ソース推奨。中国本土ではCNBの方が高速な場合があります。",
     updateDownloadSourceOfficial: "公式ソース（推奨）",

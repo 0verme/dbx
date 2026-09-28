@@ -174,7 +174,7 @@ export default withEnglishFallback({
     dataAccessConsentTitle: "데이터 액세스 요청",
     aiTools: {
       title: "내장 AI 도구",
-      description: "DBX AI 어시스턴트(Agent 모드)가 열려 있는 이 플러그인의 연결에서 플러그인 도구를 호출하도록 허용합니다. 읽기 전용으로 선언되지 않은 도구는 호출할 때마다 승인을 요청하며, 도구 출력은 설정한 AI 모델로 전송됩니다.",
+      description: "기본값은 꺼짐입니다: 이 스위치가 켜져 있는 동안에만 DBX AI 어시스턴트(Agent 모드)가 열려 있는 이 플러그인의 연결에서 도구를 호출할 수 있습니다. 읽기 전용이 아닌 도구는 호출할 때마다 승인을 요청합니다.",
       preview: "도구 보기",
       previewHint: "플러그인이 실행 중이 아니면 시작합니다.",
       previewFailed: "도구 목록을 가져올 수 없습니다: {message}",
@@ -8009,6 +8009,9 @@ export default withEnglishFallback({
     mcpToolRemoveConnection: "연결 삭제",
     mcpToolOpenTable: "DBX에서 테이블 열기",
     mcpToolExecuteAndShow: "DBX에서 실행 및 표시",
+    mcpToolPluginList: "Plugin catalog",
+    mcpToolPluginTools: "Plugin tool listing",
+    mcpToolPluginCall: "Call plugin tools",
     supportInfoTitle: "지원 정보",
     supportInfoDescription: "이슈를 등록하거나 도움을 요청할 때 이 환경 세부 정보를 복사하세요.",
     supportInfoCopy: "지원 정보 복사",

@@ -172,7 +172,7 @@ export default {
     dataAccessConsentTitle: "Data Access Request",
     aiTools: {
       title: "Built-in AI tools",
-      description: "Let the DBX AI assistant (Agent mode) call this plugin's tools on the plugin connections you have open. Tools that are not declared read-only ask for your approval before every call, and tool output is sent to your AI model.",
+      description: "Off by default: the DBX AI assistant (Agent mode) can call this plugin's tools on its open connections only while this switch is on. Tools that are not declared read-only still ask for your approval before every call.",
       preview: "Show tools",
       previewHint: "Starts the plugin if it is not running.",
       previewFailed: "Could not list tools: {message}",
@@ -9012,6 +9012,9 @@ export default {
     mcpToolRemoveConnection: "Remove connection",
     mcpToolOpenTable: "Open table in DBX",
     mcpToolExecuteAndShow: "Execute and show in DBX",
+    mcpToolPluginList: "Plugin catalog",
+    mcpToolPluginTools: "Plugin tool listing",
+    mcpToolPluginCall: "Call plugin tools",
     supportInfoTitle: "Support information",
     supportInfoDescription: "Copy these environment details when filing issues or asking for help.",
     supportInfoCopy: "Copy support info",
