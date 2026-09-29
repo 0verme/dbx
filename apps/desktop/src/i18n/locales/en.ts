@@ -8717,6 +8717,7 @@ export default {
     shortcutEditTableStructure: "Edit table structure",
     shortcutCopyCurrentRow: "Copy current data row",
     shortcutDeleteCurrentRow: "Delete current data row",
+    shortcutFocusWhere: "Focus WHERE condition",
     shortcutGoToColumn: "Go to column",
     shortcutGoToFirstPage: "First page",
     shortcutGoToPreviousPage: "Previous page",
