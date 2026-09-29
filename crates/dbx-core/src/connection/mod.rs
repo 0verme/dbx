@@ -2284,7 +2284,7 @@ impl AppState {
 
         let shutdown = async {
             let routing = self.pool_routing_control();
-            tokio::join!(
+            let (_, _, _, _, _, _, plugin_shutdown) = tokio::join!(
                 self.task_supervisor.shutdown(deadline),
                 routing.close_removed(removed_pools),
                 self.tunnels.stop_all_tunnels(),
@@ -2293,6 +2293,9 @@ impl AppState {
                 self.agent_manager.stop_daemons(),
                 self.plugin_host.stop_all(),
             );
+            if let Err(error) = plugin_shutdown {
+                log::warn!("Failed to stop plugin runtimes during shutdown: {error}");
+            }
         };
         if tokio::time::timeout(deadline, shutdown).await.is_err() {
             log::warn!("Timed out shutting down DBX runtime resources after {}ms", deadline.as_millis());
@@ -6566,7 +6569,7 @@ async fn close_pool_kind(pool: PoolKind) -> Result<(), String> {
             client.disconnect().await?;
         }
         PoolKind::ExternalDriver { session, .. } => {
-            session.shutdown().await;
+            session.shutdown().await?;
         }
         PoolKind::PluginConnection(handle) => {
             if let Err(error) = handle.disconnect().await {
