@@ -3370,6 +3370,29 @@ export const useQueryStore = defineStore("query", () => {
     return registerOpenTab(tab);
   }
 
+  function openXuguUserAdmin(connectionId: string) {
+    const existing = tabs.value.find((tab) => tab.mode === "xugu-users" && tab.connectionId === connectionId);
+    if (existing) {
+      switchTab(existing.id);
+      return existing.id;
+    }
+
+    const conn = useConnectionStore().getConfig(connectionId);
+    const id = uuid();
+    const tab: QueryTab = {
+      id,
+      title: t("xuguUserPermissions.title"),
+      connectionId,
+      database: conn?.database || "",
+      sql: "",
+      isExecuting: false,
+      isCancelling: false,
+      isExplaining: false,
+      mode: "xugu-users",
+    };
+    return registerOpenTab(tab);
+  }
+
   function openProcessList(connectionId: string) {
     const existing = tabs.value.find((tab) => tab.mode === "processlist" && tab.connectionId === connectionId);
     if (existing) {
@@ -9435,6 +9458,7 @@ export const useQueryStore = defineStore("query", () => {
     openMongoGridFs,
     openMongoBucket,
     openUserAdmin,
+    openXuguUserAdmin,
     openProcessList,
     openSqlServerActivityTrace,
     openMysqlDashboard,
