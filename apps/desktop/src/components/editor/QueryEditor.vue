@@ -69,6 +69,7 @@ import { looksLikeDmlStatement } from "@/lib/sql/dmlChangePreview";
 
 import { canFormatSqlForDatabaseType, formatSqlForEditing, compressSqlText } from "@/lib/sql/sqlFormatter";
 import { detectAndFormatStructured } from "@/lib/sql/autoFormat";
+import { restoreSqlFromSourcePaste } from "@/lib/sql/sqlSourcePaste";
 import { enabledSqlParameterSyntaxes, resolveSqlVariableSyntaxToggles } from "@/lib/sql/sqlVariableSyntax";
 
 import { createQueryEditorExecutionViewportOwnership, isQueryEditorPositionVisible } from "@/lib/editor/queryEditorExecutionViewport";
@@ -281,6 +282,7 @@ const {
   copySelectedSqlAsRichTextFromContextMenu,
   cutSelectedSqlFromContextMenu,
   pasteClipboardSqlFromContextMenu,
+  pasteClipboardSqlRestoringSource,
   toggleCommentFromContextMenu,
   toggleBlockCommentFromContextMenu,
   selectAllSqlFromContextMenu,
@@ -1038,6 +1040,34 @@ function resyncCaretAfterPaste(view: EditorViewType) {
   });
 }
 
+/**
+ * 粘贴时尝试把「源码里的字符串拼接 SQL」（Java/JS/Python 等）还原为普通 SQL。
+ * 命中后自行插入并阻止默认粘贴；未命中返回 false，交给原有粘贴流程处理。
+ */
+function tryRestoreSqlFromSourcePaste(event: ClipboardEvent, currentView: EditorViewType): boolean {
+  if (props.readOnly || !settingsStore.editorSettings.restoreSqlFromSourcePasteEnabled) return false;
+  if (currentView.state.selection.ranges.length !== 1) return false;
+  const eventText = event.clipboardData?.getData("text/plain") ?? "";
+  if (!eventText) return false;
+  // Tauri 下超长文本会被 WebView 截断、之后异步补写后半段，这里不参与还原以免破坏片段边界
+  if (shouldRecoverLargeTauriPaste(eventText, isTauriRuntime())) return false;
+
+  const restored = restoreSqlFromSourcePaste(eventText);
+  if (!restored.changed) return false;
+
+  event.preventDefault();
+  const selection = currentView.state.selection.main;
+  const insertedText = normalizeQueryEditorPasteText(restored.sql);
+  currentView.dispatch({
+    changes: { from: selection.from, to: selection.to, insert: insertedText },
+    selection: { anchor: selection.from + insertedText.length },
+    scrollIntoView: true,
+    userEvent: "input.paste",
+  });
+  toast(t("editor.sqlSourcePasteRestored"), 2000);
+  return true;
+}
+
 function recoverLargeTauriPaste(event: ClipboardEvent, currentView: EditorViewType): boolean {
   const eventText = event.clipboardData?.getData("text/plain") ?? "";
   if (props.readOnly || currentView.state.selection.ranges.length !== 1 || !shouldRecoverLargeTauriPaste(eventText, isTauriRuntime())) return false;
@@ -1166,6 +1196,7 @@ const contextMenuActions: QueryEditorContextMenuActions = {
   copySelectedSqlAsRichTextFromContextMenu,
   cutSelectedSqlFromContextMenu,
   pasteClipboardSqlFromContextMenu,
+  pasteClipboardSqlRestoringSource,
   convertSelectedSqlCase,
   convertSelectedNamingStyle,
   openDelimitedListDialog,
@@ -2055,6 +2086,7 @@ const codeMirrorLifecycle = useQueryEditorCodeMirror({
         ),
         EditorView.domEventHandlers({
           paste(event, currentView) {
+            if (tryRestoreSqlFromSourcePaste(event, currentView)) return true;
             return recoverLargeTauriPaste(event, currentView);
           },
           dragover(event) {

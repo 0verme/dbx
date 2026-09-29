@@ -1640,6 +1640,8 @@ export default withEnglishFallback({
     exPasteTooManyValues: "Слишком много значений. Максимальное поддерживаемое количество — {limit}.",
     exPasteClipboardReadFailed: "Не удалось прочитать буфер обмена: {message}",
     exPastePasted: "Вставлено значений условия IN: {count}",
+    sqlSourcePasteRestored: "SQL восстановлен из исходного кода (отмените, чтобы вернуть исходный текст)",
+    sqlSourcePasteNotDetected: "Конкатенация SQL не распознана; вставлен исходный текст",
     completion: {
       nullValue: "Значение NULL",
       isNull: "Проверить на NULL",
@@ -1749,6 +1751,7 @@ export default withEnglishFallback({
       compressSelectionSql: "Сжать выделенный SQL",
       cutSelection: "Вырезать выделенное",
       pasteFromClipboard: "Вставить",
+      pasteRestoringSourceSql: "Вставить и восстановить SQL из кода",
       pasteClipboardReadFailed: "Не удалось прочитать буфер обмена: {message}",
       sendToAi: "Отправить в AI",
       uppercaseSelection: "Преобразовать в верхний регистр",
@@ -8952,6 +8955,9 @@ export default withEnglishFallback({
     vimMode: "Режим Vim",
     vimModeDescription: "Использовать модальное редактирование в стиле Vim в SQL-редакторе",
     autoCloseBrackets: "Автозакрытие скобок",
+    restoreSqlFromSourcePaste: "Восстанавливать SQL, вставленный из кода",
+    restoreSqlFromSourcePasteDescription:
+      "При вставке SQL, собранного из строковых литералов в Java, JavaScript, Python и подобных исходниках (кавычки, знаки плюс, экранированные переводы строк), он восстанавливается в обычный SQL. Переписываются только явные конкатенации, остальное вставляется как есть.",
     autoCloseBracketsDescription: "Автоматически вставлять закрывающие скобки и кавычки при вводе открывающих",
     doubleClickStringSelectionMode: "Двойной щелчок внутри строки",
     doubleClickStringSelectionModeDescription: "Выберите, что выделять двойным щелчком внутри строкового литерала: всё значение целиком или только слово под курсором",

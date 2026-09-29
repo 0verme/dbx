@@ -1453,6 +1453,8 @@ export default withEnglishFallback({
     exPasteTooManyValues: "Çok fazla değer. Desteklenen en fazla sayı {limit}.",
     exPasteClipboardReadFailed: "Pano okunamadı: {message}",
     exPastePasted: "{count} IN koşulu değeri yapıştırıldı",
+    sqlSourcePasteRestored: "SQL kaynak koddan geri yüklendi (özgün metin için geri alın)",
+    sqlSourcePasteNotDetected: "Birleştirilmiş SQL algılanamadı; özgün metin yapıştırıldı",
     completion: {
       nullValue: "NULL değer",
       isNull: "NULL mu diye denetle",
@@ -1562,6 +1564,7 @@ export default withEnglishFallback({
       compressSelectionSql: "Seçili SQL'i sıkıştır",
       cutSelection: "Seçimi kes",
       pasteFromClipboard: "Yapıştır",
+      pasteRestoringSourceSql: "Yapıştır ve kaynak SQL'i geri yükle",
       pasteClipboardReadFailed: "Pano okunamadı: {message}",
       sendToAi: "Yapay Zekâya Gönder",
       uppercaseSelection: "Büyük harfe dönüştür",
@@ -7621,6 +7624,9 @@ export default withEnglishFallback({
     vimMode: "Vim modu",
     vimModeDescription: "SQL düzenleyicisinde Vim biçemli kipli düzenleme kullan",
     autoCloseBrackets: "Parantezleri otomatik kapat",
+    restoreSqlFromSourcePaste: "Kaynak koddan yapıştırılan SQL'i geri yükle",
+    restoreSqlFromSourcePasteDescription:
+      "Java, JavaScript, Python ve benzeri kaynaklardan kopyalanan dizge birleştirmeli SQL (tırnaklar, artı işaretleri ve kaçış satır sonları) yapıştırılırken normal SQL'e geri yüklenir. Yalnızca net birleştirmeler dönüştürülür, diğer içerik olduğu gibi yapıştırılır.",
     autoCloseBracketsDescription: "Açılış karakteri yazıldığında kapanış parantezlerini ve tırnaklarını otomatik ekle",
     sqlCompletionSection: "SQL tamamlama",
     insertSpaceAfterCompletion: "Tamamlamadan sonra boşluk ekle",

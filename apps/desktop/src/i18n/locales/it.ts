@@ -1656,6 +1656,8 @@ export default withEnglishFallback({
     exPasteTooManyValues: "Troppi valori. Massimo {limit}.",
     exPasteClipboardReadFailed: "Impossibile leggere gli appunti: {message}",
     exPastePasted: "Incollati {count} valori per la condizione IN",
+    sqlSourcePasteRestored: "SQL ripristinato dal codice sorgente (annulla per riavere il testo originale)",
+    sqlSourcePasteNotDetected: "Nessun SQL concatenato rilevato; incollato il testo originale",
     completion: {
       nullValue: "Valore NULL",
       isNull: "Verifica se NULL",
@@ -1772,6 +1774,7 @@ export default withEnglishFallback({
       deleteEmptyLines: "Elimina righe vuote",
       cutSelection: "Taglia selezione",
       pasteFromClipboard: "Incolla",
+      pasteRestoringSourceSql: "Incolla e ripristina SQL sorgente",
       pasteClipboardReadFailed: "Impossibile leggere gli appunti: {message}",
       convertNamingStyle: "Cambia stile di denominazione",
     },
@@ -7699,6 +7702,9 @@ export default withEnglishFallback({
     vimMode: "Modalita Vim",
     vimModeDescription: "Usa la modifica modale in stile Vim nell'editor SQL",
     autoCloseBrackets: "Chiusura automatica parentesi",
+    restoreSqlFromSourcePaste: "Ripristina l'SQL incollato dal codice sorgente",
+    restoreSqlFromSourcePasteDescription:
+      "Quando incolli SQL costruito con letterali di stringa in Java, JavaScript, Python e simili (virgolette, segni più e a capo di escape), viene ripristinato come SQL normale. Solo le concatenazioni evidenti vengono riscritte; il resto viene incollato così com'è.",
     autoCloseBracketsDescription: "Inserisci automaticamente parentesi e virgolette di chiusura quando digiti quelle di apertura",
     sqlCompletionSection: "Completamento SQL",
     selectFirstCompletionOnOpen: "Seleziona automaticamente il primo suggerimento",
