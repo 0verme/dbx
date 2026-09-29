@@ -11,6 +11,8 @@
 // (delivery is same-tick), never a pending undelivered one.
 let lastHandledFormatRequestId = 0;
 let lastHandledCompressRequestId = 0;
+let vimMappingsApplied = false;
+let vimClipboardConfigured = false;
 </script>
 
 <script setup lang="ts">
@@ -59,7 +61,7 @@ import { parkEditorNativeSelection, type EditorNativeSelectionPark } from "@/lib
 import CodeSnapshotDialog from "@/components/codeSnapshot/CodeSnapshotDialog.vue";
 import QueryEditorContextMenu, { type QueryEditorContextMenuState, type QueryEditorContextMenuActions } from "./QueryEditorContextMenu.vue";
 
-import { clipboardLineEndings, readTextFromClipboard } from "@/lib/common/clipboard";
+import { clipboardLineEndings, copyToClipboard, readTextFromClipboard } from "@/lib/common/clipboard";
 
 import { resolveExecutableSql, type SqlExecutionOverride } from "@/lib/sql/sqlExecutionTarget";
 import { supportsExecutionTargetPicker, type SqlTextRange } from "@/lib/sql/sqlStatementRanges";
@@ -107,6 +109,8 @@ import { resolveSqlShortcutTableToken } from "@/lib/sql/sqlShortcutTableTarget";
 import { normalizeShortcutSettings, shortcutToCodeMirrorKey } from "@/lib/editor/shortcutRegistry";
 import { trimmedSelectionLayer } from "@/lib/editor/codemirrorTrimmedSelectionLayer";
 import { editorClipboardLineEndingsExtension } from "@/lib/editor/editorClipboardLineEndings";
+import { applyVimConfig, isVimMappingCommand, loadVimConfig } from "@/lib/editor/vimConfig";
+import { configureVimSystemClipboard } from "@/lib/editor/vimSystemClipboard";
 
 import { selectionMatchOccurrences } from "@/lib/editor/codemirrorSelectionMatches";
 
@@ -1485,9 +1489,26 @@ function vimModeExtension(enabled = settingsStore.editorSettings.vimModeEnabled)
 function configureDbxVimCommands(vimApi: typeof import("@replit/codemirror-vim").Vim) {
   if (codeMirrorRuntime.dbxVimCommandsConfigured) return;
   codeMirrorRuntime.dbxVimCommandsConfigured = true;
+  if (!vimClipboardConfigured) {
+    configureVimSystemClipboard(vimApi, { readText: readTextFromClipboard, writeText: copyToClipboard });
+    vimClipboardConfigured = true;
+  }
   vimApi.defineEx("write", "w", (cm) => {
     cm.cm6?.contentDOM.dispatchEvent(new CustomEvent(DBX_VIM_SAVE_EVENT, { bubbles: true }));
   });
+}
+
+let vimConfigApplied = false;
+
+function applyVimConfigToCurrentEditor(commands: readonly string[]) {
+  const vimApi = codeMirrorRuntime.codeMirrorVimApi;
+  if (vimConfigApplied || !view.value || !codeMirrorRuntime.codeMirrorGetVimCm || !vimApi) return;
+  const cm = codeMirrorRuntime.codeMirrorGetVimCm(view.value);
+  if (!cm) return;
+  const commandsForEditor = commands.filter((command) => !vimMappingsApplied || !isVimMappingCommand(command));
+  applyVimConfig(commandsForEditor, (command) => vimApi.handleEx(cm as Parameters<typeof vimApi.handleEx>[0], command));
+  vimMappingsApplied = true;
+  vimConfigApplied = true;
 }
 
 async function ensureCodeMirrorVim() {
@@ -1880,6 +1901,7 @@ const codeMirrorLifecycle = useQueryEditorCodeMirror({
     if (initialSettings.vimModeEnabled) {
       await ensureCodeMirrorVim();
     }
+    const vimCommands = initialSettings.vimModeEnabled ? await loadVimConfig() : [];
     const { currentStatementFrameExtension, activeLineHighlighter } = sqlExtensions.createViewDecorations();
     function updateLargeDocumentMode(currentView: EditorViewType) {
       largeDocumentMode.value = shouldUseQueryEditorLargeDocumentModeForSize(currentView.state.doc.length, currentView.state.doc.lines);
@@ -2152,6 +2174,7 @@ const codeMirrorLifecycle = useQueryEditorCodeMirror({
       parent: editorElement,
       onReady() {
         if (!view.value) return;
+        if (initialSettings.vimModeEnabled) applyVimConfigToCurrentEditor(vimCommands);
         syncQueryEditorInsertContext(view.value);
         batchSelection.attach(view.value, tooltipParent);
         postCompositionKeyGuardCleanup = postCompositionKeyGuard.attach(view.value.contentDOM);
@@ -2468,7 +2491,7 @@ async function applyEditorAppearance() {
   syncEditorFontCssVars(liveFontSize.value, ss.fontFamily);
   syncEditorDiagnosticCssVars();
   const themeColors = getCurrentCustomThemeColors();
-  const [themeExt] = await Promise.all([loadEditorTheme(ss.theme, editorThemeAppearance(), themeColors, themePalette.value), ss.vimModeEnabled ? ensureCodeMirrorVim() : Promise.resolve(false)]);
+  const [themeExt, , vimCommands] = await Promise.all([loadEditorTheme(ss.theme, editorThemeAppearance(), themeColors, themePalette.value), ss.vimModeEnabled ? ensureCodeMirrorVim() : Promise.resolve(false), ss.vimModeEnabled ? loadVimConfig() : Promise.resolve([])]);
   if (
     !view.value ||
     !codeMirrorRuntime.codeMirrorTheme ||
@@ -2494,6 +2517,8 @@ async function applyEditorAppearance() {
       codeMirrorRuntime.runKeymapComp.reconfigure(runKeymapExtension(codeMirrorRuntime.editorViewModule.keymap)),
     ],
   });
+  if (ss.vimModeEnabled) applyVimConfigToCurrentEditor(vimCommands);
+  else vimConfigApplied = false;
 }
 
 watch(
