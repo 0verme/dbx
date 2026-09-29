@@ -8402,6 +8402,8 @@ export default withEnglishFallback({
     supportInfoDatabaseTypes: "データベースの種類",
     supportInfoLocalDriverVersions: "ローカルドライバーのバージョン",
     supportInfoAiProviders: "AIプロバイダー",
+    sidebarSearchOpenedDatabasesOnly: "開いているデータベースのみを検索",
+    sidebarSearchOpenedDatabasesOnlyDescription: "サイドバー検索は、現在の接続で開いているデータベースのみを読み込みます（1つも開いていない場合はすべてを検索します）。オフにすると、その接続のすべてのデータベースを検索します。",
   },
   driverStore: {
     jreDirRemoveFailed: "古い JRE ディレクトリを削除できませんでした: {path}（元のエラー: {error}）",

@@ -8359,6 +8359,8 @@ export default withEnglishFallback({
     supportInfoDatabaseTypes: "Tipi di database",
     supportInfoLocalDriverVersions: "Versioni dei driver locali",
     supportInfoAiProviders: "Provider AI",
+    sidebarSearchOpenedDatabasesOnly: "Cerca solo nei database aperti",
+    sidebarSearchOpenedDatabasesOnlyDescription: "La ricerca nella barra laterale carica solo i database aperti nella connessione corrente (se nessuno è aperto, cerca in tutti). Se disattivata, cerca in tutti i database della connessione.",
   },
   driverStore: {
     jreDirRemoveFailed: "Impossibile rimuovere la vecchia directory JRE: {path} (errore originale: {error})",

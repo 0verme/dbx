@@ -8234,6 +8234,8 @@ export default {
     sidebarTablePageSizeDescription: "Maximum number of tables/objects loaded per page in the sidebar tree. Increase if you have many tables and want fewer pages.",
     sidebarTableSearchEnabled: "Enable table search inside databases",
     sidebarTableSearchEnabledDescription: "Show a local table search box under expanded databases, schemas, or table groups so each scope can filter tables independently.",
+    sidebarSearchOpenedDatabasesOnly: "Search only opened databases",
+    sidebarSearchOpenedDatabasesOnlyDescription: "The sidebar search loads only databases you have opened in the active connection (all of them when none is opened). Turn off to search every database of the connection.",
     sidebarObjectInfoMode: "Sidebar supplementary info",
     sidebarObjectInfoModeDescription:
       "Choose comments, object sizes, or no supplementary text after names. Comments and sizes are mutually exclusive. Database totals currently support PostgreSQL; table sizes support MySQL, PostgreSQL, GaussDB, KingbaseES, GBase 8a, SQL Server, Oracle, Dameng, and ClickHouse.",

@@ -8200,6 +8200,8 @@ export default withEnglishFallback({
     sidebarTablePageSizeDescription: "侧边栏树每页最多加载的表/对象数量。表多时可以调大减少翻页次数。",
     sidebarTableSearchEnabled: "启用库下表搜索框",
     sidebarTableSearchEnabledDescription: "在已展开的数据库、schema 或表分组下显示局部表搜索框，用于为不同库分别过滤表。",
+    sidebarSearchOpenedDatabasesOnly: "仅搜索已打开的数据库",
+    sidebarSearchOpenedDatabasesOnlyDescription: "侧边栏搜索只加载当前连接中已打开的数据库（若一个都没打开则搜索全部）。关闭后会搜索该连接的全部数据库。",
     sidebarObjectInfoMode: "侧边栏附加信息",
     sidebarObjectInfoModeDescription: "选择在名称后显示注释、对象大小或不显示。注释与大小互斥；数据库总大小目前支持 PostgreSQL，表大小支持 MySQL、PostgreSQL、GaussDB、KingbaseES、GBase 8a、SQL Server、Oracle、达梦和 ClickHouse。",
     sidebarObjectInfoModeCommentInline: "注释（紧跟名称）",

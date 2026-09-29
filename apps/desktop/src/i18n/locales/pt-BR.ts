@@ -8361,6 +8361,8 @@ export default withEnglishFallback({
     supportInfoDatabaseTypes: "Tipos de banco de dados",
     supportInfoLocalDriverVersions: "Versões de drivers locais",
     supportInfoAiProviders: "Provedores de IA",
+    sidebarSearchOpenedDatabasesOnly: "Pesquisar apenas bancos de dados abertos",
+    sidebarSearchOpenedDatabasesOnlyDescription: "A pesquisa da barra lateral carrega apenas os bancos de dados abertos na conexão atual (se nenhum estiver aberto, pesquisa todos). Quando desativada, pesquisará todos os bancos de dados da conexão.",
   },
   driverStore: {
     jreDirRemoveFailed: "Não foi possível remover o diretório JRE antigo: {path} (erro original: {error})",
