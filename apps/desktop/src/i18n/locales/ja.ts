@@ -3351,6 +3351,8 @@ export default withEnglishFallback({
     attachmentImageTotalLimit: "添付画像の合計サイズは 12 MB 以下にしてください。",
     attachmentTextLimit: "一度に添付できるテキストファイルは 8 個までです。",
     attachmentTextTotalLimit: "添付テキストは合計 32,000 文字以下にしてください。",
+    selectionContextLimit: "一度に添付できる選択範囲は 8 件までです。",
+    selectionContextTotalLimit: "添付する選択範囲は合計 32,000 文字を超えられません。",
     attachmentFileTooLarge: "ドロップするファイルは 5 MB 以下にしてください。",
     attachmentTruncatedStatus: "切り詰め済み",
     attachmentEncoding: "テキストエンコーディング",
@@ -3360,6 +3362,9 @@ export default withEnglishFallback({
     attachmentPreview: "添付ファイルをプレビュー",
     attachmentUnavailableAfterReload: "再読み込み後は内容を利用できないため、再送信されません",
     attachmentUnsupportedDocument: "このファイル形式はまだ対応していません。画像またはテキスト形式のファイルを添付してください。",
+    selectionChipLabel: "エディターの選択範囲",
+    selectionChipDetail: "{name} · {count} 文字",
+    externalTargetUnavailable: "元の接続を特定できません（削除された可能性があります）。この会話の接続を選択してから、もう一度送信してください。",
     tableMentionEmpty: "一致するテーブルまたは SQL ファイルがありません",
     tableMentionPlaceholderHint: "{'@'}を入力して利用可能なオブジェクトやファイルをコンテキストに追加",
     tableMentionTypes: {

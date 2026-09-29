@@ -3037,6 +3037,8 @@ export default withEnglishFallback({
     attachmentImageTotalLimit: "Əlavə edilmiş şəkillərin ümumi ölçüsü 12 MB-dan çox ola bilməz.",
     attachmentTextLimit: "Eyni anda ən çox 8 mətn faylı əlavə edə bilərsiniz.",
     attachmentTextTotalLimit: "Əlavə edilmiş mətn ümumilikdə 32,000 simvoldan çox ola bilməz.",
+    selectionContextLimit: "Bir dəfəyə ən çox 8 seçim əlavə edə bilərsiniz.",
+    selectionContextTotalLimit: "Əlavə edilən seçimlər ümumilikdə 32 000 simvoldan çox ola bilməz.",
     attachmentFileTooLarge: "Buraxılan fayllar 5 MB və ya daha kiçik olmalıdır.",
     attachmentTruncatedStatus: "Kəsilib",
     attachmentEncoding: "Mətn kodlaşdırması",
@@ -3046,6 +3048,9 @@ export default withEnglishFallback({
     attachmentPreview: "Qoşmaya önbaxış",
     attachmentUnavailableAfterReload: "Yenidən yükləmədən sonra məzmun əlçatan deyil; təkrar göndərilməyəcək",
     attachmentUnsupportedDocument: "Bu fayl növü hələ dəstəklənmir. Əvəzində şəkillər və ya mətn əsaslı fayllar əlavə edin.",
+    selectionChipLabel: "Redaktor seçimi",
+    selectionChipDetail: "{name} · {count} simvol",
+    externalTargetUnavailable: "Mənbə bağlantısı əlçatan deyil (silinmiş ola bilər). Bu söhbət üçün bağlantı seçib yenidən göndərin.",
     tableMentionEmpty: "Uyğun cədvəl və ya SQL faylı yoxdur",
     tableMentionPlaceholderHint: "Mövcud obyektləri və ya faylları kontekstə əlavə etmək üçün {'@'} yazın",
     tableMentionTypes: {

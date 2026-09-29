@@ -3209,6 +3209,8 @@ export default withEnglishFallback({
     attachmentImageTotalLimit: "附加圖片合計不可超過 12 MB。",
     attachmentTextLimit: "一次最多可附加 8 個文字檔案。",
     attachmentTextTotalLimit: "附加文字合計不可超過 32,000 個字元。",
+    selectionContextLimit: "一次最多可附加 8 段選取內容。",
+    selectionContextTotalLimit: "附加的選取內容合計不能超過 32,000 個字元。",
     attachmentFileTooLarge: "拖入的檔案不可超過 5 MB。",
     attachmentTruncatedStatus: "已截斷",
     attachmentEncoding: "文字編碼",
@@ -3218,6 +3220,9 @@ export default withEnglishFallback({
     attachmentPreview: "預覽附件",
     attachmentUnavailableAfterReload: "重新載入後內容無法使用，不會再次傳送",
     attachmentUnsupportedDocument: "暫不支援此檔案類型。請附加圖片或文字類檔案。",
+    selectionChipLabel: "編輯器選取範圍",
+    selectionChipDetail: "{name} · {count} 字元",
+    externalTargetUnavailable: "無法確定來源連線（可能已被刪除）。請先為此對話選擇連線，再重新傳送。",
     tableMentionEmpty: "沒有相符的資料表或 SQL 檔案",
     tableMentionPlaceholderHint: "輸入 {'@'} 可新增可用物件或檔案作為脈絡",
     tableMentionTypes: {

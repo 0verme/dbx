@@ -3210,6 +3210,8 @@ export default withEnglishFallback({
     attachmentImageTotalLimit: "Le immagini allegate non possono superare complessivamente 12 MB.",
     attachmentTextLimit: "Puoi allegare fino a 8 file di testo alla volta.",
     attachmentTextTotalLimit: "Il testo allegato non può superare complessivamente 32.000 caratteri.",
+    selectionContextLimit: "Puoi allegare fino a 8 selezioni per volta.",
+    selectionContextTotalLimit: "Le selezioni allegate non possono superare i 32.000 caratteri in totale.",
     attachmentFileTooLarge: "I file trascinati devono avere dimensioni massime di 5 MB.",
     attachmentTruncatedStatus: "Troncato",
     attachmentEncoding: "Codifica del testo",
@@ -3219,6 +3221,9 @@ export default withEnglishFallback({
     attachmentPreview: "Anteprima allegato",
     attachmentUnavailableAfterReload: "Il contenuto non è disponibile dopo il ricaricamento e non verrà inviato di nuovo",
     attachmentUnsupportedDocument: "Questo tipo di file non è ancora supportato. Allega immagini o file di testo.",
+    selectionChipLabel: "Selezione dell'editor",
+    selectionChipDetail: "{name} · {count} caratteri",
+    externalTargetUnavailable: "La connessione di origine non è disponibile (potrebbe essere stata eliminata). Scegli una connessione per questa conversazione e invia di nuovo.",
     tableMentionEmpty: "Nessuna tabella o file SQL corrispondente",
     tableMentionPlaceholderHint: "Digita {'@'} per aggiungere oggetti o file disponibili al contesto",
     tableMentionTypes: {

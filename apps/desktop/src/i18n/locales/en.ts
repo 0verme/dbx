@@ -3405,6 +3405,8 @@ export default {
     attachmentImageTotalLimit: "Attached images cannot exceed 12 MB in total.",
     attachmentTextLimit: "You can attach up to 8 text files at once.",
     attachmentTextTotalLimit: "Attached text cannot exceed 32,000 characters in total.",
+    selectionContextLimit: "You can attach up to 8 selections at once.",
+    selectionContextTotalLimit: "Attached selections cannot exceed 32,000 characters in total.",
     attachmentFileTooLarge: "Dropped files must be 5 MB or smaller.",
     attachmentTruncatedStatus: "Truncated",
     attachmentEncoding: "Text encoding",
@@ -3414,6 +3416,9 @@ export default {
     attachmentPreview: "Preview attachment",
     attachmentUnavailableAfterReload: "Content unavailable after reload; it will not be sent again",
     attachmentUnsupportedDocument: "This file type is not supported yet. Attach images or text-based files instead.",
+    selectionChipLabel: "Editor selection",
+    selectionChipDetail: "{name} · {count} chars",
+    externalTargetUnavailable: "The source connection is unavailable (it may have been deleted). Pick a connection for this conversation, then send again.",
     tableMentionEmpty: "No matching tables or SQL files",
     tableMentionPlaceholderHint: "Type {'@'} to add available objects or files as context",
     tableMentionTypes: {

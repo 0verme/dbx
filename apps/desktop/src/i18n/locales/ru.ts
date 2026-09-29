@@ -3260,6 +3260,8 @@ export default withEnglishFallback({
     attachmentImageTotalLimit: "Общий размер прикреплённых изображений не должен превышать 12 МБ.",
     attachmentTextLimit: "Можно прикрепить до 8 текстовых файлов одновременно.",
     attachmentTextTotalLimit: "Общий размер прикреплённого текста не должен превышать 32 000 символов.",
+    selectionContextLimit: "За один раз можно прикрепить не более 8 фрагментов.",
+    selectionContextTotalLimit: "Прикреплённые фрагменты не могут превышать 32 000 символов суммарно.",
     attachmentFileTooLarge: "Перетащенные файлы должны быть не больше 5 МБ.",
     attachmentTruncatedStatus: "Обрезано",
     attachmentEncoding: "Кодировка текста",
@@ -3269,6 +3271,9 @@ export default withEnglishFallback({
     attachmentPreview: "Предпросмотр вложения",
     attachmentUnavailableAfterReload: "Содержимое недоступно после перезагрузки; повторно оно не будет отправлено",
     attachmentUnsupportedDocument: "Этот тип файлов пока не поддерживается. Прикрепите изображения или текстовые файлы.",
+    selectionChipLabel: "Выделение в редакторе",
+    selectionChipDetail: "{name} · {count} символов",
+    externalTargetUnavailable: "Исходное подключение недоступно (возможно, оно удалено). Выберите подключение для этого диалога и отправьте снова.",
     tableMentionEmpty: "Подходящих таблиц или SQL-файлов нет",
     tableMentionPlaceholderHint: "Введите {'@'}, чтобы добавить доступные объекты или файлы в контекст",
     tableMentionTypes: {

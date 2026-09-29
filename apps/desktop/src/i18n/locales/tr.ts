@@ -3013,6 +3013,8 @@ export default withEnglishFallback({
     attachmentImageTotalLimit: "Eklenen görseller toplamda 12 MB'ı aşamaz.",
     attachmentTextLimit: "Aynı anda en fazla 8 metin dosyası ekleyebilirsiniz.",
     attachmentTextTotalLimit: "Eklenen metin toplamda 32.000 karakteri aşamaz.",
+    selectionContextLimit: "Tek seferde en fazla 8 seçim ekleyebilirsiniz.",
+    selectionContextTotalLimit: "Eklenen seçimler toplamda 32.000 karakteri aşamaz.",
     attachmentFileTooLarge: "Bırakılan dosyalar en fazla 5 MB olmalıdır.",
     attachmentTruncatedStatus: "Kısaltıldı",
     attachmentEncoding: "Metin kodlaması",
@@ -3022,6 +3024,9 @@ export default withEnglishFallback({
     attachmentPreview: "Eki önizle",
     attachmentUnavailableAfterReload: "Yeniden yüklemeden sonra içerik kullanılamıyor; yeniden gönderilmeyecek",
     attachmentUnsupportedDocument: "Bu dosya türü henüz desteklenmiyor. Bunun yerine görsel veya metin tabanlı dosyalar ekleyin.",
+    selectionChipLabel: "Düzenleyici seçimi",
+    selectionChipDetail: "{name} · {count} karakter",
+    externalTargetUnavailable: "Kaynak bağlantı kullanılamıyor (silinmiş olabilir). Bu sohbet için bir bağlantı seçip yeniden gönderin.",
     tableMentionEmpty: "Eşleşen tablo veya SQL dosyası yok",
     tableMentionPlaceholderHint: "Kullanılabilir nesneleri veya dosyaları bağlama eklemek için {'@'} yazın",
     tableMentionTypes: {

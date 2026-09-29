@@ -3317,6 +3317,8 @@ export default withEnglishFallback({
     attachmentImageTotalLimit: "附加图片合计不能超过 12 MB。",
     attachmentTextLimit: "一次最多可附加 8 个文本文件。",
     attachmentTextTotalLimit: "附加文本合计不能超过 32,000 个字符。",
+    selectionContextLimit: "一次最多可附加 8 段选中内容。",
+    selectionContextTotalLimit: "附加的选中内容合计不能超过 32,000 个字符。",
     attachmentFileTooLarge: "拖入的文件不能超过 5 MB。",
     attachmentTruncatedStatus: "已截断",
     attachmentEncoding: "文本编码",
@@ -3326,6 +3328,9 @@ export default withEnglishFallback({
     attachmentPreview: "预览附件",
     attachmentUnavailableAfterReload: "重载后内容不可用，不会再次发送",
     attachmentUnsupportedDocument: "暂不支持此文件类型。请附加图片或文本类文件。",
+    selectionChipLabel: "编辑器选区",
+    selectionChipDetail: "{name} · {count} 字符",
+    externalTargetUnavailable: "无法确定来源连接（可能已被删除）。请先为该对话选择连接，再重新发送。",
     tableMentionEmpty: "没有匹配的表或 SQL 文件",
     tableMentionPlaceholderHint: "输入 {'@'} 可添加可用对象或文件作为上下文",
     tableMentionTypes: {
