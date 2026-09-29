@@ -6035,6 +6035,7 @@ export default withEnglishFallback({
     status_cancelled: "가져오기 취소됨",
     targetColumnsTimeout: "대상 테이블 필드를 로드하는 시간이 초과되었습니다. 연결을 확인한 후 다시 시도하십시오.",
     retry: "재시도",
+    decimalSeparator: "소수점 구분 기호",
   },
   dataGenerate: {
     title: "데이터 생성",

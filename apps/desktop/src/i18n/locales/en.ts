@@ -6992,6 +6992,7 @@ export default {
     parquetOnlyDuckdb: "Parquet import is only supported for DuckDB connections",
     previewRows: "Preview rows",
     delimiter: "Delimiter",
+    decimalSeparator: "Decimal separator",
     encoding: "Encoding",
     encodingAuto: "Auto-detect",
     encodingUtf8: "UTF-8",

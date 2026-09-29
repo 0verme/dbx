@@ -6333,6 +6333,7 @@ export default withEnglishFallback({
     lastDataRow: "データ終了行（0 は末尾まで）",
     targetColumnsTimeout: "ターゲットテーブルのフィールド読み込みがタイムアウトしました。接続を確認して再試行してください。",
     retry: "再試行",
+    decimalSeparator: "小数点記号",
   },
   dataGenerate: {
     title: "データ生成",

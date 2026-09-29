@@ -6380,6 +6380,7 @@ export default withEnglishFallback({
     status_cancelled: "Import cancelled",
     targetColumnsTimeout: "Se agotó el tiempo de espera al cargar los campos de la tabla de destino. Compruebe la conexión e inténtelo de nuevo.",
     retry: "Reintentar",
+    decimalSeparator: "Separador decimal",
   },
   dataGenerate: {
     title: "Generación de datos",

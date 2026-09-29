@@ -6959,6 +6959,7 @@ export default withEnglishFallback({
     parquetOnlyDuckdb: "Parquet 导入仅支持 DuckDB 连接",
     previewRows: "预览行数",
     delimiter: "分隔符",
+    decimalSeparator: "小数分隔符",
     encoding: "文件编码",
     encodingAuto: "自动检测",
     encodingUtf8: "UTF-8",

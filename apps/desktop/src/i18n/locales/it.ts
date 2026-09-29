@@ -6302,6 +6302,7 @@ export default withEnglishFallback({
     status_cancelled: "Import cancelled",
     targetColumnsTimeout: "Timeout nel caricamento dei campi della tabella di destinazione. Controlla la connessione e riprova.",
     retry: "Riprova",
+    decimalSeparator: "Separatore decimale",
   },
   dataGenerate: {
     title: "Generazione dati",

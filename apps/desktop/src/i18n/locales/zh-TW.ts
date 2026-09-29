@@ -5620,6 +5620,7 @@ export default withEnglishFallback({
     status_cancelled: "匯入已取消",
     targetColumnsTimeout: "載入目標資料表欄位逾時，請檢查連線後重試。",
     retry: "重試",
+    decimalSeparator: "小數分隔符",
   },
   dataGenerate: {
     title: "資料生成",
