@@ -442,6 +442,7 @@ fn secret_service_provider_is_missing(error: &str) -> bool {
         || error.contains("no secret service provider or dbus session found")
 }
 
+#[cfg(any(test, all(feature = "os-keyring", target_os = "linux")))]
 fn collection_path_is_registered<'a>(path: &str, collection_paths: impl IntoIterator<Item = &'a str>) -> bool {
     collection_paths.into_iter().any(|candidate| candidate == path)
 }
