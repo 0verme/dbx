@@ -24,6 +24,7 @@
   "kingbase": "0.1.59",
   "kylin": "0.1.69",
   "neo4j": "0.1.49",
+  "nebula": "0.1.0",
   "oceanbase-oracle": "0.1.66",
   "oracle": "0.1.65",
   "snowflake": "0.1.69",

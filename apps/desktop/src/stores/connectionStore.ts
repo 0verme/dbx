@@ -1671,6 +1671,7 @@ export const useConnectionStore = defineStore("connection", () => {
       informix: "Informix",
       phoenix: "Apache Phoenix",
       neo4j: "Neo4j",
+      nebula: "NebulaGraph",
       cassandra: "Cassandra",
       bigquery: "BigQuery",
       spanner: "Cloud Spanner",

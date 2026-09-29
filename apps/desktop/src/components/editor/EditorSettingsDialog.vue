@@ -801,7 +801,7 @@ function sqlVariableSyntaxToggle(key: keyof SqlVariableSyntaxToggles): boolean {
 
 function setSqlVariableSyntaxToggle(key: keyof SqlVariableSyntaxToggles, value: boolean) {
   const dbType = editSqlVariableSyntaxDatabaseType.value;
-  if (dbType === "neo4j" && key === "named") return;
+  if ((dbType === "neo4j" || dbType === "nebula") && key === "named") return;
   const merged: SqlVariableSyntaxToggles = {
     ...DEFAULT_SQL_VARIABLE_SYNTAX_TOGGLES,
     ...editSqlVariableSyntaxOverrides.value[dbType],
@@ -7002,7 +7002,7 @@ onUnmounted(() => {
                     <Switch
                       :id="`sql-var-syntax-${key}`"
                       :model-value="sqlVariableSyntaxToggle(key)"
-                      :disabled="!editSqlVariableSubstitutionEnabled || (editSqlVariableSyntaxDatabaseType === 'neo4j' && key === 'named')"
+                      :disabled="!editSqlVariableSubstitutionEnabled || (['neo4j', 'nebula'].includes(editSqlVariableSyntaxDatabaseType) && key === 'named')"
                       class="mt-0.5 shrink-0"
                       @update:model-value="(value) => setSqlVariableSyntaxToggle(key, value as boolean)"
                     />
