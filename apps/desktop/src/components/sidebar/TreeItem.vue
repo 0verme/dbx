@@ -968,9 +968,9 @@ const tableSearchValue = computed(() => {
 
 const isConnecting = computed(() => activeNode.value.type === "connection" && !!activeNode.value.connectionId && connectionStore.connectingIds.has(activeNode.value.connectionId));
 
-// Navicat-style activation cue: the connection icon itself is full color when
-// connected and grayed out when not, complementing the trailing green dot.
-const connectionIconInactiveClass = computed(() => (activeNode.value.type === "connection" && activeNode.value.connectionId && !connectionStore.connectedIds.has(activeNode.value.connectionId) ? "grayscale opacity-45" : ""));
+// Keep disconnected connections visually subdued without stripping their
+// database colors entirely; the trailing green dot still marks active ones.
+const connectionIconInactiveClass = computed(() => (activeNode.value.type === "connection" && activeNode.value.connectionId && !connectionStore.connectedIds.has(activeNode.value.connectionId) ? "saturate-50 opacity-70" : ""));
 
 const isConnectionReadonly = computed(() => activeNode.value.type === "connection" && !!activeNode.value.connectionId && (connectionStore.getConfig(activeNode.value.connectionId)?.read_only ?? false));
 
