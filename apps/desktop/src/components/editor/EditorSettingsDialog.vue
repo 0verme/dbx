@@ -106,7 +106,8 @@ import {
   type CustomThemeColors,
   type CustomTheme,
   type McpConnectionPolicy,
-  type McpGroupPolicy,
+  type McpGlobalPolicy,
+  normalizeMcpGlobalPolicy,
   type ClickTableNavigationTarget,
   type EditorSettings,
   type SqlCompletionTriggerMode,
@@ -549,9 +550,9 @@ const settingsTitleComponent = computed(() => (isSettingsPage.value ? "h2" : Dia
 const showUnsavedSettingsCloseConfirm = ref(false);
 
 function requestCloseSettings(nextOpen: boolean) {
-  // Flush any pending debounced MCP query-timeout save so a value typed right
-  // before closing is persisted instead of dropped (see onMcpQueryTimeoutInput).
-  flushMcpQueryTimeoutSave();
+  // Fold a timeout typed immediately before close into the draft so the unsaved
+  // prompt can see it. This must not persist: discard drops the draft.
+  stageMcpQueryTimeoutDraft();
   if (shouldConfirmEditorSettingsDialogClose(nextOpen, hasChanges())) {
     showUnsavedSettingsCloseConfirm.value = true;
     return;
@@ -574,6 +575,7 @@ function cancelUnsavedSettingsClose() {
 
 function discardUnsavedSettingsAndClose() {
   showUnsavedSettingsCloseConfirm.value = false;
+  syncMcpPolicyBaseline(mcpPolicyBaseline.value);
   emit("update:open", false);
 }
 
@@ -2241,7 +2243,8 @@ function hasChanges(): boolean {
     editMetadataCacheMaxMemoryMb.value !== settingsStore.desktopSettings.metadata_cache_max_memory_mb ||
     editDuckDbWorkerProcessIsolation.value !== settingsStore.desktopSettings.duckdb_worker_process_isolation ||
     normalizeDuckDbWorkerMaxProcesses(editDuckDbWorkerMaxProcesses.value) !== settingsStore.desktopSettings.duckdb_worker_max_processes ||
-    editSidebarTablePageSize.value !== (settingsStore.desktopSettings.sidebar_table_page_size ?? DEFAULT_SIDEBAR_TABLE_PAGE_SIZE)
+    editSidebarTablePageSize.value !== (settingsStore.desktopSettings.sidebar_table_page_size ?? DEFAULT_SIDEBAR_TABLE_PAGE_SIZE) ||
+    mcpPolicyHasUnsavedChanges()
   );
 }
 
@@ -2289,6 +2292,7 @@ async function persistSettings() {
   } else if (sidebarTablePageSizeChanged) {
     await connectionStore.refreshSidebarObjectPagination();
   }
+  await commitMcpPolicyDraft();
 }
 
 function applySettingsErrorToast(error: unknown) {
@@ -3500,41 +3504,52 @@ const mcpInstalling = ref(false);
 const mcpUninstalling = ref(false);
 const mcpInstallMessage = ref("");
 const mcpInstallError = ref(false);
-const mcpExecutionMode = computed(() => mcpExecutionModeFromPolicy(settingsStore.mcpGlobalPolicy));
+const mcpPolicyDraft = ref<McpGlobalPolicy>(normalizeMcpGlobalPolicy(settingsStore.mcpGlobalPolicy));
+const mcpPolicyBaseline = ref<McpGlobalPolicy>(normalizeMcpGlobalPolicy(settingsStore.mcpGlobalPolicy));
+
+function syncMcpPolicyBaseline(policy: McpGlobalPolicy) {
+  const next = normalizeMcpGlobalPolicy(policy);
+  mcpPolicyBaseline.value = next;
+  mcpPolicyDraft.value = normalizeMcpGlobalPolicy(next);
+  mcpQueryTimeoutPendingValue = undefined;
+  if (mcpQueryTimeoutSaveTimer !== null) {
+    clearTimeout(mcpQueryTimeoutSaveTimer);
+    mcpQueryTimeoutSaveTimer = null;
+  }
+  mcpQueryTimeoutInput.value = next.queryTimeoutSecs === null ? "" : String(next.queryTimeoutSecs);
+}
+
+function mcpPoliciesEqual(left: McpGlobalPolicy, right: McpGlobalPolicy): boolean {
+  return JSON.stringify(normalizeMcpGlobalPolicy(left)) === JSON.stringify(normalizeMcpGlobalPolicy(right));
+}
+
+function stageMcpPolicy(partial: Partial<Omit<McpGlobalPolicy, "configured">>) {
+  mcpPolicyDraft.value = normalizeMcpGlobalPolicy({
+    ...mcpPolicyDraft.value,
+    ...partial,
+  });
+}
+
+function mcpPolicyHasUnsavedChanges(): boolean {
+  return mcpQueryTimeoutPendingValue !== undefined || !mcpPoliciesEqual(mcpPolicyDraft.value, mcpPolicyBaseline.value);
+}
+
+const mcpExecutionMode = computed(() => mcpExecutionModeFromPolicy(mcpPolicyDraft.value));
 const mcpExecutionModeOptions: McpExecutionMode[] = ["read_only", "safe_write", "high_risk_write"];
-const mcpAllowedConnectionIds = computed(() => settingsStore.mcpGlobalPolicy.allowedConnectionIds);
-const mcpAllowedGroupIds = computed(() => settingsStore.mcpGlobalPolicy.allowedGroupIds);
-const mcpQueryTimeoutInput = ref<string>(settingsStore.mcpGlobalPolicy.queryTimeoutSecs === null ? "" : String(settingsStore.mcpGlobalPolicy.queryTimeoutSecs));
+const mcpAllowedConnectionIds = computed(() => mcpPolicyDraft.value.allowedConnectionIds);
+const mcpAllowedGroupIds = computed(() => mcpPolicyDraft.value.allowedGroupIds);
+const mcpQueryTimeoutInput = ref<string>(mcpPolicyDraft.value.queryTimeoutSecs === null ? "" : String(mcpPolicyDraft.value.queryTimeoutSecs));
 
 watch(
-  () => settingsStore.mcpGlobalPolicy.queryTimeoutSecs,
+  () => mcpPolicyDraft.value.queryTimeoutSecs,
   (value) => {
+    if (mcpQueryTimeoutPendingValue !== undefined) return;
     mcpQueryTimeoutInput.value = value === null ? "" : String(value);
   },
 );
 
-type McpQueryTimeoutSaveStatus = "idle" | "saving" | "saved" | "failed";
-const mcpQueryTimeoutSaveStatus = ref<McpQueryTimeoutSaveStatus>("idle");
-let mcpQueryTimeoutSavedStatusTimer: ReturnType<typeof setTimeout> | null = null;
-
-function setMcpQueryTimeoutSaveStatus(status: McpQueryTimeoutSaveStatus) {
-  if (mcpQueryTimeoutSavedStatusTimer !== null) {
-    clearTimeout(mcpQueryTimeoutSavedStatusTimer);
-    mcpQueryTimeoutSavedStatusTimer = null;
-  }
-  mcpQueryTimeoutSaveStatus.value = status;
-  if (status === "saved") {
-    mcpQueryTimeoutSavedStatusTimer = setTimeout(() => {
-      mcpQueryTimeoutSavedStatusTimer = null;
-      mcpQueryTimeoutSaveStatus.value = "idle";
-    }, 1600);
-  }
-}
-
-// Debounce the persist so rapid typing coalesces into a single SQLite write.
-// `flushMcpQueryTimeoutSave` runs on the settings-close path so a value typed
-// right before closing is still persisted (the legacy @change binding only
-// fired on blur/Enter, silently dropping the value when the window closed).
+// Debounce typing into the policy draft. Persistence happens only on an explicit
+// save; closing and discarding must not write this value.
 const MCP_QUERY_TIMEOUT_SAVE_DEBOUNCE_MS = 300;
 let mcpQueryTimeoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let mcpQueryTimeoutPendingValue: number | null | undefined;
@@ -3547,7 +3562,6 @@ function onMcpQueryTimeoutInput(event: Event) {
   // mistake that browser state for an explicit request to inherit the timeout.
   if (target.validity.badInput) return;
   const raw = target.value.trim();
-  setMcpQueryTimeoutSaveStatus("saving");
   if (raw === "") {
     mcpQueryTimeoutPendingValue = null;
   } else {
@@ -3558,11 +3572,10 @@ function onMcpQueryTimeoutInput(event: Event) {
       toast(t("settings.mcpQueryTimeoutInvalid"), 5000);
       // Revert before Input's bubble-phase v-model handler sees the value, so
       // the proxy and parent ref remain aligned.
-      const reverted = settingsStore.mcpGlobalPolicy.queryTimeoutSecs === null ? "" : String(settingsStore.mcpGlobalPolicy.queryTimeoutSecs);
+      const reverted = mcpPolicyDraft.value.queryTimeoutSecs === null ? "" : String(mcpPolicyDraft.value.queryTimeoutSecs);
       mcpQueryTimeoutInput.value = reverted;
       target.value = reverted;
       mcpQueryTimeoutPendingValue = undefined;
-      setMcpQueryTimeoutSaveStatus("idle");
       return;
     }
     mcpQueryTimeoutPendingValue = parsed;
@@ -3570,28 +3583,22 @@ function onMcpQueryTimeoutInput(event: Event) {
   if (mcpQueryTimeoutSaveTimer !== null) clearTimeout(mcpQueryTimeoutSaveTimer);
   mcpQueryTimeoutSaveTimer = setTimeout(() => {
     mcpQueryTimeoutSaveTimer = null;
-    flushMcpQueryTimeoutSave();
+    stageMcpQueryTimeoutDraft();
   }, MCP_QUERY_TIMEOUT_SAVE_DEBOUNCE_MS);
 }
 
-function flushMcpQueryTimeoutSave() {
+function stageMcpQueryTimeoutDraft() {
   if (mcpQueryTimeoutSaveTimer !== null) {
     clearTimeout(mcpQueryTimeoutSaveTimer);
     mcpQueryTimeoutSaveTimer = null;
   }
   if (mcpQueryTimeoutPendingValue === undefined) return;
-  // Another MCP policy mutation may be in flight. Retain the value until the
-  // shared mutation gate reopens; saveMcpPolicy's finally block retries it.
-  if (mcpPolicyControlsDisabled.value) return;
   const value = mcpQueryTimeoutPendingValue;
   mcpQueryTimeoutPendingValue = undefined;
-  void saveMcpPolicy(
-    { queryTimeoutSecs: value },
-    {
-      onSuccess: () => setMcpQueryTimeoutSaveStatus("saved"),
-      onFailure: () => setMcpQueryTimeoutSaveStatus("failed"),
-    },
-  );
+  mcpPolicyDraft.value = {
+    ...mcpPolicyDraft.value,
+    queryTimeoutSecs: value,
+  };
 }
 const mcpSelectableConnections = computed(() => connectionStore.connections);
 const mcpGroupRows = computed(() => connectionGroupDestinationRows(connectionStore.sidebarLayout));
@@ -3646,42 +3653,25 @@ const mcpHttpHasUnsavedChanges = computed(() => {
 
 const webMcpEndpoint = computed(() => (webMcpHttpStatus.value ? `${window.location.origin}${webMcpHttpStatus.value.endpointPath}` : ""));
 
-async function saveMcpPolicy(
-  partial: {
-    readOnly?: boolean;
-    allowDangerousSql?: boolean;
-    allowedConnectionIds?: string[] | null;
-    allowedGroupIds?: string[];
-    allowedToolNames?: string[] | null;
-    connectionPolicies?: {
-      connectionId: string;
-      readOnly: boolean;
-      allowDangerousSql: boolean;
-      executionModeConfigured: boolean;
-      executionModePolicyVersion: number | null;
-      databaseScope: "all" | "selected" | "none";
-      allowedDatabases: string[];
-      databasePolicies: { databaseName: string; readOnly: boolean; allowDangerousSql: boolean }[];
-      allowSalesforceDml: boolean;
-    }[];
-    groupPolicies?: McpGroupPolicy[];
-    queryTimeoutSecs?: number | null;
-  },
-  callbacks?: { onSuccess?: () => void; onFailure?: () => void },
-) {
-  if (mcpPolicyControlsDisabled.value) return;
+async function commitMcpPolicyDraft(): Promise<void> {
+  stageMcpQueryTimeoutDraft();
+  if (mcpPolicySaving.value || mcpPoliciesEqual(mcpPolicyDraft.value, mcpPolicyBaseline.value)) return;
+  const snapshot = normalizeMcpGlobalPolicy(mcpPolicyDraft.value);
   mcpPolicySaving.value = true;
   try {
-    await settingsStore.updateMcpGlobalPolicy(partial);
-    callbacks?.onSuccess?.();
-  } catch (e: any) {
-    toast(t("settings.mcpPolicySaveFailed", { error: e?.message || String(e) }), 5000);
-    callbacks?.onFailure?.();
+    await settingsStore.updateMcpGlobalPolicy({
+      readOnly: snapshot.readOnly,
+      allowDangerousSql: snapshot.allowDangerousSql,
+      allowedConnectionIds: snapshot.allowedConnectionIds,
+      allowedGroupIds: snapshot.allowedGroupIds,
+      allowedToolNames: snapshot.allowedToolNames,
+      connectionPolicies: snapshot.connectionPolicies,
+      groupPolicies: snapshot.groupPolicies,
+      queryTimeoutSecs: snapshot.queryTimeoutSecs,
+    });
+    if (mcpPoliciesEqual(mcpPolicyDraft.value, snapshot)) syncMcpPolicyBaseline(settingsStore.mcpGlobalPolicy);
   } finally {
     mcpPolicySaving.value = false;
-    // A query-timeout edit can have debounced while another policy write held
-    // the shared gate. Persist it once that write releases the gate.
-    if (mcpQueryTimeoutPendingValue !== undefined) flushMcpQueryTimeoutSave();
   }
 }
 
@@ -3690,7 +3680,7 @@ function onMcpExecutionModeChange(mode: McpExecutionMode) {
   if (mode === "high_risk_write" && !window.confirm(t("settings.mcpExecutionModeHighRiskConfirm"))) {
     return;
   }
-  void saveMcpPolicy(mcpPolicyFieldsForExecutionMode(mode));
+  stageMcpPolicy(mcpPolicyFieldsForExecutionMode(mode));
 }
 
 function onMcpExecutionModeKeydown(event: KeyboardEvent, mode: McpExecutionMode) {
@@ -3714,21 +3704,21 @@ function onMcpExecutionModeKeydown(event: KeyboardEvent, mode: McpExecutionMode)
 }
 
 function onMcpResourceScopeChange(scope: { allowedGroupIds: string[]; allowedConnectionIds: string[] | null }) {
-  void saveMcpPolicy(scope);
+  stageMcpPolicy(scope);
 }
 
 type McpConnectionExecutionMode = "read_only" | "safe_write" | "high_risk_write";
 
 const mcpToolOptions = MCP_TOOL_OPTIONS;
 
-const mcpAllowedToolNames = computed(() => settingsStore.mcpGlobalPolicy.allowedToolNames);
+const mcpAllowedToolNames = computed(() => mcpPolicyDraft.value.allowedToolNames);
 
 function mcpToolAllowed(name: string): boolean {
   return mcpAllowedToolNames.value === null || mcpAllowedToolNames.value.includes(name);
 }
 
 function onMcpToolAllowedChange(name: string, allowed: boolean) {
-  void saveMcpPolicy({ allowedToolNames: toggleMcpAllowedToolName(mcpAllowedToolNames.value, name, allowed) });
+  stageMcpPolicy({ allowedToolNames: toggleMcpAllowedToolName(mcpAllowedToolNames.value, name, allowed) });
 }
 
 // Entries beyond the static options: discovered plugin tool names and the
@@ -3742,11 +3732,11 @@ function onMcpCustomToolAdd() {
   if (!rawName.trim()) return;
   const { names, added } = addMcpAllowedToolName(mcpAllowedToolNames.value, rawName);
   mcpCustomToolInput.value = "";
-  if (added) void saveMcpPolicy({ allowedToolNames: names });
+  if (added) stageMcpPolicy({ allowedToolNames: names });
 }
 
 function onMcpCustomToolRemove(name: string) {
-  void saveMcpPolicy({ allowedToolNames: toggleMcpAllowedToolName(mcpAllowedToolNames.value, name, false) });
+  stageMcpPolicy({ allowedToolNames: toggleMcpAllowedToolName(mcpAllowedToolNames.value, name, false) });
 }
 
 const mcpConnectionPolicyConnections = computed(() => {
@@ -3754,14 +3744,14 @@ const mcpConnectionPolicyConnections = computed(() => {
   return allowed === null ? mcpSelectableConnections.value : mcpSelectableConnections.value.filter((connection) => allowed.includes(connection.id));
 });
 function mcpConnectionExecutionMode(connectionId: string): McpConnectionExecutionMode | "inherit" {
-  const rule = settingsStore.mcpGlobalPolicy.connectionPolicies.find((item) => item.connectionId === connectionId);
+  const rule = mcpPolicyDraft.value.connectionPolicies.find((item) => item.connectionId === connectionId);
   if (!rule || !rule.executionModeConfigured) return "inherit";
   if (rule.readOnly) return "read_only";
   return rule.allowDangerousSql ? "high_risk_write" : "safe_write";
 }
 
 function mcpGroupExecutionMode(groupId: string): McpConnectionExecutionMode | "inherit" {
-  const rule = settingsStore.mcpGlobalPolicy.groupPolicies.find((item) => item.groupId === groupId);
+  const rule = mcpPolicyDraft.value.groupPolicies.find((item) => item.groupId === groupId);
   if (!rule) return "inherit";
   if (rule.readOnly) return "read_only";
   return rule.allowDangerousSql ? "high_risk_write" : "safe_write";
@@ -3828,7 +3818,7 @@ function mcpPermissionSource(row: { databaseMode: McpConnectionExecutionMode | "
 const mcpPermissionPreviewSearchQuery = ref("");
 const mcpPermissionPreviewRows = computed(() =>
   mcpConnectionPolicyConnections.value.flatMap((connection) => {
-    const rule = settingsStore.mcpGlobalPolicy.connectionPolicies.find((item) => item.connectionId === connection.id);
+    const rule = mcpPolicyDraft.value.connectionPolicies.find((item) => item.connectionId === connection.id);
     const connectionMode = mcpConnectionExecutionMode(connection.id);
     const groupPolicy = mcpInheritedGroupPolicy(connection.id);
     const groupMode = groupPolicy.mode;
@@ -3858,7 +3848,7 @@ const filteredMcpPermissionPreviewRows = computed(() => {
 
 function onMcpGroupExecutionModeChange(groupId: string, mode: McpConnectionExecutionMode | "inherit") {
   if (mode === "high_risk_write" && !window.confirm(t("settings.mcpGroupPolicyHighRiskConfirm"))) return;
-  const groupPolicies = settingsStore.mcpGlobalPolicy.groupPolicies.filter((item) => item.groupId !== groupId);
+  const groupPolicies = mcpPolicyDraft.value.groupPolicies.filter((item) => item.groupId !== groupId);
   if (mode !== "inherit") {
     groupPolicies.push({
       groupId,
@@ -3866,7 +3856,7 @@ function onMcpGroupExecutionModeChange(groupId: string, mode: McpConnectionExecu
       allowDangerousSql: mode === "high_risk_write",
     });
   }
-  void saveMcpPolicy({ groupPolicies });
+  stageMcpPolicy({ groupPolicies });
 }
 
 // A connection rule is only worth persisting when it actually changes something: an
@@ -3879,8 +3869,8 @@ function mcpConnectionPolicyIsMeaningful(rule: McpConnectionPolicy): boolean {
 
 function onMcpConnectionExecutionModeChange(connectionId: string, mode: McpConnectionExecutionMode | "inherit") {
   if (mode === "high_risk_write" && !window.confirm(t("settings.mcpExecutionModeHighRiskConfirm"))) return;
-  const existing = settingsStore.mcpGlobalPolicy.connectionPolicies.find((item) => item.connectionId === connectionId);
-  const rules = settingsStore.mcpGlobalPolicy.connectionPolicies.filter((item) => item.connectionId !== connectionId);
+  const existing = mcpPolicyDraft.value.connectionPolicies.find((item) => item.connectionId === connectionId);
+  const rules = mcpPolicyDraft.value.connectionPolicies.filter((item) => item.connectionId !== connectionId);
   const migrated = existing && existing.executionModePolicyVersion !== 1 ? migrateLegacyMcpConnectionPolicy(existing) : null;
   const selectedMode =
     migrated && mode === "inherit"
@@ -3905,11 +3895,11 @@ function onMcpConnectionExecutionModeChange(connectionId: string, mode: McpConne
     allowSalesforceDml: (existing?.allowSalesforceDml ?? false) && !selectedMode.readOnly,
   };
   if (mcpConnectionPolicyIsMeaningful(next)) rules.push(next);
-  void saveMcpPolicy({ connectionPolicies: rules });
+  stageMcpPolicy({ connectionPolicies: rules });
 }
 
 function onMcpConnectionSalesforceDmlChange(connectionId: string, allowed: boolean) {
-  const existing = settingsStore.mcpGlobalPolicy.connectionPolicies.find((item) => item.connectionId === connectionId);
+  const existing = mcpPolicyDraft.value.connectionPolicies.find((item) => item.connectionId === connectionId);
   if (allowed) {
     // Read-only is a hard ceiling on the server too, so letting the box stay checked
     // here would only advertise a write path that every prepare call then refuses.
@@ -3919,7 +3909,7 @@ function onMcpConnectionSalesforceDmlChange(connectionId: string, allowed: boole
       return;
     }
   }
-  const rules = settingsStore.mcpGlobalPolicy.connectionPolicies.filter((item) => item.connectionId !== connectionId);
+  const rules = mcpPolicyDraft.value.connectionPolicies.filter((item) => item.connectionId !== connectionId);
   const next: McpConnectionPolicy = {
     connectionId,
     readOnly: existing?.readOnly ?? false,
@@ -3932,12 +3922,12 @@ function onMcpConnectionSalesforceDmlChange(connectionId: string, allowed: boole
     allowSalesforceDml: allowed,
   };
   if (mcpConnectionPolicyIsMeaningful(next)) rules.push(next);
-  void saveMcpPolicy({ connectionPolicies: rules });
+  stageMcpPolicy({ connectionPolicies: rules });
 }
 
 function onMcpDatabaseExecutionModeChange(connectionId: string, databaseName: string, mode: McpConnectionExecutionMode | "inherit") {
   if (mode === "high_risk_write" && !window.confirm(t("settings.mcpDatabasePolicyHighRiskConfirm"))) return;
-  const existing = settingsStore.mcpGlobalPolicy.connectionPolicies.find((item) => item.connectionId === connectionId);
+  const existing = mcpPolicyDraft.value.connectionPolicies.find((item) => item.connectionId === connectionId);
   if (!existing || existing.databaseScope !== "selected" || !existing.allowedDatabases.includes(databaseName)) return;
   const migrated = existing.executionModePolicyVersion === 1 ? null : migrateLegacyMcpConnectionPolicy(existing);
   const databasePolicies = (migrated?.databasePolicies ?? existing.databasePolicies).filter((policy) => policy.databaseName !== databaseName);
@@ -3950,13 +3940,13 @@ function onMcpDatabaseExecutionModeChange(connectionId: string, databaseName: st
     executionModePolicyVersion: 1,
     databasePolicies,
   };
-  const rules = settingsStore.mcpGlobalPolicy.connectionPolicies.filter((item) => item.connectionId !== connectionId);
+  const rules = mcpPolicyDraft.value.connectionPolicies.filter((item) => item.connectionId !== connectionId);
   if (mcpConnectionPolicyIsMeaningful(next)) rules.push(next);
-  void saveMcpPolicy({ connectionPolicies: rules });
+  stageMcpPolicy({ connectionPolicies: rules });
 }
 
-function onMcpConnectionPoliciesChange(connectionPolicies: typeof settingsStore.mcpGlobalPolicy.connectionPolicies) {
-  void saveMcpPolicy({ connectionPolicies });
+function onMcpConnectionPoliciesChange(connectionPolicies: typeof mcpPolicyDraft.value.connectionPolicies) {
+  stageMcpPolicy({ connectionPolicies });
 }
 
 function mcpHttpList(value: string): string[] {
@@ -4846,12 +4836,13 @@ watch(
       confirmNewPassword.value = "";
       try {
         await settingsStore.initMcpGlobalPolicy(true);
-        await loadMcpHttpSettings();
         if (!settingsStore.mcpGlobalPolicy.configured && localStorage.getItem(MCP_READONLY_STORAGE_KEY) === "true") {
           await settingsStore.updateMcpGlobalPolicy({ readOnly: true });
         }
         if (settingsStore.mcpGlobalPolicy.configured) localStorage.removeItem(MCP_READONLY_STORAGE_KEY);
         localStorage.removeItem(MCP_SCOPE_CONNECTION_STORAGE_KEY);
+        syncMcpPolicyBaseline(settingsStore.mcpGlobalPolicy);
+        await loadMcpHttpSettings();
       } catch (e: any) {
         mcpPolicyLoadError.value = e?.message || String(e);
         toast(
@@ -4893,6 +4884,7 @@ watch(
       await scrollToInitialSettingsSection();
     } else {
       resetSettingsSearchState();
+      syncMcpPolicyBaseline(mcpPolicyBaseline.value);
     }
   },
   { immediate: true },
@@ -6342,8 +6334,11 @@ watch(
 );
 
 onUnmounted(() => {
-  flushMcpQueryTimeoutSave();
-  if (mcpQueryTimeoutSavedStatusTimer !== null) clearTimeout(mcpQueryTimeoutSavedStatusTimer);
+  if (mcpQueryTimeoutSaveTimer !== null) {
+    clearTimeout(mcpQueryTimeoutSaveTimer);
+    mcpQueryTimeoutSaveTimer = null;
+  }
+  mcpQueryTimeoutPendingValue = undefined;
   cleanupPreviewEditor();
   resetSettingsSearchState();
 });
@@ -10682,8 +10677,8 @@ LIMIT 100;</pre
                           :connections="mcpSelectableConnections"
                           :allowed-group-ids="mcpAllowedGroupIds"
                           :allowed-connection-ids="mcpAllowedConnectionIds"
-                          :group-policies="settingsStore.mcpGlobalPolicy.groupPolicies"
-                          :connection-policies="settingsStore.mcpGlobalPolicy.connectionPolicies"
+                          :group-policies="mcpPolicyDraft.groupPolicies"
+                          :connection-policies="mcpPolicyDraft.connectionPolicies"
                           :disabled="mcpPolicyControlsDisabled"
                           :busy="mcpPolicyLoading || mcpPolicySaving"
                           @update:scope="onMcpResourceScopeChange"
@@ -10697,7 +10692,7 @@ LIMIT 100;</pre
                       <McpDatabaseScopePicker
                         :connections="mcpSelectableConnections"
                         :allowed-connection-ids="mcpEffectiveAllowedConnectionIds"
-                        :connection-policies="settingsStore.mcpGlobalPolicy.connectionPolicies"
+                        :connection-policies="mcpPolicyDraft.connectionPolicies"
                         :disabled="mcpPolicyControlsDisabled"
                         :busy="mcpPolicyLoading || mcpPolicySaving"
                         @update:connection-policies="onMcpConnectionPoliciesChange"
@@ -10843,12 +10838,6 @@ LIMIT 100;</pre
                       <Label id="mcp-query-timeout-label">{{ t("settings.mcpQueryTimeout") }}</Label>
                       <div class="space-y-1">
                         <Input id="mcp-query-timeout" v-model="mcpQueryTimeoutInput" type="number" min="0" step="1" inputmode="numeric" placeholder="0" :disabled="mcpPolicyControlsDisabled" @input.capture="onMcpQueryTimeoutInput" />
-                        <p v-if="mcpQueryTimeoutSaveStatus !== 'idle'" class="flex h-4 items-center justify-end gap-1 text-[11px] text-muted-foreground" role="status" aria-live="polite">
-                          <Loader2 v-if="mcpQueryTimeoutSaveStatus === 'saving'" class="size-3 animate-spin" />
-                          <Check v-else-if="mcpQueryTimeoutSaveStatus === 'saved'" class="size-3 text-emerald-600 dark:text-emerald-400" />
-                          <AlertTriangle v-else class="size-3 text-destructive" />
-                          {{ t(`settings.mcpQueryTimeoutSaveStatus_${mcpQueryTimeoutSaveStatus}`) }}
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -11452,6 +11441,12 @@ LIMIT 100;</pre
             <Button variant="outline" @click="openExternalUrl('https://dbxio.com/cn/docs/mcp')">
               <ExternalLink class="mr-1 h-3 w-3" />
               {{ t("settings.mcpGuide") }}
+            </Button>
+            <Button :disabled="!hasChanges() || hasApplyBlocker" @click="applySettings">
+              {{ t("settings.apply") }}
+            </Button>
+            <Button :disabled="!hasChanges() || hasApplyBlocker" @click="applySettingsAndClose">
+              {{ t("settings.applyAndClose") }}
             </Button>
           </DialogFooter>
 
