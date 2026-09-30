@@ -97,6 +97,7 @@ export default withEnglishFallback({
     convert: "轉換",
     result: "轉換結果",
     copy: "複製結果",
+    htmlPreview: "HTML 渲染預覽",
     radixHint: "僅支援整數，請勿輸入 0x、0o 或 0b 前綴，可使用正負號。",
     urlHint: "按 URL 元件進行 UTF-8 編解碼，解碼時保留加號，不將其替換為空格。",
     kinds: {
@@ -104,6 +105,7 @@ export default withEnglishFallback({
       json: "JSON 格式化",
       jsonCompact: "JSON 壓縮",
       xml: "XML 格式化",
+      html: "HTML 渲染預覽",
       base64Encode: "文字 → Base64（UTF-8）",
       base64Decode: "Base64 → 文字（UTF-8）",
       urlEncode: "URL 元件編碼",

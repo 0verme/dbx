@@ -98,6 +98,7 @@ export default withEnglishFallback({
     convert: "Converter",
     result: "Resultado",
     copy: "Copiar resultado",
+    htmlPreview: "HTML preview",
     radixHint: "Somente inteiros. Insira dígitos sem os prefixos 0x, 0o ou 0b; um sinal opcional é permitido.",
     urlHint: "Codificação de componentes URL em UTF-8. A decodificação preserva + como sinal de adição.",
     kinds: {
@@ -105,6 +106,7 @@ export default withEnglishFallback({
       json: "Formatar JSON",
       jsonCompact: "Compactar JSON",
       xml: "Formatar XML",
+      html: "HTML preview",
       base64Encode: "Texto → Base64 (UTF-8)",
       base64Decode: "Base64 → texto (UTF-8)",
       urlEncode: "Codificar componente URL",

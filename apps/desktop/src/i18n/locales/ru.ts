@@ -19,6 +19,7 @@ export default withEnglishFallback({
     convert: "Преобразовать",
     result: "Результат",
     copy: "Копировать результат",
+    htmlPreview: "HTML preview",
     radixHint: "Только целые числа. Вводите цифры без префикса 0x, 0o или 0b; допускается необязательный знак.",
     urlHint: "Кодирование компонента URL (UTF-8). При декодировании + сохраняется как знак плюс.",
     kinds: {
@@ -26,6 +27,7 @@ export default withEnglishFallback({
       json: "Форматировать JSON",
       jsonCompact: "Сжать JSON",
       xml: "Форматировать XML",
+      html: "HTML preview",
       base64Encode: "Текст → Base64 (UTF-8)",
       base64Decode: "Base64 → текст (UTF-8)",
       urlEncode: "Кодировать компонент URL",

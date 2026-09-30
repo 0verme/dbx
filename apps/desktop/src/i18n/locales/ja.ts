@@ -98,6 +98,7 @@ export default withEnglishFallback({
     convert: "変換",
     result: "変換結果",
     copy: "結果をコピー",
+    htmlPreview: "HTML preview",
     radixHint: "整数のみ対応します。0x、0o、0b 接頭辞は不要です。正負の符号を使用できます。",
     urlHint: "URL コンポーネントを UTF-8 でエンコード・デコードします。デコード時に + は空白に変換されません。",
     kinds: {
@@ -105,6 +106,7 @@ export default withEnglishFallback({
       json: "JSON 整形",
       jsonCompact: "JSON 圧縮",
       xml: "XML 整形",
+      html: "HTML preview",
       base64Encode: "テキスト → Base64（UTF-8）",
       base64Decode: "Base64 → テキスト（UTF-8）",
       urlEncode: "URL コンポーネントのエンコード",

@@ -97,6 +97,7 @@ export default withEnglishFallback({
     convert: "변환",
     result: "변환 결과",
     copy: "결과 복사",
+    htmlPreview: "HTML preview",
     radixHint: "정수만 지원합니다. 0x, 0o, 0b 접두사 없이 입력하세요. 부호는 사용할 수 있습니다.",
     urlHint: "URL 구성 요소를 UTF-8로 인코딩하거나 디코딩합니다. 디코딩 시 +를 공백으로 바꾸지 않습니다.",
     kinds: {
@@ -104,6 +105,7 @@ export default withEnglishFallback({
       json: "JSON 서식 지정",
       jsonCompact: "JSON 압축",
       xml: "XML 서식 지정",
+      html: "HTML preview",
       base64Encode: "텍스트 → Base64(UTF-8)",
       base64Decode: "Base64 → 텍스트(UTF-8)",
       urlEncode: "URL 구성 요소 인코딩",

@@ -134,6 +134,7 @@ export default withEnglishFallback({
     convert: "Dönüştür",
     result: "Sonuç",
     copy: "Sonucu kopyala",
+    htmlPreview: "HTML preview",
     radixHint: "Yalnızca tam sayılar. 0x, 0o veya 0b öneki olmadan rakam girin; isteğe bağlı işaret kullanılabilir.",
     urlHint: "URL bileşenleri UTF-8 ile kodlanır veya çözülür. Çözme işlemi + işaretini boşluğa dönüştürmez.",
     kinds: {
@@ -141,6 +142,7 @@ export default withEnglishFallback({
       json: "JSON biçimlendir",
       jsonCompact: "JSON sıkıştır",
       xml: "XML biçimlendir",
+      html: "HTML preview",
       base64Encode: "Metin → Base64 (UTF-8)",
       base64Decode: "Base64 → metin (UTF-8)",
       urlEncode: "URL bileşenini kodla",

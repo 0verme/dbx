@@ -94,6 +94,7 @@ export default {
     convert: "Convert",
     result: "Result",
     copy: "Copy result",
+    htmlPreview: "HTML preview",
     radixHint: "Integers only. Enter digits without a 0x, 0o or 0b prefix; an optional sign is supported.",
     urlHint: "URL component encoding (UTF-8). Decoding preserves + as a literal plus sign.",
     kinds: {
@@ -101,6 +102,7 @@ export default {
       json: "Format JSON",
       jsonCompact: "Compact JSON",
       xml: "Format XML",
+      html: "HTML preview",
       base64Encode: "Text → Base64 (UTF-8)",
       base64Decode: "Base64 → text (UTF-8)",
       urlEncode: "URL component encode",

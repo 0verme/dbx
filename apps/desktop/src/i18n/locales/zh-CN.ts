@@ -19,6 +19,7 @@ export default withEnglishFallback({
     convert: "转换",
     result: "转换结果",
     copy: "复制结果",
+    htmlPreview: "HTML 渲染预览",
     radixHint: "仅支持整数，请勿输入 0x、0o 或 0b 前缀，可使用正负号。",
     urlHint: "按 URL 组件进行 UTF-8 编解码，解码时保留加号，不将其替换为空格。",
     kinds: {
@@ -26,6 +27,7 @@ export default withEnglishFallback({
       json: "JSON 格式化",
       jsonCompact: "JSON 压缩",
       xml: "XML 格式化",
+      html: "HTML 渲染预览",
       base64Encode: "文本 → Base64（UTF-8）",
       base64Decode: "Base64 → 文本（UTF-8）",
       urlEncode: "URL 组件编码",
