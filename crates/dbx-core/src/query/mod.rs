@@ -5721,6 +5721,12 @@ fn mysql_error_is_syntax_error(error: &mysql_async::Error) -> bool {
             let message = server_error.message.to_ascii_lowercase();
             message.contains("syntax error") && (message.contains("encountered:") || message.contains("expected"))
         }
+        // PolarDB-X exposes parser failures such as PXC-4500 / ERR_PARSER
+        // through the generic MySQL protocol ERR_HANDLE_DATA code (3009).
+        mysql_async::Error::Server(server_error) if server_error.code == 3009 => {
+            let message = server_error.message.to_ascii_lowercase();
+            message.contains("[err_parser]") || message.contains("syntax error") || message.contains("语法错误")
+        }
         _ => false,
     }
 }
@@ -12315,5 +12321,27 @@ for line in sys.stdin:
 
         assert!(mysql_error_is_syntax_error(&doris_syntax_error));
         assert!(!mysql_error_is_syntax_error(&generic_unknown_error));
+    }
+
+    #[test]
+    fn mysql_backup_transaction_falls_back_for_polardbx_parser_errors() {
+        for message in [
+            "[PXC-4500][ERR_PARSER] syntax error, expect EOF, actual COMMA after WITH CONSISTENT SNAPSHOT",
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY 语法错误",
+        ] {
+            let polardbx_parser_error = mysql_async::Error::Server(mysql_async::ServerError {
+                code: 3009,
+                message: message.to_string(),
+                state: "HY000".to_string(),
+            });
+            assert!(mysql_error_is_syntax_error(&polardbx_parser_error));
+        }
+        let polardbx_non_parser_error = mysql_async::Error::Server(mysql_async::ServerError {
+            code: 3009,
+            message: "Failed to handle data".to_string(),
+            state: "HY000".to_string(),
+        });
+
+        assert!(!mysql_error_is_syntax_error(&polardbx_non_parser_error));
     }
 }
