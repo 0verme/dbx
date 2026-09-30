@@ -12507,22 +12507,6 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
           >
             <template #leading>
               <slot v-if="hasResultToolbarActionsSlot" name="result-toolbar-actions" :compact="compactDataGridToolbar" />
-              <Tooltip v-if="props.context === 'table-data' && canOpenTableStructureEditor">
-                <TooltipTrigger as-child>
-                  <Button
-                    data-grid-edit-table-structure-action
-                    variant="ghost"
-                    size="sm"
-                    :class="['data-grid-topbar-action-button h-5 shrink-0 px-1.5 text-xs', compactDataGridToolbar ? 'data-grid-topbar-action-button--compact' : '']"
-                    :aria-label="t('contextMenu.editStructure')"
-                    @click="openTableStructureEditor"
-                  >
-                    <PencilRuler class="data-grid-topbar-action-icon h-3 w-3" />
-                    <span class="data-grid-topbar-action-label" :class="{ 'data-grid-topbar-action-label--compact': compactDataGridToolbar }">{{ t("contextMenu.editStructure") }}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{{ t("contextMenu.editStructure") }}</TooltipContent>
-              </Tooltip>
               <Tooltip v-if="showQueryEditReadOnlyBadge">
                 <TooltipTrigger as-child>
                   <div class="flex h-5 items-center gap-1 rounded border border-muted-foreground/30 bg-muted/60 px-1.5 text-xs font-medium text-muted-foreground">
