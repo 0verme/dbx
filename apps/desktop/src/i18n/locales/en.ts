@@ -2084,6 +2084,7 @@ export default {
     bar: "Bar",
     pie: "Pie",
     noNumericData: "No numeric data available for charting",
+    showLabels: "Show Values",
   },
   grid: {
     rows: "{count} rows",
