@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button";
 import { buildTransferObjectSelections, countTransferObjects } from "./transferSelections";
 import { createTaskLoadTracker } from "./taskLoadTracker";
+import { describeTransferStructureOperation, summarizeTransferStructureOperations } from "./structurePlanSummary";
 import {
   confirmTransferWithProductionSafety,
   createTransferSubmission,
@@ -13,6 +14,7 @@ import {
   rebuildUnavailableReason,
   resolveTransferStrategy,
   supportsTransferUpsert,
+  transferPlanReviewText,
   transferPreviewSql,
   transferStrategyOptions,
   TRANSFER_STRUCTURE_PREVIEW_UNAVAILABLE,
@@ -1084,7 +1086,7 @@ const confirmationTitle = computed(() => {
   if (!confirmationRequest.value) return "";
   // A rebuild keeps its strategy title (it covers rename + create); a plain structure transfer
   // is titled by what the user is actually reviewing.
-  return confirmationRequest.value.dropTargetBeforeCreate ? confirmationStrategy.value : t("transfer.structurePreviewTitle");
+  return confirmationRequest.value.dropTargetBeforeCreate ? confirmationStrategy.value : t("transfer.structurePlanTitle");
 });
 /** The read-only SQL both confirmations review, composed so no operation is shown twice. */
 const confirmationSql = computed(() => (confirmationPreview.value ? transferPreviewSql(confirmationPreview.value) : ""));
@@ -1096,12 +1098,43 @@ const confirmationDetails = computed(() => {
   const lines = [confirmationSummary.value];
   if (preview.rebuild) {
     const missingTargets = preview.rebuild.tables.some((table) => !table.backupTable);
-    lines.push(t("transfer.rebuildSummary", { count: preview.rebuild.tables.length }));
+    if (!preview.structure) lines.push(t("transfer.rebuildSummary", { count: preview.rebuild.tables.length }));
     if (missingTargets) lines.push(t("transfer.rebuildMissingTargets"));
   }
   if (preview.structure) {
-    lines.push(t("transfer.structurePreviewSummary", { count: preview.structure.tables.length }));
-    if (preview.structure.tables.some((table) => table.preexisting)) lines.push(t("transfer.structurePreviewPreexistingTargets"));
+    const operations = preview.structure.operations ?? [];
+    const operationSummary = summarizeTransferStructureOperations(operations);
+    lines.push(t("transfer.structurePlanTitle"));
+
+    const createdCounts = [
+      [operationSummary.createdSchemas, "structurePlanSchemas"],
+      [operationSummary.createdTables, "structurePlanTables"],
+      [operationSummary.indexes, "structurePlanIndexes"],
+      [operationSummary.foreignKeys, "structurePlanForeignKeys"],
+      [operationSummary.sequences, "structurePlanSequences"],
+      [operationSummary.comments, "structurePlanComments"],
+    ] as const;
+    const createdItems = createdCounts.filter(([count]) => count > 0).map(([count, label]) => `${count} ${t(`transfer.${label}`, count)}`);
+    if (createdItems.length > 0) lines.push(`${t("transfer.structurePlanCreated")}: ${createdItems.join(" · ")}`);
+    if (operationSummary.skippedTables > 0) {
+      lines.push(`${t("transfer.structurePlanSkipped")}: ${operationSummary.skippedTables} ${t("transfer.structurePlanTables", operationSummary.skippedTables)}`);
+    }
+    if (operationSummary.rebuiltTables > 0) {
+      lines.push(`${t("transfer.structurePlanRebuilt")}: ${operationSummary.rebuiltTables} ${t("transfer.structurePlanTables", operationSummary.rebuiltTables)}`);
+    }
+    if (operations.length > 0) {
+      lines.push(t("transfer.plannedOperations"));
+      lines.push(
+        ...operations.map((operation) => {
+          const description = describeTransferStructureOperation(operation);
+          const label = t(description.key, description.values);
+          const suffix = description.suffixKey ? ` — ${t(description.suffixKey)}` : "";
+          return `• ${label}${suffix}`;
+        }),
+      );
+    }
+    lines.push(t("transfer.structurePlanSqlPreview"));
+
     const unexpandedObjects = request.objects.filter((selection) => selection.objectType !== "TABLE" && selection.names.length > 0);
     if (unexpandedObjects.length > 0) {
       lines.push(t("transfer.structurePreviewUnexpandedObjects", { objects: unexpandedObjects.map((selection) => selection.names.join(", ")).join("; ") }));
@@ -1121,7 +1154,7 @@ function requestTransferConfirmation(request: api.TransferRequest, preview: api.
   confirmationRequest.value = request;
   confirmationPreview.value = preview;
   const reviewText = hasTransferSqlPreview(preview)
-    ? [confirmationStrategy.value, confirmationDetails.value, transferPreviewSql(preview)].filter(Boolean).join("\n\n")
+    ? transferPlanReviewText(confirmationStrategy.value, confirmationDetails.value, preview)
     : [confirmationSummary.value, `${t("transfer.targetTableHandling")}: ${confirmationStrategy.value}`, ...request.objects.map((selection) => selection.names.join(", "))].join("\n");
   return confirmTransferWithProductionSafety({
     request,

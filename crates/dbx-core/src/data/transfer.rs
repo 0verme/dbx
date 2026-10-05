@@ -344,6 +344,68 @@ pub struct TransferRebuildPreviewTable {
 pub struct TransferStructurePreview {
     pub sql: String,
     pub tables: Vec<TransferStructurePreviewTable>,
+    pub operations: Vec<TransferStructureOperation>,
+}
+
+/// One user-facing logical operation produced by the structure transfer planner.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TransferStructureOperationKind {
+    CreateSchema,
+    CreateTable,
+    SkipExistingTable,
+    RebuildTable,
+    CreateIndex,
+    AddForeignKey,
+    CreateSequence,
+    BindSequence,
+    AddComment,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferStructureOperation {
+    pub kind: TransferStructureOperationKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_table: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_table: Option<String>,
+}
+
+impl TransferStructureOperation {
+    pub(crate) fn table(kind: TransferStructureOperationKind, source_table: &str, target_table: &str) -> Self {
+        Self {
+            kind,
+            object_name: None,
+            source_table: Some(source_table.to_string()),
+            target_table: Some(target_table.to_string()),
+        }
+    }
+
+    pub(crate) fn object(
+        kind: TransferStructureOperationKind,
+        object_name: &str,
+        source_table: &str,
+        target_table: &str,
+    ) -> Self {
+        Self {
+            kind,
+            object_name: Some(object_name.to_string()),
+            source_table: Some(source_table.to_string()),
+            target_table: Some(target_table.to_string()),
+        }
+    }
+
+    pub(crate) fn schema(schema: &str) -> Self {
+        Self {
+            kind: TransferStructureOperationKind::CreateSchema,
+            object_name: Some(schema.to_string()),
+            source_table: None,
+            target_table: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -7434,6 +7496,7 @@ async fn get_existing_postgres_sequence_names_for_transfer(
 /// [`execute_planned_postgres_owned_sequences_for_transfer`] is for.
 struct PlannedPostgresOwnedSequences {
     create_statements: Vec<String>,
+    create_sequences: Vec<PostgresOwnedSequence>,
     owned_sequences: Vec<PostgresOwnedSequence>,
 }
 
@@ -7449,14 +7512,22 @@ async fn plan_postgres_owned_sequences_for_transfer(
     target_table_preexisting: bool,
 ) -> Result<PlannedPostgresOwnedSequences, String> {
     if !(request.create_table && pg_compat_transfer && preserves_target_table_name && !target_table_preexisting) {
-        return Ok(PlannedPostgresOwnedSequences { create_statements: Vec::new(), owned_sequences: Vec::new() });
+        return Ok(PlannedPostgresOwnedSequences {
+            create_statements: Vec::new(),
+            create_sequences: Vec::new(),
+            owned_sequences: Vec::new(),
+        });
     }
 
     let owned_sequences =
         get_postgres_owned_sequences_for_transfer(state, source_pool_key, &request.source_schema, &[table.to_string()])
             .await?;
     if owned_sequences.is_empty() {
-        return Ok(PlannedPostgresOwnedSequences { create_statements: Vec::new(), owned_sequences });
+        return Ok(PlannedPostgresOwnedSequences {
+            create_statements: Vec::new(),
+            create_sequences: Vec::new(),
+            owned_sequences,
+        });
     }
 
     let sequence_names = owned_sequences.iter().map(|sequence| sequence.name.clone()).collect::<Vec<_>>();
@@ -7476,6 +7547,7 @@ async fn plan_postgres_owned_sequences_for_transfer(
 
     let sequence_if_not_exists = target_supports_if_not_exists_ddl(state, target_pool_key).await;
     let mut create_statements = Vec::new();
+    let mut create_sequences = Vec::new();
     for sequence in &owned_sequences {
         let should_create = validate_existing_postgres_sequence(
             sequence,
@@ -7491,10 +7563,11 @@ async fn plan_postgres_owned_sequences_for_transfer(
                 &request.target_schema,
                 sequence_if_not_exists,
             ));
+            create_sequences.push(sequence.clone());
         }
     }
 
-    Ok(PlannedPostgresOwnedSequences { create_statements, owned_sequences })
+    Ok(PlannedPostgresOwnedSequences { create_statements, create_sequences, owned_sequences })
 }
 
 /// Executes the `CREATE SEQUENCE` statements a [`PlannedPostgresOwnedSequences`] planned.
