@@ -7521,7 +7521,7 @@ function shouldAccelerateCanvasWheel(event: WheelEvent): boolean {
   if (event.ctrlKey || event.metaKey) return false;
   if (event.deltaX !== 0) return true;
   if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return true;
-  return event.shiftKey && Math.abs(event.deltaY) > Math.abs(event.deltaX) && Math.abs(event.deltaY) >= CANVAS_TRACKPAD_DELTA_THRESHOLD;
+  return (event.shiftKey || event.altKey) && Math.abs(event.deltaY) > Math.abs(event.deltaX) && Math.abs(event.deltaY) >= CANVAS_TRACKPAD_DELTA_THRESHOLD;
 }
 
 function onCanvasWheel(event: WheelEvent) {
@@ -7534,6 +7534,7 @@ function onCanvasWheel(event: WheelEvent) {
     deltaY: event.deltaY,
     deltaMode: event.deltaMode,
     shiftKey: event.shiftKey,
+    altKey: event.altKey,
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
     lineSize: CANVAS_DATA_GRID_ROW_HEIGHT,
@@ -7557,6 +7558,7 @@ function onDomGridWheel(event: WheelEvent) {
     deltaY: event.deltaY,
     deltaMode: event.deltaMode,
     shiftKey: event.shiftKey,
+    altKey: event.altKey,
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
     lineSize: CANVAS_DATA_GRID_ROW_HEIGHT,
