@@ -2894,6 +2894,9 @@ export default withEnglishFallback({
     apply: "適用",
   },
   explain: {
+    copyRaw: "{format} をコピー",
+    copied: "コピーしました",
+    copyFailed: "コピーに失敗しました: {message}",
     estimatedTime: "推定時間",
     title: "実行計画",
     standardTable: "標準テーブル",

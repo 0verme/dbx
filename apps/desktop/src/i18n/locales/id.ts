@@ -2949,6 +2949,9 @@ export default withEnglishFallback({
     apply: "Terapkan",
   },
   explain: {
+    copyRaw: "Salin {format}",
+    copied: "Disalin",
+    copyFailed: "Gagal menyalin: {message}",
     estimatedTime: "Perkiraan waktu",
     title: "Explain Plan",
     standardTable: "Tabel",

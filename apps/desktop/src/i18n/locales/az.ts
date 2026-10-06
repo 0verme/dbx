@@ -2647,6 +2647,9 @@ export default withEnglishFallback({
     apply: "Tətbiq et",
   },
   explain: {
+    copyRaw: "{format} kopyala",
+    copied: "Kopyalandı",
+    copyFailed: "Kopyalama alınmadı: {message}",
     estimatedTime: "Təxmini vaxt",
     title: "İcra planı",
     standardTable: "Cədvəl",

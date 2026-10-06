@@ -2822,6 +2822,9 @@ export default withEnglishFallback({
     apply: "적용",
   },
   explain: {
+    copyRaw: "{format} 복사",
+    copied: "복사됨",
+    copyFailed: "복사 실패: {message}",
     estimatedTime: "예상 시간",
     title: "실행 계획",
     standardTable: "표",

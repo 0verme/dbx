@@ -2973,6 +2973,9 @@ export default withEnglishFallback({
     apply: "Применить",
   },
   explain: {
+    copyRaw: "Копировать {format}",
+    copied: "Скопировано",
+    copyFailed: "Не удалось скопировать: {message}",
     estimatedTime: "Оценочное время",
     title: "План выполнения",
     standardTable: "Таблица",

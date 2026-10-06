@@ -2623,6 +2623,9 @@ export default withEnglishFallback({
     apply: "Uygula",
   },
   explain: {
+    copyRaw: "{format} kopyala",
+    copied: "Kopyalandı",
+    copyFailed: "Kopyalama başarısız: {message}",
     estimatedTime: "Tahmini süre",
     title: "Yürütme Planı",
     standardTable: "Tablo",

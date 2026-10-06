@@ -3050,6 +3050,9 @@ export default withEnglishFallback({
     apply: "应用",
   },
   explain: {
+    copyRaw: "复制 {format}",
+    copied: "已复制",
+    copyFailed: "复制失败：{message}",
     estimatedTime: "预计耗时",
     title: "执行计划",
     standardTable: "标准表格",

@@ -3116,6 +3116,9 @@ export default {
     apply: "Apply",
   },
   explain: {
+    copyRaw: "Copy {format}",
+    copied: "Copied",
+    copyFailed: "Copy failed: {message}",
     estimatedTime: "Estimated time",
     title: "Explain Plan",
     standardTable: "Table",

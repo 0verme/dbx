@@ -3017,6 +3017,9 @@ export default withEnglishFallback({
     apply: "Aplicar",
   },
   explain: {
+    copyRaw: "Copiar {format}",
+    copied: "Copiado",
+    copyFailed: "Error al copiar: {message}",
     estimatedTime: "Tiempo estimado",
     title: "Plan de ejecución",
     standardTable: "Tabla",

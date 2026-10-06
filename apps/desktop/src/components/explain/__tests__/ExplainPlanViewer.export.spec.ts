@@ -21,6 +21,9 @@ function passthrough(tag: string): Component {
 
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
+  // The viewer's RedisJsonEditor import pulls in the real i18n module, whose
+  // import-time createI18n call must survive this mock.
+  createI18n: () => ({ global: { t: (key: string) => key }, install: () => {} }),
 }));
 vi.mock("@lucide/vue", () => ({
   AlertCircle: passthrough("span"),

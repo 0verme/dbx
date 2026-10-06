@@ -2868,6 +2868,9 @@ export default withEnglishFallback({
     apply: "Applica",
   },
   explain: {
+    copyRaw: "Copia {format}",
+    copied: "Copiato",
+    copyFailed: "Copia non riuscita: {message}",
     estimatedTime: "Tempo stimato",
     title: "Piano di Spiegazione",
     standardTable: "Tabella",

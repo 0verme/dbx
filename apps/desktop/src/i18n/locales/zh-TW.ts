@@ -2876,6 +2876,9 @@ export default withEnglishFallback({
     apply: "套用",
   },
   explain: {
+    copyRaw: "複製 {format}",
+    copied: "已複製",
+    copyFailed: "複製失敗：{message}",
     estimatedTime: "預估耗時",
     title: "執行計畫",
     standardTable: "標準表格",
