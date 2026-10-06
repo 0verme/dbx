@@ -542,21 +542,26 @@ mod tests {
     fn structured_ddl_metadata_produces_operation_dtos() {
         let index = db::IndexInfo {
             name: "idx_orders_created_at".into(),
-            columns: vec!["created_at".into()],
+            columns: vec!["lower(\"email\")".into()],
             is_unique: false,
             is_primary: false,
             filter: None,
-            index_type: None,
+            index_type: Some("btree".into()),
             included_columns: None,
             comment: None,
-            key_is_expression: Vec::new(),
-            column_opclasses: Vec::new(),
-            key_options: Vec::new(),
+            key_is_expression: vec![true],
+            column_opclasses: vec![Some("text_pattern_ops".into())],
+            key_options: vec![1],
             constraint_backed: false,
         };
         let index_sql = generate_postgres_index_ddl(std::slice::from_ref(&index), "orders", "public", true);
         let index_operations = postgres_index_operations(std::slice::from_ref(&index), "orders", "orders");
-        assert!(index_sql[0].contains("idx_orders_created_at"));
+        assert_eq!(
+            index_sql,
+            vec![
+                "CREATE INDEX IF NOT EXISTS \"idx_orders_created_at\" ON \"public\".\"orders\" USING btree (lower(\"email\") text_pattern_ops DESC NULLS LAST)"
+            ]
+        );
         assert_eq!(index_operations[0].kind, TransferStructureOperationKind::CreateIndex);
         assert_eq!(index_operations[0].object_name.as_deref(), Some("idx_orders_created_at"));
 

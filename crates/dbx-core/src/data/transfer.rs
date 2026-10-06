@@ -5,6 +5,7 @@ pub use dbx_sql::value_literals::{
     quote_postgres_string_literal,
 };
 
+use dbx_sql::postgres_index_key::decorate_postgres_index_key;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -2417,18 +2418,7 @@ fn postgres_index_column_sql(
     // The opclass is read separately from `pg_index.indclass` for every key position
     // (including expression keys) and appended uniformly — it never lives inside the
     // expression text, so there is no duplication risk.
-    let with_opclass = match opclass.filter(|o| !o.is_empty()) {
-        Some(opc) => format!("{base} {opc}"),
-        None => base,
-    };
-    match key_options {
-        Some(options) => format!(
-            "{with_opclass} {} NULLS {}",
-            if options & 1 != 0 { "DESC" } else { "ASC" },
-            if options & 2 != 0 { "FIRST" } else { "LAST" }
-        ),
-        None => with_opclass,
-    }
+    decorate_postgres_index_key(&base, opclass, key_options)
 }
 
 /// `CREATE INDEX/SEQUENCE IF NOT EXISTS` was added in PostgreSQL 9.5: 9.2/9.3/9.4
