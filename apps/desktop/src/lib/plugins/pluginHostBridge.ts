@@ -1252,6 +1252,7 @@ export function pluginSdkSource(initialTheme?: PluginBridgeTheme): string {
     const pending = new Map();
     const listeners = { event: new Set(), binary: new Set(), init: new Set(), context: new Set(), filedrop: new Set(), dragstate: new Set(), close: new Set() };
     let sequence = 0;
+    let contributionId;
     let context;
     let locale = 'en';
     let theme;
@@ -1353,6 +1354,7 @@ export function pluginSdkSource(initialTheme?: PluginBridgeTheme): string {
     };
     window.dbxPlugin = Object.freeze({
       ready,
+      get contributionId() { return contributionId; },
       get context() { return context; },
       get locale() { return locale; },
       get theme() { return theme; },
@@ -1511,6 +1513,7 @@ export function pluginSdkSource(initialTheme?: PluginBridgeTheme): string {
         pending.delete(message.id);
         if (message.error) handler.reject(new Error(message.error)); else handler.resolve(message.result);
       } else if (message.type === 'init') {
+        contributionId = message.contributionId;
         capabilities = message.capabilities || {};
         context = message.context;
         locale = typeof message.locale === 'string' ? message.locale : 'en';
