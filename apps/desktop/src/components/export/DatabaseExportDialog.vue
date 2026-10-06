@@ -24,6 +24,7 @@ import { isQueryTimeoutErrorMessage } from "@/lib/sql/queryError";
 import type { SqlInsertDialect, SqlInsertMode } from "@/lib/export/sqlInsertMode";
 import { revealExportedPath } from "@/lib/export/exportPath";
 import { translateBackendError } from "@/i18n/backend-errors";
+import { loadSavedDatabaseExportOptions, MAX_SPLIT_SQL_PART_MB, MIN_SPLIT_SQL_PART_MB, saveDatabaseExportOptions, sortDatabaseTableNames } from "@/lib/export/databaseExportOptions";
 
 const { t } = useI18n();
 const { toast } = useToast();
@@ -66,19 +67,49 @@ const tableError = ref<string | null>(null);
 const POSTGRES_ALL_SCHEMAS = "__DBX_ALL_SCHEMAS__";
 
 // Options
-const includeStructure = ref(true);
-const includeData = ref(true);
-const insertDialect = ref<SqlInsertDialect>("source");
-const insertMode = ref<SqlInsertMode>("batch");
-const includeObjects = ref(true);
-const includeCreateDatabase = ref(false);
-const dropTableIfExists = ref(false);
-const omitAutoIncrement = ref(false);
-const preserveOriginalLanguage = ref(false);
-const splitSqlOutput = ref(false);
-const splitSqlPartMaxMb = ref(100);
-const MIN_SPLIT_SQL_PART_MB = 1;
-const MAX_SPLIT_SQL_PART_MB = 4096;
+const savedOptions = loadSavedDatabaseExportOptions();
+const includeStructure = ref(savedOptions.includeStructure);
+const includeData = ref(savedOptions.includeData);
+const insertDialect = ref<SqlInsertDialect>(savedOptions.insertDialect);
+const insertMode = ref<SqlInsertMode>(savedOptions.insertMode);
+const includeObjects = ref(savedOptions.includeObjects);
+const includeCreateDatabase = ref(savedOptions.includeCreateDatabase);
+const dropTableIfExists = ref(savedOptions.dropTableIfExists);
+const omitAutoIncrement = ref(savedOptions.omitAutoIncrement);
+const preserveOriginalLanguage = ref(savedOptions.preserveOriginalLanguage);
+const splitSqlOutput = ref(savedOptions.splitSqlOutput);
+const splitSqlPartMaxMb = ref(savedOptions.splitSqlPartMaxMb);
+
+function applyStoredExportOptions() {
+  const saved = loadSavedDatabaseExportOptions();
+  includeStructure.value = saved.includeStructure;
+  includeData.value = saved.includeData;
+  insertDialect.value = saved.insertDialect;
+  insertMode.value = saved.insertMode;
+  includeObjects.value = saved.includeObjects;
+  includeCreateDatabase.value = saved.includeCreateDatabase;
+  dropTableIfExists.value = saved.dropTableIfExists;
+  omitAutoIncrement.value = saved.omitAutoIncrement;
+  preserveOriginalLanguage.value = saved.preserveOriginalLanguage;
+  splitSqlOutput.value = saved.splitSqlOutput;
+  splitSqlPartMaxMb.value = saved.splitSqlPartMaxMb;
+}
+
+function persistExportOptions() {
+  saveDatabaseExportOptions({
+    includeStructure: includeStructure.value,
+    includeData: includeData.value,
+    insertDialect: insertDialect.value,
+    insertMode: insertMode.value,
+    includeObjects: includeObjects.value,
+    includeCreateDatabase: includeCreateDatabase.value,
+    dropTableIfExists: dropTableIfExists.value,
+    omitAutoIncrement: omitAutoIncrement.value,
+    preserveOriginalLanguage: preserveOriginalLanguage.value,
+    splitSqlOutput: splitSqlOutput.value,
+    splitSqlPartMaxMb: normalizedSplitSqlPartMaxMb(),
+  });
+}
 // `AUTO_INCREMENT` stripping is a MySQL-only DDL transform (backend gates on
 // db_type == mysql, which also covers MariaDB / TiDB / OceanBase-MySQL-mode).
 const isMysqlFamily = computed(() => store.getConfig(connectionId.value)?.db_type === "mysql");
@@ -280,7 +311,7 @@ async function loadTables(preferredTable = "", preferredTables: string[] = []) {
   selectedTables.value = [];
   try {
     const tableInfos = await api.listTables(connectionId.value, database.value, schema.value);
-    const names = tableInfos.map((table) => table.name);
+    const names = sortDatabaseTableNames(tableInfos.map((table) => table.name));
     tables.value = names;
     const preferredSet = new Set(preferredTables.filter((name) => names.includes(name)));
     selectedTables.value = preferredSet.size > 0 ? names.filter((name) => preferredSet.has(name)) : preferredTable && names.includes(preferredTable) ? [preferredTable] : [...names];
@@ -687,17 +718,7 @@ function resetState() {
   exportAllDatabases.value = false;
   selectedDatabases.value = [];
   databaseFilter.value = "";
-  includeStructure.value = true;
-  includeData.value = true;
-  insertDialect.value = "source";
-  insertMode.value = "batch";
-  includeObjects.value = true;
-  includeCreateDatabase.value = false;
-  dropTableIfExists.value = false;
-  omitAutoIncrement.value = false;
-  preserveOriginalLanguage.value = false;
-  splitSqlOutput.value = false;
-  splitSqlPartMaxMb.value = 100;
+  applyStoredExportOptions();
   isExporting.value = false;
   exportProgress.value = null;
   exportDone.value = false;
@@ -820,6 +841,12 @@ watch(
   },
   { immediate: true },
 );
+
+watch([includeStructure, includeData, insertDialect, insertMode, includeObjects, includeCreateDatabase, dropTableIfExists, omitAutoIncrement, preserveOriginalLanguage, splitSqlOutput, splitSqlPartMaxMb], () => {
+  if (open.value) {
+    persistExportOptions();
+  }
+});
 </script>
 
 <template>
