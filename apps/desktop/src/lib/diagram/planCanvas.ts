@@ -2,6 +2,21 @@ import type { ExplainPlanDatabaseType, ExplainPlanNode } from "./explainPlan";
 
 export type PlanCanvasCategory = "result" | "sort" | "join" | "tscan" | "iscan" | "lookup" | "mat" | "agg" | "xchg" | "mod" | "other";
 
+/** Single source for plan-node category colors; the live canvas overrides `other` with a CSS variable. */
+export const PLAN_CATEGORY_COLORS: Record<PlanCanvasCategory, string> = {
+  result: "#a78bfa",
+  sort: "#38bdf8",
+  join: "#f472b6",
+  tscan: "#fb923c",
+  iscan: "#34d399",
+  lookup: "#2dd4bf",
+  mat: "#94a3b8",
+  agg: "#c084fc",
+  xchg: "#facc15",
+  mod: "#f87171",
+  other: "#71717a",
+};
+
 export const PLAN_CANVAS_NODE_W = 212;
 export const PLAN_CANVAS_NODE_H = 76;
 export const PLAN_CANVAS_GAP_X = 84;

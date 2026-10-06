@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { AlertCircle, Braces, GitBranch, Table2, FileText, Workflow } from "@lucide/vue";
+import { AlertCircle, Braces, Download, GitBranch, Table2, FileText, Workflow } from "@lucide/vue";
 import type { ParsedExplainPlan, ExplainPlanNode } from "@/lib/diagram/explainPlan";
 import { flattenExplainPlanNodes, formatExplainPlanDetails } from "@/lib/diagram/explainPlan";
 import { extractActualRows } from "@/lib/diagram/planCanvas";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/composables/useToast";
+import { translateBackendError } from "@/i18n/backend-errors";
+import { EXPLAIN_PLAN_EXPORT_COLUMN_KEYS, saveExplainPlanExport, type ExplainPlanExportFormat } from "@/lib/export/explainPlanExport";
 import type { QueryResult } from "@/types/database";
 import type { DefaultExplainView } from "@/stores/settingsStore";
 import ExplainPlanNodeTree from "./ExplainPlanNodeTree.vue";
@@ -25,6 +29,41 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const { toast } = useToast();
+const exporting = ref(false);
+const exportFormats: { format: ExplainPlanExportFormat; label: string }[] = [
+  { format: "svg", label: "diagram.exportSvg" },
+  { format: "png", label: "diagram.exportPng" },
+  { format: "html", label: "grid.exportHtml" },
+  { format: "csv", label: "grid.exportCsv" },
+  { format: "xlsx", label: "grid.exportXlsx" },
+];
+
+async function exportPlan(format: ExplainPlanExportFormat) {
+  if (exporting.value || props.loading || props.error || !props.plan?.nodes.length) return;
+  exporting.value = true;
+  try {
+    const saved = await saveExplainPlanExport(
+      props.plan,
+      format,
+      EXPLAIN_PLAN_EXPORT_COLUMN_KEYS.map((key) => t(key)),
+      t("explain.estimatedTime"),
+      `${t("explain.title")} · ${props.plan.databaseType.toUpperCase()}`,
+      {
+        cost: t("explain.cost"),
+        estimatedRows: t("explain.estRows"),
+        legendHeat: t("explain.legendHeat"),
+        legendEdge: t("explain.legendEdge"),
+      },
+    );
+    if (saved) toast(t("grid.exported"));
+  } catch (error) {
+    toast(t("grid.exportFailed", { message: translateBackendError(t, error) }), 5000);
+  } finally {
+    exporting.value = false;
+  }
+}
+
 const userSelectedView = ref<ExplainView | null>(null);
 const activeView = ref<ExplainView>("canvas");
 const hasTableView = computed(() => !!props.tableResult || !!props.tableError);
@@ -121,6 +160,19 @@ function tableCellText(value: unknown): string {
       >
       <span v-if="measuredRowsLabel" class="shrink-0 whitespace-nowrap ml-1 inline-flex items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300" style="font-size: 10px">{{ measuredRowsLabel }}</span>
       <span class="flex-1 min-w-2" />
+      <DropdownMenu v-if="plan">
+        <DropdownMenuTrigger as-child>
+          <Button size="sm" variant="ghost" class="h-6 shrink-0 gap-1 px-2 text-xs" :disabled="loading || !!error || exporting || !plan.nodes.length">
+            <Download class="h-3.5 w-3.5" />
+            {{ t("grid.export") }}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem v-for="item in exportFormats" :key="item.format" :disabled="exporting" @select="exportPlan(item.format)">
+            {{ t(item.label) }}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <div v-if="plan || hasTableView" class="shrink-0 inline-flex rounded-md border bg-muted/40 p-0.5">
         <Button v-if="plan" size="sm" :variant="activeView === 'canvas' ? 'secondary' : 'ghost'" class="h-6 px-2 text-xs gap-1" @click="selectView('canvas')">
           <Workflow class="h-3.5 w-3.5" />

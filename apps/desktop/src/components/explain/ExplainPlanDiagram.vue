@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { ExplainPlanNode } from "@/lib/diagram/explainPlan";
 import { formatExplainPlanDetails } from "@/lib/diagram/explainPlan";
 import type { PlanCanvasCategory, PlanCanvasNode } from "@/lib/diagram/planCanvas";
-import { buildPlanCanvas, edgeStrokeWidth, formatPlanRows, heatLevel, PLAN_CANVAS_GAP_X, PLAN_CANVAS_NODE_H, PLAN_CANVAS_NODE_W } from "@/lib/diagram/planCanvas";
+import { buildPlanCanvas, edgeStrokeWidth, formatPlanRows, heatLevel, PLAN_CATEGORY_COLORS, PLAN_CANVAS_GAP_X, PLAN_CANVAS_NODE_H, PLAN_CANVAS_NODE_W } from "@/lib/diagram/planCanvas";
 
 const props = defineProps<{
   nodes: ExplainPlanNode[];
@@ -15,16 +15,7 @@ const props = defineProps<{
 const { t } = useI18n();
 
 const CATEGORY_COLORS: Record<PlanCanvasCategory, string> = {
-  result: "#a78bfa",
-  sort: "#38bdf8",
-  join: "#f472b6",
-  tscan: "#fb923c",
-  iscan: "#34d399",
-  lookup: "#2dd4bf",
-  mat: "#94a3b8",
-  agg: "#c084fc",
-  xchg: "#facc15",
-  mod: "#f87171",
+  ...PLAN_CATEGORY_COLORS,
   other: "var(--muted-foreground)",
 };
 
