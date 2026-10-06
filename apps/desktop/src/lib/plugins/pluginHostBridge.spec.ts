@@ -1032,18 +1032,24 @@ describe("PluginHostBridge", () => {
   });
 
   it("injects a <base> and widens resource CSP sources for the plugin asset origin", () => {
-    const document = pluginSandboxDocument("<html><head></head><body></body></html>", [], undefined, { baseUrl: "dbx-plugin://localhost/io.github.t8y2.s3/assets/" });
+    const document = pluginSandboxDocument('<html><head></head><body><script type="module" src="dbx-plugin://localhost/io.github.t8y2.s3/entry/app.mjs"></script><script type="module" src="https://cdn.example.test/app.mjs"></script></body></html>', [], undefined, {
+      baseUrl: "dbx-plugin://localhost/io.github.t8y2.s3/assets/",
+    });
     expect(document).toContain('<base href="dbx-plugin://localhost/io.github.t8y2.s3/assets/">');
     expect(document).toContain("script-src 'unsafe-inline' blob: dbx-plugin:;");
     expect(document).toContain("font-src data: blob: dbx-plugin:;");
+    expect(document).toContain('src="dbx-plugin://localhost/io.github.t8y2.s3/entry/app.mjs"');
+    const scriptPolicy = document.match(/script-src[^;]+;/)?.[0] ?? "";
+    expect(scriptPolicy).not.toContain("https://cdn.example.test");
     // <base> leads the head injection so inlined CSS url() resolves against it.
     expect(document.indexOf("<base ")).toBeLessThan(document.indexOf("<style>"));
   });
 
   it("allows the WebView2-mapped asset origin exactly", () => {
-    const document = pluginSandboxDocument("<html><head></head><body></body></html>", [], undefined, { baseUrl: "http://dbx-plugin.localhost/io.github.t8y2.s3/assets/" });
+    const document = pluginSandboxDocument('<html><head></head><body><script type="module" src="http://dbx-plugin.localhost/io.github.t8y2.s3/entry/app.mjs"></script></body></html>', [], undefined, { baseUrl: "http://dbx-plugin.localhost/io.github.t8y2.s3/assets/" });
     expect(document).toContain("script-src 'unsafe-inline' blob: http://dbx-plugin.localhost;");
     expect(document).toContain('<base href="http://dbx-plugin.localhost/io.github.t8y2.s3/assets/">');
+    expect(document).toContain('src="http://dbx-plugin.localhost/io.github.t8y2.s3/entry/app.mjs"');
   });
 
   it("rejects malformed asset base URLs without touching the CSP", () => {
