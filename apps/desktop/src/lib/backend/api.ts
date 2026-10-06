@@ -1111,6 +1111,8 @@ export type {
   TransferObjectSelection,
   TransferTableNameCase,
   TransferOwnershipPolicy,
+  TransferStructureOperation,
+  TransferStructureOperationKind,
   TransferOwnershipPreview,
   TableImportMode,
   TableImportConflictPolicy,

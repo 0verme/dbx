@@ -5494,9 +5494,19 @@ export interface TransferStructurePreviewTable {
   sql: string;
 }
 
+export type TransferStructureOperationKind = "createSchema" | "createTable" | "skipExistingTable" | "rebuildTable" | "createIndex" | "addForeignKey" | "createSequence" | "bindSequence" | "addComment";
+
+export interface TransferStructureOperation {
+  kind: TransferStructureOperationKind;
+  objectName?: string;
+  sourceTable?: string;
+  targetTable?: string;
+}
+
 export interface TransferStructurePreview {
   sql: string;
   tables: TransferStructurePreviewTable[];
+  operations: TransferStructureOperation[];
 }
 
 export interface TransferOwnershipPreview {
