@@ -571,4 +571,57 @@ describe("useDataGridConditionEditor", () => {
     expect(editor.handleKeydown(processEnter)).toBeUndefined();
     expect(processEnter.preventDefault).not.toHaveBeenCalled();
   });
+
+  it("suggests SQL syntax operators including BETWEEN, LIKE, and IS NULL in WHERE condition (#7989)", async () => {
+    const value = ref("");
+    const editor = useDataGridConditionEditor({
+      kind: "where",
+      value,
+      columns: ["score", "status", "deleted_at"],
+      historyScope: {},
+      suggestionDebounceMs: 1,
+    });
+
+    // 1. 根据 betw 提示 BETWEEN 选项，并展示 BETWEEN ... AND ... 注释
+    value.value = "score betw";
+    await nextTick();
+    await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "BETWEEN", kind: "keyword", comment: "BETWEEN ... AND ..." }]));
+    expect(editor.accept()).toBe(true);
+    expect(value.value).toBe("score BETWEEN");
+
+    // 2. 根据 li 提示 LIKE
+    value.value = "score li";
+    await nextTick();
+    await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "LIKE", kind: "keyword" }]));
+
+    // 3. 根据 is 提示 IS NULL, IS NOT NULL, IS
+    value.value = "score is";
+    await nextTick();
+    await vi.waitFor(() =>
+      expect(editor.suggestions.value).toEqual([
+        { value: "IS NULL", kind: "keyword" },
+        { value: "IS NOT NULL", kind: "keyword" },
+      ]),
+    );
+
+    // 4. NOT 之后支持提示 BETWEEN 操作符
+    value.value = "score not betw";
+    await nextTick();
+    await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "BETWEEN", kind: "keyword", comment: "BETWEEN ... AND ..." }]));
+
+    // 5. IS 之后提示 NULL
+    value.value = "deleted_at IS nu";
+    await nextTick();
+    await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "NULL", kind: "keyword" }]));
+
+    // 6. IS NOT 之后提示 NULL
+    value.value = "deleted_at IS NOT nu";
+    await nextTick();
+    await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "NULL", kind: "keyword" }]));
+
+    // 7. BETWEEN 第一个操作数之后提示 AND 连接符
+    value.value = "score BETWEEN 1 a";
+    await nextTick();
+    await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "AND", kind: "keyword" }]));
+  });
 });
