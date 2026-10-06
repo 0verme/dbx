@@ -4341,6 +4341,7 @@ const {
   onEditKeydown,
   addRows: addEditorRows,
   appendPastedRowsToNewRow,
+  appendPastedRowsAsNewRows,
   cloneRow: cloneEditorRow,
   showDeleteRowConfirm,
   requestDeleteRow,
@@ -4929,7 +4930,11 @@ function insertRows(count: number, position: "above" | "below" | "end") {
   }
 }
 
-function handleAddRowMenuSelect(value: string) {
+async function handleAddRowMenuSelect(value: string) {
+  if (value === "paste-new-rows") {
+    await pasteClipboardAsNewRows();
+    return;
+  }
   if (value === "insert-multiple") {
     insertRowsDialogOpen.value = true;
     return;
@@ -4955,6 +4960,7 @@ const addRowToolbarCapability = computed<DataGridToolbarAddRowCapability>(() => 
   visible: canInsertRows.value,
   items: [
     { value: "insert-multiple", label: t("grid.insertMultipleRows") },
+    { value: "paste-new-rows", label: t("grid.pasteAsNewRows"), disabled: isSaving.value || isConditionalUpdateActive.value },
     {
       value: "position-above",
       label: t("grid.insertPositionAbove"),
@@ -8818,6 +8824,32 @@ async function pasteClipboardIntoSelection() {
   const text = await readTextFromClipboard();
   if (!dataGridResultLifecycle.isCurrent(operation)) return;
   pasteTextIntoGrid(text);
+}
+
+async function pasteClipboardAsNewRows() {
+  if (!canInsertRows.value || isSaving.value || isConditionalUpdateActive.value) return;
+  const operation = dataGridResultLifecycle.beginOperation();
+  // Capture the column mapping with the result, before the asynchronous read.
+  const columnIndexes = [...visibleColumnIndexes.value];
+  try {
+    const text = await readTextFromClipboard();
+    if (!dataGridResultLifecycle.isCurrent(operation) || !canInsertRows.value || isSaving.value || isConditionalUpdateActive.value) return;
+    const insertPaste = parseInsertStatementPaste(text);
+    const firstNewRowId = -(newRows.value.length + 1);
+    const result = appendPastedRowsAsNewRows(insertPaste?.rows ?? parseDataGridClipboard(text), columnIndexes, insertPaste?.columnNames);
+    if (!result.ok) {
+      toast(batchAppendPasteError(result.reason), 5000);
+      return;
+    }
+    toast(t("grid.pasted"));
+    nextTick(() => {
+      const displayIndex = displayRowIndexById(firstNewRowId);
+      if (displayIndex >= 0) scrollGridRowIntoView(displayIndex);
+    });
+    focusInsertedTransposeRecord(firstNewRowId);
+  } catch (error) {
+    if (dataGridResultLifecycle.isCurrent(operation)) toast(t("grid.copyFailed", { message: error instanceof Error ? error.message : String(error) }), 5000);
+  }
 }
 
 function batchAppendPasteTargetRowId(): number | null {

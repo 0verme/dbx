@@ -2585,6 +2585,7 @@ export default {
     dismiss: "Dismiss",
     addRow: "Add Row",
     insertMultipleRows: "Insert Multiple Rows…",
+    pasteAsNewRows: "Paste as new rows",
     insertRowsTitle: "Insert Multiple Rows",
     insertRowsDescription: "Create this many unsaved draft rows. Empty rows are ignored when saving; after saving, the display order follows the current query.",
     insertRowCountLabel: "Row count",

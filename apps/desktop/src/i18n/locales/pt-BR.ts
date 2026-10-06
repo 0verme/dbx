@@ -2305,6 +2305,7 @@ export default withEnglishFallback({
     dismiss: "Dispensar",
     addRow: "Adicionar Linha",
     insertMultipleRows: "Inserir várias linhas…",
+    pasteAsNewRows: "Colar como novas linhas",
     insertRowsTitle: "Inserir várias linhas",
     insertRowsDescription: "Cria este número de linhas de rascunho não salvas. Linhas vazias são ignoradas ao salvar; após salvar, a ordem de exibição segue a consulta atual.",
     insertRowCountLabel: "Número de linhas",

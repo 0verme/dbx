@@ -2479,6 +2479,7 @@ export default withEnglishFallback({
     dismiss: "Закрыть",
     addRow: "Добавить строку",
     insertMultipleRows: "Вставить несколько строк…",
+    pasteAsNewRows: "Вставить как новые строки",
     insertRowsTitle: "Вставка нескольких строк",
     insertRowsDescription: "Создаёт указанное число несохранённых черновых строк. Пустые строки игнорируются при сохранении; после сохранения порядок отображения соответствует текущему запросу.",
     insertRowCountLabel: "Количество строк",

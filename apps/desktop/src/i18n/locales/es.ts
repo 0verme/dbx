@@ -2410,6 +2410,7 @@ export default withEnglishFallback({
     quickEntryDraftPlaceholder: "Nueva",
     addRow: "Agregar fila",
     insertMultipleRows: "Insertar varias filas…",
+    pasteAsNewRows: "Pegar como filas nuevas",
     insertRowsTitle: "Insertar varias filas",
     insertRowsDescription: "Crea este número de filas de borrador sin guardar. Las filas vacías se ignoran al guardar; después de guardar, el orden de visualización sigue la consulta actual.",
     insertRowCountLabel: "Número de filas",
