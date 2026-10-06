@@ -75,6 +75,7 @@ const MAX_ZOOM = 1.6;
 const FIT_ZOOM = 1.3;
 
 const layout = computed(() => buildPlanCanvas(props.nodes));
+const hasKnownCostModel = computed(() => layout.value.nodes.some((item) => item.node.costModel !== "unknown"));
 const viewport = ref<HTMLElement>();
 const zoom = ref(1);
 const selectedIndex = ref(-1);
@@ -269,10 +270,12 @@ watch(
       </div>
 
       <div class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-1 text-[11px] text-muted-foreground">
-        <span>{{ t("explain.legendHeat") }}</span>
-        <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-[2px]" :style="{ background: HEAT_COLORS.cool }" />&lt; 5%</span>
-        <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-[2px]" :style="{ background: HEAT_COLORS.warm }" />5–20%</span>
-        <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-[2px]" :style="{ background: HEAT_COLORS.hot }" />&gt; 20%</span>
+        <template v-if="hasKnownCostModel">
+          <span>{{ t("explain.legendHeat") }}</span>
+          <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-[2px]" :style="{ background: HEAT_COLORS.cool }" />&lt; 5%</span>
+          <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-[2px]" :style="{ background: HEAT_COLORS.warm }" />5–20%</span>
+          <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-[2px]" :style="{ background: HEAT_COLORS.hot }" />&gt; 20%</span>
+        </template>
         <span class="ml-2">{{ t("explain.legendEdge") }}</span>
       </div>
     </div>
@@ -295,7 +298,7 @@ watch(
         </div>
 
         <div class="grid grid-cols-2 border-b text-xs">
-          <div class="border-r border-b p-2">
+          <div v-if="selected.node.costModel !== 'unknown'" class="border-r border-b p-2">
             <div class="text-[10px] uppercase tracking-wide text-muted-foreground">{{ t("explain.costShare") }}</div>
             <div class="font-mono font-semibold tabular-nums" :style="{ color: HEAT_COLORS[heatLevel(selected.costShare)] }">{{ costPercent(selected.costShare) || "—" }}</div>
           </div>
