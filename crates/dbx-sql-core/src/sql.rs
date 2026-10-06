@@ -155,6 +155,11 @@ struct SqlDialectProfile {
     /// PostgreSQL escape string literals (`E'...'`), which keep backslash escapes
     /// even where ordinary `'...'` literals do not.
     supports_postgres_escape_strings: bool,
+    /// Oracle alternative quoting: `q'[text]'`, `q'{text}'`, `q'(text)'`,
+    /// `q'<text>'` or `q'XtextX'`. The literal exists so that an apostrophe does
+    /// not end the string, so reading it as an ordinary `'...'` string ends the
+    /// text early and splits the statement at a semicolon inside it.
+    supports_oracle_q_quotes: bool,
     supports_oracle_plsql_blocks: bool,
     supports_oracle_style_routine_bodies: bool,
     supports_slash_line_block_delimiter: bool,
@@ -175,6 +180,7 @@ impl Default for SqlDialectProfile {
         Self {
             supports_hash_line_comments: false,
             supports_nested_block_comments: false,
+            supports_oracle_q_quotes: false,
             supports_backslash_escaped_quotes: true,
             supports_postgres_escape_strings: false,
             supports_oracle_plsql_blocks: false,
@@ -274,7 +280,12 @@ impl SqlDialectProfile {
     }
 
     fn oracle_like() -> Self {
-        Self { supports_oracle_plsql_blocks: true, supports_slash_line_block_delimiter: true, ..Self::default() }
+        Self {
+            supports_oracle_plsql_blocks: true,
+            supports_oracle_q_quotes: true,
+            supports_slash_line_block_delimiter: true,
+            ..Self::default()
+        }
     }
 
     /// PostgreSQL and openGauss, which are also the connection types users pick for a
@@ -516,6 +527,36 @@ fn dash_dash_starts_line_comment(profile: SqlDialectProfile, char_after_dashes: 
     char_after_dashes.is_none_or(|ch| ch.is_whitespace() || ch.is_control())
 }
 
+/// Tracks an Oracle `q'...'` literal across characters, so a semicolon inside its
+/// text never splits the statement.
+#[derive(Default, Clone, Copy)]
+struct OracleQQuoteState {
+    /// 1 while the introducer's quote is expected, 2 while its delimiter is.
+    awaiting: u8,
+    closer: Option<char>,
+}
+
+impl OracleQQuoteState {
+    fn is_open(&self) -> bool {
+        self.awaiting > 0 || self.closer.is_some()
+    }
+
+    /// Consumes one character of an open literal; `previous` is the character
+    /// before it, as tracked by the caller.
+    fn consume(&mut self, ch: char, previous: Option<char>) {
+        if self.awaiting == 1 {
+            self.awaiting = if ch == '\'' { 2 } else { 0 };
+        } else if self.awaiting == 2 {
+            self.closer = oracle_q_quote_closer(ch);
+            self.awaiting = 0;
+        } else if let Some(closer) = self.closer {
+            if previous == Some(closer) && ch == '\'' {
+                self.closer = None;
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct SqlStatementSplitter {
     buffer: String,
@@ -534,6 +575,8 @@ pub struct SqlStatementSplitter {
     postgres_dollar_quoted_routine: bool,
     previous: Option<char>,
     pending_mysql_line_comment_dashes: bool,
+    /// Open Oracle `q'...'` literal, if any.
+    oracle_q_quote: OracleQQuoteState,
     custom_delimiter: Option<String>,
     stop_on_error: bool,
     pending_psql_command: Option<String>,
@@ -642,7 +685,26 @@ impl SqlStatementSplitter {
                 continue;
             }
 
+            if self.oracle_q_quote.is_open() {
+                self.oracle_q_quote.consume(ch, self.previous);
+                self.buffer.push(ch);
+                self.previous = Some(ch);
+                i += 1;
+                continue;
+            }
+
             if !self.in_single_quote && !self.in_double_quote && !self.in_backtick {
+                if self.options.profile.supports_oracle_q_quotes
+                    && matches!(ch, 'q' | 'Q')
+                    && next == Some('\'')
+                    && !self.previous.is_some_and(is_identifier_continue_char)
+                {
+                    self.oracle_q_quote.awaiting = 1;
+                    self.buffer.push(ch);
+                    self.previous = Some(ch);
+                    i += 1;
+                    continue;
+                }
                 if self.previous == Some('-') && ch == '-' {
                     if self.options.profile.requires_whitespace_after_line_comment_dashes && next.is_none() {
                         self.pending_mysql_line_comment_dashes = true;
@@ -930,7 +992,38 @@ fn ends_with_escape_string_prefix(text: &str) -> bool {
     if !matches!(chars.next(), Some('E' | 'e')) {
         return false;
     }
-    !chars.next().is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$')
+    !chars.next().is_some_and(is_identifier_continue_char)
+}
+
+/// Whether `ch` can continue an unquoted identifier, which decides whether a
+/// one-letter introducer (`E'...'`, `q'...'`) starts its own token.
+fn is_identifier_continue_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_' || ch == '$'
+}
+
+/// The closing character of an Oracle alternative-quoting delimiter: brackets
+/// pair up (`q'[a]'`) and every other character delimits itself (`q'!a!'`).
+/// A quote or whitespace cannot delimit the literal.
+fn oracle_q_quote_closer(opening: char) -> Option<char> {
+    match opening {
+        '[' => Some(']'),
+        '{' => Some('}'),
+        '(' => Some(')'),
+        '<' => Some('>'),
+        '\'' | ' ' | '\t' | '\n' | '\r' => None,
+        other => Some(other),
+    }
+}
+
+/// Byte index just past the closing quote of the `q'...'` literal whose opening
+/// quote sits at `quote_index`, or `None` when the literal is not well formed.
+fn oracle_q_quote_end(sql: &str, quote_index: usize) -> Option<usize> {
+    let opening = next_char_at(sql, quote_index + 1)?;
+    let closer = oracle_q_quote_closer(opening)?;
+    let content_start = quote_index + 1 + opening.len_utf8();
+    let closing = format!("{closer}'");
+    let offset = sql.get(content_start..)?.find(&closing)?;
+    Some(content_start + offset + closing.len())
 }
 
 pub fn split_sql_statements(sql: &str) -> Vec<String> {
@@ -1222,6 +1315,16 @@ fn split_sql_statement_ranges_with_options(sql: &str, options: SqlParsingOptions
         }
 
         if !in_single_quote && !in_double_quote && !in_backtick {
+            if options.profile.supports_oracle_q_quotes
+                && matches!(ch, 'q' | 'Q')
+                && next == Some('\'')
+                && !sql[..i].chars().next_back().is_some_and(is_identifier_continue_char)
+            {
+                if let Some(end) = oracle_q_quote_end(sql, i + ch.len_utf8()) {
+                    i = end;
+                    continue;
+                }
+            }
             if ch == '-'
                 && next == Some('-')
                 && dash_dash_starts_line_comment(options.profile, next_char_at(sql, i + 2))
@@ -2296,6 +2399,7 @@ struct SqlScanner {
     in_backtick: bool,
     in_line_comment: bool,
     block_comment_depth: usize,
+    oracle_q_quote: OracleQQuoteState,
     dollar_quote_tag: Option<String>,
     previous: Option<char>,
 }
@@ -2335,7 +2439,22 @@ impl SqlScanner {
             return;
         }
 
+        if self.oracle_q_quote.is_open() {
+            self.oracle_q_quote.consume(ch, self.previous);
+            self.previous = Some(ch);
+            return;
+        }
+
         if !self.in_single_quote && !self.in_double_quote && !self.in_backtick {
+            if self.profile.supports_oracle_q_quotes
+                && matches!(ch, 'q' | 'Q')
+                && next == Some('\'')
+                && !self.previous.is_some_and(is_identifier_continue_char)
+            {
+                self.oracle_q_quote.awaiting = 1;
+                self.previous = Some(ch);
+                return;
+            }
             if (ch == '-' && next == Some('-')) || (self.profile.supports_hash_line_comments && ch == '#') {
                 self.in_line_comment = true;
             } else if ch == '/' && next == Some('*') {
@@ -2371,6 +2490,7 @@ impl SqlScanner {
             || self.in_backtick
             || self.in_line_comment
             || self.block_comment_depth > 0
+            || self.oracle_q_quote.is_open()
             || self.dollar_quote_tag.is_some()
     }
 }
@@ -3734,6 +3854,57 @@ mod tests {
     }
 
     #[test]
+    fn oracle_alternative_quoting_keeps_apostrophes_and_semicolons_inside_the_literal() {
+        let sql = "SELECT q'[it's; still one value]' FROM dual; SELECT 1 FROM dual;";
+
+        assert_eq!(
+            split_sql_statements_for_database(sql, DatabaseType::Oracle),
+            vec!["SELECT q'[it's; still one value]' FROM dual", "SELECT 1 FROM dual"]
+        );
+    }
+
+    #[test]
+    fn oracle_alternative_quoting_supports_every_delimiter_form() {
+        for oracle_literal in ["q'{a;b}'", "q'(a;b)'", "q'<a;b>'", "q'!a;b!'", "q'Aa;bA'", "Q'[i's; x]'"] {
+            let sql = format!("SELECT {oracle_literal} FROM dual; SELECT 1 FROM dual;");
+
+            assert_eq!(
+                split_sql_statements_for_database(&sql, DatabaseType::Oracle),
+                vec![format!("SELECT {oracle_literal} FROM dual"), "SELECT 1 FROM dual".to_string()],
+                "{oracle_literal}"
+            );
+        }
+    }
+
+    #[test]
+    fn dameng_alternative_quoting_matches_oracle() {
+        let sql = "SELECT q'[it's; x]' FROM dual; SELECT 1 FROM dual;";
+
+        assert_eq!(
+            split_sql_statements_for_database(sql, DatabaseType::Dameng),
+            vec!["SELECT q'[it's; x]' FROM dual", "SELECT 1 FROM dual"]
+        );
+    }
+
+    #[test]
+    fn mysql_treats_q_quotes_as_plain_strings() {
+        let sql = "SELECT q'[a;b]' FROM t; SELECT 1;";
+
+        assert_eq!(
+            split_sql_statements_for_database(sql, DatabaseType::Mysql),
+            vec!["SELECT q'[a;b]' FROM t", "SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn cursor_statement_keeps_oracle_alternative_quoting_together() {
+        let sql = "SELECT q'[it's; still one value]' FROM dual;\nSELECT 1 FROM dual;";
+        let cursor = sql.find("SELECT 1").unwrap() + 3;
+
+        assert_eq!(find_statement_at_cursor_for_database(sql, cursor, DatabaseType::Oracle), "SELECT 1 FROM dual");
+    }
+
+    #[test]
     fn emits_trailing_statement_without_semicolon() {
         assert_eq!(
             split_sql_script("CREATE TABLE a(id int);\nINSERT INTO a VALUES (1)").unwrap(),
@@ -4338,6 +4509,9 @@ SELECT 2;";
         assert!(!default.supports_hash_line_comments);
         assert!(default.supports_backslash_escaped_quotes);
         assert!(!default.supports_postgres_escape_strings);
+        assert!(!default.supports_oracle_q_quotes);
+        assert!(SqlDialectProfile::for_database_type(DatabaseType::Oracle).supports_oracle_q_quotes);
+        assert!(SqlDialectProfile::for_database_type(DatabaseType::Dameng).supports_oracle_q_quotes);
         assert!(!default.supports_nested_block_comments);
         assert!(!default.supports_mysql_routine_blocks);
         assert!(!default.supports_oracle_plsql_blocks);
