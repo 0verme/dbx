@@ -67,6 +67,7 @@ describe("pluginUiHtmlCache", () => {
     { protocol: "https:", prefix: "https://dbx-plugin.localhost/sample/" },
   ])("preserves packaged module URL identity and nested import bases for $protocol", async ({ protocol, prefix }) => {
     mocks.isTauriRuntime.mockReturnValue(true);
+    vi.stubEnv("PROD", true);
     vi.stubGlobal("location", { protocol });
     mocks.readPluginUiEntry.mockResolvedValueOnce(
       uiEntryPayload(`<!doctype html><html><head>
@@ -107,6 +108,25 @@ describe("pluginUiHtmlCache", () => {
     expect(stylesheet?.hasAttribute("disabled")).toBe(true);
     expect(stylesheet?.textContent).toBe("body{color:red}");
     expect(mocks.readPluginUiAsset.mock.calls.map(([, path]) => path)).toEqual(["styles/theme.css", "legacy.js"]);
+  });
+
+  it("keeps the inline fallback for module scripts in dev despite the tauri runtime", async () => {
+    // `tauri dev` serves the app from the devUrl (http(s):), where the module
+    // URL rewrite would land on the WebView2-only subdomain form that
+    // WKWebView/webkit2gtk never serve — the entry must stay inline in dev.
+    mocks.isTauriRuntime.mockReturnValue(true);
+    vi.stubEnv("PROD", false);
+    vi.stubGlobal("location", { protocol: "http:" });
+    mocks.readPluginUiEntry.mockResolvedValueOnce(uiEntryPayload('<html><body><script type="module" src="./entry/app.mjs" data-dev="1"></script></body></html>'));
+    mocks.readPluginUiAsset.mockResolvedValueOnce({ dataBase64: btoa('await import("./child/app.mjs");') });
+
+    const result = await getOrLoadPluginUiHtml("sample@dev", "sample");
+    const document = new DOMParser().parseFromString(result.html, "text/html");
+    const module = document.querySelector<HTMLScriptElement>('script[type="module"]');
+    expect(module?.hasAttribute("src")).toBe(false);
+    expect(module?.getAttribute("data-dev")).toBe("1");
+    expect(module?.textContent).toBe('await import("./child/app.mjs");');
+    expect(mocks.readPluginUiAsset).toHaveBeenCalledWith("sample", "entry/app.mjs");
   });
 
   it("keeps inline fallback for hosts without the plugin asset protocol", async () => {

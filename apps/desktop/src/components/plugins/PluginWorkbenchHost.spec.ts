@@ -117,6 +117,7 @@ describe("PluginWorkbenchHost initialization", () => {
 
   it("passes the packaged module URL and existing asset CSP into srcdoc", async () => {
     mocks.isTauriRuntime.mockReturnValue(true);
+    vi.stubEnv("PROD", true);
     vi.stubGlobal("location", { protocol: "tauri:" });
     mocks.readPluginUiEntry.mockResolvedValue({
       dataBase64: btoa('<!doctype html><html><head></head><body><script type="module" src="./entry/app.mjs"></script></body></html>'),

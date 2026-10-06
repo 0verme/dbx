@@ -107,7 +107,13 @@ async function inlineLocalUiAssets(html: string, pluginId: string): Promise<Plug
       if (!source || !path) return { resource, content: null };
       if (!entryDirectory) entryDirectory = path.split("/").slice(0, -1).join("/");
       const isModuleScript = resource.tagName === "SCRIPT" && resource.getAttribute("type")?.trim().toLowerCase() === "module";
-      if (isModuleScript) {
+      // Keep the external module URL only in packaged builds: `tauri dev` serves
+      // the app from the devUrl (http(s):), which maps module URLs onto the
+      // WebView2-only http-subdomain form that WKWebView/webkit2gtk never serve,
+      // so the entry module would fail to load at all in dev there. Dev keeps
+      // the inline fallback below (nested imports resolve relative to the
+      // srcdoc <base>, as they did before the packaged fix).
+      if (isModuleScript && import.meta.env.PROD) {
         const url = pluginUiAssetUrl(pluginId, path, source);
         if (url) {
           // Keep the module's real URL: browsers resolve its static and dynamic
