@@ -74,7 +74,7 @@ import { detectAndFormatStructured } from "@/lib/sql/autoFormat";
 import { restoreSqlFromSourcePaste } from "@/lib/sql/sqlSourcePaste";
 import { enabledSqlParameterSyntaxes, resolveSqlVariableSyntaxToggles } from "@/lib/sql/sqlVariableSyntax";
 
-import { createQueryEditorExecutionViewportOwnership, isQueryEditorPositionVisible } from "@/lib/editor/queryEditorExecutionViewport";
+import { createQueryEditorExecutionViewportOwnership, isQueryEditorPositionVisible, locateCursorForGutterExecution } from "@/lib/editor/queryEditorExecutionViewport";
 import { mapQueryEditorFormatSelection } from "@/lib/editor/queryEditorFormatSelection";
 import { joinQueryEditorLines } from "@/lib/editor/queryEditorJoinLines";
 
@@ -1177,21 +1177,9 @@ function executeSqlStatementFromGutter(currentView: EditorViewType, line: { from
   // selection overlapping that statement is more specific, so preserve it; a
   // selection elsewhere in the document must not hijack the click.
   const editorViewportRequestId = executionViewportOwnership.beginRequest();
-  const selection = currentView.state.selection.main;
-  const hasSelectedSql = !selection.empty && currentView.state.sliceDoc(selection.from, selection.to).trim().length > 0;
-  const selectionOverlapsStatement = hasSelectedSql && selection.from < statementRange.to && statementRange.from < selection.to;
-  if (settingsStore.editorSettings.locateCursorOnGutterExecute && !selectionOverlapsStatement) {
-    currentView.dispatch({
-      selection: { anchor: statementRange.from, head: statementRange.from },
-      scrollIntoView: false,
-      userEvent: "select.pointer",
-    });
-  }
+  const { selectionOverlapsStatement } = locateCursorForGutterExecution(currentView, statementRange, settingsStore.editorSettings.locateCursorOnGutterExecute);
   const executionSnapshot = selectionOverlapsStatement ? sqlExecutionSnapshotFromView(currentView) : sqlExecutionSnapshotForRange(currentView, statementRange);
   emitExecutionRequest({ ...executionSnapshot, editorViewportRequestId });
-  if (settingsStore.editorSettings.locateCursorOnGutterExecute) {
-    currentView.focus();
-  }
   return true;
 }
 
