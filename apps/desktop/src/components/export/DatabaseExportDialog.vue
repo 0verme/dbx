@@ -25,6 +25,7 @@ import type { SqlInsertDialect, SqlInsertMode } from "@/lib/export/sqlInsertMode
 import { revealExportedPath } from "@/lib/export/exportPath";
 import { translateBackendError } from "@/i18n/backend-errors";
 import { loadSavedDatabaseExportOptions, MAX_SPLIT_SQL_PART_MB, MIN_SPLIT_SQL_PART_MB, saveDatabaseExportOptions, sortDatabaseTableNames } from "@/lib/export/databaseExportOptions";
+import { notifyExportComplete } from "@/lib/export/exportReveal";
 
 const { t } = useI18n();
 const { toast } = useToast();
@@ -228,12 +229,24 @@ function normalizedSplitSqlPartMaxMb(): number {
 // Lenient exports write per-object failures into the SQL file as `-- ERROR`
 // comments and still finish; completion must warn instead of reporting plain
 // success (#8184).
-function toastDatabaseExportCompletion(errorCount: number, errorSummary: string | null) {
+function toastDatabaseExportCompletion(errorCount: number, errorSummary: string | null, filePath?: string | null) {
   if (errorCount > 0) {
-    toast(t("databaseExport.exportSuccessWithErrors", { count: errorCount, firstError: errorSummary ?? "" }), 8000);
+    notifyExportComplete({
+      filePath,
+      message: t("databaseExport.exportSuccessWithErrors", { count: errorCount, firstError: errorSummary ?? "" }),
+      openFolderLabel: t("exportProgress.openFolder"),
+      toast,
+      duration: 8000,
+    });
     return;
   }
-  toast(t("databaseExport.exportSuccess"), 3000);
+  notifyExportComplete({
+    filePath,
+    message: t("databaseExport.exportSuccess"),
+    openFolderLabel: t("exportProgress.openFolder"),
+    toast,
+    duration: 3000,
+  });
 }
 
 const canChangeQueryTimeout = computed(() => !!connectionId.value && !!exportWarning.value && isQueryTimeoutErrorMessage(exportWarning.value));
@@ -469,7 +482,7 @@ async function startExport() {
             exportDone.value = true;
             exportWarning.value = progress.errorSummary ?? null;
             isExporting.value = false;
-            toastDatabaseExportCompletion(progress.errorCount ?? 0, progress.errorSummary ?? null);
+            toastDatabaseExportCompletion(progress.errorCount ?? 0, progress.errorSummary ?? null, filePath);
           } else if (progress.status === "Error") {
             finishExportTiming();
             exportError.value = progress.error;
@@ -571,6 +584,8 @@ async function startAllDatabasesExport() {
       preparing: true,
     };
 
+    let firstExportedFilePath = "";
+
     for (let index = 0; index < exportPlan.length; index += 1) {
       if (exportCancelled.value) break;
       const item = exportPlan[index]!;
@@ -578,6 +593,9 @@ async function startAllDatabasesExport() {
       const currentExportId = `${batchId}-${index + 1}`;
       activeDatabaseExportId.value = currentExportId;
       const filePath = isTauriRuntime() ? joinExportPath(directoryPath, `${sanitizeFileName(item.fileStem)}.${splitSqlOutput.value ? "zip" : "sql"}`) : `__web_export_${currentExportId}.${splitSqlOutput.value ? "zip" : "sql"}`;
+      if (!firstExportedFilePath && isTauriRuntime()) {
+        firstExportedFilePath = filePath;
+      }
       let currentDatabaseRowsExported = 0;
 
       const terminal = await runWithDatabaseBackupSnapshot(
@@ -665,10 +683,26 @@ async function startAllDatabasesExport() {
       };
       exportProgress.value = finalProgress;
       updateDatabaseExportTask(batchId, finalProgress);
+      // On Linux, revealPathInFileManager on a directory path opens the parent directory
+      // rather than opening into the directory itself. Revealing the first exported file
+      // navigates directly into the target export directory across all platforms.
+      const targetPath = firstExportedFilePath || directoryPath;
       if (batchLenientErrorCount > 0) {
-        toast(t("databaseExport.exportAllSuccessWithErrors", { count: dbs.length, errorCount: batchLenientErrorCount, firstError: batchFirstErrorSummary ?? "" }), 8000);
+        notifyExportComplete({
+          filePath: targetPath,
+          message: t("databaseExport.exportAllSuccessWithErrors", { count: dbs.length, errorCount: batchLenientErrorCount, firstError: batchFirstErrorSummary ?? "" }),
+          openFolderLabel: t("exportProgress.openFolder"),
+          toast,
+          duration: 8000,
+        });
       } else {
-        toast(t("databaseExport.exportAllSuccess", { count: dbs.length }), 3000);
+        notifyExportComplete({
+          filePath: targetPath,
+          message: t("databaseExport.exportAllSuccess", { count: dbs.length }),
+          openFolderLabel: t("exportProgress.openFolder"),
+          toast,
+          duration: 3000,
+        });
       }
     }
   } catch (e: any) {
