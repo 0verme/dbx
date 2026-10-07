@@ -1,7 +1,8 @@
 import { effectScope, nextTick, ref } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { completeDataGridConditionQuote, useDataGridConditionEditor } from "@/composables/useDataGridConditionEditor";
+import { completeDataGridConditionQuote, isConditionKeywordSupported, supportsConditionIlike, supportsConditionRegexp, useDataGridConditionEditor } from "@/composables/useDataGridConditionEditor";
 import { rememberDataGridConditionHistory } from "@/lib/dataGrid/dataGridConditionHistory";
+import type { DatabaseType } from "@/types/database";
 
 const storage = new Map<string, string>();
 vi.stubGlobal("localStorage", {
@@ -623,5 +624,176 @@ describe("useDataGridConditionEditor", () => {
     value.value = "score BETWEEN 1 a";
     await nextTick();
     await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "AND", kind: "keyword" }]));
+  });
+
+  it("checks dialect support for ILIKE and REGEXP operators", () => {
+    expect(supportsConditionIlike(undefined)).toBe(true);
+    expect(supportsConditionIlike("postgres")).toBe(true);
+    expect(supportsConditionIlike("duckdb")).toBe(true);
+    expect(supportsConditionIlike("clickhouse")).toBe(true);
+    expect(supportsConditionIlike("mysql")).toBe(false);
+    expect(supportsConditionIlike("sqlserver")).toBe(false);
+    expect(supportsConditionIlike("oracle")).toBe(false);
+    expect(supportsConditionIlike("sqlite")).toBe(false);
+
+    expect(supportsConditionRegexp(undefined)).toBe(true);
+    expect(supportsConditionRegexp("mysql")).toBe(true);
+    expect(supportsConditionRegexp("doris")).toBe(true);
+    // SQLite parses REGEXP but needs a driver-registered regexp() function DBX does not provide
+    expect(supportsConditionRegexp("sqlite")).toBe(false);
+    expect(supportsConditionRegexp("turso")).toBe(false);
+    expect(supportsConditionRegexp("hive")).toBe(true);
+    expect(supportsConditionRegexp("impala")).toBe(true);
+    expect(supportsConditionRegexp("postgres")).toBe(false);
+    expect(supportsConditionRegexp("sqlserver")).toBe(false);
+    expect(supportsConditionRegexp("oracle")).toBe(false);
+    expect(supportsConditionRegexp("duckdb")).toBe(false);
+
+    expect(isConditionKeywordSupported("BETWEEN", "mysql")).toBe(true);
+    expect(isConditionKeywordSupported("ILIKE", "mysql")).toBe(false);
+    expect(isConditionKeywordSupported("ILIKE", "postgres")).toBe(true);
+    expect(isConditionKeywordSupported("REGEXP", "mysql")).toBe(true);
+    expect(isConditionKeywordSupported("REGEXP", "postgres")).toBe(false);
+  });
+
+  it("filters WHERE syntax keywords per dialect and does not suggest EXISTS in operator positions", async () => {
+    // 1. MySQL: REGEXP supported, ILIKE not supported, EXISTS not suggested in operator position
+    const mysqlValue = ref("");
+    const mysqlEditor = useDataGridConditionEditor({
+      kind: "where",
+      value: mysqlValue,
+      columns: ["score", "name"],
+      databaseType: "mysql",
+      historyScope: {},
+      suggestionDebounceMs: 1,
+    });
+
+    mysqlValue.value = "score re";
+    await nextTick();
+    await vi.waitFor(() => expect(mysqlEditor.suggestions.value).toEqual([{ value: "REGEXP", kind: "keyword" }]));
+
+    mysqlValue.value = "score il";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(mysqlEditor.suggestions.value).toEqual([]);
+
+    mysqlValue.value = "score ex";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(mysqlEditor.suggestions.value).toEqual([]);
+
+    mysqlValue.value = "score not il";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(mysqlEditor.suggestions.value).toEqual([]);
+
+    mysqlValue.value = "score not ex";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(mysqlEditor.suggestions.value).toEqual([]);
+
+    // 2. SQL Server: neither REGEXP nor ILIKE supported, EXISTS not suggested
+    const sqlserverValue = ref("");
+    const sqlserverEditor = useDataGridConditionEditor({
+      kind: "where",
+      value: sqlserverValue,
+      columns: ["score", "name"],
+      databaseType: "sqlserver",
+      historyScope: {},
+      suggestionDebounceMs: 1,
+    });
+
+    sqlserverValue.value = "score re";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(sqlserverEditor.suggestions.value).toEqual([]);
+
+    sqlserverValue.value = "score il";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(sqlserverEditor.suggestions.value).toEqual([]);
+
+    sqlserverValue.value = "score ex";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(sqlserverEditor.suggestions.value).toEqual([]);
+
+    // 3. PostgreSQL: ILIKE and NOT ILIKE supported, REGEXP not supported as binary keyword
+    const pgValue = ref("");
+    const pgEditor = useDataGridConditionEditor({
+      kind: "where",
+      value: pgValue,
+      columns: ["score", "name"],
+      databaseType: "postgres",
+      historyScope: {},
+      suggestionDebounceMs: 1,
+    });
+
+    pgValue.value = "score re";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(pgEditor.suggestions.value).toEqual([]);
+
+    pgValue.value = "score il";
+    await nextTick();
+    await vi.waitFor(() => expect(pgEditor.suggestions.value).toEqual([{ value: "ILIKE", kind: "keyword" }]));
+
+    // NOT ILIKE is offered after NOT on PostgreSQL
+    pgValue.value = "score not il";
+    await nextTick();
+    await vi.waitFor(() => expect(pgEditor.suggestions.value).toEqual([{ value: "ILIKE", kind: "keyword" }]));
+
+    pgValue.value = "score ex";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(pgEditor.suggestions.value).toEqual([]);
+
+    // 4. Dialect-agnostic (undefined): keeps both ILIKE and REGEXP for fallback compatibility
+    const genericValue = ref("");
+    const genericEditor = useDataGridConditionEditor({
+      kind: "where",
+      value: genericValue,
+      columns: ["score", "name"],
+      historyScope: {},
+      suggestionDebounceMs: 1,
+    });
+
+    genericValue.value = "score re";
+    await nextTick();
+    await vi.waitFor(() => expect(genericEditor.suggestions.value).toEqual([{ value: "REGEXP", kind: "keyword" }]));
+
+    genericValue.value = "score il";
+    await nextTick();
+    await vi.waitFor(() => expect(genericEditor.suggestions.value).toEqual([{ value: "ILIKE", kind: "keyword" }]));
+
+    genericValue.value = "score ex";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(genericEditor.suggestions.value).toEqual([]);
+  });
+
+  it("reactively updates keyword suggestions when databaseType changes", async () => {
+    const dbType = ref<DatabaseType | undefined>("mysql");
+    const value = ref("");
+    const editor = useDataGridConditionEditor({
+      kind: "where",
+      value,
+      columns: ["score"],
+      databaseType: dbType,
+      historyScope: {},
+      suggestionDebounceMs: 1,
+    });
+
+    // MySQL: no ILIKE
+    value.value = "score il";
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(editor.suggestions.value).toEqual([]);
+
+    // Switch to PostgreSQL: ILIKE becomes available
+    dbType.value = "postgres";
+    value.value = "score ili";
+    await nextTick();
+    await vi.waitFor(() => expect(editor.suggestions.value).toEqual([{ value: "ILIKE", kind: "keyword" }]));
   });
 });

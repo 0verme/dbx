@@ -2,6 +2,7 @@ import { computed, getCurrentScope, onScopeDispose, ref, toValue, watch, type Ma
 import { forgetDataGridConditionHistory, loadDataGridConditionHistory, rememberDataGridConditionHistory, type DataGridConditionHistoryKind, type DataGridConditionHistoryScope } from "@/lib/dataGrid/dataGridConditionHistory";
 import { pinyinAwareMatchScore } from "@/lib/common/pinyin";
 import { matchesIdentifierSearch } from "@/lib/sql/identifierSearch";
+import type { DatabaseType } from "@/types/database";
 
 export type DataGridConditionSuggestionKind = "column" | "keyword" | "history";
 
@@ -46,6 +47,7 @@ export interface UseDataGridConditionEditorOptions {
   suggestionDebounceMs?: number;
   suggestionLimit?: number;
   suggestionsEnabled?: MaybeRefOrGetter<boolean>;
+  databaseType?: MaybeRefOrGetter<DatabaseType | undefined>;
 }
 
 const WHERE_TOKEN_PATTERN = /([^\s,()><=!&|]+)$/;
@@ -73,15 +75,52 @@ export const WHERE_SYNTAX_KEYWORDS: readonly DataGridConditionKeyword[] = [
   { value: "IS" },
   { value: "NOT" },
   { value: "REGEXP" },
-  { value: "EXISTS" },
-  { value: "NOT EXISTS" },
 ];
 
 export const WHERE_IS_KEYWORDS: readonly DataGridConditionKeyword[] = [{ value: "NULL" }, { value: "NOT NULL" }, { value: "TRUE" }, { value: "FALSE" }];
 
 export const WHERE_IS_NOT_KEYWORDS: readonly DataGridConditionKeyword[] = [{ value: "NULL" }, { value: "TRUE" }, { value: "FALSE" }];
 
-export const WHERE_AFTER_NOT_KEYWORDS: readonly DataGridConditionKeyword[] = [{ value: "BETWEEN", comment: "BETWEEN ... AND ..." }, { value: "IN" }, { value: "LIKE" }, { value: "ILIKE" }, { value: "EXISTS" }];
+export const WHERE_AFTER_NOT_KEYWORDS: readonly DataGridConditionKeyword[] = [{ value: "BETWEEN", comment: "BETWEEN ... AND ..." }, { value: "IN" }, { value: "LIKE" }, { value: "ILIKE" }];
+
+const ILIKE_SUPPORTED_DATABASES: ReadonlySet<DatabaseType> = new Set<DatabaseType>(["postgres", "redshift", "duckdb", "snowflake", "clickhouse", "databend", "kingbase", "highgo", "uxdb", "vastbase", "gaussdb", "opengauss", "questdb", "vertica", "databricks", "kwdb", "h2"]);
+
+// SQLite parses `x REGEXP y` but needs a driver-registered regexp() function,
+// which DBX does not provide, so the SQLite family is excluded; Hive-family
+// dialects ship the REGEXP/RLIKE binary operator.
+const REGEXP_OPERATOR_SUPPORTED_DATABASES: ReadonlySet<DatabaseType> = new Set<DatabaseType>(["mysql", "doris", "starrocks", "goldendb", "manticoresearch", "gbase", "hive", "spark", "kyuubi", "impala"]);
+
+export function supportsConditionIlike(databaseType?: DatabaseType): boolean {
+  return !databaseType || ILIKE_SUPPORTED_DATABASES.has(databaseType);
+}
+
+export function supportsConditionRegexp(databaseType?: DatabaseType): boolean {
+  return !databaseType || REGEXP_OPERATOR_SUPPORTED_DATABASES.has(databaseType);
+}
+
+export function isConditionKeywordSupported(keyword: string, databaseType?: DatabaseType): boolean {
+  if (!databaseType) return true;
+  if (keyword === "ILIKE" || keyword === "NOT ILIKE") {
+    return supportsConditionIlike(databaseType);
+  }
+  if (keyword === "REGEXP") {
+    return supportsConditionRegexp(databaseType);
+  }
+  return true;
+}
+
+function filterKeywordSuggestions(keywords: readonly (DataGridConditionKeyword | string)[], normalizedToken: string, predicate?: (value: string) => boolean): DataGridConditionSuggestion[] {
+  const result: DataGridConditionSuggestion[] = [];
+  for (const keyword of keywords) {
+    const value = typeof keyword === "string" ? keyword : keyword.value;
+    const comment = typeof keyword === "string" ? undefined : keyword.comment;
+    if (predicate && !predicate(value)) continue;
+    const lower = value.toLowerCase();
+    if (normalizedToken && (!lower.startsWith(normalizedToken) || lower === normalizedToken)) continue;
+    result.push({ value, kind: "keyword", ...(comment ? { comment } : {}) });
+  }
+  return result;
+}
 
 const WHERE_CONNECTOR_KEYWORDS = ["AND", "OR"] as const;
 const WHERE_IS_NOT_OPERATOR_PATTERN = /(?:^|[\s(])IS\s+NOT$/i;
@@ -358,57 +397,32 @@ export function useDataGridConditionEditor(options: UseDataGridConditionEditorOp
     if (role === "none") return [];
     const normalizedToken = target.token.toLowerCase();
     const seen = new Set<string>();
-    const suggestions: DataGridConditionSuggestion[] = [];
+    const isKeywordSupported = (keyword: string) => isConditionKeywordSupported(keyword, toValue(options.databaseType));
     if (role === "field") {
       const columns = toValue(options.columns) ?? [];
       return columnSuggestions(columns, normalizedToken, target, seen);
     }
     if (role === "after_not") {
       const columns = toValue(options.columns) ?? [];
-      suggestions.push(...columnSuggestions(columns, normalizedToken, target, seen));
+      const suggestions = columnSuggestions(columns, normalizedToken, target, seen);
       if (normalizedToken) {
-        for (const keyword of WHERE_AFTER_NOT_KEYWORDS) {
-          if (!keyword.value.toLowerCase().startsWith(normalizedToken) || keyword.value.toLowerCase() === normalizedToken) continue;
-          suggestions.push({ value: keyword.value, kind: "keyword", ...(keyword.comment ? { comment: keyword.comment } : {}) });
-        }
+        suggestions.push(...filterKeywordSuggestions(WHERE_AFTER_NOT_KEYWORDS, normalizedToken, isKeywordSupported));
       }
       return suggestions;
     }
     if (role === "is_value") {
-      if (normalizedToken) {
-        for (const keyword of WHERE_IS_KEYWORDS) {
-          if (!keyword.value.toLowerCase().startsWith(normalizedToken) || keyword.value.toLowerCase() === normalizedToken) continue;
-          suggestions.push({ value: keyword.value, kind: "keyword", ...(keyword.comment ? { comment: keyword.comment } : {}) });
-        }
-      }
-      return suggestions;
+      return normalizedToken ? filterKeywordSuggestions(WHERE_IS_KEYWORDS, normalizedToken) : [];
     }
     if (role === "is_not_value") {
-      if (normalizedToken) {
-        for (const keyword of WHERE_IS_NOT_KEYWORDS) {
-          if (!keyword.value.toLowerCase().startsWith(normalizedToken) || keyword.value.toLowerCase() === normalizedToken) continue;
-          suggestions.push({ value: keyword.value, kind: "keyword", ...(keyword.comment ? { comment: keyword.comment } : {}) });
-        }
-      }
-      return suggestions;
+      return normalizedToken ? filterKeywordSuggestions(WHERE_IS_NOT_KEYWORDS, normalizedToken) : [];
     }
     if (options.kind === "where") {
       // WHERE 已写完一个表达式时提示连接符；在列或操作符位置提示 SQL 语法及连接符
       const keywords = normalizedToken ? WHERE_SYNTAX_KEYWORDS : WHERE_CONNECTOR_KEYWORDS;
-      for (const keyword of keywords) {
-        const val = typeof keyword === "string" ? keyword : keyword.value;
-        const comment = typeof keyword === "string" ? undefined : keyword.comment;
-        if (!val.toLowerCase().startsWith(normalizedToken) || val.toLowerCase() === normalizedToken) continue;
-        suggestions.push({ value: val, kind: "keyword", ...(comment ? { comment } : {}) });
-      }
-      return suggestions;
+      return filterKeywordSuggestions(keywords, normalizedToken, isKeywordSupported);
     }
     // ORDER BY 已写出排序列时提示排序方向。
-    for (const keyword of ORDER_BY_DIRECTION_KEYWORDS) {
-      if (!keyword.toLowerCase().startsWith(normalizedToken) || keyword.toLowerCase() === normalizedToken) continue;
-      suggestions.push({ value: keyword, kind: "keyword" });
-    }
-    return suggestions;
+    return filterKeywordSuggestions(ORDER_BY_DIRECTION_KEYWORDS, normalizedToken);
   }
 
   async function loadSuggestions(target: DataGridConditionCompletionTarget, requestId: number, controller: AbortController) {

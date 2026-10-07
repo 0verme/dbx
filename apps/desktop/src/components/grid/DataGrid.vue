@@ -12955,6 +12955,7 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
                   :comment-by-column="columnCommentMap"
                   :condition-columns="conditionColumns"
                   :identifier-quote="conditionIdentifierQuote"
+                  :database-type="resolvedDatabaseType"
                   :history-scope="conditionHistoryScope"
                   :can-use-where-search="canUseWhereSearch"
                   :compact="compactDataGridToolbar"
