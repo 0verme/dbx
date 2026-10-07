@@ -382,6 +382,7 @@ import {
   type DataGridToolbarActionCapability,
   type DataGridToolbarAddRowCapability,
   type DataGridToolbarAutoRefreshCapability,
+  type DataGridToolbarExportCapability,
   type DataGridToolbarSaveCapability,
 } from "@/lib/dataGrid/dataGridToolbar";
 import { getTableMetadataCapabilities } from "@/lib/table/tableMetadataCapabilities";
@@ -8603,6 +8604,13 @@ function selectExportMenuItem(value: string) {
   actions[value]?.();
 }
 
+const exportToolbarCapability = computed<DataGridToolbarExportCapability>(() => ({
+  label: t("grid.export"),
+  visible: props.result.columns.length > 0,
+  items: exportMenuItems.value,
+  onSelect: selectExportMenuItem,
+}));
+
 // --- Cell selection and detail ---
 function hydrateCellDetailTarget(target: { rowIndex: number; col: number }) {
   const item = displayItemAt(target.rowIndex);
@@ -12383,6 +12391,7 @@ watch(
 defineExpose({
   tableInfoToolbarCapability,
   goToColumnToolbarCapability,
+  exportToolbarCapability,
   useTransaction,
   transactionActive,
   isSaving,
@@ -12994,6 +13003,7 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
             :auto-refresh="autoRefreshToolbarCapability"
             :add-row="addRowToolbarCapability"
             :delete-row="deleteRowToolbarCapability"
+            :export-data="exportToolbarCapability"
             :layer-preview="layerPreviewToolbarCapability"
             :preview="previewToolbarCapability"
             :save="saveToolbarCapability"
