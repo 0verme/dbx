@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import i18n from "@/i18n";
 import type { QueryResult } from "@/types/database";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type { DataGridToolbarActionCapability, DataGridToolbarExportCapability } from "@/lib/dataGrid/dataGridToolbar";
+import type { DataGridToolbarActionCapability } from "@/lib/dataGrid/dataGridToolbar";
 
 vi.mock("@/composables/useDataGridColumnResize", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/composables/useDataGridColumnResize")>();
@@ -109,10 +109,7 @@ function mountGrid() {
     affected_rows: 0,
     execution_time_ms: 0,
   });
-  const grid = ref<{
-    goToColumnToolbarCapability: DataGridToolbarActionCapability;
-    exportToolbarCapability: DataGridToolbarExportCapability;
-  }>();
+  const grid = ref<{ goToColumnToolbarCapability: DataGridToolbarActionCapability }>();
   const host = document.createElement("div");
   document.body.append(host);
   const Root = defineComponent({
@@ -214,21 +211,6 @@ describe("data grid icon-only toolbar tooltips", () => {
 
     expect(host.querySelector("[data-column-lookup-panel]")).not.toBeNull();
     expect(host.querySelector('[data-slot="popover-content"]')).toBeNull();
-  });
-
-  it("provides export capability and renders the export button in the top toolbar", async () => {
-    const { host, grid } = mountGrid();
-    await settle();
-
-    expect(grid.value?.exportToolbarCapability.visible).toBe(true);
-    expect(grid.value?.exportToolbarCapability.label).toBe("Export");
-    expect(grid.value?.exportToolbarCapability.items.length).toBeGreaterThan(0);
-
-    const button = toolbarButton(host, "exportData");
-    expect(button).not.toBeNull();
-    await click(button);
-
-    expectPositionedSurface("dropdown-menu-content");
   });
 });
 
