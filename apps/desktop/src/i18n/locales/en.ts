@@ -8633,6 +8633,8 @@ export default {
     showExecutionTargetPickerDescription: "When enabled, running without a selection lets you choose between the current statement and all SQL.",
     showStatementRunButtons: "Show left-side run buttons",
     showStatementRunButtonsDescription: "Show per-statement run buttons in the SQL editor gutter. Keyboard shortcuts and context menu execution still work when disabled.",
+    locateCursorOnGutterExecute: "Move cursor to statement start on gutter run",
+    locateCursorOnGutterExecuteDescription: "When executing SQL from the editor gutter, position the cursor at the beginning of the statement and focus the editor.",
     showLineNumbers: "Show line numbers",
     showLineNumbersDescription: "Show line numbers in the SQL editor gutter",
     showCurrentStatementFrame: "Show current statement frame",

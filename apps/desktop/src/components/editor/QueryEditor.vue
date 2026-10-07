@@ -1180,10 +1180,18 @@ function executeSqlStatementFromGutter(currentView: EditorViewType, line: { from
   const selection = currentView.state.selection.main;
   const hasSelectedSql = !selection.empty && currentView.state.sliceDoc(selection.from, selection.to).trim().length > 0;
   const selectionOverlapsStatement = hasSelectedSql && selection.from < statementRange.to && statementRange.from < selection.to;
+  if (settingsStore.editorSettings.locateCursorOnGutterExecute && !selectionOverlapsStatement) {
+    currentView.dispatch({
+      selection: { anchor: statementRange.from, head: statementRange.from },
+      scrollIntoView: false,
+      userEvent: "select.pointer",
+    });
+  }
   const executionSnapshot = selectionOverlapsStatement ? sqlExecutionSnapshotFromView(currentView) : sqlExecutionSnapshotForRange(currentView, statementRange);
   emitExecutionRequest({ ...executionSnapshot, editorViewportRequestId });
-  // 不主动聚焦编辑器，否则 CodeMirror 会把屏幕滚回之前的光标位置。
-  // currentView.focus();
+  if (settingsStore.editorSettings.locateCursorOnGutterExecute) {
+    currentView.focus();
+  }
   return true;
 }
 

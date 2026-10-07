@@ -7615,6 +7615,8 @@ export default withEnglishFallback({
     showExecutionTargetPickerDescription: "Aktiv olduqda seçim etmədən işlətmək cari əmrlə bütün SQL arasında seçim etməyə imkan verir.",
     showStatementRunButtons: "Soldakı işlətmə düymələrini göstər",
     showStatementRunButtonsDescription: "SQL redaktorunun kənar zolağında hər əmr üçün işlətmə düymələrini göstər. Deaktiv olduqda da klaviatura qısayolları və kontekst menyusundan icra işləyir.",
+    locateCursorOnGutterExecute: "Kənar zolaqdan işlədildikdə kursoru əmrin əvvəlinə köçür",
+    locateCursorOnGutterExecuteDescription: "Redaktorun kənar zolağından SQL icra edildikdə kursoru əmrin əvvəlinə yerləşdirir və redaktoru fokuslayır.",
     showLineNumbers: "Sətir nömrələrini göstər",
     showLineNumbersDescription: "SQL redaktorunun kənar zolağında sətir nömrələrini göstər",
     showCurrentStatementFrame: "Cari əmrin çərçivəsini göstər",

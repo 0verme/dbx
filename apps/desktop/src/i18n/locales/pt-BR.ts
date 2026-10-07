@@ -7662,6 +7662,8 @@ export default withEnglishFallback({
     showExecutionTargetPickerDescription: "Quando ativado, executar sem seleção permite escolher entre a instrução atual e todo o SQL.",
     showStatementRunButtons: "Mostrar botões de execução laterais",
     showStatementRunButtonsDescription: "Mostra botões para executar cada instrução na margem do editor SQL. Atalhos de teclado e execução pelo menu de contexto continuam funcionando quando desativado.",
+    locateCursorOnGutterExecute: "Mover cursor para o início da instrução ao executar pela margem",
+    locateCursorOnGutterExecuteDescription: "Ao executar SQL pela margem do editor, posiciona o cursor no início da instrução e foca o editor.",
     showLineNumbers: "Mostrar números de linha",
     showLineNumbersDescription: "Mostrar números de linha na margem do editor SQL",
     showCurrentStatementFrame: "Mostrar moldura da instrução atual",

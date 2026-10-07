@@ -7675,6 +7675,8 @@ export default withEnglishFallback({
     showExecutionTargetPickerDescription: "有効にすると、選択なしで実行するときに現在の文とすべてのSQLを一時的に選べます。",
     showStatementRunButtons: "左側の実行ボタンを表示",
     showStatementRunButtonsDescription: "SQLエディターのガターに文ごとの実行ボタンを表示します。無効にしてもキーボードショートカットとコンテキストメニューからの実行は引き続き使えます。",
+    locateCursorOnGutterExecute: "ガター実行時にカーソルを文の先頭へ移動",
+    locateCursorOnGutterExecuteDescription: "エディターのガターからSQLを実行した際、カーソルを実行した文の先頭に移動しエディターをフォーカスします。",
     showLineNumbers: "行番号を表示",
     showLineNumbersDescription: "SQLエディターのガターに行番号を表示します",
     showCurrentStatementFrame: "現在の文の枠線を表示",

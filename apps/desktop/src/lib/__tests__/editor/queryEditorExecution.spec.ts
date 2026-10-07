@@ -13,6 +13,12 @@ describe("QueryEditor execution routing", () => {
   it("snapshots pre-execution cursor visibility when execution viewport tracking starts", () => {
     expect(queryEditorSource).toContain("beginExecution(cursorVisible)");
   });
+
+  it("positions cursor at statement start and focuses editor on gutter execution when enabled", () => {
+    expect(queryEditorSource).toContain("if (settingsStore.editorSettings.locateCursorOnGutterExecute && !selectionOverlapsStatement)");
+    expect(queryEditorSource).toContain("selection: { anchor: statementRange.from, head: statementRange.from }");
+    expect(queryEditorSource).toContain("if (settingsStore.editorSettings.locateCursorOnGutterExecute) {\n    currentView.focus();\n  }");
+  });
 });
 
 describe("QueryEditor execution viewport ownership", () => {

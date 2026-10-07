@@ -7519,6 +7519,8 @@ export default withEnglishFallback({
     showExecutionTargetPickerDescription: "활성화하면 선택 없이 실행할 때 현재 구문과 전체 SQL 중에서 선택할 수 있습니다.",
     showStatementRunButtons: "왼쪽 실행 버튼 표시",
     showStatementRunButtonsDescription: "SQL 편집기 여백에 구문별 실행 버튼을 표시합니다. 비활성화해도 키보드 단축키와 컨텍스트 메뉴 실행은 계속 작동합니다.",
+    locateCursorOnGutterExecute: "여백 실행 시 커서를 구문 시작으로 이동",
+    locateCursorOnGutterExecuteDescription: "편집기 여백에서 SQL을 실행할 때 커서를 해당 구문의 시작 위치로 이동하고 편집기에 포커스를 맞춥니다.",
     showLineNumbers: "줄 번호 표시",
     showLineNumbersDescription: "SQL 편집기 여백에 줄 번호를 표시합니다",
     showCurrentStatementFrame: "현재 구문 프레임 표시",

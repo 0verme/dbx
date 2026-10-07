@@ -676,6 +676,7 @@ const executeModeDescription = computed(() => translateWithExecuteShortcut("sett
 const editExecuteAllOnBlankLine = ref(settingsStore.editorSettings.executeAllOnBlankLine);
 const editShowExecutionTargetPicker = ref(settingsStore.editorSettings.showExecutionTargetPicker);
 const editShowStatementRunButtons = ref(settingsStore.editorSettings.showStatementRunButtons);
+const editLocateCursorOnGutterExecute = ref(settingsStore.editorSettings.locateCursorOnGutterExecute);
 const editShowLineNumbers = ref(settingsStore.editorSettings.showLineNumbers);
 const editShowCurrentStatementFrame = ref(settingsStore.editorSettings.showCurrentStatementFrame);
 const editShowInsertValueHints = ref(settingsStore.editorSettings.showInsertValueHints);
@@ -1076,6 +1077,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     executeAllOnBlankLine: editExecuteAllOnBlankLine.value,
     showExecutionTargetPicker: editShowExecutionTargetPicker.value,
     showStatementRunButtons: editShowStatementRunButtons.value,
+    locateCursorOnGutterExecute: editLocateCursorOnGutterExecute.value,
     showLineNumbers: editShowLineNumbers.value,
     showCurrentStatementFrame: editShowCurrentStatementFrame.value,
     showInsertValueHints: editShowInsertValueHints.value,
@@ -1758,6 +1760,7 @@ function syncEditorSettingsDraftFromStore() {
   editExecuteAllOnBlankLine.value = settingsStore.editorSettings.executeAllOnBlankLine;
   editShowExecutionTargetPicker.value = settingsStore.editorSettings.showExecutionTargetPicker;
   editShowStatementRunButtons.value = settingsStore.editorSettings.showStatementRunButtons;
+  editLocateCursorOnGutterExecute.value = settingsStore.editorSettings.locateCursorOnGutterExecute;
   editShowLineNumbers.value = settingsStore.editorSettings.showLineNumbers;
   editShowCurrentStatementFrame.value = settingsStore.editorSettings.showCurrentStatementFrame;
   editShowInsertValueHints.value = settingsStore.editorSettings.showInsertValueHints;
@@ -1919,6 +1922,7 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   executeAllOnBlankLine: editExecuteAllOnBlankLine,
   showExecutionTargetPicker: editShowExecutionTargetPicker,
   showStatementRunButtons: editShowStatementRunButtons,
+  locateCursorOnGutterExecute: editLocateCursorOnGutterExecute,
   showLineNumbers: editShowLineNumbers,
   showCurrentStatementFrame: editShowCurrentStatementFrame,
   showInsertValueHints: editShowInsertValueHints,
@@ -2456,6 +2460,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editExecuteAllOnBlankLine.value = DEFAULT_EDITOR_SETTINGS.executeAllOnBlankLine;
     editShowExecutionTargetPicker.value = DEFAULT_EDITOR_SETTINGS.showExecutionTargetPicker;
     editShowStatementRunButtons.value = DEFAULT_EDITOR_SETTINGS.showStatementRunButtons;
+    editLocateCursorOnGutterExecute.value = DEFAULT_EDITOR_SETTINGS.locateCursorOnGutterExecute;
     editShowLineNumbers.value = DEFAULT_EDITOR_SETTINGS.showLineNumbers;
     editShowCurrentStatementFrame.value = DEFAULT_EDITOR_SETTINGS.showCurrentStatementFrame;
     editShowInsertValueHints.value = DEFAULT_EDITOR_SETTINGS.showInsertValueHints;
@@ -2637,6 +2642,7 @@ function resetAllDefaults() {
   editExecuteAllOnBlankLine.value = DEFAULT_EDITOR_SETTINGS.executeAllOnBlankLine;
   editShowExecutionTargetPicker.value = DEFAULT_EDITOR_SETTINGS.showExecutionTargetPicker;
   editShowStatementRunButtons.value = DEFAULT_EDITOR_SETTINGS.showStatementRunButtons;
+  editLocateCursorOnGutterExecute.value = DEFAULT_EDITOR_SETTINGS.locateCursorOnGutterExecute;
   editShowLineNumbers.value = DEFAULT_EDITOR_SETTINGS.showLineNumbers;
   editShowCurrentStatementFrame.value = DEFAULT_EDITOR_SETTINGS.showCurrentStatementFrame;
   editShowInsertValueHints.value = DEFAULT_EDITOR_SETTINGS.showInsertValueHints;
@@ -6811,6 +6817,16 @@ onUnmounted(() => {
                     </p>
                   </div>
                   <Switch id="editor-show-execution-target-picker" v-model="editShowExecutionTargetPicker" class="mt-0.5" />
+                </div>
+
+                <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                  <div class="space-y-1">
+                    <Label for="editor-locate-cursor-on-gutter-execute">{{ t("settings.locateCursorOnGutterExecute") }}</Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("settings.locateCursorOnGutterExecuteDescription") }}
+                    </p>
+                  </div>
+                  <Switch id="editor-locate-cursor-on-gutter-execute" v-model="editLocateCursorOnGutterExecute" class="mt-0.5" />
                 </div>
 
                 <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">

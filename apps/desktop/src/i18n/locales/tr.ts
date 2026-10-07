@@ -7513,6 +7513,8 @@ export default withEnglishFallback({
     showExecutionTargetPickerDescription: "Etkinleştirildiğinde, seçim yapmadan çalıştırmak geçerli ifade ile tüm SQL arasında seçim yapmanızı sağlar.",
     showStatementRunButtons: "Soldaki çalıştırma düğmelerini göster",
     showStatementRunButtonsDescription: "SQL düzenleyici kenar çubuğunda ifade başına çalıştırma düğmelerini göster. Kapatıldığında klavye kısayolları ve bağlam menüsünden çalıştırma yine çalışır.",
+    locateCursorOnGutterExecute: "Kenar çubuğundan çalıştırmada imleci ifade başına taşı",
+    locateCursorOnGutterExecuteDescription: "Düzenleyici kenar çubuğundan SQL çalıştırıldığında imleci ifadenin başına konumlandırır ve düzenleyiciye odaklanır.",
     showLineNumbers: "Satır numaralarını göster",
     showLineNumbersDescription: "SQL düzenleyici kenar çubuğunda satır numaralarını göster",
     showCurrentStatementFrame: "Geçerli ifade çerçevesini göster",

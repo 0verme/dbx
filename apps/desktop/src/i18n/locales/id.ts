@@ -8410,6 +8410,8 @@ export default withEnglishFallback({
     showExecutionTargetPickerDescription: "Jika diaktifkan, menjalankan tanpa seleksi akan memungkinkan Anda memilih antara pernyataan saat ini dan semua SQL.",
     showStatementRunButtons: "Tampilkan tombol jalankan di sisi kiri",
     showStatementRunButtonsDescription: "Tampilkan tombol jalankan per pernyataan pada gutter editor SQL. Pintasan keyboard dan eksekusi melalui menu konteks tetap berfungsi saat dinonaktifkan.",
+    locateCursorOnGutterExecute: "Pindahkan kursor ke awal pernyataan saat dijalankan dari gutter",
+    locateCursorOnGutterExecuteDescription: "Saat menjalankan SQL dari gutter editor, posisikan kursor di awal pernyataan dan fokuskan editor.",
     showLineNumbers: "Tampilkan nomor baris",
     showLineNumbersDescription: "Tampilkan nomor baris pada gutter editor SQL",
     showCurrentStatementFrame: "Tampilkan bingkai pernyataan saat ini",
