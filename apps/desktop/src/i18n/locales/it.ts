@@ -7664,7 +7664,7 @@ export default withEnglishFallback({
     showStatementRunButtons: "Mostra pulsanti di esecuzione laterali",
     showStatementRunButtonsDescription: "Mostra nel margine dell'editor SQL i pulsanti per eseguire ogni istruzione. Scorciatoie da tastiera e menu contestuale continuano a funzionare quando disattivati.",
     locateCursorOnGutterExecute: "Sposta il cursore all'inizio dell'istruzione all'esecuzione dal margine",
-    locateCursorOnGutterExecuteDescription: "Quando si esegue SQL dal margine dell'editor, posiziona il cursore all'inizio dell'istruzione e mette a fuoco l'editor.",
+    locateCursorOnGutterExecuteDescription: "Quando si esegue SQL dal margine dell'editor, posiziona il cursore all'inizio dell'istruzione e mette a fuoco l'editor (mantenendo un'eventuale selezione sovrapposta).",
     showLineNumbers: "Mostra numeri di riga",
     showLineNumbersDescription: "Mostra i numeri di riga nel margine dell'editor SQL",
     showCurrentStatementFrame: "Mostra cornice istruzione corrente",

@@ -7011,7 +7011,7 @@ export default withEnglishFallback({
     showStatementRunButtons: "顯示左側執行按鈕",
     showStatementRunButtonsDescription: "在 SQL 編輯器左側顯示按語句執行的快捷按鈕。關閉後仍可透過快捷鍵和右鍵選單執行。",
     locateCursorOnGutterExecute: "左側執行後游標定位到語句首部",
-    locateCursorOnGutterExecuteDescription: "透過編輯器左側執行按鈕運行 SQL 時，將游標移動到該語句的起始位置並聚焦編輯器。",
+    locateCursorOnGutterExecuteDescription: "透過編輯器左側執行按鈕運行 SQL 時，將游標移動到該語句的起始位置並聚焦編輯器（若存在重疊選取則保留選取）。",
     showLineNumbers: "顯示行號",
     showLineNumbersDescription: "在 SQL 編輯器左側顯示行號",
     showCurrentStatementFrame: "顯示目前語句外框線",

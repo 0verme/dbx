@@ -7618,7 +7618,7 @@ export default withEnglishFallback({
     showStatementRunButtons: "Soldakı işlətmə düymələrini göstər",
     showStatementRunButtonsDescription: "SQL redaktorunun kənar zolağında hər əmr üçün işlətmə düymələrini göstər. Deaktiv olduqda da klaviatura qısayolları və kontekst menyusundan icra işləyir.",
     locateCursorOnGutterExecute: "Kənar zolaqdan işlədildikdə kursoru əmrin əvvəlinə köçür",
-    locateCursorOnGutterExecuteDescription: "Redaktorun kənar zolağından SQL icra edildikdə kursoru əmrin əvvəlinə yerləşdirir və redaktoru fokuslayır.",
+    locateCursorOnGutterExecuteDescription: "Redaktorun kənar zolağından SQL icra edildikdə kursoru əmrin əvvəlinə yerləşdirir və redaktoru fokuslayır (kəsişən seçim olduqda seçim qorunur).",
     showLineNumbers: "Sətir nömrələrini göstər",
     showLineNumbersDescription: "SQL redaktorunun kənar zolağında sətir nömrələrini göstər",
     showCurrentStatementFrame: "Cari əmrin çərçivəsini göstər",

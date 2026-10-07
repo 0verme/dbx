@@ -8619,7 +8619,7 @@ export default withEnglishFallback({
     showStatementRunButtons: "显示左侧执行按钮",
     showStatementRunButtonsDescription: "在 SQL 编辑器左侧显示按语句执行的快捷按钮。关闭后仍可通过快捷键和右键菜单执行。",
     locateCursorOnGutterExecute: "左侧执行后光标定位到语句首部",
-    locateCursorOnGutterExecuteDescription: "通过编辑器左侧执行按钮运行 SQL 时，将光标移动到该语句的起始位置并聚焦编辑器。",
+    locateCursorOnGutterExecuteDescription: "通过编辑器左侧执行按钮运行 SQL 时，将光标移动到该语句的起始位置并聚焦编辑器（若存在重叠选区则保留选区）。",
     showLineNumbers: "显示行号",
     showLineNumbersDescription: "在 SQL 编辑器左侧显示行号",
     showCurrentStatementFrame: "显示当前语句外框线",
