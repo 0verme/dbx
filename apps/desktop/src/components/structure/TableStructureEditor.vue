@@ -5669,7 +5669,7 @@ watch(
                         <th
                           v-for="(columnLabel, i) in colLabels"
                           :key="columnLabel.key"
-                          :class="[structureHeaderCellClass, 'bg-background select-none', { 'text-center': columnLabel.key === 'primaryKey' }]"
+                          :class="[structureHeaderCellClass, 'bg-background select-none', { 'text-center': columnLabel.key === 'primaryKey' || columnLabel.key === 'nullable' }]"
                           :data-column-selected="columnLabel.key === 'actions' ? undefined : selectedStructureColumnKeys.has(columnLabel.key)"
                           :style="{
                             width: visibleColWidths[i] + 'px',
@@ -5881,11 +5881,8 @@ watch(
                             </Select>
                           </div>
                         </td>
-                        <td v-if="columnEditorControls.nullable" :class="[structureCellClass, structureColumnSelectionClass('nullable')]">
-                          <label class="flex items-center gap-1.5">
-                            <input v-model="column.isNullable" type="checkbox" :class="structureCheckboxClass" :disabled="isColumnNullableDisabled(column)" />
-                            <span>{{ column.isNullable ? t("structureEditor.yes") : t("structureEditor.no") }}</span>
-                          </label>
+                        <td v-if="columnEditorControls.nullable" :class="[structureCellClass, 'text-center', structureColumnSelectionClass('nullable')]">
+                          <input v-model="column.isNullable" type="checkbox" :class="structureCheckboxClass" :disabled="isColumnNullableDisabled(column)" :aria-label="t('structureEditor.nullable')" />
                         </td>
                         <td v-if="columnEditorControls.primaryKey" :class="[structureCellClass, 'text-center', structureColumnSelectionClass('primaryKey')]">
                           <input
@@ -5893,6 +5890,7 @@ watch(
                             type="checkbox"
                             :class="structureCheckboxClass"
                             :disabled="isPrimaryKeyDisabled(column)"
+                            :aria-label="t('structureEditor.primaryKey')"
                             @change="
                               () => {
                                 if (column.isPrimaryKey) column.isNullable = false;
@@ -6183,7 +6181,7 @@ watch(
                   <th
                     v-for="(label, i) in indexColLabels"
                     :key="i"
-                    :class="structureHeaderCellClass"
+                    :class="[structureHeaderCellClass, { 'text-center': i === 2 || i === 7 }]"
                     :style="{
                       width: indexColWidths[i] + 'px',
                       minWidth: indexColWidths[i] + 'px',
@@ -6231,18 +6229,16 @@ watch(
                     </StructureIndexColumnPicker>
                     <span v-else class="font-mono text-[length:var(--structure-font-size)] text-muted-foreground">{{ toColumnNames(index.columns) }}</span>
                   </td>
-                  <td :class="structureCellClass">
-                    <label class="flex items-center gap-1.5">
-                      <input
-                        :checked="index.isUnique"
-                        type="checkbox"
-                        :class="structureCheckboxClass"
-                        :disabled="!canEditIndexDraft(index) || !!indexColumnsIssue(index, index.columns, index.indexType, true)"
-                        data-index-unique
-                        @change="onIndexUniqueChange(index, ($event.target as HTMLInputElement).checked)"
-                      />
-                      <span>{{ index.isUnique ? t("structureEditor.yes") : t("structureEditor.no") }}</span>
-                    </label>
+                  <td :class="[structureCellClass, 'text-center']">
+                    <input
+                      :checked="index.isUnique"
+                      type="checkbox"
+                      :class="structureCheckboxClass"
+                      :disabled="!canEditIndexDraft(index) || !!indexColumnsIssue(index, index.columns, index.indexType, true)"
+                      data-index-unique
+                      :aria-label="t('structureEditor.unique')"
+                      @change="onIndexUniqueChange(index, ($event.target as HTMLInputElement).checked)"
+                    />
                   </td>
                   <td :class="structureCellClass">
                     <Select v-if="indexTypeOptions.length > 0" :model-value="index.indexType || 'BTREE'" :disabled="!canEditIndexDraft(index)" data-index-type @update:model-value="(value: unknown) => onIndexTypeChange(index, value)">
@@ -6276,10 +6272,9 @@ watch(
                   <td :class="structureCellClass">
                     <Input v-model="index.comment" :class="[structureControlClass, indexSearchFieldClass(index, index.comment)]" :disabled="!canEditIndexComment(index)" />
                   </td>
-                  <td :class="structureCellClass">
-                    <label v-if="structureCapabilities.indexConcurrent" class="flex items-center gap-1.5" :title="concurrentIndexCellTitle(index)">
-                      <input v-model="index.concurrently" type="checkbox" :class="structureCheckboxClass" :disabled="!canEditIndexConcurrent(index)" />
-                      <span>{{ index.concurrently ? t("structureEditor.yes") : t("structureEditor.no") }}</span>
+                  <td :class="[structureCellClass, 'text-center']">
+                    <label v-if="structureCapabilities.indexConcurrent" class="inline-flex items-center justify-center" :title="concurrentIndexCellTitle(index)">
+                      <input v-model="index.concurrently" type="checkbox" :class="structureCheckboxClass" :disabled="!canEditIndexConcurrent(index)" :aria-label="t('structureEditor.concurrent')" />
                     </label>
                     <span v-else class="text-[length:var(--structure-font-size)] text-muted-foreground">—</span>
                   </td>
