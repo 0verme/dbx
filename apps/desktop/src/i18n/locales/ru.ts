@@ -2442,6 +2442,8 @@ export default withEnglishFallback({
     unfreezeColumns: "Открепить столбцы ({count})",
     hideColumn: "Скрыть этот столбец",
     hideSelectedColumns: "Скрыть выбранные столбцы ({count})",
+    hideIdenticalColumns: "Скрыть столбцы с одинаковыми значениями",
+    hideIdenticalColumnsCount: "Скрыть столбцы с одинаковыми значениями ({count})",
     showAllColumnsMenu: "Показать все столбцы",
     pasted: "Вставлено!",
     batchAppendPasteNotEditable: "Этот результат нельзя редактировать.",

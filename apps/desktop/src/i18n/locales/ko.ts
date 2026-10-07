@@ -2326,6 +2326,8 @@ export default withEnglishFallback({
     unfreezeColumns: "컬럼 고정 해제 ({count})",
     hideColumn: "이 컬럼 숨기기",
     hideSelectedColumns: "선택한 컬럼 숨기기 ({count})",
+    hideIdenticalColumns: "동일한 값의 컬럼 숨기기",
+    hideIdenticalColumnsCount: "동일한 값의 컬럼 숨기기 ({count}개)",
     showAllColumnsMenu: "모든 컬럼 표시",
     pasted: "붙여넣었습니다!",
     replaceText: "바꿀 내용",

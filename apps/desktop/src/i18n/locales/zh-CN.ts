@@ -2483,6 +2483,8 @@ export default withEnglishFallback({
     unfreezeColumns: "取消冻结（{count} 列）",
     hideColumn: "隐藏此列",
     hideSelectedColumns: "隐藏选中列（{count} 列）",
+    hideIdenticalColumns: "隐藏相同数值列",
+    hideIdenticalColumnsCount: "隐藏相同数值列（{count} 列）",
     showAllColumnsMenu: "显示全部列",
     pasted: "已粘贴!",
     batchAppendPasteNotEditable: "当前结果不可编辑。",

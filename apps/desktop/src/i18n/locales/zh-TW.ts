@@ -2284,6 +2284,8 @@ export default withEnglishFallback({
     unfreezeColumns: "取消凍結（{count} 欄）",
     hideColumn: "隱藏此欄",
     hideSelectedColumns: "隱藏選取欄（{count} 欄）",
+    hideIdenticalColumns: "隱藏相同數值欄",
+    hideIdenticalColumnsCount: "隱藏相同數值欄（{count} 欄）",
     showAllColumnsMenu: "顯示全部欄",
     pasted: "已貼上！",
     search: "搜尋……",

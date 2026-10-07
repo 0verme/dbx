@@ -87,11 +87,12 @@ export function createDataGridColumnContextMenuItems(options: {
   visibleColumnCount?: number;
   /** 当前被隐藏的列数量，用于决定是否显示「显示全部列」。 */
   hiddenColumnCount?: number;
+  canHideIdenticalColumns?: boolean;
   labels: Record<
     "copyName" | "copyNames" | "details" | "copyAlterSql" | "databaseAscending" | "databaseDescending" | "localAscending" | "localDescending" | "clearSort" | "freezeToColumn" | "freezeSelectedColumns" | "unfreezeColumns" | "hideColumn" | "hideSelectedColumns" | "showAllColumnsMenu",
     string
   > &
-    Partial<Record<"freezeCurrentColumn" | "unfreezeCurrentColumn", string>>;
+    Partial<Record<"freezeCurrentColumn" | "unfreezeCurrentColumn" | "hideIdenticalColumns", string>>;
   icons: Pick<DataGridContextMenuIcons, "copy" | "columnDetails" | "database" | "ascending" | "descending" | "clearSort">;
   actions: {
     copyName: () => void;
@@ -106,6 +107,7 @@ export function createDataGridColumnContextMenuItems(options: {
     unfreezeColumns: () => void;
     hideColumn: () => void;
     hideSelectedColumns: () => void;
+    hideIdenticalColumns?: () => void;
     showAllColumnsMenu: () => void;
   };
   filterSubmenu: DataGridContextMenuItem;
@@ -141,6 +143,13 @@ export function createDataGridColumnContextMenuItems(options: {
     if (options.hasColumnSelection && selectedColumnCount > 1) {
       items.push({ label: options.labels.hideSelectedColumns, action: options.actions.hideSelectedColumns, disabled: visibleColumnCount > 0 && selectedColumnCount >= visibleColumnCount });
     }
+    if (options.labels.hideIdenticalColumns && options.actions.hideIdenticalColumns) {
+      items.push({
+        label: options.labels.hideIdenticalColumns,
+        action: options.actions.hideIdenticalColumns,
+        disabled: options.canHideIdenticalColumns === false,
+      });
+    }
     if ((options.hiddenColumnCount ?? 0) > 0) {
       items.push({ label: options.labels.showAllColumnsMenu, action: options.actions.showAllColumnsMenu });
     }
@@ -153,6 +162,16 @@ export function createDataGridColumnContextMenuItems(options: {
     }
     if (options.labels.freezeCurrentColumn && options.actions.freezeCurrentColumn) items.push({ label: options.labels.freezeCurrentColumn, action: options.actions.freezeCurrentColumn });
     items.push({ label: options.labels.freezeToColumn, action: options.actions.freezeToColumn });
+  } else if (options.labels.hideIdenticalColumns && options.actions.hideIdenticalColumns) {
+    items.push({ label: "", separator: true });
+    items.push({
+      label: options.labels.hideIdenticalColumns,
+      action: options.actions.hideIdenticalColumns,
+      disabled: options.canHideIdenticalColumns === false,
+    });
+    if ((options.hiddenColumnCount ?? 0) > 0) {
+      items.push({ label: options.labels.showAllColumnsMenu, action: options.actions.showAllColumnsMenu });
+    }
   }
   return items;
 }

@@ -2282,6 +2282,8 @@ export default withEnglishFallback({
     unfreezeColumns: "Sblocca colonne ({count})",
     hideColumn: "Nascondi questa colonna",
     hideSelectedColumns: "Nascondi colonne selezionate ({count})",
+    hideIdenticalColumns: "Nascondi colonne con valori identici",
+    hideIdenticalColumnsCount: "Nascondi colonne con valori identici ({count})",
     showAllColumnsMenu: "Mostra tutte le colonne",
     pasted: "Incollato!",
     search: "Cerca...",

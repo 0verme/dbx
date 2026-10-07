@@ -2135,6 +2135,8 @@ export default withEnglishFallback({
     unfreezeColumns: "Sütunların sabitlənməsini ləğv et ({count})",
     hideColumn: "Bu sütunu gizlət",
     hideSelectedColumns: "Seçilmiş sütunları gizlət ({count})",
+    hideIdenticalColumns: "Eyni dəyərlərə malik sütunları gizlət",
+    hideIdenticalColumnsCount: "Eyni dəyərlərə malik sütunları gizlət ({count})",
     showAllColumnsMenu: "Bütün sütunları göstər",
     pasted: "Yerləşdirildi!",
     batchAppendPasteNotEditable: "Bu nəticəni redaktə etmək mümkün deyil.",

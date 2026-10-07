@@ -139,7 +139,7 @@ describe("dataGridContextMenu", () => {
     expect(rowItems.find((item) => item.label === "delete")?.variant).toBe("destructive");
   });
 
-  function columnMenuItems(overrides: { hasColumnSelection?: boolean; selectedColumnCount?: number; visibleColumnCount?: number; hiddenColumnCount?: number }) {
+  function columnMenuItems(overrides: { headerColumn?: boolean; contextColumn?: boolean; contextVisibleColIdx?: number; hasColumnSelection?: boolean; selectedColumnCount?: number; visibleColumnCount?: number; hiddenColumnCount?: number; canHideIdenticalColumns?: boolean }) {
     const action = vi.fn();
     const filter = createDataGridFilterSubmenu({
       label: "filter",
@@ -149,13 +149,13 @@ describe("dataGridContextMenu", () => {
       clear: action,
     });
     return createDataGridColumnContextMenuItems({
-      headerColumn: true,
-      contextColumn: false,
+      headerColumn: overrides.headerColumn ?? true,
+      contextColumn: overrides.contextColumn ?? false,
       canCopyAlterSql: false,
       canFilter: false,
       hasSort: false,
       sortMode: "database",
-      contextVisibleColIdx: 0,
+      contextVisibleColIdx: overrides.contextVisibleColIdx !== undefined ? overrides.contextVisibleColIdx : 0,
       hasColumnSelection: false,
       selectedColumnCount: 1,
       visibleColumnCount: 3,
@@ -175,10 +175,11 @@ describe("dataGridContextMenu", () => {
         unfreezeColumns: "unfreeze",
         hideColumn: "hide column",
         hideSelectedColumns: "hide selected (3)",
+        hideIdenticalColumns: "hide identical",
         showAllColumnsMenu: "show all columns",
       },
       icons: { copy: icon, columnDetails: icon, database: icon, ascending: icon, descending: icon, clearSort: icon },
-      actions: { copyName: action, copyNames: action, details: action, copyAlterSql: action, sort: action, freezeToColumn: action, freezeSelectedColumns: action, unfreezeColumns: action, hideColumn: action, hideSelectedColumns: action, showAllColumnsMenu: action },
+      actions: { copyName: action, copyNames: action, details: action, copyAlterSql: action, sort: action, freezeToColumn: action, freezeSelectedColumns: action, unfreezeColumns: action, hideColumn: action, hideSelectedColumns: action, hideIdenticalColumns: action, showAllColumnsMenu: action },
       filterSubmenu: filter,
       ...overrides,
     });
@@ -220,5 +221,31 @@ describe("dataGridContextMenu", () => {
 
     expect(hideColumn).toBeDefined();
     expect(hideColumn?.disabled).toBe(false);
+  });
+
+  it("offers hide identical columns on a header and disables it when no identical columns exist", () => {
+    const items = columnMenuItems({ canHideIdenticalColumns: false });
+    const hideIdentical = items.find((item) => item.label === "hide identical");
+
+    expect(hideIdentical).toBeDefined();
+    expect(hideIdentical?.disabled).toBe(true);
+  });
+
+  it("enables hide identical columns when identical columns exist", () => {
+    const items = columnMenuItems({ canHideIdenticalColumns: true });
+    const hideIdentical = items.find((item) => item.label === "hide identical");
+
+    expect(hideIdentical).toBeDefined();
+    expect(hideIdentical?.disabled).toBe(false);
+  });
+
+  it("offers hide identical columns on a cell context menu and shows recovery entry if hidden columns exist", () => {
+    const items = columnMenuItems({ headerColumn: false, contextColumn: true, contextVisibleColIdx: undefined, canHideIdenticalColumns: true, hiddenColumnCount: 2 });
+    const hideIdentical = items.find((item) => item.label === "hide identical");
+    const showAll = items.find((item) => item.label === "show all columns");
+
+    expect(hideIdentical).toBeDefined();
+    expect(hideIdentical?.disabled).toBe(false);
+    expect(showAll).toBeDefined();
   });
 });

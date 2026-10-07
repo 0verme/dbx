@@ -2388,6 +2388,8 @@ export default withEnglishFallback({
     unfreezeColumns: "Desinmovilizar columnas ({count})",
     hideColumn: "Ocultar esta columna",
     hideSelectedColumns: "Ocultar columnas seleccionadas ({count})",
+    hideIdenticalColumns: "Ocultar columnas con valores idénticos",
+    hideIdenticalColumnsCount: "Ocultar columnas con valores idénticos ({count})",
     showAllColumnsMenu: "Mostrar todas las columnas",
     pasted: "¡Pegado!",
     search: "Buscar...",

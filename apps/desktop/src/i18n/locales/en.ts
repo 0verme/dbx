@@ -2548,6 +2548,8 @@ export default {
     unfreezeColumns: "Unfreeze Columns ({count})",
     hideColumn: "Hide This Column",
     hideSelectedColumns: "Hide Selected Columns ({count})",
+    hideIdenticalColumns: "Hide Columns with Identical Values",
+    hideIdenticalColumnsCount: "Hide Columns with Identical Values ({count})",
     showAllColumnsMenu: "Show All Columns",
     pasted: "Pasted!",
     batchAppendPasteNotEditable: "This result cannot be edited.",

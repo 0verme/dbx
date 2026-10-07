@@ -2289,6 +2289,8 @@ export default withEnglishFallback({
     unfreezeColumns: "列の固定を解除 ({count})",
     hideColumn: "この列を非表示",
     hideSelectedColumns: "選択した列を非表示 ({count})",
+    hideIdenticalColumns: "同一値の列を非表示",
+    hideIdenticalColumnsCount: "同一値の列を非表示（{count} 列）",
     showAllColumnsMenu: "すべての列を表示",
     pasted: "貼り付けました！",
     search: "検索...",

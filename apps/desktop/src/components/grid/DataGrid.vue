@@ -288,7 +288,7 @@ import {
 import { normalizeResultPageSize, resultPageSizeMenuOptions } from "@/lib/dataGrid/paginationPageSize";
 import { dataGridPageSizeSettingsPatch, preferredDataGridPageSize, resolveDataGridPageSizePreference, type DataGridPageSizePreference } from "@/lib/dataGrid/dataGridPageSizePreference";
 import { continuousQueryResultMaxRows, effectiveQueryResultMaxRows } from "@/lib/dataGrid/queryResultRowLimit";
-import { allNullColumnIndexes } from "@/lib/dataGrid/dataGridColumnVisibility";
+import { allNullColumnIndexes, identicalValueColumnIndexes } from "@/lib/dataGrid/dataGridColumnVisibility";
 import { buildDataGridColumnLookupItems, dataGridColumnCommentFor, filterDataGridColumnLookupItems } from "@/lib/dataGrid/dataGridColumnLookup";
 import { uniqueDataGridColumnOrderKeys } from "@/lib/dataGrid/dataGridColumnOrder";
 import { dataGridColumnLayoutScopeKey, TABLE_DATA_GRID_COLUMN_ORDER_CHANGED_EVENT, tableDataGridColumnOrderScopeKey } from "@/lib/dataGrid/dataGridColumnLayoutStorage";
@@ -2743,6 +2743,24 @@ function hideSelectedColumns() {
 function showAllColumns() {
   applyColumnOrderChange(showAllColumnsInLayout);
   void nextTick(scheduleColumnLayoutRefresh);
+}
+
+function getComparisonRows(): ReadonlyArray<ReadonlyArray<unknown>> {
+  // 比较行必须取全宽 data：identicalValueColumnIndexes 的候选索引是原始列索引，
+  // 不能用经过可见列投影（visibleRowData 重排）后的行。
+  const affected = affectedRowIds();
+  if (affected.length > 1) {
+    const affectedSet = new Set(affected);
+    return displayItems.value.filter((item) => affectedSet.has(item.id) && !item.isDraft).map((item) => item.data);
+  }
+  const displayRows = displayItems.value.filter((item) => !item.isDraft).map((item) => item.data);
+  return displayRows.length > 0 ? displayRows : props.result.rows;
+}
+
+function hideIdenticalColumns() {
+  const identical = identicalValueColumnIndexes(getComparisonRows(), visibleColumnIndexes.value);
+  if (identical.length === 0) return;
+  hideColumns(identical);
 }
 
 // --- 表头拖拽进 SQL 编辑器：目标导向模式切换的控制器 ---
@@ -12638,6 +12656,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     }
   }
 
+  const comparisonRows = getComparisonRows();
+  const identicalColumnIndexes = identicalValueColumnIndexes(comparisonRows, visibleColumnIndexes.value);
+  const canHideIdenticalColumns = identicalColumnIndexes.length > 0;
+  const identicalColumnCount = identicalColumnIndexes.length;
+
   return createDataGridContextMenuItems(
     createDataGridColumnContextMenuItems({
       headerColumn: !!contextHeaderColumn.value,
@@ -12653,6 +12676,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       selectedColumnCount,
       visibleColumnCount: visibleColumnCount.value,
       hiddenColumnCount: hiddenColumnCount.value,
+      canHideIdenticalColumns,
       labels: {
         copyName:
           selectedColumnNamesForCopy.value.length > 1
@@ -12675,6 +12699,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
         unfreezeColumns: t("grid.unfreezeColumns", { count: frozenColumnCount.value }),
         hideColumn: t("grid.hideColumn"),
         hideSelectedColumns: t("grid.hideSelectedColumns", { count: selectedColumnCount }),
+        hideIdenticalColumns: identicalColumnCount > 0 ? t("grid.hideIdenticalColumnsCount", { count: identicalColumnCount }) : t("grid.hideIdenticalColumns"),
         showAllColumnsMenu: t("grid.showAllColumnsMenu"),
       },
       icons: {
@@ -12720,6 +12745,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
         },
         hideColumn: hideContextColumn,
         hideSelectedColumns,
+        hideIdenticalColumns,
         showAllColumnsMenu: showAllColumns,
       },
       filterSubmenu: filterSubmenu(),

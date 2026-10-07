@@ -2407,6 +2407,8 @@ export default withEnglishFallback({
     unfreezeColumns: "Batalkan Pembekuan Kolom ({count})",
     hideColumn: "Sembunyikan Kolom Ini",
     hideSelectedColumns: "Sembunyikan Kolom Terpilih ({count})",
+    hideIdenticalColumns: "Sembunyikan Kolom dengan Nilai yang Sama",
+    hideIdenticalColumnsCount: "Sembunyikan Kolom dengan Nilai yang Sama ({count})",
     showAllColumnsMenu: "Tampilkan Semua Kolom",
     pasted: "Ditempel!",
     batchAppendPasteNotEditable: "Hasil ini tidak dapat diedit.",

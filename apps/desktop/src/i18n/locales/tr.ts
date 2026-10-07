@@ -2128,6 +2128,8 @@ export default withEnglishFallback({
     unfreezeColumns: "Sütun Dondurmayı Kaldır ({count})",
     hideColumn: "Bu Sütunu Gizle",
     hideSelectedColumns: "Seçili Sütunları Gizle ({count})",
+    hideIdenticalColumns: "Aynı Değerlere Sahip Sütunları Gizle",
+    hideIdenticalColumnsCount: "Aynı Değerlere Sahip Sütunları Gizle ({count})",
     showAllColumnsMenu: "Tüm Sütunları Göster",
     pasted: "Yapıştırıldı!",
     batchAppendPasteNotEditable: "Bu sonuç düzenlenemez.",
