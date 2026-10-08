@@ -2658,9 +2658,7 @@ pub fn format_grid_sql_literal_with_identifier_quote(
     }
     let escaped_text = if database_type == Some(DatabaseType::Neo4j) {
         literal_text.replace('\\', "\\\\").replace('\'', "\\'")
-    } else if is_sqlite_literal_database(database_type)
-        || matches!(database_type, Some(DatabaseType::Dameng | DatabaseType::Oracle | DatabaseType::OceanbaseOracle))
-    {
+    } else if is_sqlite_literal_database(database_type) || keeps_literal_backslashes(database_type) {
         // These engines keep backslashes literal in ordinary string literals,
         // so only the quote delimiter needs escaping.
         literal_text.replace('\'', "''")
@@ -2746,6 +2744,34 @@ fn is_sqlite_literal_database(database_type: Option<DatabaseType>) -> bool {
     matches!(
         database_type,
         Some(DatabaseType::Sqlite | DatabaseType::Rqlite | DatabaseType::Turso | DatabaseType::CloudflareD1)
+    )
+}
+
+/// Engines whose ordinary string literals keep a backslash literal: Oracle and
+/// the engines that inherit its lexer for this purpose, plus the PostgreSQL
+/// family, whose `standard_conforming_strings` default makes `'dir\'` a complete
+/// string. Doubling the backslash there would copy `C:\\tmp` for a stored
+/// `C:\tmp`. Mirrors the SQL export path, which only doubles backslashes for the
+/// dialects whose escape table has one, and `keeps_backslash_literal` in
+/// `dbx-core`'s transfer path.
+fn keeps_literal_backslashes(database_type: Option<DatabaseType>) -> bool {
+    matches!(
+        database_type,
+        Some(
+            DatabaseType::Oracle
+                | DatabaseType::OceanbaseOracle
+                | DatabaseType::Dameng
+                | DatabaseType::Yashandb
+                | DatabaseType::Oscar
+                | DatabaseType::Xugu
+                | DatabaseType::Gaussdb
+                | DatabaseType::OpenGauss
+                | DatabaseType::Kingbase
+                | DatabaseType::Highgo
+                | DatabaseType::Uxdb
+                | DatabaseType::Vastbase
+                | DatabaseType::Kwdb
+        )
     )
 }
 
@@ -4019,6 +4045,31 @@ mod tests {
     /// `schema`), so the save statements are the one generated-SQL surface that
     /// never picked up `生成 SQL 时包含数据库名`. It must match the data-table
     /// SELECT label and the copy-as-INSERT statements.
+    #[test]
+    fn grid_sql_keeps_backslashes_literal_for_pg_family_and_oracle_like_targets() {
+        for database_type in [
+            DatabaseType::Gaussdb,
+            DatabaseType::OpenGauss,
+            DatabaseType::Kingbase,
+            DatabaseType::Highgo,
+            DatabaseType::Uxdb,
+            DatabaseType::Vastbase,
+            DatabaseType::Kwdb,
+            DatabaseType::Yashandb,
+            DatabaseType::Oscar,
+            DatabaseType::Xugu,
+        ] {
+            assert_eq!(
+                format_grid_sql_literal(&json!(r"C:\tmp"), Some(database_type), None),
+                r"'C:\tmp'",
+                "{database_type:?}"
+            );
+        }
+
+        // Dialects whose escape table has a backslash escape still double it.
+        assert_eq!(format_grid_sql_literal(&json!(r"C:\tmp"), Some(DatabaseType::Mysql), None), r"'C:\\tmp'");
+    }
+
     #[test]
     fn mysql_data_grid_save_honors_include_database_name() {
         let mut options = mysql_people_save_options(1);
