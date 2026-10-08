@@ -2238,6 +2238,24 @@ fn is_postgres_family_target(target_db: &DatabaseType) -> bool {
     )
 }
 
+/// Engines whose ordinary string literals keep a backslash literal, so a
+/// transferred value must not have its backslashes doubled: `C:\tmp` has to stay
+/// `'C:\tmp'` instead of becoming `'C:\\tmp'`. Mirrors the SQL export path
+/// (`quote_export_sql_string_for_database`) and the grid's copy-as-SQL path,
+/// which both only double backslashes for dialects whose escape table has one.
+fn keeps_backslash_literal(target_db: &DatabaseType) -> bool {
+    matches!(
+        target_db,
+        DatabaseType::Oracle
+            | DatabaseType::OceanbaseOracle
+            | DatabaseType::Dameng
+            | DatabaseType::Sqlite
+            | DatabaseType::Rqlite
+            | DatabaseType::Turso
+            | DatabaseType::CloudflareD1
+    )
+}
+
 fn is_mysql_numeric_base_type(data_type: &str) -> bool {
     let normalized = data_type.trim().to_ascii_lowercase();
     let base = normalized.split(['(', ' ']).next().unwrap_or("");
@@ -3083,6 +3101,7 @@ pub fn escape_value_typed(val: &serde_json::Value, db_type: &DatabaseType, colum
             }
             let escaped = if is_postgres_family_target(db_type)
                 || matches!(db_type, DatabaseType::SqlServer | DatabaseType::H2)
+                || keeps_backslash_literal(db_type)
             {
                 literal.replace('\'', "''")
             } else {
@@ -12345,6 +12364,31 @@ CREATE TABLE "Other"."prefix""Source"."NAME" ("ID" INT);"#;
             target[2].column_default = Some("1".into());
             assert!(h2_writable_transfer_columns(&source, &target, &mode, "ITEMS").is_ok());
         }
+    }
+
+    #[test]
+    fn transfer_keeps_backslashes_literal_for_oracle_family_and_sqlite() {
+        for db_type in [
+            DatabaseType::Oracle,
+            DatabaseType::OceanbaseOracle,
+            DatabaseType::Dameng,
+            DatabaseType::Sqlite,
+            DatabaseType::Rqlite,
+            DatabaseType::Turso,
+            DatabaseType::CloudflareD1,
+        ] {
+            assert_eq!(
+                escape_value_typed(&json!(r"C:\tmp\o'clock"), &db_type, Some("VARCHAR(64)")),
+                r"'C:\tmp\o''clock'",
+                "{db_type:?}"
+            );
+        }
+
+        // Dialects whose escape table does have a backslash escape keep doubling it.
+        assert_eq!(
+            escape_value_typed(&json!(r"C:\tmp\o'clock"), &DatabaseType::Mysql, Some("varchar(64)")),
+            r"'C:\\tmp\\o''clock'"
+        );
     }
 
     #[test]
