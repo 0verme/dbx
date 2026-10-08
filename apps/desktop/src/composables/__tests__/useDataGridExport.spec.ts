@@ -1032,6 +1032,53 @@ describe("useDataGridExport prepared row statements", () => {
     expect(state.canCopyWithExtractor("sql-inserts")).toBe(false);
   });
 
+  it("omits SQL Server rowversion columns from INSERT copies", () => {
+    const table: DataGridTableMeta = {
+      tableName: "sync_state",
+      primaryKeys: ["id"],
+      columns: [
+        { name: "id", data_type: "int", is_nullable: false, is_primary_key: true },
+        { name: "row_version", data_type: "timestamp", is_nullable: false },
+      ],
+    };
+    const rowVersion = "0x00000000000007D1";
+    const onlyRowVersion: CellSelectionMatrix = { rowIndexes: [0], columnIndexes: [1], columns: ["row_version"], rows: [[rowVersion]] };
+    const withPrimaryKey: CellSelectionMatrix = { rowIndexes: [0], columnIndexes: [0, 1], columns: ["id", "row_version"], rows: [[1, rowVersion]] };
+
+    expect(createExportState(table, ["id", "row_version"], onlyRowVersion, [1, rowVersion], undefined, undefined, [], DEFAULT_DATA_GRID_EXTRACTOR_OPTIONS, false, undefined, false, undefined, undefined, "sqlserver").canCopyWithExtractor("sql-inserts")).toBe(false);
+    expect(createExportState(table, ["id", "row_version"], withPrimaryKey, [1, rowVersion], undefined, undefined, [], DEFAULT_DATA_GRID_EXTRACTOR_OPTIONS, false, undefined, false, undefined, undefined, "sqlserver").canCopyWithExtractor("sql-inserts")).toBe(true);
+  });
+
+  it("omits SQL Server computed columns from INSERT copies unless skipping is disabled", () => {
+    const table: DataGridTableMeta = {
+      tableName: "orders",
+      primaryKeys: [],
+      columns: [
+        { name: "note", data_type: "nvarchar(50)", is_nullable: true },
+        { name: "total", data_type: "int", is_nullable: true, extra: "computed" },
+      ],
+    };
+    const matrix: CellSelectionMatrix = { rowIndexes: [0], columnIndexes: [1], columns: ["total"], rows: [[42]] };
+    const includeComputed = {
+      ...DEFAULT_DATA_GRID_EXTRACTOR_OPTIONS,
+      sql: { ...DEFAULT_DATA_GRID_EXTRACTOR_OPTIONS.sql, skipComputedColumns: false },
+    };
+
+    expect(createExportState(table, ["note", "total"], matrix, ["ok", 42], undefined, undefined, [], DEFAULT_DATA_GRID_EXTRACTOR_OPTIONS, false, undefined, false, undefined, undefined, "sqlserver").canCopyWithExtractor("sql-inserts")).toBe(false);
+    expect(createExportState(table, ["note", "total"], matrix, ["ok", 42], undefined, undefined, [], includeComputed, false, undefined, false, undefined, undefined, "sqlserver").canCopyWithExtractor("sql-inserts")).toBe(true);
+  });
+
+  it("keeps MySQL timestamp columns insertable in INSERT copies", () => {
+    const table: DataGridTableMeta = {
+      tableName: "events",
+      primaryKeys: [],
+      columns: [{ name: "created_at", data_type: "timestamp", is_nullable: false }],
+    };
+    const matrix: CellSelectionMatrix = { rowIndexes: [0], columnIndexes: [0], columns: ["created_at"], rows: [["2026-09-30 10:00:00"]] };
+
+    expect(createExportState(table, ["created_at"], matrix, ["2026-09-30 10:00:00"]).canCopyWithExtractor("sql-inserts")).toBe(true);
+  });
+
   it("keeps a manually-assigned primary key insertable under primary-key exclusion", () => {
     const compositeKeyTable: DataGridTableMeta = {
       tableName: "daily_stats",
