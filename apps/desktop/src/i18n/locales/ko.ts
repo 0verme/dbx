@@ -7696,6 +7696,7 @@ export default withEnglishFallback({
     shortcutSelectAll: "모두 선택",
     shortcutAddNextSelectionOccurrence: "다음 일치 항목 선택 추가",
     shortcutSelectAllSelectionOccurrences: "모든 일치 항목 선택",
+    shortcutEditCell: "셀 편집",
     shortcutEditTableStructure: "테이블 구조 편집",
     shortcutCopyCurrentRow: "현재 데이터 행 복사",
     shortcutDeleteCurrentRow: "현재 데이터 행 삭제",

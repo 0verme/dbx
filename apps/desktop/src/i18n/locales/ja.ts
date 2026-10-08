@@ -7842,6 +7842,7 @@ export default withEnglishFallback({
     shortcutAddNextSelectionOccurrence: "次の出現箇所を選択に追加",
     shortcutSelectAllSelectionOccurrences: "すべての出現箇所を選択",
     shortcutExtendSelection: "選択範囲を拡張",
+    shortcutEditCell: "セルを編集",
     shortcutEditTableStructure: "テーブル構造を編集",
     shortcutCopyCurrentRow: "現在のデータ行をコピー",
     shortcutDeleteCurrentRow: "現在のデータ行を削除",

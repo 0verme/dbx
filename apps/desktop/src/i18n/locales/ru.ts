@@ -9137,6 +9137,7 @@ export default withEnglishFallback({
     shortcutAddNextSelectionOccurrence: "Добавить следующее вхождение",
     shortcutSelectAllSelectionOccurrences: "Выделить все вхождения",
     shortcutExtendSelection: "Расширить выделение",
+    shortcutEditCell: "Редактировать ячейку",
     shortcutEditTableStructure: "Изменить структуру таблицы",
     shortcutCopyCurrentRow: "Копировать текущую строку данных",
     shortcutDeleteCurrentRow: "Удалить текущую строку данных",

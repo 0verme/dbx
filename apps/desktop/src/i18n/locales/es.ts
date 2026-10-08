@@ -8086,6 +8086,7 @@ export default withEnglishFallback({
     shortcutAddNextSelectionOccurrence: "Añadir siguiente coincidencia",
     shortcutSelectAllSelectionOccurrences: "Seleccionar todas las coincidencias",
     shortcutExtendSelection: "Ampliar selección",
+    shortcutEditCell: "Editar celda",
     shortcutEditTableStructure: "Editar estructura de tabla",
     shortcutCopyCurrentRow: "Copiar fila de datos actual",
     shortcutDeleteCurrentRow: "Eliminar fila de datos actual",

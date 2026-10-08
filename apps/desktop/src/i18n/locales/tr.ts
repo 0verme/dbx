@@ -7712,6 +7712,7 @@ export default withEnglishFallback({
     shortcutAddNextSelectionOccurrence: "Sonraki eşleşmeyi ekle",
     shortcutSelectAllSelectionOccurrences: "Tüm eşleşmeleri seç",
     shortcutExtendSelection: "Seçimi genişlet",
+    shortcutEditCell: "Hücreyi düzenle",
     shortcutEditTableStructure: "Tablo yapısını düzenle",
     shortcutCopyCurrentRow: "Geçerli veri satırını kopyala",
     shortcutDeleteCurrentRow: "Geçerli veri satırını sil",

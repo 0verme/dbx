@@ -8610,6 +8610,7 @@ export default withEnglishFallback({
     shortcutAddNextSelectionOccurrence: "Tambah kemunculan berikutnya",
     shortcutSelectAllSelectionOccurrences: "Pilih semua kemunculan",
     shortcutExtendSelection: "Perluas seleksi",
+    shortcutEditCell: "Edit sel",
     shortcutEditTableStructure: "Edit struktur tabel",
     shortcutCopyCurrentRow: "Salin baris data saat ini",
     shortcutDeleteCurrentRow: "Hapus baris data saat ini",

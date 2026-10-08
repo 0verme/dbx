@@ -8837,6 +8837,7 @@ export default {
     shortcutSelectAllSelectionOccurrences: "Select all occurrences",
     shortcutSelectLineEnds: "Select line ends",
     shortcutExtendSelection: "Extend selection",
+    shortcutEditCell: "Edit cell",
     shortcutEditTableStructure: "Edit table structure",
     shortcutCopyCurrentRow: "Copy current data row",
     shortcutDeleteCurrentRow: "Delete current data row",

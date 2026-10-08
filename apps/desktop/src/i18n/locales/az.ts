@@ -7811,6 +7811,7 @@ export default withEnglishFallback({
     shortcutAddNextSelectionOccurrence: "Növbəti uyğunluğu əlavə et",
     shortcutSelectAllSelectionOccurrences: "Bütün uyğunluqları seç",
     shortcutExtendSelection: "Seçimi genişləndir",
+    shortcutEditCell: "Xananı redaktə et",
     shortcutEditTableStructure: "Cədvəlin quruluşunu redaktə et",
     shortcutCopyCurrentRow: "Cari məlumat sətrini kopyala",
     shortcutDeleteCurrentRow: "Cari məlumat sətrini sil",

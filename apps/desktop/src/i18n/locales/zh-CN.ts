@@ -8824,6 +8824,7 @@ export default withEnglishFallback({
     shortcutToggleCaseSelection: "切换选中内容大小写",
     shortcutConvertNamingStyle: "切换命名风格",
     shortcutExPasteSqlInCondition: "ExPaste：粘贴为 IN 条件",
+    shortcutEditCell: "编辑单元格",
     shortcutEditTableStructure: "编辑表结构",
     shortcutCopyCurrentRow: "复制当前数据行",
     shortcutDeleteCurrentRow: "删除当前数据行",

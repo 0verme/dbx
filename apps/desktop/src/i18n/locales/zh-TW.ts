@@ -7167,6 +7167,7 @@ export default withEnglishFallback({
     shortcutAddNextSelectionOccurrence: "增加下一個選取詞",
     shortcutSelectAllSelectionOccurrences: "選取所有選取詞",
     shortcutExtendSelection: "擴展選取範圍",
+    shortcutEditCell: "編輯儲存格",
     shortcutEditTableStructure: "編輯資料表結構",
     shortcutCopyCurrentRow: "複製目前資料列",
     shortcutDeleteCurrentRow: "刪除目前資料列",
