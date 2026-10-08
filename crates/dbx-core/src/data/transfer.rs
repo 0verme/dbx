@@ -13011,7 +13011,7 @@ CREATE TABLE "Other"."prefix""Source"."NAME" ("ID" INT);"#;
             assert!(object_kind_selected_or_defaulted(None, &view));
             assert!(!object_kind_selected_or_defaulted(Some(&[]), &view));
             assert!(object_kind_selected_or_defaulted(
-                Some(&[TransferObjectSelection { object_type: view.clone(), names: vec!["v1".into()] }]),
+                Some(&[TransferObjectSelection { object_type: view, names: vec!["v1".into()] }]),
                 &view,
             ));
         }
