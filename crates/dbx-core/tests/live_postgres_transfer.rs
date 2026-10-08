@@ -718,7 +718,7 @@ async fn live_postgres_transfer_preserves_data_and_schema_objects() {
         drop_target_before_create: false,
         drop_target_confirmed: false,
         content: dbx_core::transfer::TransferContent::default(),
-        objects: Some(Vec::new()),
+        objects: None,
         mode: TransferMode::Append,
         target_table_name_case: TransferTableNameCase::Preserve,
         quote_target_column_names: true,
