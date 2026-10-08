@@ -5306,13 +5306,15 @@ export async function loadHistoryConnectionOptions(): Promise<HistoryConnectionO
 }
 
 export async function loadTaskRuns(query: TaskRunListQuery = {}): Promise<TaskRunPage> {
-  return get(`/api/task-runs?${qs({
-    limit: query.limit,
-    cursorCreatedAt: query.cursor?.createdAt,
-    cursorRunId: query.cursor?.runId,
-    taskType: query.taskType,
-    status: query.status,
-  })}`);
+  return get(
+    `/api/task-runs?${qs({
+      limit: query.limit,
+      cursorCreatedAt: query.cursor?.createdAt,
+      cursorRunId: query.cursor?.runId,
+      taskType: query.taskType,
+      status: query.status,
+    })}`,
+  );
 }
 
 export async function loadTaskRun(runId: string): Promise<TaskRunDetail | null> {
@@ -5320,10 +5322,12 @@ export async function loadTaskRun(runId: string): Promise<TaskRunDetail | null> 
 }
 
 export async function loadTaskRunItems(runId: string, query: TaskRunItemsQuery = {}): Promise<TaskRunItemsPage> {
-  return get(`/api/task-runs/${encodeURIComponent(runId)}/items?${qs({
-    limit: query.limit,
-    afterItemIndex: query.afterItemIndex,
-  })}`);
+  return get(
+    `/api/task-runs/${encodeURIComponent(runId)}/items?${qs({
+      limit: query.limit,
+      afterItemIndex: query.afterItemIndex,
+    })}`,
+  );
 }
 
 export async function loadRedisHistory(limit = 100, offset = 0): Promise<HistoryEntry[]> {

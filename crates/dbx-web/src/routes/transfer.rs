@@ -946,7 +946,7 @@ mod tests {
         Arc::get_mut(&mut state).unwrap().demo_mode = true;
         let req = transfer_request("src", "dst", &dir);
         let transfer_id = req.transfer_id.clone();
-        start_transfer(State(state.clone()), Json(StartTransferRequest { request: req })).await.unwrap();
+        let _ = start_transfer(State(state.clone()), Json(StartTransferRequest { request: req })).await.unwrap();
         let channel = {
             let channels = state.transfer_progress_channels.read().await;
             channels.get(&transfer_id).cloned().expect("transfer channel registered")
