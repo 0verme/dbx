@@ -202,6 +202,7 @@ import { executeOceanbaseTableClone, executeOceanbaseTableCloneData, oceanbaseCl
 import type { DuplicateTableStructurePlan } from "@/lib/database/dbAdminSql";
 import { useOceanbaseCloneDialog } from "@/composables/useOceanbaseCloneDialog";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import { redisFlushDbPreview } from "@/lib/redis/redisCommandPreview";
 import { buildRenameObjectSql, buildRenameDatabaseSql, buildRenameDatabasePreflightSql, databaseRenameMaintenanceDatabase, supportsDatabaseRename, supportsObjectRename, type RenameableObjectType } from "@/lib/table/objectRenameSql";
 import { prepareOracleViewRename, executeOracleViewRename, OracleViewRenameFailure, type OracleViewRenamePlan } from "@/lib/table/oracleViewRename";
 import { prepareOracleRoutineRename, executeOracleRoutineRename, OracleRoutineRenameFailure, type OracleRoutineRenamePlan } from "@/lib/table/oracleRoutineRename";
@@ -6302,15 +6303,17 @@ routeDangerDialog(showClearElasticsearchIndexConfirm, () => {
   });
 });
 
-routeDangerDialog(showFlushRedisDbConfirm, () =>
-  dangerRequest({
+routeDangerDialog(showFlushRedisDbConfirm, () => {
+  const node = sidebarDangerTarget.value ?? activeNode.value;
+  return dangerRequest({
     title: t("redis.flushDb"),
     message: t("redis.flushDbMessage"),
-    details: t("redis.flushDbDetails", { db: activeNode.value.database }),
+    detailsText: t("redis.flushDbDetails", { db: node.database ?? "" }),
+    sql: redisFlushDbPreview(node.database),
     confirmLabel: t("redis.flushDbConfirm"),
     confirm: confirmFlushRedisDb,
-  }),
-);
+  });
+});
 
 routeDangerDialog(showDropSchemaConfirm, () =>
   dangerRequest({

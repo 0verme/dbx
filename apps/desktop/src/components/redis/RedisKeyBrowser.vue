@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import DateTimePicker from "@/components/ui/date-time-picker/DateTimePicker.vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import { redisDeleteGroupPreview, redisDeleteKeysPreview } from "@/lib/redis/redisCommandPreview";
 import { redisValuePreviewLimitBytes } from "@/lib/redis/redisValuePreviewLimit";
 import RedisValueViewer from "./RedisValueViewer.vue";
 import RedisPubSubPanel from "./RedisPubSubPanel.vue";
@@ -51,7 +52,7 @@ import {
 } from "@/lib/redis/redisKeyTree";
 import { classifyRedisCommandSafety } from "@/lib/redis/redisCommandSafety";
 import { isRedisMutatingCommand } from "@/lib/redis/redisCommandTable";
-import { isRedisClearScreenCommand, nextRedisCommandDb, redisKeyTextToRaw } from "@/lib/redis/redisCommandSession";
+import { isRedisClearScreenCommand, nextRedisCommandDb, redisKeyRawToText, redisKeyTextToRaw } from "@/lib/redis/redisCommandSession";
 import { buildRedisCompletionItemsFromContext, getRedisCompletionContext, takesKeyArgument, type RedisCompletionItem } from "@/lib/redis/redisCompletion";
 import type { RedisCommandDocumentation } from "@/lib/redis/redisCommandDocs";
 import { formatRedisConsoleValue, redisValuePreview, redisValueSize } from "@/lib/redis/redisValuePresentation";
@@ -458,7 +459,7 @@ const selectedKey = computed(() => {
   void keyMetadataEpoch.value;
   return selectedKeyRaw.value ? (flatKeyByRaw.get(selectedKeyRaw.value) ?? null) : null;
 });
-const dangerDetails = computed(() => {
+const dangerDetailsText = computed(() => {
   if (!pendingDanger.value) return "";
   if (pendingDanger.value.kind === "delete-keys") {
     return t(pendingDanger.value.loadedSearchResults ? "redis.deleteLoadedSearchKeysDetails" : "redis.deleteGroupDetails", {
@@ -473,6 +474,21 @@ const dangerDetails = computed(() => {
       target: pendingDanger.value.title,
       count: pendingDanger.value.loadedCount,
     });
+  }
+  return "";
+});
+function redisKeyNameFromRaw(keyRaw: string): string {
+  return flatKeyByRaw.get(keyRaw)?.key_display ?? redisKeyRawToText(keyRaw) ?? keyRaw;
+}
+
+const dangerSql = computed(() => {
+  if (!pendingDanger.value) return "";
+  if (pendingDanger.value.kind === "delete-keys") {
+    const keyNames = pendingDanger.value.keyRaws.map(redisKeyNameFromRaw);
+    return redisDeleteKeysPreview(keyNames);
+  }
+  if (pendingDanger.value.kind === "delete-group") {
+    return redisDeleteGroupPreview(pendingDanger.value.pattern);
   }
   return pendingDanger.value.command;
 });
@@ -3853,7 +3869,16 @@ defineExpose({ focusSearch, insertCommand, executeCommand: executeAiCommand });
       </Pane>
     </Splitpanes>
 
-    <DangerConfirmDialog v-model:open="showDangerConfirm" :message="dangerMessage" :details="dangerDetails" :confirm-label="dangerConfirmLabel" :loading="deletingKeys" :close-on-confirm="pendingDanger?.kind === 'delete-keys' || pendingDanger?.kind === 'delete-group'" @confirm="applyDangerAction" />
+    <DangerConfirmDialog
+      v-model:open="showDangerConfirm"
+      :message="dangerMessage"
+      :details-text="dangerDetailsText"
+      :sql="dangerSql"
+      :confirm-label="dangerConfirmLabel"
+      :loading="deletingKeys"
+      :close-on-confirm="pendingDanger?.kind === 'delete-keys' || pendingDanger?.kind === 'delete-group'"
+      @confirm="applyDangerAction"
+    />
 
     <Dialog :open="showBatchExpiryDialog" @update:open="onBatchExpiryDialogOpenChange">
       <DialogContent class="sm:max-w-[420px]">

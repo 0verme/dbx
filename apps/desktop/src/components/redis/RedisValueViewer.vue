@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import AutoRefreshControl from "@/components/common/AutoRefreshControl.vue";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import { redisDeleteValueItemPreview } from "@/lib/redis/redisCommandPreview";
 import { jsonTreeSearchParts, type JsonTreeSearchMatch } from "@/lib/common/jsonTreeSearch";
 import { createTextContentSearchPattern, type TextContentMatch } from "@/lib/common/textContentSearch";
 import { startRedisContentSearch } from "@/lib/redis/redisContentSearchJob";
@@ -1757,7 +1758,7 @@ function rawRedisValueText(value: unknown): string {
   return formatRedisMemberDetail(value).rawText;
 }
 
-const deleteDetails = computed(() => {
+const deleteDetailsText = computed(() => {
   const pending = pendingDelete.value;
   if (!pending) return "";
   const key = formatValue(props.keyDisplay);
@@ -1766,6 +1767,12 @@ const deleteDetails = computed(() => {
   if (pending.kind === "list") return t("dangerDialog.redisListItemDetails", { key, index: pending.index });
   if (pending.kind === "zset") return t("dangerDialog.redisSetMemberDetails", { key, member: formatValue(pending.member) });
   return t("dangerDialog.redisSetMemberDetails", { key, member: formatValue(pending.member) });
+});
+
+const deleteSql = computed(() => {
+  const pending = pendingDelete.value;
+  if (!pending) return "";
+  return redisDeleteValueItemPreview(props.keyDisplay || props.keyRaw, pending);
 });
 
 async function load(options: { background?: boolean; notifyParent?: boolean; preserveDraft?: boolean; selectDefaultMember?: boolean; shouldApply?: () => boolean } = {}): Promise<boolean> {
@@ -3864,7 +3871,7 @@ useUpdateBlocker(() => (hasUnsavedRedisDraft.value || editingTtl.value || saving
       </div>
     </template>
 
-    <DangerConfirmDialog v-model:open="showDeleteConfirm" :message="t('dangerDialog.deleteMessage')" :details="deleteDetails" :confirm-label="t('dangerDialog.deleteConfirm')" @confirm="confirmDelete" />
+    <DangerConfirmDialog v-model:open="showDeleteConfirm" :message="t('dangerDialog.deleteMessage')" :details-text="deleteDetailsText" :sql="deleteSql" :confirm-label="t('dangerDialog.deleteConfirm')" @confirm="confirmDelete" />
 
     <Dialog :open="showRenameKeyDialog" @update:open="handleRenameKeyDialogOpenChange">
       <DialogContent class="sm:max-w-md" :show-close-button="!renamingKey" :style="editorFontFamilyStyle">
