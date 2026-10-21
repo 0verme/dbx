@@ -6305,11 +6305,13 @@ routeDangerDialog(showClearElasticsearchIndexConfirm, () => {
 
 routeDangerDialog(showFlushRedisDbConfirm, () => {
   const node = sidebarDangerTarget.value ?? activeNode.value;
+  const connectionId = node.connectionId ?? activeNode.value.connectionId;
+  const isCluster = connectionId ? connectionStore.getConfig(connectionId)?.redis_connection_mode === "cluster" : false;
   return dangerRequest({
     title: t("redis.flushDb"),
     message: t("redis.flushDbMessage"),
     detailsText: t("redis.flushDbDetails", { db: node.database ?? "" }),
-    sql: redisFlushDbPreview(node.database),
+    sql: redisFlushDbPreview(node.database, isCluster),
     confirmLabel: t("redis.flushDbConfirm"),
     confirm: confirmFlushRedisDb,
   });

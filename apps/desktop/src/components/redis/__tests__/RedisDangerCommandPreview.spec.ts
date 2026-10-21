@@ -96,9 +96,9 @@ describe("Redis DangerConfirmDialog copy command behavior (issue #12892)", () =>
     expect(copyToClipboard).toHaveBeenCalledWith('DEL user:1 user:2 "cache:session with space"');
   });
 
-  it("copies EVAL script when deleting a group instead of subtree description text", async () => {
+  it("copies bounded scan-and-delete command when deleting a group instead of EVAL", async () => {
     const pattern = "app:cache:*";
-    const sql = redisDeleteGroupPreview(pattern);
+    const sql = redisDeleteGroupPreview(pattern, { database: 2 });
     const detailsText = "app:cache\n将删除该分组下的全部 key（已加载 10 个）";
 
     await mountDangerDialog({
@@ -109,19 +109,23 @@ describe("Redis DangerConfirmDialog copy command behavior (issue #12892)", () =>
     });
 
     const codeContainer = document.body.querySelector('[data-testid="danger-code-container"]');
-    expect(codeContainer?.textContent).toContain("EVAL");
-    expect(codeContainer?.textContent).toContain("app:cache:*");
+    expect(codeContainer?.textContent).toContain("redis-cli");
+    expect(codeContainer?.textContent).toContain("--scan");
+    expect(codeContainer?.textContent).toContain('"app:cache:*"');
+    expect(codeContainer?.textContent).toContain("xargs -L 512");
+    expect(codeContainer?.textContent).not.toContain("EVAL");
 
     const copyBtn = document.body.querySelector<HTMLButtonElement>('[data-testid="danger-code-actions"] button');
     copyBtn?.click();
     await nextTick();
 
-    expect(copyToClipboard).toHaveBeenCalledWith("EVAL \"local keys = redis.call('keys', ARGV[1]) for _, k in ipairs(keys) do redis.call('del', k) end return #keys\" 0 app:cache:*");
+    expect(copyToClipboard).toHaveBeenCalledWith(sql);
   });
 
-  it("copies HDEL command when deleting a hash field in RedisValueViewer", async () => {
-    const sql = redisDeleteValueItemPreview("user:profile", { kind: "hash", field: "email" });
-    const detailsText = "Redis key：user:profile\nField: email";
+  it("copies HDEL command with byte-accurate escaping when deleting a hash field in RedisValueViewer", async () => {
+    const binaryBlob = { raw_base64: btoa("data\x00\xff"), encoding: "binary" };
+    const sql = redisDeleteValueItemPreview("user\\profile", { kind: "hash", field: binaryBlob }, { database: 3 });
+    const detailsText = "Redis key：user\\profile\nField: data";
 
     await mountDangerDialog({
       title: "删除确认",
@@ -131,13 +135,14 @@ describe("Redis DangerConfirmDialog copy command behavior (issue #12892)", () =>
     });
 
     const codeContainer = document.body.querySelector('[data-testid="danger-code-container"]');
-    expect(codeContainer?.textContent).toContain("HDEL user:profile email");
+    expect(codeContainer?.textContent).toContain("SELECT 3");
+    expect(codeContainer?.textContent).toContain('HDEL "user\\\\profile" "data\\x00\\xff"');
 
     const copyBtn = document.body.querySelector<HTMLButtonElement>('[data-testid="danger-code-actions"] button');
     copyBtn?.click();
     await nextTick();
 
-    expect(copyToClipboard).toHaveBeenCalledWith("HDEL user:profile email");
+    expect(copyToClipboard).toHaveBeenCalledWith('SELECT 3\nHDEL "user\\\\profile" "data\\x00\\xff"');
   });
 
   it("copies SREM command when deleting a set member in RedisValueViewer", async () => {
@@ -150,6 +155,9 @@ describe("Redis DangerConfirmDialog copy command behavior (issue #12892)", () =>
       detailsText,
       sql,
     });
+
+    const codeContainer = document.body.querySelector('[data-testid="danger-code-container"]');
+    expect(codeContainer?.textContent).toContain("SREM tags:article news");
 
     const copyBtn = document.body.querySelector<HTMLButtonElement>('[data-testid="danger-code-actions"] button');
     copyBtn?.click();
@@ -168,6 +176,9 @@ describe("Redis DangerConfirmDialog copy command behavior (issue #12892)", () =>
       detailsText,
       sql,
     });
+
+    const codeContainer = document.body.querySelector('[data-testid="danger-code-container"]');
+    expect(codeContainer?.textContent).toContain("ZREM leaderboard player1");
 
     const copyBtn = document.body.querySelector<HTMLButtonElement>('[data-testid="danger-code-actions"] button');
     copyBtn?.click();

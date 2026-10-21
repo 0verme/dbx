@@ -1627,7 +1627,8 @@ describe("RedisKeyBrowser fuzzy key hierarchy", () => {
 
     expect(mocks.redisDeleteKeys).not.toHaveBeenCalled();
     expect(requiredElement<HTMLElement>("[data-test-danger-details]").textContent).toContain("MCP");
-    expect(requiredElement<HTMLElement>("[data-test-danger-sql]").textContent).toContain("EVAL");
+    expect(requiredElement<HTMLElement>("[data-test-danger-sql]").textContent).toContain("redis-cli");
+    expect(requiredElement<HTMLElement>("[data-test-danger-sql]").textContent).toContain("--scan");
     expect(requiredElement<HTMLElement>("[data-test-danger-sql]").textContent).toContain("MCP:*");
     requiredElement<HTMLButtonElement>("[data-test-danger-confirm]").click();
     await settle();

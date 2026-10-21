@@ -2575,12 +2575,36 @@ pub fn parse_command_argv(command_text: &str) -> Result<Vec<String>, String> {
     while let Some(ch) = chars.next() {
         if escaping {
             token_started = true;
-            current.push(match ch {
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                other => other,
-            });
+            if ch == 'x' {
+                let hex1 = chars.peek().copied();
+                if let Some(h1) = hex1 {
+                    if h1.is_ascii_hexdigit() {
+                        chars.next();
+                        let hex2 = chars.peek().copied();
+                        if let Some(h2) = hex2 {
+                            if h2.is_ascii_hexdigit() {
+                                chars.next();
+                                let byte = u8::from_str_radix(&format!("{h1}{h2}"), 16).unwrap();
+                                current.push(byte as char);
+                                escaping = false;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                current.push('x');
+            } else {
+                current.push(match ch {
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    'a' => '\x07',
+                    'b' => '\x08',
+                    'f' => '\x0c',
+                    'v' => '\x0b',
+                    other => other,
+                });
+            }
             escaping = false;
             continue;
         }
@@ -10518,8 +10542,13 @@ mod tests {
     #[test]
     fn parses_command_text_with_quotes_and_escapes() {
         let argv = parse_command_argv(r#"SET "user:1" "Ada \"Lovelace\"""#).unwrap();
-
         assert_eq!(argv, vec!["SET", "user:1", "Ada \"Lovelace\""]);
+
+        let argv = parse_command_argv(r#"DEL "cache\\session""#).unwrap();
+        assert_eq!(argv, vec!["DEL", "cache\\session"]);
+
+        let argv = parse_command_argv(r#"DEL "bin\x00key\xff""#).unwrap();
+        assert_eq!(argv, vec!["DEL", "bin\0key\u{ff}"]);
     }
 
     #[test]

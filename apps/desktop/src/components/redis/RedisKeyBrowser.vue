@@ -52,7 +52,7 @@ import {
 } from "@/lib/redis/redisKeyTree";
 import { classifyRedisCommandSafety } from "@/lib/redis/redisCommandSafety";
 import { isRedisMutatingCommand } from "@/lib/redis/redisCommandTable";
-import { isRedisClearScreenCommand, nextRedisCommandDb, redisKeyRawToText, redisKeyTextToRaw } from "@/lib/redis/redisCommandSession";
+import { isRedisClearScreenCommand, nextRedisCommandDb, redisKeyTextToRaw } from "@/lib/redis/redisCommandSession";
 import { buildRedisCompletionItemsFromContext, getRedisCompletionContext, takesKeyArgument, type RedisCompletionItem } from "@/lib/redis/redisCompletion";
 import type { RedisCommandDocumentation } from "@/lib/redis/redisCommandDocs";
 import { formatRedisConsoleValue, redisValuePreview, redisValueSize } from "@/lib/redis/redisValuePresentation";
@@ -477,18 +477,23 @@ const dangerDetailsText = computed(() => {
   }
   return "";
 });
-function redisKeyNameFromRaw(keyRaw: string): string {
-  return flatKeyByRaw.get(keyRaw)?.key_display ?? redisKeyRawToText(keyRaw) ?? keyRaw;
-}
+
+const isClusterMode = computed(() => connectionStore.getConfig(props.connectionId)?.redis_connection_mode === "cluster");
 
 const dangerSql = computed(() => {
   if (!pendingDanger.value) return "";
   if (pendingDanger.value.kind === "delete-keys") {
-    const keyNames = pendingDanger.value.keyRaws.map(redisKeyNameFromRaw);
-    return redisDeleteKeysPreview(keyNames);
+    return redisDeleteKeysPreview(pendingDanger.value.keyRaws, {
+      raw: true,
+      database: props.db,
+      isCluster: isClusterMode.value,
+    });
   }
   if (pendingDanger.value.kind === "delete-group") {
-    return redisDeleteGroupPreview(pendingDanger.value.pattern);
+    return redisDeleteGroupPreview(pendingDanger.value.pattern, {
+      database: props.db,
+      isCluster: isClusterMode.value,
+    });
   }
   return pendingDanger.value.command;
 });
