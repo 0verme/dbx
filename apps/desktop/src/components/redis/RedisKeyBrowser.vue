@@ -490,9 +490,19 @@ const dangerSql = computed(() => {
     });
   }
   if (pendingDanger.value.kind === "delete-group") {
+    const config = connectionStore.getConfig(props.connectionId);
     return redisDeleteGroupPreview(pendingDanger.value.pattern, {
       database: props.db,
       isCluster: isClusterMode.value,
+      connection: config
+        ? {
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            password: config.password,
+            tls: config.ssl,
+          }
+        : undefined,
     });
   }
   return pendingDanger.value.command;

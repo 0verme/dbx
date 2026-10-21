@@ -8,7 +8,9 @@ import { copyToClipboard } from "@/lib/common/clipboard";
 import { redisFlushDbPreview, redisDeleteKeysPreview, redisDeleteGroupPreview, redisDeleteValueItemPreview } from "@/lib/redis/redisCommandPreview";
 
 vi.mock("@/composables/useSqlHighlighter", () => ({
-  useSqlHighlighter: () => ({ highlight: (sql: string) => `<span>${sql}</span>` }),
+  useSqlHighlighter: () => ({
+    highlight: (sql: string) => `<span>${sql.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`,
+  }),
 }));
 
 vi.mock("@/lib/common/clipboard", () => ({
@@ -109,10 +111,12 @@ describe("Redis DangerConfirmDialog copy command behavior (issue #12892)", () =>
     });
 
     const codeContainer = document.body.querySelector('[data-testid="danger-code-container"]');
-    expect(codeContainer?.textContent).toContain("redis-cli");
-    expect(codeContainer?.textContent).toContain("--scan");
-    expect(codeContainer?.textContent).toContain('"app:cache:*"');
-    expect(codeContainer?.textContent).toContain("xargs -L 512");
+    expect(codeContainer?.textContent).toContain("# Applicable: Standalone Redis (db 2)");
+    expect(codeContainer?.textContent).toContain("python3 - << 'EOF'");
+    expect(codeContainer?.textContent).toContain('PATTERN = "app:cache:*".encode("utf-8")');
+    expect(codeContainer?.textContent).toContain("DB = 2");
+    expect(codeContainer?.textContent).toContain("BATCH_SIZE = 512");
+    expect(codeContainer?.textContent).not.toContain("xargs");
     expect(codeContainer?.textContent).not.toContain("EVAL");
 
     const copyBtn = document.body.querySelector<HTMLButtonElement>('[data-testid="danger-code-actions"] button');

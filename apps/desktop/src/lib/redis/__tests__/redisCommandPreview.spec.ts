@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { base64ToBytes, quoteRedisArg, quoteRedisBytes, quoteRedisKeyRaw, redisDeleteGroupPreview, redisDeleteKeysPreview, redisDeleteValueItemPreview, redisFlushDbPreview } from "../redisCommandPreview";
+import { quoteRedisArg, quoteRedisBytes, quoteRedisKeyRaw, redisDeleteGroupPreview, redisDeleteKeysPreview, redisDeleteValueItemPreview, redisFlushDbPreview } from "../redisCommandPreview";
 import { redisKeyTextToRaw } from "../redisCommandSession";
 
 describe("quoteRedisArg and quoteRedisBytes", () => {
@@ -111,23 +111,55 @@ describe("redisDeleteGroupPreview", () => {
   it("formats bounded standalone scan-and-delete command with batch limit 512", () => {
     const preview = redisDeleteGroupPreview("user:*");
     expect(preview).toContain("# Applicable: Standalone Redis");
-    expect(preview).toContain("SCAN COUNT 500, DEL in batches of up to 512 keys");
-    expect(preview).toContain('redis-cli --scan --pattern "user:*" | xargs -L 512 redis-cli DEL');
+    expect(preview).toContain("SCAN COUNT 500, bounded DEL <= 512 keys per batch");
+    expect(preview).toContain("python3 - << 'EOF'");
+    expect(preview).toContain('HOST = "127.0.0.1"');
+    expect(preview).toContain("PORT = 6379");
+    expect(preview).toContain("DB = 0");
+    expect(preview).toContain('PATTERN = "user:*".encode("utf-8")');
+    expect(preview).toContain("SCAN_COUNT = 500");
+    expect(preview).toContain("BATCH_SIZE = 512");
+    expect(preview).not.toContain("xargs");
     expect(preview).not.toContain("EVAL");
   });
 
-  it("includes -n <db> for non-zero database in standalone mode", () => {
+  it("includes explicit database in standalone mode", () => {
     const preview = redisDeleteGroupPreview("user:*", { database: 2 });
     expect(preview).toContain("# Applicable: Standalone Redis (db 2)");
-    expect(preview).toContain('redis-cli -n 2 --scan --pattern "user:*" | xargs -L 512 redis-cli -n 2 DEL');
+    expect(preview).toContain("DB = 2");
+    expect(preview).toContain('cmd.extend(["-n", str(DB)])');
+    expect(preview).toContain('send_resp(f, [b"SELECT", str(DB).encode("utf-8")])');
   });
 
-  it("formats cluster preview with per-node execution documentation and avoids cross-slot EVAL", () => {
+  it("formats cluster preview with slot-routed execution and avoids cross-slot DEL", () => {
     const preview = redisDeleteGroupPreview("cache:*", { isCluster: true });
-    expect(preview).toContain("# Applicable: Redis Cluster (per-node execution)");
-    expect(preview).toContain("Cross-slot");
-    expect(preview).toContain('redis-cli -h <node-host> -p <node-port> --scan --pattern "cache:*" | xargs -L 512 redis-cli -h <node-host> -p <node-port> DEL');
+    expect(preview).toContain("# Applicable: Redis Cluster (slot-routed multi-node execution)");
+    expect(preview).toContain("IS_CLUSTER = True");
+    expect(preview).toContain('send_resp(f, [b"CLUSTER", b"NODES"])');
+    expect(preview).toContain("get_crc16_slot");
+    expect(preview).toContain("binascii.crc_hqx");
+    expect(preview).toContain('cmd.append("-c")');
+    expect(preview).not.toContain("xargs");
     expect(preview).not.toContain("EVAL");
+  });
+
+  it("includes connection context for authentication, host, port, and TLS", () => {
+    const preview = redisDeleteGroupPreview("secure:*", {
+      database: 1,
+      connection: {
+        host: "redis.prod.internal",
+        port: 6380,
+        username: "ops",
+        password: "secret'\"pass",
+        tls: true,
+      },
+    });
+    expect(preview).toContain('HOST = "redis.prod.internal"');
+    expect(preview).toContain("PORT = 6380");
+    expect(preview).toContain('USERNAME = "ops"');
+    expect(preview).toContain('PASSWORD = "secret\'\\"pass"');
+    expect(preview).toContain("TLS = True");
+    expect(preview).toContain("DB = 1");
   });
 });
 
