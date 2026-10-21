@@ -24,6 +24,7 @@ import { startRedisContentSearch } from "@/lib/redis/redisContentSearchJob";
 import JsonTree from "@/components/common/JsonTree.vue";
 import RedisJsonEditor from "@/components/redis/RedisJsonEditor.vue";
 import * as api from "@/lib/backend/api";
+import { getActivePinia } from "pinia";
 import { useConnectionStore } from "@/stores/connectionStore";
 import type { RedisBlob, RedisHashItem, RedisKeyInfo, RedisListItem, RedisSetItem, RedisStreamConsumer, RedisStreamEntry, RedisStreamGroup, RedisStreamPendingEntry, RedisValue, RedisZsetItem } from "@/lib/backend/api";
 import { useToast } from "@/composables/useToast";
@@ -999,8 +1000,8 @@ function shouldPauseAutoValueRefresh(): boolean {
   return showMemberDetail.value || editingZsetMemberKey.value !== null || showHashFieldTtlDialog.value || valueSearchOpen.value || Boolean(collectionSearchQuery.value.trim()) || Boolean(activeCollectionSearchQuery.value) || searchLoading.value || loadingMore.value || hasExpandedCollectionPage;
 }
 
-const connectionStore = useConnectionStore();
-const isClusterMode = computed(() => connectionStore.getConfig(props.connectionId)?.redis_connection_mode === "cluster");
+const connectionStore = getActivePinia() ? useConnectionStore() : undefined;
+const isClusterMode = computed(() => connectionStore?.getConfig(props.connectionId)?.redis_connection_mode === "cluster");
 
 type PendingDelete = { kind: "key" } | { kind: "hash"; field: RedisBlob | string } | { kind: "list"; index: number } | { kind: "set"; member: RedisBlob | string } | { kind: "zset"; member: RedisBlob | string };
 const pendingDelete = ref<PendingDelete | null>(null);
