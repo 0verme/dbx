@@ -460,6 +460,13 @@ describe("normalizeEditorSettings", () => {
     expect(normalizeEditorSettings({ functionCompletionIncludeParams: "yes" as unknown as boolean }).functionCompletionIncludeParams).toBe(true);
   });
 
+  it("enables sequence completion by default and preserves an explicit opt-out", () => {
+    expect(DEFAULT_EDITOR_SETTINGS.sequenceCompletionEnabled).toBe(true);
+    expect(normalizeEditorSettings({}).sequenceCompletionEnabled).toBe(true);
+    expect(normalizeEditorSettings({ sequenceCompletionEnabled: false }).sequenceCompletionEnabled).toBe(false);
+    expect(normalizeEditorSettings({ sequenceCompletionEnabled: "yes" as unknown as boolean }).sequenceCompletionEnabled).toBe(true);
+  });
+
   it("defaults snippetTriggerKey to tab and preserves valid options while falling back on invalid values", () => {
     expect(normalizeEditorSettings({}).snippetTriggerKey).toBe("tab");
     expect(normalizeEditorSettings({ snippetTriggerKey: "tab" }).snippetTriggerKey).toBe("tab");
@@ -581,6 +588,19 @@ describe("normalizeEditorSettings", () => {
     expect(normalizeEditorSettings({ deleteConnectionTabHandlingMode: "keep-tabs" } as any).deleteConnectionTabHandlingMode).toBe("keep-sql-tabs");
     expect(normalizeEditorSettings({ deleteConnectionTabHandlingMode: "keep-pinned" } as any).deleteConnectionTabHandlingMode).toBe("keep-pinned-sql-tabs");
     expect(normalizeEditorSettings({ deleteConnectionTabHandlingMode: "keep-all" } as any).deleteConnectionTabHandlingMode).toBe("keep-all-tabs");
+  });
+
+  it("defaults DeepLink confirmation to always and maps the legacy boolean switch", () => {
+    // 默认都要确认：深链打开连接仍然要用户在弹窗里确认一次。
+    expect(normalizeEditorSettings({}).deepLinkConnectionConfirmMode).toBe("always");
+    for (const mode of ["always", "create", "update", "all"] as const) {
+      expect(normalizeEditorSettings({ deepLinkConnectionConfirmMode: mode }).deepLinkConnectionConfirmMode).toBe(mode);
+    }
+    // 上一版的布尔开关只覆盖新建连接，true 收敛成 create。
+    expect(normalizeEditorSettings({ deepLinkConnectionAutoCreate: true } as any).deepLinkConnectionConfirmMode).toBe("create");
+    expect(normalizeEditorSettings({ deepLinkConnectionAutoCreate: false } as any).deepLinkConnectionConfirmMode).toBe("always");
+    // 非法值一律回落默认值。
+    expect(normalizeEditorSettings({ deepLinkConnectionConfirmMode: "sometimes" } as any).deepLinkConnectionConfirmMode).toBe("always");
   });
 
   it("remembers connection databases by default and sanitizes the stored map", () => {
@@ -1187,6 +1207,24 @@ describe("normalizeEditorSettings - tabLayout", () => {
     expect(normalizeEditorSettings({ tabLayout: undefined } as any).tabLayout).toBe("scroll");
     expect(normalizeEditorSettings({ tabLayout: null } as any).tabLayout).toBe("scroll");
     expect(normalizeEditorSettings({ tabLayout: 123 } as any).tabLayout).toBe("scroll");
+  });
+});
+
+describe("normalizeEditorSettings - colorizeConnectionTabsScope", () => {
+  it("defaults colorizeConnectionTabsScope to all", () => {
+    expect(normalizeEditorSettings({}).colorizeConnectionTabsScope).toBe("all");
+  });
+
+  it("preserves explicit all and active modes", () => {
+    expect(normalizeEditorSettings({ colorizeConnectionTabsScope: "all" }).colorizeConnectionTabsScope).toBe("all");
+    expect(normalizeEditorSettings({ colorizeConnectionTabsScope: "active" }).colorizeConnectionTabsScope).toBe("active");
+  });
+
+  it("falls back to all for invalid values", () => {
+    expect(normalizeEditorSettings({ colorizeConnectionTabsScope: "invalid" } as any).colorizeConnectionTabsScope).toBe("all");
+    expect(normalizeEditorSettings({ colorizeConnectionTabsScope: undefined } as any).colorizeConnectionTabsScope).toBe("all");
+    expect(normalizeEditorSettings({ colorizeConnectionTabsScope: null } as any).colorizeConnectionTabsScope).toBe("all");
+    expect(normalizeEditorSettings({ colorizeConnectionTabsScope: 123 } as any).colorizeConnectionTabsScope).toBe("all");
   });
 });
 
@@ -1889,8 +1927,10 @@ describe("settingsStore persisted settings initialization", () => {
     const firstStore = useSettingsStore();
     await firstStore.initEditorSettings();
     expect(firstStore.editorSettings.colorizeConnectionTabs).toBe(true);
+    expect(firstStore.editorSettings.colorizeConnectionTabsScope).toBe("all");
     await firstStore.updateEditorSettingsAndPersist({
       colorizeConnectionTabs: false,
+      colorizeConnectionTabsScope: "active",
       tabPlacement: "left",
       tabGroupMode: "connection",
       tabSortMode: "title-asc",
@@ -1905,6 +1945,7 @@ describe("settingsStore persisted settings initialization", () => {
 
     expect(restartedStore.editorSettings).toMatchObject({
       colorizeConnectionTabs: false,
+      colorizeConnectionTabsScope: "active",
       tabPlacement: "left",
       tabGroupMode: "connection",
       tabSortMode: "title-asc",

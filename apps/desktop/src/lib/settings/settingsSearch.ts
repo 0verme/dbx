@@ -1,3 +1,4 @@
+import { getPlatform } from "@/lib/backend/platform";
 import { SQL_VARIABLE_SYNTAX_KEYS, SQL_VARIABLE_SYNTAX_TOKENS } from "@/lib/sql/sqlVariableSyntax";
 import { APP_CUSTOM_UI_COLOR_DEFS } from "@/lib/app/appTheme";
 import { MCP_TOOL_OPTIONS, MCP_EXECUTION_MODE_COLUMNS } from "@/lib/mcp/mcpPolicySelection";
@@ -147,6 +148,9 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
   { id: "editor-execute-mode", category: "editor", titleKey: "settings.executeMode", targetId: "editor", keywordKeys: ["settings.executeModeAll", "settings.executeModeCurrent"] },
   { id: "editor-default-transaction-mode", category: "editor", titleKey: "settings.defaultTransactionMode", descriptionKey: "settings.defaultTransactionModeDescription", targetId: "editor", keywordKeys: ["settings.defaultTransactionModeAuto", "settings.defaultTransactionModeManual"] },
   { id: "editor-execute-all-on-blank-line", category: "editor", titleKey: "settings.executeAllOnBlankLine", descriptionKey: "settings.executeAllOnBlankLineDescription", targetId: "editor" },
+  // 全局超时入口（#13233）：标题/描述复用连接对话框已有的 connection.* 文案，避免 14 个 locale 各补一份同义 key。
+  { id: "editor-global-connect-timeout", category: "editor", titleKey: "connection.connectTimeout", descriptionKey: "connection.globalConnectTimeoutHint", targetId: "editor" },
+  { id: "editor-global-query-timeout", category: "editor", titleKey: "connection.queryTimeout", descriptionKey: "connection.globalQueryTimeoutHint", targetId: "editor" },
   { id: "editor-execution-target", category: "editor", titleKey: "settings.showExecutionTargetPicker", descriptionKey: "settings.showExecutionTargetPickerDescription", targetId: "editor" },
   { id: "editor-run-buttons", category: "editor", titleKey: "settings.showStatementRunButtons", descriptionKey: "settings.showStatementRunButtonsDescription", targetId: "editor" },
   { id: "editor-locate-cursor-on-gutter-execute", category: "editor", titleKey: "settings.locateCursorOnGutterExecute", descriptionKey: "settings.locateCursorOnGutterExecuteDescription", targetId: "editor" },
@@ -170,6 +174,7 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
   { id: "editor-completion-spacing", category: "editor", titleKey: "settings.insertSpaceAfterCompletion", descriptionKey: "settings.insertSpaceAfterCompletionDescription", targetId: "editor" },
   { id: "editor-sqlserver-space-completion", category: "editor", titleKey: "settings.sqlServerSpaceConfirmsCompletion", descriptionKey: "settings.sqlServerSpaceConfirmsCompletionDescription", targetId: "editor", visible: sqlServerSpaceCompletionVisible },
   { id: "editor-function-completion-include-params", category: "editor", titleKey: "settings.functionCompletionIncludeParams", descriptionKey: "settings.functionCompletionIncludeParamsDescription", targetId: "editor" },
+  { id: "editor-sequence-completion-enabled", category: "editor", titleKey: "settings.sequenceCompletionEnabled", descriptionKey: "settings.sequenceCompletionEnabledDescription", targetId: "editor" },
   {
     id: "editor-completion-trigger-mode",
     category: "editor",
@@ -322,7 +327,14 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
     targetId: "appearance",
     keywordKeys: ["settings.tabMaxWidthUnlimited", "settings.tabMaxWidthCompact", "settings.tabMaxWidthMedium", "settings.tabMaxWidthStandard", "settings.tabMaxWidthWide"],
   },
-  { id: "appearance-connection-tab-colors", category: "appearance", titleKey: "settings.colorizeConnectionTabs", descriptionKey: "settings.colorizeConnectionTabsDescription", targetId: "appearance" },
+  {
+    id: "appearance-connection-tab-colors",
+    category: "appearance",
+    titleKey: "settings.colorizeConnectionTabs",
+    descriptionKey: "settings.colorizeConnectionTabsDescription",
+    targetId: "appearance",
+    keywordKeys: ["settings.colorizeConnectionTabsScope", "settings.colorizeConnectionTabsScopeAll", "settings.colorizeConnectionTabsScopeActive"],
+  },
   { id: "appearance-icons", category: "appearance", titleKey: "settings.iconTheme", targetId: "appearance", visible: desktopOnly },
   {
     id: "appearance-web-logo-position",
@@ -333,6 +345,7 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
     visible: webOnly,
     keywordKeys: ["settings.webLogoPositionLeft", "settings.webLogoPositionRight", "settings.webLogoPositionHidden"],
   },
+  { id: "appearance-linux-floating-frame", category: "appearance", titleKey: "settings.linuxFloatingFrame", descriptionKey: "settings.linuxFloatingFrameDescription", targetId: "appearance", visible: (context) => !context.isWeb && getPlatform() === "linux" },
   { id: "appearance-tray", category: "appearance", titleKey: "settings.showTrayIcon", descriptionKey: "settings.showTrayIconDescription", targetId: "appearance", visible: desktopOnly },
   { id: "appearance-quit", category: "appearance", titleKey: "settings.quitOnClose", descriptionKey: "settings.quitOnCloseDescription", targetId: "appearance", visible: desktopOnly },
   { id: "about-debug-logs", category: "about", titleKey: "settings.debugLoggingEnabled", descriptionKey: "settings.debugLoggingEnabledDescription", targetId: "about", visible: desktopOnly },
@@ -372,6 +385,7 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
   },
   { id: "navigation-sidebar-scroll", category: "navigation", titleKey: "settings.sidebarAllowHorizontalScroll", descriptionKey: "settings.sidebarAllowHorizontalScrollDescription", targetId: "navigation" },
   { id: "navigation-sidebar-tooltips", category: "navigation", titleKey: "settings.sidebarShowTooltips", descriptionKey: "settings.sidebarShowTooltipsDescription", targetId: "navigation" },
+  { id: "navigation-sidebar-user-admin", category: "navigation", titleKey: "settings.sidebarShowUserAdmin", descriptionKey: "settings.sidebarShowUserAdminDescription", targetId: "navigation" },
   { id: "navigation-sidebar-indent", category: "navigation", titleKey: "settings.sidebarIndent", descriptionKey: "settings.sidebarIndentDescription", targetId: "navigation" },
   { id: "navigation-sidebar-font-size", category: "navigation", titleKey: "settings.sidebarFontSize", descriptionKey: "settings.sidebarFontSizeDescription", targetId: "navigation" },
   { id: "navigation-sidebar-density", category: "navigation", titleKey: "settings.sidebarDensity", descriptionKey: "settings.sidebarDensityDescription", targetId: "navigation" },
@@ -396,6 +410,14 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
     keywordKeys: ["settings.deleteConnectionTabHandlingModeCloseTabs", "settings.deleteConnectionTabHandlingModeKeepSqlTabs", "settings.deleteConnectionTabHandlingModeKeepPinnedSqlTabs", "settings.deleteConnectionTabHandlingModeKeepAllTabs"],
   },
   { id: "navigation-remember-connection-database", category: "navigation", titleKey: "settings.rememberConnectionDatabaseOnDelete", descriptionKey: "settings.rememberConnectionDatabaseOnDeleteDescription", targetId: "navigation", keywordKeys: ["settings.rememberConnectionDatabaseOnDeleteHint"] },
+  {
+    id: "navigation-deeplink-connection-confirm-mode",
+    category: "navigation",
+    titleKey: "settings.deepLinkConnectionConfirmMode",
+    descriptionKey: "settings.deepLinkConnectionConfirmModeDescription",
+    targetId: "navigation",
+    keywordKeys: ["settings.deepLinkConnectionConfirmModeAlways", "settings.deepLinkConnectionConfirmModeCreate", "settings.deepLinkConnectionConfirmModeUpdate", "settings.deepLinkConnectionConfirmModeAll"],
+  },
   { id: "query-page-size", category: "data", titleKey: "settings.queryPageSize", descriptionKey: "settings.queryPageSizeDescription", targetId: "data" },
   { id: "data-page-size", category: "data", titleKey: "settings.tableOpenPageSize", descriptionKey: "settings.tableOpenPageSizeDescription", targetId: "data" },
   { id: "data-table-open-sort-mode", category: "data", titleKey: "settings.tableOpenSortMode", descriptionKey: "settings.tableOpenSortDescription", targetId: "data", keywordKeys: ["settings.tableSortUnchanged", "settings.tableSortDatabase", "settings.tableSortLocal"] },
@@ -518,8 +540,10 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
       "databaseBackup.outputPathTemplate",
       "databaseBackup.runDirectoryPattern",
       "databaseBackup.fileNamePattern",
-      "databaseBackup.compression",
+      "databaseBackup.backupFormat",
+      "databaseBackup.formatSql",
       "databaseBackup.compressionGzip",
+      "databaseBackup.formatNb3",
       "databaseBackup.databases",
       "databaseBackup.allDatabases",
       "databaseBackup.tableScope",
@@ -546,6 +570,7 @@ export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = 
       "connection.sshKeyPath",
       "connection.sshKeyPassphrase",
       "connection.sshAgentSockPath",
+      "connection.sshAgentKey",
       "connection.sshExposeLan",
       "connection.sshConnectTimeout",
       "connection.sshAuthMethodPassword",

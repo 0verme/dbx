@@ -6,6 +6,7 @@ import type { Ref } from "vue";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
+import { MAX_CONNECT_TIMEOUT_SECS, MAX_QUERY_TIMEOUT_SECS } from "@/lib/connection/timeoutLimits";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -91,6 +92,7 @@ import {
   type InterfaceLayout,
   type DisconnectTabHandlingMode,
   type DeleteConnectionTabHandlingMode,
+  type DeepLinkConnectionConfirmMode,
   type DataTabReuseMode,
   type DataGridFilterEditorView,
   type DataGridToolbarLayout,
@@ -106,6 +108,7 @@ import {
   type TabGroupMode,
   type TabGroupRowMode,
   type TabPlacement,
+  type ConnectionTabColorScope,
   type TabSortMode,
   type WelcomePageMode,
   type UpdateDownloadSource,
@@ -206,6 +209,7 @@ import {
   webdavSyncInspect,
   webdavSyncSecretsStatus,
   webdavSyncTest,
+  relaunchApp,
   webdavSyncUpload,
   listInstalledAgentsLocal,
   listPlugins,
@@ -271,7 +275,7 @@ import { currentExecutableStatementRange, type SqlTextRange } from "@/lib/sql/sq
 import { executableStatementRangeCacheForDoc, executableStatementRangeStartingAt, type ExecutableStatementRangeCache } from "@/lib/sql/executableStatementRangeCache";
 import { EMPTY_TABLE_COLUMN_TEMPLATE_DATA_TYPE, parseTableColumnTemplateFields, TABLE_COLUMN_TEMPLATE_DATABASE_TYPES, tableColumnTemplateRowsToSettings } from "@/lib/table/tableColumnTemplates";
 import {
-  DEFAULT_SQL_VARIABLE_SYNTAX_TOGGLES,
+  isModeDependentSubstitutionDatabase,
   normalizeSqlVariableSyntaxOverrides,
   resolveSqlVariableSyntaxToggles,
   SQL_VARIABLE_SYNTAX_DATABASE_TYPES,
@@ -279,6 +283,7 @@ import {
   SQL_VARIABLE_SYNTAX_TOKENS,
   type SqlVariableSyntaxOverrides,
   type SqlVariableSyntaxToggles,
+  updateSqlVariableSyntaxToggle,
 } from "@/lib/sql/sqlVariableSyntax";
 import {
   buildMcpCherryStudioConfig,
@@ -309,7 +314,7 @@ import {
   toggleMcpAllowedToolName,
   type McpExecutionMode,
 } from "@/lib/mcp/mcpPolicySelection";
-import { isMacOS, isWindows } from "@/lib/backend/platform";
+import { getPlatform, isMacOS, isWindows } from "@/lib/backend/platform";
 import { combineDataTypeForDatabase, dataTypeLengthInputValue, getDataTypeOptions, getDefaultLengthForType, isDataTypeLengthDisabled, splitDataType } from "@/lib/table/tableStructureEditorState";
 import { useToast } from "@/composables/useToast";
 import type { InstalledPlugin, DatabaseType, SqlShortcutAction, SqlSnippet } from "@/types/database";
@@ -356,8 +361,9 @@ import {
   type EditorSettingsDraftKey,
 } from "@/lib/settings/editorSettingsDraft";
 import { applyEditorSettingsDraftToRefs, type EditorSettingsDraftRefMap } from "@/lib/settings/applyEditorSettingsDraft";
-import { serializeSettingsTransfer, sortTransferCategories, transferCategoryForKey, type SettingsTransferCategoryId } from "@/lib/settings/settingsTransfer";
+import { pickTransferableDesktopSettings, serializeSettingsTransfer, sortTransferCategories, transferCategoryForKey, type SettingsTransferCategoryId, type SettingsTransferExtras, type TransferableDesktopSettings, type TransferableDesktopSettingsKey } from "@/lib/settings/settingsTransfer";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useQueryStore } from "@/stores/queryStore";
 import { effectiveDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { usePromptTemplateStore } from "@/stores/promptTemplateStore";
@@ -400,8 +406,11 @@ import {
   readSyncMethod,
   WEB_DAV_LAST_SUCCESSFUL_SYNC_STORAGE_KEY,
   WEB_DAV_SYNC_SUCCESS_EVENT,
+  readWebDavAutoUploadConfig,
+  webDavSyncTarget,
   writeWebDavAutoUploadFields,
   writeWebDavBackupSelection,
+  writeWebDavLastUploadAt,
   writeSyncMethod,
   type SyncMethod,
 } from "@/lib/webdav/webdavAutoUploadConfig";
@@ -431,6 +440,7 @@ const { draft: editHistoryRetentionLimit, loaded: historyRetentionLoaded, loadin
 const { draft: editMcpHistoryRetentionLimit, loaded: mcpHistoryRetentionLoaded, loading: mcpHistoryRetentionLoading, saving: mcpHistoryRetentionSaving, loadError: mcpHistoryRetentionLoadError } = mcpHistoryRetention;
 const mcpHistoryCleanupLoading = ref(false);
 const connectionStore = useConnectionStore();
+const queryStore = useQueryStore();
 const hasSqlServerConnection = computed(() => connectionStore.connections.some((connection) => effectiveDatabaseTypeForConnection(connection) === "sqlserver"));
 const savedSqlStore = useSavedSqlStore();
 const promptTemplateStore = usePromptTemplateStore();
@@ -647,7 +657,7 @@ function closeSettings() {
   requestCloseSettings(false);
 }
 
-defineExpose({ requestClose: closeSettings });
+defineExpose({ requestClose: closeSettings, applySettingsFromShortcut });
 
 function cancelUnsavedSettingsClose() {
   showUnsavedSettingsCloseConfirm.value = false;
@@ -737,6 +747,9 @@ const showDataGridTypeColorScheme = ref(false);
 const editExecuteMode = ref(settingsStore.editorSettings.executeMode);
 const editDefaultTransactionMode = ref(settingsStore.editorSettings.defaultTransactionMode);
 const editKeepExplicitTransactionInAutoCommit = ref(settingsStore.editorSettings.keepExplicitTransactionInAutoCommit);
+// 全局连接/查询超时（秒）：与连接编辑对话框「全局」档共用同一落盘字段，查询超时 0 表示不限制（#13233）。
+const editGlobalConnectTimeoutSecs = ref(settingsStore.editorSettings.globalConnectTimeoutSecs);
+const editGlobalQueryTimeoutSecs = ref(settingsStore.editorSettings.globalQueryTimeoutSecs);
 const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
 function translateWithExecuteShortcut(key: string): string {
   return t(key, { shortcut: formatShortcutDisplay(editShortcuts.value.executeSql) });
@@ -763,6 +776,7 @@ const tableCompletionSchemaQualificationDescription = computed(() => {
 const editInsertSpaceAfterCompletion = ref(settingsStore.editorSettings.insertSpaceAfterCompletion);
 const editSqlServerSpaceConfirmsCompletion = ref(settingsStore.editorSettings.sqlServerSpaceConfirmsCompletion);
 const editFunctionCompletionIncludeParams = ref(settingsStore.editorSettings.functionCompletionIncludeParams);
+const editSequenceCompletionEnabled = ref(settingsStore.editorSettings.sequenceCompletionEnabled);
 const showSqlServerSpaceConfirmsCompletion = computed(() => hasSqlServerConnection.value || settingsStore.editorSettings.sqlServerSpaceConfirmsCompletion || editSqlServerSpaceConfirmsCompletion.value);
 const editSortCompletionColumnsAlphabetically = ref(settingsStore.editorSettings.sortCompletionColumnsAlphabetically);
 const editSelectFirstCompletionOnOpen = ref(settingsStore.editorSettings.selectFirstCompletionOnOpen);
@@ -798,10 +812,12 @@ const editWebLogoPosition = ref<WebLogoPosition>(settingsStore.editorSettings.we
 const editTabLayout = ref(settingsStore.editorSettings.tabLayout);
 const editTabPlacement = ref<TabPlacement>(settingsStore.editorSettings.tabPlacement);
 const editColorizeConnectionTabs = ref(settingsStore.editorSettings.colorizeConnectionTabs);
+const editColorizeConnectionTabsScope = ref<ConnectionTabColorScope>(settingsStore.editorSettings.colorizeConnectionTabsScope);
 const editTabGroupMode = ref<TabGroupMode>(settingsStore.editorSettings.tabGroupMode);
 const editTabSortMode = ref<TabSortMode>(settingsStore.editorSettings.tabSortMode);
 const editTabMaxWidth = ref<number>(settingsStore.editorSettings.tabMaxWidth);
 const editTabGroupRows = ref<TabGroupRowMode>(settingsStore.editorSettings.tabGroupRows);
+const editLinuxFloatingFrameEnabled = ref(settingsStore.desktopSettings.linux_floating_frame_enabled ?? true);
 const editShowTrayIcon = ref(settingsStore.desktopSettings.show_tray_icon);
 const editQuitOnClose = ref(settingsStore.desktopSettings.quit_on_close);
 const desktopCloseBehaviorResetPending = ref(false);
@@ -899,32 +915,56 @@ function updateExternalSqlEditorMaxMbInput(event: Event) {
   editExternalSqlEditorMaxMb.value = normalized;
 }
 
+const currentSqlVariableSyntaxCompatibilityMode = computed<string | undefined>(() => {
+  const dbType = editSqlVariableSyntaxDatabaseType.value;
+  if (!isModeDependentSubstitutionDatabase(dbType)) return undefined;
+
+  const activeTab = queryStore.tabs.find((tab) => tab.id === queryStore.activeTabId);
+  if (activeTab?.connectionId) {
+    const activeConn = connectionStore.getConfig(activeTab.connectionId);
+    const connDbType = activeConn ? (effectiveDatabaseTypeForConnection(activeConn) ?? activeConn.db_type) : undefined;
+    if (connDbType === dbType) {
+      if (dbType === "opengauss" || dbType === "gaussdb") {
+        return connectionStore.databaseCompatibilityMode(activeTab.connectionId, activeTab.database || activeConn?.database);
+      }
+      if (dbType === "kingbase") {
+        return activeConn?.database_info?.compatibilityMode;
+      }
+    }
+  }
+
+  if (connectionStore.activeConnectionId) {
+    const activeConn = connectionStore.getConfig(connectionStore.activeConnectionId);
+    const connDbType = activeConn ? (effectiveDatabaseTypeForConnection(activeConn) ?? activeConn.db_type) : undefined;
+    if (activeConn && connDbType === dbType) {
+      if (dbType === "opengauss" || dbType === "gaussdb") {
+        return connectionStore.databaseCompatibilityMode(activeConn.id, activeConn.database);
+      }
+      if (dbType === "kingbase") {
+        return activeConn.database_info?.compatibilityMode;
+      }
+    }
+  }
+
+  const conn = connectionStore.connections.find((c) => (effectiveDatabaseTypeForConnection(c) ?? c.db_type) === dbType);
+  if (conn) {
+    if (dbType === "opengauss" || dbType === "gaussdb") {
+      return connectionStore.databaseCompatibilityMode(conn.id, conn.database);
+    }
+    if (dbType === "kingbase") {
+      return conn.database_info?.compatibilityMode;
+    }
+  }
+
+  return undefined;
+});
+
 function sqlVariableSyntaxToggle(key: keyof SqlVariableSyntaxToggles): boolean {
-  return resolveSqlVariableSyntaxToggles(editSqlVariableSyntaxOverrides.value, editSqlVariableSyntaxDatabaseType.value)[key];
+  return resolveSqlVariableSyntaxToggles(editSqlVariableSyntaxOverrides.value, editSqlVariableSyntaxDatabaseType.value, true, currentSqlVariableSyntaxCompatibilityMode.value)[key];
 }
 
 function setSqlVariableSyntaxToggle(key: keyof SqlVariableSyntaxToggles, value: boolean) {
-  const dbType = editSqlVariableSyntaxDatabaseType.value;
-  if ((dbType === "neo4j" || dbType === "nebula") && key === "named") return;
-  const merged: SqlVariableSyntaxToggles = {
-    ...DEFAULT_SQL_VARIABLE_SYNTAX_TOGGLES,
-    ...editSqlVariableSyntaxOverrides.value[dbType],
-    [key]: value,
-  };
-  const next: SqlVariableSyntaxOverrides = {
-    ...editSqlVariableSyntaxOverrides.value,
-  };
-  // Keep storage sparse: an all-enabled type has no entry; otherwise persist only the disabled syntaxes.
-  if (SQL_VARIABLE_SYNTAX_KEYS.every((toggleKey) => merged[toggleKey])) {
-    delete next[dbType];
-  } else {
-    const partial: Partial<SqlVariableSyntaxToggles> = {};
-    for (const toggleKey of SQL_VARIABLE_SYNTAX_KEYS) {
-      if (!merged[toggleKey]) partial[toggleKey] = false;
-    }
-    next[dbType] = partial;
-  }
-  editSqlVariableSyntaxOverrides.value = next;
+  editSqlVariableSyntaxOverrides.value = updateSqlVariableSyntaxToggle(editSqlVariableSyntaxOverrides.value, editSqlVariableSyntaxDatabaseType.value, key, value, currentSqlVariableSyntaxCompatibilityMode.value);
 }
 const tableColumnTemplateSectionRef = ref<HTMLElement | null>(null);
 const draggedTableColumnTemplateRowId = ref<string | null>(null);
@@ -949,6 +989,7 @@ const editAutoReloadRestoredDataTabsOnOpen = ref(settingsStore.editorSettings.au
 const editDisconnectTabHandlingMode = ref<DisconnectTabHandlingMode>(settingsStore.editorSettings.disconnectTabHandlingMode);
 const editDeleteConnectionTabHandlingMode = ref<DeleteConnectionTabHandlingMode>(settingsStore.editorSettings.deleteConnectionTabHandlingMode);
 const editRememberConnectionDatabaseOnDelete = ref(settingsStore.editorSettings.rememberConnectionDatabaseOnDelete);
+const editDeepLinkConnectionConfirmMode = ref<DeepLinkConnectionConfirmMode>(settingsStore.editorSettings.deepLinkConnectionConfirmMode);
 // 「记住的连接名 → 数据库」是累积数据而非偏好设置，不进弹窗草稿；这里直接读写 store，
 // 让清除操作立即生效，不受弹窗的保存/取消影响。
 const rememberedConnectionDatabaseCount = computed(() => Object.keys(settingsStore.editorSettings.rememberedConnectionDatabases).length);
@@ -988,6 +1029,7 @@ const editRedisDatabaseDisplayLimit = ref(settingsStore.editorSettings.redisData
 const editSidebarObjectInfoMode = ref<SidebarObjectInfoMode>(settingsStore.editorSettings.sidebarObjectInfoMode);
 const editSidebarAllowHorizontalScroll = ref(settingsStore.editorSettings.sidebarAllowHorizontalScroll);
 const editSidebarShowTooltips = ref(settingsStore.editorSettings.sidebarShowTooltips);
+const editSidebarShowUserAdmin = ref(settingsStore.editorSettings.sidebarShowUserAdmin);
 const editSidebarIndent = ref(settingsStore.editorSettings.sidebarIndent);
 const editSidebarFontSize = ref(settingsStore.editorSettings.sidebarFontSize);
 const editSidebarDensity = ref<SidebarDensity>(settingsStore.editorSettings.sidebarDensity);
@@ -1054,6 +1096,18 @@ const deleteConnectionTabHandlingModeDescriptionKey = computed(() => {
   }
 
   return "deleteConnectionTabHandlingModeCloseTabsDescription";
+});
+const deepLinkConnectionConfirmModeDescriptionKey = computed(() => {
+  switch (editDeepLinkConnectionConfirmMode.value) {
+    case "create":
+      return "deepLinkConnectionConfirmModeCreateDescription";
+    case "update":
+      return "deepLinkConnectionConfirmModeUpdateDescription";
+    case "all":
+      return "deepLinkConnectionConfirmModeAllDescription";
+  }
+
+  return "deepLinkConnectionConfirmModeAlwaysDescription";
 });
 const normalizedEditTableColumnTemplateFields = computed(() => tableColumnTemplateRowsToSettings(editTableColumnTemplateRows.value));
 const visibleTableColumnTemplateRows = computed(() =>
@@ -1160,6 +1214,8 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     executeMode: editExecuteMode.value,
     defaultTransactionMode: editDefaultTransactionMode.value,
     keepExplicitTransactionInAutoCommit: editKeepExplicitTransactionInAutoCommit.value,
+    globalConnectTimeoutSecs: editGlobalConnectTimeoutSecs.value,
+    globalQueryTimeoutSecs: editGlobalQueryTimeoutSecs.value,
     executeAllOnBlankLine: editExecuteAllOnBlankLine.value,
     showExecutionTargetPicker: editShowExecutionTargetPicker.value,
     showStatementRunButtons: editShowStatementRunButtons.value,
@@ -1172,6 +1228,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     insertSpaceAfterCompletion: editInsertSpaceAfterCompletion.value,
     sqlServerSpaceConfirmsCompletion: editSqlServerSpaceConfirmsCompletion.value,
     functionCompletionIncludeParams: editFunctionCompletionIncludeParams.value,
+    sequenceCompletionEnabled: editSequenceCompletionEnabled.value,
     sortCompletionColumnsAlphabetically: editSortCompletionColumnsAlphabetically.value,
     selectFirstCompletionOnOpen: editSelectFirstCompletionOnOpen.value,
     completionTriggerMode: editCompletionTriggerMode.value,
@@ -1197,6 +1254,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     tabLayout: editTabLayout.value,
     tabPlacement: editTabPlacement.value,
     colorizeConnectionTabs: editColorizeConnectionTabs.value,
+    colorizeConnectionTabsScope: editColorizeConnectionTabsScope.value,
     tabGroupMode: editTabGroupMode.value,
     tabSortMode: editTabSortMode.value,
     tabMaxWidth: editTabMaxWidth.value,
@@ -1262,6 +1320,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     disconnectTabHandlingMode: editDisconnectTabHandlingMode.value,
     deleteConnectionTabHandlingMode: editDeleteConnectionTabHandlingMode.value,
     rememberConnectionDatabaseOnDelete: editRememberConnectionDatabaseOnDelete.value,
+    deepLinkConnectionConfirmMode: editDeepLinkConnectionConfirmMode.value,
     dataTabReuseMode: editDataTabReuseMode.value,
     openDataTabsNextToActive: editOpenDataTabsNextToActive.value,
     prefillNewQueryWithSelect: editPrefillNewQueryWithSelect.value,
@@ -1281,6 +1340,7 @@ function currentEditorSettingsDraft(): EditorSettingsDraft {
     sidebarObjectInfoMode: editSidebarObjectInfoMode.value,
     sidebarAllowHorizontalScroll: editSidebarAllowHorizontalScroll.value,
     sidebarShowTooltips: editSidebarShowTooltips.value,
+    sidebarShowUserAdmin: editSidebarShowUserAdmin.value,
     sidebarIndent: editSidebarIndent.value,
     sidebarFontSize: editSidebarFontSize.value,
     sidebarDensity: editSidebarDensity.value,
@@ -1857,6 +1917,8 @@ function syncEditorSettingsDraftFromStore() {
   editExecuteMode.value = settingsStore.editorSettings.executeMode;
   editDefaultTransactionMode.value = settingsStore.editorSettings.defaultTransactionMode;
   editKeepExplicitTransactionInAutoCommit.value = settingsStore.editorSettings.keepExplicitTransactionInAutoCommit;
+  editGlobalConnectTimeoutSecs.value = settingsStore.editorSettings.globalConnectTimeoutSecs;
+  editGlobalQueryTimeoutSecs.value = settingsStore.editorSettings.globalQueryTimeoutSecs;
   editExecuteAllOnBlankLine.value = settingsStore.editorSettings.executeAllOnBlankLine;
   editShowExecutionTargetPicker.value = settingsStore.editorSettings.showExecutionTargetPicker;
   editShowStatementRunButtons.value = settingsStore.editorSettings.showStatementRunButtons;
@@ -1869,6 +1931,7 @@ function syncEditorSettingsDraftFromStore() {
   editInsertSpaceAfterCompletion.value = settingsStore.editorSettings.insertSpaceAfterCompletion;
   editSqlServerSpaceConfirmsCompletion.value = settingsStore.editorSettings.sqlServerSpaceConfirmsCompletion;
   editFunctionCompletionIncludeParams.value = settingsStore.editorSettings.functionCompletionIncludeParams;
+  editSequenceCompletionEnabled.value = settingsStore.editorSettings.sequenceCompletionEnabled;
   editSortCompletionColumnsAlphabetically.value = settingsStore.editorSettings.sortCompletionColumnsAlphabetically;
   editSelectFirstCompletionOnOpen.value = settingsStore.editorSettings.selectFirstCompletionOnOpen;
   editCompletionTriggerMode.value = settingsStore.editorSettings.completionTriggerMode;
@@ -1895,6 +1958,7 @@ function syncEditorSettingsDraftFromStore() {
   editTabLayout.value = settingsStore.editorSettings.tabLayout;
   editTabPlacement.value = settingsStore.editorSettings.tabPlacement;
   editColorizeConnectionTabs.value = settingsStore.editorSettings.colorizeConnectionTabs;
+  editColorizeConnectionTabsScope.value = settingsStore.editorSettings.colorizeConnectionTabsScope;
   editTabGroupMode.value = settingsStore.editorSettings.tabGroupMode;
   editTabSortMode.value = settingsStore.editorSettings.tabSortMode;
   editTabMaxWidth.value = settingsStore.editorSettings.tabMaxWidth;
@@ -1961,6 +2025,7 @@ function syncEditorSettingsDraftFromStore() {
   editDisconnectTabHandlingMode.value = settingsStore.editorSettings.disconnectTabHandlingMode;
   editDeleteConnectionTabHandlingMode.value = settingsStore.editorSettings.deleteConnectionTabHandlingMode;
   editRememberConnectionDatabaseOnDelete.value = settingsStore.editorSettings.rememberConnectionDatabaseOnDelete;
+  editDeepLinkConnectionConfirmMode.value = settingsStore.editorSettings.deepLinkConnectionConfirmMode;
   editDataTabReuseMode.value = settingsStore.editorSettings.dataTabReuseMode;
   editOpenDataTabsNextToActive.value = settingsStore.editorSettings.openDataTabsNextToActive;
   editPrefillNewQueryWithSelect.value = settingsStore.editorSettings.prefillNewQueryWithSelect;
@@ -1984,6 +2049,7 @@ function syncEditorSettingsDraftFromStore() {
   editSidebarObjectInfoMode.value = settingsStore.editorSettings.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = settingsStore.editorSettings.sidebarAllowHorizontalScroll;
   editSidebarShowTooltips.value = settingsStore.editorSettings.sidebarShowTooltips;
+  editSidebarShowUserAdmin.value = settingsStore.editorSettings.sidebarShowUserAdmin;
   editSidebarIndent.value = settingsStore.editorSettings.sidebarIndent;
   editSidebarFontSize.value = settingsStore.editorSettings.sidebarFontSize;
   editSidebarDensity.value = settingsStore.editorSettings.sidebarDensity;
@@ -2045,6 +2111,7 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   insertSpaceAfterCompletion: editInsertSpaceAfterCompletion,
   sqlServerSpaceConfirmsCompletion: editSqlServerSpaceConfirmsCompletion,
   functionCompletionIncludeParams: editFunctionCompletionIncludeParams,
+  sequenceCompletionEnabled: editSequenceCompletionEnabled,
   sortCompletionColumnsAlphabetically: editSortCompletionColumnsAlphabetically,
   selectFirstCompletionOnOpen: editSelectFirstCompletionOnOpen,
   wordWrap: editWordWrap,
@@ -2067,6 +2134,7 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   tabLayout: editTabLayout,
   tabPlacement: editTabPlacement,
   colorizeConnectionTabs: editColorizeConnectionTabs,
+  colorizeConnectionTabsScope: editColorizeConnectionTabsScope,
   tabGroupMode: editTabGroupMode,
   tabSortMode: editTabSortMode,
   tabMaxWidth: editTabMaxWidth,
@@ -2130,6 +2198,7 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   disconnectTabHandlingMode: editDisconnectTabHandlingMode,
   deleteConnectionTabHandlingMode: editDeleteConnectionTabHandlingMode,
   rememberConnectionDatabaseOnDelete: editRememberConnectionDatabaseOnDelete,
+  deepLinkConnectionConfirmMode: editDeepLinkConnectionConfirmMode,
   dataTabReuseMode: editDataTabReuseMode,
   openDataTabsNextToActive: editOpenDataTabsNextToActive,
   prefillNewQueryWithSelect: editPrefillNewQueryWithSelect,
@@ -2149,6 +2218,7 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   sidebarObjectInfoMode: editSidebarObjectInfoMode,
   sidebarAllowHorizontalScroll: editSidebarAllowHorizontalScroll,
   sidebarShowTooltips: editSidebarShowTooltips,
+  sidebarShowUserAdmin: editSidebarShowUserAdmin,
   sidebarIndent: editSidebarIndent,
   sidebarFontSize: editSidebarFontSize,
   sidebarDensity: editSidebarDensity,
@@ -2185,6 +2255,8 @@ const editorSettingsDraftRefs: EditorSettingsDraftRefMap = {
   excludedCompletionItems: editExcludedCompletionItems,
   defaultTransactionMode: editDefaultTransactionMode,
   keepExplicitTransactionInAutoCommit: editKeepExplicitTransactionInAutoCommit,
+  globalConnectTimeoutSecs: editGlobalConnectTimeoutSecs,
+  globalQueryTimeoutSecs: editGlobalQueryTimeoutSecs,
   tableColumnTemplateFields: editTableColumnTemplateRows,
   modelGenerationTemplates: editModelGenerationTemplates,
 };
@@ -2219,6 +2291,7 @@ watch(
       void historyRetention.load();
       void mcpHistoryRetention.load();
       editShowTrayIcon.value = settingsStore.desktopSettings.show_tray_icon;
+      editLinuxFloatingFrameEnabled.value = settingsStore.desktopSettings.linux_floating_frame_enabled ?? true;
       editQuitOnClose.value = settingsStore.desktopSettings.quit_on_close;
       editIconTheme.value = settingsStore.desktopSettings.icon_theme;
       editDebugLoggingEnabled.value = settingsStore.desktopSettings.debug_logging_enabled;
@@ -2501,6 +2574,7 @@ function hasChanges(): boolean {
     mcpHistoryRetention.changed.value ||
     hasImportedSettingsPendingApply.value ||
     hasEditorDraftChanges.value ||
+    editLinuxFloatingFrameEnabled.value !== (settingsStore.desktopSettings.linux_floating_frame_enabled ?? true) ||
     editShowTrayIcon.value !== settingsStore.desktopSettings.show_tray_icon ||
     editQuitOnClose.value !== settingsStore.desktopSettings.quit_on_close ||
     editIconTheme.value !== settingsStore.desktopSettings.icon_theme ||
@@ -2533,6 +2607,9 @@ async function persistSettings() {
     // 同理：落盘口径可能改写键位（跨平台默认键、保留键回退），草稿要跟着回到
     // 落盘值，避免面板卡在“未保存”无法应用（#9881）。
     editShortcuts.value = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
+    // 全局超时同样会被落盘口径截断（连接 1~300、查询 0~3600），回填避免输入框残留越界值（#13233）。
+    editGlobalConnectTimeoutSecs.value = settingsStore.editorSettings.globalConnectTimeoutSecs;
+    editGlobalQueryTimeoutSecs.value = settingsStore.editorSettings.globalQueryTimeoutSecs;
   }
   if (pendingBackgroundImageCleanup) {
     const cleanupPath = pendingBackgroundImageCleanup;
@@ -2542,6 +2619,7 @@ async function persistSettings() {
   const metadataCacheMaxMemoryMb = normalizeMetadataCacheMemoryMb(editMetadataCacheMaxMemoryMb.value);
   await settingsStore.updateDesktopSettings({
     show_tray_icon: editShowTrayIcon.value,
+    linux_floating_frame_enabled: editLinuxFloatingFrameEnabled.value,
     quit_on_close: editQuitOnClose.value,
     close_action_prompted: desktopCloseBehaviorResetPending.value ? false : true,
     icon_theme: editIconTheme.value,
@@ -2592,13 +2670,21 @@ async function applySettingsAndClose() {
   }
 }
 
+// Ctrl+S on the settings page behaves like the "Apply" button: persist the draft
+// but stay open (the shortcut means "save", not "save and quit"). Mirrors the
+// button's own disabled state so a key press cannot bypass an apply blocker, and
+// never fires when there is nothing to persist.
+async function applySettingsFromShortcut() {
+  if (!hasChanges()) return;
+  await applySettings();
+}
+
 async function restartDbxForDuckDbIsolation() {
   if (duckDbRestarting.value || hasApplyBlocker.value || isWeb) return;
   duckDbRestarting.value = true;
   try {
     await persistSettings();
-    const { relaunch } = await import("@tauri-apps/plugin-process");
-    await relaunch();
+    await relaunchApp();
   } catch (e: any) {
     toast(t("settings.restartDbxFailed", { error: e?.message || String(e) }), 5000);
   } finally {
@@ -2618,6 +2704,8 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editExecuteMode.value = DEFAULT_EDITOR_SETTINGS.executeMode;
     editDefaultTransactionMode.value = DEFAULT_EDITOR_SETTINGS.defaultTransactionMode;
     editKeepExplicitTransactionInAutoCommit.value = DEFAULT_EDITOR_SETTINGS.keepExplicitTransactionInAutoCommit;
+    editGlobalConnectTimeoutSecs.value = DEFAULT_EDITOR_SETTINGS.globalConnectTimeoutSecs;
+    editGlobalQueryTimeoutSecs.value = DEFAULT_EDITOR_SETTINGS.globalQueryTimeoutSecs;
     editExecuteAllOnBlankLine.value = DEFAULT_EDITOR_SETTINGS.executeAllOnBlankLine;
     editShowExecutionTargetPicker.value = DEFAULT_EDITOR_SETTINGS.showExecutionTargetPicker;
     editShowStatementRunButtons.value = DEFAULT_EDITOR_SETTINGS.showStatementRunButtons;
@@ -2630,6 +2718,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editInsertSpaceAfterCompletion.value = DEFAULT_EDITOR_SETTINGS.insertSpaceAfterCompletion;
     editSqlServerSpaceConfirmsCompletion.value = DEFAULT_EDITOR_SETTINGS.sqlServerSpaceConfirmsCompletion;
     editFunctionCompletionIncludeParams.value = DEFAULT_EDITOR_SETTINGS.functionCompletionIncludeParams;
+    editSequenceCompletionEnabled.value = DEFAULT_EDITOR_SETTINGS.sequenceCompletionEnabled;
     editSortCompletionColumnsAlphabetically.value = DEFAULT_EDITOR_SETTINGS.sortCompletionColumnsAlphabetically;
     editSelectFirstCompletionOnOpen.value = DEFAULT_EDITOR_SETTINGS.selectFirstCompletionOnOpen;
     editCompletionTriggerMode.value = DEFAULT_EDITOR_SETTINGS.completionTriggerMode;
@@ -2672,11 +2761,13 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editTabLayout.value = DEFAULT_EDITOR_SETTINGS.tabLayout;
     editTabPlacement.value = DEFAULT_EDITOR_SETTINGS.tabPlacement;
     editColorizeConnectionTabs.value = DEFAULT_EDITOR_SETTINGS.colorizeConnectionTabs;
+    editColorizeConnectionTabsScope.value = DEFAULT_EDITOR_SETTINGS.colorizeConnectionTabsScope;
     editTabGroupMode.value = DEFAULT_EDITOR_SETTINGS.tabGroupMode;
     editTabSortMode.value = DEFAULT_EDITOR_SETTINGS.tabSortMode;
     editTabMaxWidth.value = DEFAULT_EDITOR_SETTINGS.tabMaxWidth;
     editTabGroupRows.value = DEFAULT_EDITOR_SETTINGS.tabGroupRows;
     editShowTrayIcon.value = DEFAULT_DESKTOP_SETTINGS.show_tray_icon;
+    editLinuxFloatingFrameEnabled.value = DEFAULT_DESKTOP_SETTINGS.linux_floating_frame_enabled ?? true;
     editQuitOnClose.value = DEFAULT_DESKTOP_SETTINGS.quit_on_close;
     desktopCloseBehaviorResetPending.value = true;
     editIconTheme.value = DEFAULT_DESKTOP_SETTINGS.icon_theme;
@@ -2697,6 +2788,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editDisconnectTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.disconnectTabHandlingMode;
     editDeleteConnectionTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.deleteConnectionTabHandlingMode;
     editRememberConnectionDatabaseOnDelete.value = DEFAULT_EDITOR_SETTINGS.rememberConnectionDatabaseOnDelete;
+    editDeepLinkConnectionConfirmMode.value = DEFAULT_EDITOR_SETTINGS.deepLinkConnectionConfirmMode;
     editDataTabReuseMode.value = DEFAULT_EDITOR_SETTINGS.dataTabReuseMode;
     editOpenDataTabsNextToActive.value = DEFAULT_EDITOR_SETTINGS.openDataTabsNextToActive;
     editPrefillNewQueryWithSelect.value = DEFAULT_EDITOR_SETTINGS.prefillNewQueryWithSelect;
@@ -2709,6 +2801,7 @@ function resetDefaultsForTab(tab: SettingsCategory) {
     editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
     editSidebarAllowHorizontalScroll.value = DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll;
     editSidebarShowTooltips.value = DEFAULT_EDITOR_SETTINGS.sidebarShowTooltips;
+    editSidebarShowUserAdmin.value = DEFAULT_EDITOR_SETTINGS.sidebarShowUserAdmin;
     editSidebarIndent.value = DEFAULT_EDITOR_SETTINGS.sidebarIndent;
     editSidebarFontSize.value = DEFAULT_EDITOR_SETTINGS.sidebarFontSize;
     editSidebarDensity.value = DEFAULT_EDITOR_SETTINGS.sidebarDensity;
@@ -2814,6 +2907,8 @@ function resetAllDefaults() {
   editExecuteMode.value = DEFAULT_EDITOR_SETTINGS.executeMode;
   editDefaultTransactionMode.value = DEFAULT_EDITOR_SETTINGS.defaultTransactionMode;
   editKeepExplicitTransactionInAutoCommit.value = DEFAULT_EDITOR_SETTINGS.keepExplicitTransactionInAutoCommit;
+  editGlobalConnectTimeoutSecs.value = DEFAULT_EDITOR_SETTINGS.globalConnectTimeoutSecs;
+  editGlobalQueryTimeoutSecs.value = DEFAULT_EDITOR_SETTINGS.globalQueryTimeoutSecs;
   editExecuteAllOnBlankLine.value = DEFAULT_EDITOR_SETTINGS.executeAllOnBlankLine;
   editShowExecutionTargetPicker.value = DEFAULT_EDITOR_SETTINGS.showExecutionTargetPicker;
   editShowStatementRunButtons.value = DEFAULT_EDITOR_SETTINGS.showStatementRunButtons;
@@ -2826,6 +2921,7 @@ function resetAllDefaults() {
   editInsertSpaceAfterCompletion.value = DEFAULT_EDITOR_SETTINGS.insertSpaceAfterCompletion;
   editSqlServerSpaceConfirmsCompletion.value = DEFAULT_EDITOR_SETTINGS.sqlServerSpaceConfirmsCompletion;
   editFunctionCompletionIncludeParams.value = DEFAULT_EDITOR_SETTINGS.functionCompletionIncludeParams;
+  editSequenceCompletionEnabled.value = DEFAULT_EDITOR_SETTINGS.sequenceCompletionEnabled;
   editSortCompletionColumnsAlphabetically.value = DEFAULT_EDITOR_SETTINGS.sortCompletionColumnsAlphabetically;
   editSelectFirstCompletionOnOpen.value = DEFAULT_EDITOR_SETTINGS.selectFirstCompletionOnOpen;
   editWordWrap.value = DEFAULT_EDITOR_SETTINGS.wordWrap;
@@ -2849,6 +2945,7 @@ function resetAllDefaults() {
   editAppLayout.value = DEFAULT_EDITOR_SETTINGS.appLayout;
   editWebLogoPosition.value = DEFAULT_EDITOR_SETTINGS.webLogoPosition;
   editShowTrayIcon.value = DEFAULT_DESKTOP_SETTINGS.show_tray_icon;
+  editLinuxFloatingFrameEnabled.value = DEFAULT_DESKTOP_SETTINGS.linux_floating_frame_enabled ?? true;
   editQuitOnClose.value = DEFAULT_DESKTOP_SETTINGS.quit_on_close;
   desktopCloseBehaviorResetPending.value = true;
   editIconTheme.value = DEFAULT_DESKTOP_SETTINGS.icon_theme;
@@ -2916,6 +3013,7 @@ function resetAllDefaults() {
   editDisconnectTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.disconnectTabHandlingMode;
   editDeleteConnectionTabHandlingMode.value = DEFAULT_EDITOR_SETTINGS.deleteConnectionTabHandlingMode;
   editRememberConnectionDatabaseOnDelete.value = DEFAULT_EDITOR_SETTINGS.rememberConnectionDatabaseOnDelete;
+  editDeepLinkConnectionConfirmMode.value = DEFAULT_EDITOR_SETTINGS.deepLinkConnectionConfirmMode;
   editDataTabReuseMode.value = DEFAULT_EDITOR_SETTINGS.dataTabReuseMode;
   editOpenDataTabsNextToActive.value = DEFAULT_EDITOR_SETTINGS.openDataTabsNextToActive;
   editPrefillNewQueryWithSelect.value = DEFAULT_EDITOR_SETTINGS.prefillNewQueryWithSelect;
@@ -2933,6 +3031,7 @@ function resetAllDefaults() {
   editSidebarObjectInfoMode.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectInfoMode;
   editSidebarAllowHorizontalScroll.value = DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll;
   editSidebarShowTooltips.value = DEFAULT_EDITOR_SETTINGS.sidebarShowTooltips;
+  editSidebarShowUserAdmin.value = DEFAULT_EDITOR_SETTINGS.sidebarShowUserAdmin;
   editSidebarIndent.value = DEFAULT_EDITOR_SETTINGS.sidebarIndent;
   editSidebarFontSize.value = DEFAULT_EDITOR_SETTINGS.sidebarFontSize;
   editSidebarDensity.value = DEFAULT_EDITOR_SETTINGS.sidebarDensity;
@@ -3882,9 +3981,17 @@ async function copyAppSupportInfo() {
 // --- Settings import / export (About page card) ---
 
 function buildSettingsExportPayload(): string {
-  return serializeSettingsTransfer(settingsStore.editorSettings, {
-    appVersion: props.appVersion || appSupportInfo.value?.appVersion || undefined,
-  });
+  return serializeSettingsTransfer(
+    settingsStore.editorSettings,
+    { appVersion: props.appVersion || appSupportInfo.value?.appVersion || undefined },
+    {
+      themeMode: themeMode.value,
+      // On web the desktop store only holds defaults (the switches are hidden),
+      // so exporting them would let a web-made file overwrite a desktop user's
+      // real tray/close preferences on import.
+      desktopSettings: isWeb ? undefined : pickTransferableDesktopSettings(settingsStore.desktopSettings),
+    },
+  );
 }
 
 // "Apply and export": reuse the regular apply flow so validation, persistence
@@ -3915,16 +4022,55 @@ function applyImportedEditorSettings(imported: Partial<EditorSettings>) {
   hasImportedSettingsPendingApply.value = true;
 }
 
+// Imported desktop preferences load into the same draft refs the settings
+// switches use, so the footer Apply (and its unapplied-changes protection)
+// covers them exactly like a manual toggle. The desktop section is skipped on
+// web: those switches have no meaning there.
+function applyImportedDesktopSettings(desktop: Partial<TransferableDesktopSettings>) {
+  if (isWeb) return;
+  if (desktop.show_tray_icon !== undefined) editShowTrayIcon.value = desktop.show_tray_icon;
+  if (desktop.quit_on_close !== undefined) editQuitOnClose.value = desktop.quit_on_close;
+  if (desktop.icon_theme !== undefined) editIconTheme.value = desktop.icon_theme;
+  if (desktop.debug_logging_enabled !== undefined) editDebugLoggingEnabled.value = desktop.debug_logging_enabled;
+  if (desktop.metadata_cache_max_memory_mb !== undefined) editMetadataCacheMaxMemoryMb.value = desktop.metadata_cache_max_memory_mb;
+  if (desktop.duckdb_worker_process_isolation !== undefined) editDuckDbWorkerProcessIsolation.value = desktop.duckdb_worker_process_isolation;
+  if (desktop.duckdb_worker_max_processes !== undefined) editDuckDbWorkerMaxProcesses.value = desktop.duckdb_worker_max_processes;
+  if (desktop.sidebar_table_page_size !== undefined) editSidebarTablePageSize.value = desktop.sidebar_table_page_size;
+}
+
+// The app-wide theme mode has no draft state: it applies immediately through
+// the same live path the theme buttons in the appearance tab use.
+function applyImportedExtras(extras: SettingsTransferExtras) {
+  if (extras.themeMode) setThemeMode(extras.themeMode);
+  const desktopKeys = Object.keys(extras.desktopSettings ?? {}) as TransferableDesktopSettingsKey[];
+  if (desktopKeys.length === 0) return;
+  applyImportedDesktopSettings(extras.desktopSettings ?? {});
+  hasImportedSettingsPendingApply.value = true;
+}
+
 // Categories whose draft values differ from the saved base AND are covered by
 // the imported file — these draft changes will be replaced by the import.
-function getDraftConflictCategories(imported: Partial<EditorSettings>): SettingsTransferCategoryId[] {
+function getDraftConflictCategories(imported: Partial<EditorSettings>, extras?: SettingsTransferExtras): SettingsTransferCategoryId[] {
   const changedKeys = new Set(Object.keys(editorSettingsPatchFromDraft(currentEditorSettingsDraft(), editEditorSettingsBase.value)));
   const conflicts = new Set<SettingsTransferCategoryId>();
   for (const key of Object.keys(imported)) {
     const category = transferCategoryForKey(key);
     if (category && changedKeys.has(key)) conflicts.add(category);
   }
+  if (extras?.desktopSettings && !isWeb && importedDesktopKeysTouchDraft(extras.desktopSettings)) conflicts.add("other");
   return sortTransferCategories(conflicts);
+}
+
+function importedDesktopKeysTouchDraft(desktop: Partial<TransferableDesktopSettings>): boolean {
+  if (desktop.show_tray_icon !== undefined && editShowTrayIcon.value !== settingsStore.desktopSettings.show_tray_icon) return true;
+  if (desktop.quit_on_close !== undefined && editQuitOnClose.value !== settingsStore.desktopSettings.quit_on_close) return true;
+  if (desktop.icon_theme !== undefined && editIconTheme.value !== settingsStore.desktopSettings.icon_theme) return true;
+  if (desktop.debug_logging_enabled !== undefined && editDebugLoggingEnabled.value !== settingsStore.desktopSettings.debug_logging_enabled) return true;
+  if (desktop.metadata_cache_max_memory_mb !== undefined && editMetadataCacheMaxMemoryMb.value !== settingsStore.desktopSettings.metadata_cache_max_memory_mb) return true;
+  if (desktop.duckdb_worker_process_isolation !== undefined && editDuckDbWorkerProcessIsolation.value !== settingsStore.desktopSettings.duckdb_worker_process_isolation) return true;
+  if (desktop.duckdb_worker_max_processes !== undefined && editDuckDbWorkerMaxProcesses.value !== settingsStore.desktopSettings.duckdb_worker_max_processes) return true;
+  if (desktop.sidebar_table_page_size !== undefined && editSidebarTablePageSize.value !== (settingsStore.desktopSettings.sidebar_table_page_size ?? DEFAULT_SIDEBAR_TABLE_PAGE_SIZE)) return true;
+  return false;
 }
 
 function clearDebugLogs() {
@@ -5500,6 +5646,9 @@ async function confirmSyncSelection(selection: SyncSelection) {
       const summary = await webdavSyncUpload(config, settingsStore.editorSettings, selection.includeSecrets ? webdavSecretsPassphrase.value || undefined : undefined, selection.includeSecrets, selection);
       recordWebDavSyncSuccess(config);
       writeWebDavBackupSelection(selection);
+      const currentConfig = readWebDavAutoUploadConfig();
+      const isCurrent = Boolean(currentConfig.enabled && currentConfig.webDavConfig && webDavSyncTarget(currentConfig.webDavConfig) === webDavSyncTarget(config));
+      writeWebDavLastUploadAt(config, Date.now(), isCurrent);
       return t("settings.syncUploadSuccess", { bytes: summary.bytes, path: summary.remotePath });
     });
     return;
@@ -5587,6 +5736,7 @@ watch(
       await settingsStore.initAiConfigs();
       await settingsStore.initDesktopSettings();
       editShowTrayIcon.value = settingsStore.desktopSettings.show_tray_icon;
+      editLinuxFloatingFrameEnabled.value = settingsStore.desktopSettings.linux_floating_frame_enabled ?? true;
       editQuitOnClose.value = settingsStore.desktopSettings.quit_on_close;
       editIconTheme.value = settingsStore.desktopSettings.icon_theme;
       editDebugLoggingEnabled.value = settingsStore.desktopSettings.debug_logging_enabled;
@@ -7795,6 +7945,28 @@ onUnmounted(() => {
                   </div>
                   <Switch id="editor-continue-on-error" v-model="editContinueOnErrorOnBatch" class="mt-0.5" />
                 </div>
+
+                <!-- 全局连接超时（秒）：连接编辑对话框「全局」档读取的就是这个值（#13233） -->
+                <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2 md:col-span-2" data-editor-global-connect-timeout>
+                  <div class="min-w-0 space-y-1">
+                    <Label for="editor-global-connect-timeout">{{ t("connection.connectTimeout") }}</Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("connection.globalConnectTimeoutHint") }}
+                    </p>
+                  </div>
+                  <Input id="editor-global-connect-timeout" v-model.number="editGlobalConnectTimeoutSecs" type="number" min="1" :max="MAX_CONNECT_TIMEOUT_SECS" step="1" class="h-8 w-24 shrink-0 text-right" />
+                </div>
+
+                <!-- 全局查询超时（秒）：0 表示不限制，与连接编辑对话框「全局」档口径一致（#13233） -->
+                <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2 md:col-span-2" data-editor-global-query-timeout>
+                  <div class="min-w-0 space-y-1">
+                    <Label for="editor-global-query-timeout">{{ t("connection.queryTimeout") }}</Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("connection.globalQueryTimeoutHint") }}
+                    </p>
+                  </div>
+                  <Input id="editor-global-query-timeout" v-model.number="editGlobalQueryTimeoutSecs" type="number" min="0" :max="MAX_QUERY_TIMEOUT_SECS" step="1" class="h-8 w-24 shrink-0 text-right" />
+                </div>
               </div>
 
               <Separator />
@@ -7890,6 +8062,16 @@ onUnmounted(() => {
                     </p>
                   </div>
                   <Switch id="editor-function-completion-include-params" v-model="editFunctionCompletionIncludeParams" class="mt-0.5" />
+                </div>
+
+                <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                  <div class="space-y-1">
+                    <Label for="editor-sequence-completion-enabled">{{ t("settings.sequenceCompletionEnabled") }}</Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("settings.sequenceCompletionEnabledDescription") }}
+                    </p>
+                  </div>
+                  <Switch id="editor-sequence-completion-enabled" v-model="editSequenceCompletionEnabled" class="mt-0.5" />
                 </div>
 
                 <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
@@ -8600,12 +8782,32 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                <div class="space-y-1">
-                  <Label for="colorize-connection-tabs">{{ t("settings.colorizeConnectionTabs") }}</Label>
-                  <p class="text-xs text-muted-foreground">{{ t("settings.colorizeConnectionTabsDescription") }}</p>
+              <div class="settings-item rounded-md border bg-muted/20 px-3 py-2">
+                <div :class="editColorizeConnectionTabs ? 'grid gap-4 md:grid-cols-2' : ''">
+                  <div class="flex min-w-0 items-start justify-between gap-4">
+                    <div class="min-w-0 space-y-1">
+                      <Label for="colorize-connection-tabs">{{ t("settings.colorizeConnectionTabs") }}</Label>
+                      <p class="text-xs text-muted-foreground">{{ t("settings.colorizeConnectionTabsDescription") }}</p>
+                    </div>
+                    <Switch id="colorize-connection-tabs" v-model="editColorizeConnectionTabs" class="mt-0.5" />
+                  </div>
+
+                  <div v-if="editColorizeConnectionTabs" class="flex min-w-0 items-start justify-between gap-4 border-t pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+                    <div class="min-w-0 space-y-1">
+                      <Label for="colorize-connection-tabs-scope">{{ t("settings.colorizeConnectionTabsScope") }}</Label>
+                      <p class="text-xs text-muted-foreground">{{ t("settings.colorizeConnectionTabsScopeDescription") }}</p>
+                    </div>
+                    <Select v-model="editColorizeConnectionTabsScope">
+                      <SelectTrigger id="colorize-connection-tabs-scope" class="h-8 w-44 shrink-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{{ t("settings.colorizeConnectionTabsScopeAll") }}</SelectItem>
+                        <SelectItem value="active">{{ t("settings.colorizeConnectionTabsScopeActive") }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <Switch id="colorize-connection-tabs" v-model="editColorizeConnectionTabs" />
               </div>
 
               <div class="settings-appearance-group">
@@ -8676,6 +8878,14 @@ onUnmounted(() => {
                   <p>{{ t("settings.tabGroupRowsDescription") }}</p>
                   <p>{{ t("settings.tabMaxWidthDescription") }}</p>
                 </div>
+              </div>
+
+              <div v-if="!isWeb && getPlatform() === 'linux'" class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="space-y-1">
+                  <Label for="linux-floating-frame">{{ t("settings.linuxFloatingFrame") }}</Label>
+                  <p class="text-xs text-muted-foreground">{{ t("settings.linuxFloatingFrameDescription") }}</p>
+                </div>
+                <Switch id="linux-floating-frame" v-model="editLinuxFloatingFrameEnabled" />
               </div>
 
               <div v-if="!isWeb" class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
@@ -9215,6 +9425,28 @@ onUnmounted(() => {
               </div>
               <div class="settings-item space-y-2 rounded-md border bg-muted/20 px-3 py-2">
                 <div class="flex items-center gap-2">
+                  <Label for="deeplink-connection-confirm-mode">{{ t("settings.deepLinkConnectionConfirmMode") }}</Label>
+                  <HelpTooltip :label="t('settings.deepLinkConnectionConfirmMode')">
+                    {{ t("settings.deepLinkConnectionConfirmModeDescription") }}
+                  </HelpTooltip>
+                </div>
+                <Select :model-value="editDeepLinkConnectionConfirmMode" @update:model-value="(value) => (editDeepLinkConnectionConfirmMode = value as DeepLinkConnectionConfirmMode)">
+                  <SelectTrigger id="deeplink-connection-confirm-mode" class="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="always">{{ t("settings.deepLinkConnectionConfirmModeAlways") }}</SelectItem>
+                    <SelectItem value="create">{{ t("settings.deepLinkConnectionConfirmModeCreate") }}</SelectItem>
+                    <SelectItem value="update">{{ t("settings.deepLinkConnectionConfirmModeUpdate") }}</SelectItem>
+                    <SelectItem value="all">{{ t("settings.deepLinkConnectionConfirmModeAll") }}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p class="text-xs text-muted-foreground">
+                  {{ t(`settings.${deepLinkConnectionConfirmModeDescriptionKey}`) }}
+                </p>
+              </div>
+              <div class="settings-item space-y-2 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="flex items-center gap-2">
                   <Label for="sidebar-object-info-mode">{{ t("settings.sidebarObjectInfoMode") }}</Label>
                   <HelpTooltip :label="t('settings.sidebarObjectInfoMode')">
                     {{ t("settings.sidebarObjectInfoModeDescription") }}
@@ -9255,6 +9487,17 @@ onUnmounted(() => {
                   </HelpTooltip>
                 </div>
                 <Switch id="sidebar-show-tooltips" v-model="editSidebarShowTooltips" />
+              </div>
+              <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <Label for="sidebar-show-user-admin">
+                    {{ t("settings.sidebarShowUserAdmin") }}
+                  </Label>
+                  <HelpTooltip :label="t('settings.sidebarShowUserAdmin')">
+                    {{ t("settings.sidebarShowUserAdminDescription") }}
+                  </HelpTooltip>
+                </div>
+                <Switch id="sidebar-show-user-admin" v-model="editSidebarShowUserAdmin" />
               </div>
               <div class="settings-item flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
                 <div class="space-y-1">
@@ -13077,6 +13320,7 @@ LIMIT 100;</pre>
                 :build-saved-export-payload="buildSettingsExportPayload"
                 :build-applied-export-payload="buildAppliedExportPayload"
                 :apply-imported-settings="applyImportedEditorSettings"
+                :apply-imported-extras="applyImportedExtras"
                 :get-draft-conflict-categories="getDraftConflictCategories"
               />
 

@@ -224,6 +224,34 @@ describe("DataGridPagination", () => {
     expect(summaryText).toContain("grid.rows");
   });
 
+  it("shows min, max, count and distinct beside sum and average when numbers are selected (#13286)", () => {
+    const mounted = mountComponent(DataGridPagination, {
+      selectionSummary: { cellCount: 4, rowCount: 2 },
+      selectionSummarySumText: "10",
+      selectionSummaryAverageText: "2.5",
+      selectionSummaryMinText: "1",
+      selectionSummaryMaxText: "4",
+      selectionSummaryCount: 4,
+      selectionSummaryDistinctCount: 3,
+      loading: false,
+      infiniteScrollEnabled: false,
+      infiniteScrollAllLoaded: false,
+      pageSize: 100,
+      customPageSizeInput: "",
+      pageSizeMenuItems: [],
+      exportMenuItems: [],
+      currentPage: 1,
+      canGoNextPage: false,
+      canJumpLastPage: false,
+    });
+
+    const summaryText = hostText(mounted.root);
+    expect(summaryText).toContain("grid.selectionMin");
+    expect(summaryText).toContain("grid.selectionMax");
+    expect(summaryText).toContain("grid.selectionCount");
+    expect(summaryText).toContain("grid.selectionDistinct");
+  });
+
   it("keeps the loading icon mounted with a constant footprint and only animates while loading", async () => {
     const mounted = mountComponent(DataGridPagination, {
       selectionSummary: null,
@@ -2697,5 +2725,70 @@ describe("EnumCellEditor boolean labels", () => {
       "click",
     );
     expect(commit).toHaveBeenCalledWith("true");
+  });
+});
+
+describe("DataGrid large-table preview notice", () => {
+  const HIDDEN_KEY = "dbx-table-data-preview-notice-hidden";
+
+  function mountGrid() {
+    setActivePinia(createPinia());
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const result = {
+      columns: ["id", "content"],
+      column_types: ["int4", "text"],
+      rows: [[1, "preview"]],
+      affected_rows: 0,
+      execution_time_ms: 1,
+      large_value_cells: [{ row_index: 0, column_index: 1, original_bytes: 5000 }],
+    };
+    const tableMeta = { schema: "app", tableName: "t", columns: [], primaryKeys: [] };
+    const app = createApp(defineComponent({ setup: () => () => h(DataGrid, { result, tableMeta, context: "table-data" }) }));
+    app.mount(host);
+    return {
+      host,
+      notice: () => host.querySelector("[data-grid-preview-notice]"),
+      destroy() {
+        app.unmount();
+        host.remove();
+      },
+    };
+  }
+
+  beforeEach(() => {
+    localStorage.removeItem(HIDDEN_KEY);
+  });
+
+  function fullTextEntry(host: HTMLElement) {
+    return [...host.querySelectorAll("button")].find((button) => button.textContent?.trim() === "grid.tableDataPreviewLoadPageShort");
+  }
+
+  // #12906: the banner only stayed away for the current result, so every new
+  // table brought it back. "Don't show again" has to persist across tables and
+  // keep the full text one click away.
+  it("persists the don't-show-again choice without leaving an empty banner row", async () => {
+    const grid = mountGrid();
+    await nextTick();
+    expect(grid.notice()?.textContent).toContain("grid.tableDataPreviewNotice");
+    expect(fullTextEntry(grid.host)).toBeUndefined();
+
+    const dontShowAgain = [...grid.host.querySelectorAll("button")].find((button) => button.textContent?.trim() === "grid.tableDataPreviewDontShowAgain");
+    expect(dontShowAgain).toBeTruthy();
+    dontShowAgain!.click();
+    await nextTick();
+
+    expect(localStorage.getItem(HIDDEN_KEY)).toBe("1");
+    // The banner row is gone entirely; the full-text action moved into the
+    // existing toolbar action row so no empty strip is left behind.
+    expect(grid.notice()).toBeNull();
+    expect(fullTextEntry(grid.host)).toBeTruthy();
+    grid.destroy();
+
+    const reopened = mountGrid();
+    await nextTick();
+    expect(reopened.notice()).toBeNull();
+    expect(fullTextEntry(reopened.host)).toBeTruthy();
+    reopened.destroy();
   });
 });

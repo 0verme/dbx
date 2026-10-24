@@ -788,7 +788,7 @@ export function tabModeLabel(tab: QueryTab, t: Translate): string {
 export function tabDatabaseIconType(tab: QueryTab): string {
   const connectionStore = useConnectionStore();
   const connection = connectionStore.getConfig(tab.connectionId);
-  if (!connection) return "mq";
+  if (!connection) return tab.mode === "mq" ? "mq" : "unknown";
   if (connection.db_type === "mq") {
     const externalConfig = connection.external_config as { systemKind?: unknown } | undefined;
     const systemKind = typeof externalConfig?.systemKind === "string" ? externalConfig.systemKind : "";
@@ -856,7 +856,8 @@ export function appTabActiveIndicator(): string {
 }
 
 export function tabColorStyle(tab: QueryTab, active: boolean, isClassic: boolean): CSSProperties | undefined {
-  if (!useSettingsStore().editorSettings.colorizeConnectionTabs) {
+  const settings = useSettingsStore().editorSettings;
+  if (!settings.colorizeConnectionTabs || (settings.colorizeConnectionTabsScope === "active" && !active)) {
     const activeIndicator = appTabActiveIndicator();
     const background = appTabActiveBackground();
     if (isClassic) return active ? { "--app-tab-background": background, boxShadow: activeIndicator } : undefined;

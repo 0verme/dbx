@@ -22,6 +22,7 @@ export interface QueryEditorSurfaceHandle {
   refreshQueryEditorCompletionCache(): boolean;
   handleModRTarget(target: Element): boolean;
   requestQueryEditorExecute(): boolean;
+  requestQueryEditorExecuteAll(): boolean;
   captureQueryEditorExecutionSnapshot(): SqlExecutionSnapshot | undefined;
   requestQueryEditorExecuteInNewResultTab(): boolean;
   requestQueryEditorPreviewChanges(stackSql?: string): Promise<boolean>;
@@ -83,6 +84,7 @@ export interface ContentAreaSurfaceProps {
 export interface ContentAreaSurfaceEmits {
   closeTab: [tabId: string];
   "locate-tab": [tab: QueryTab];
+  "locate-sql-file": [tab: QueryTab];
   "update:activeOutputView": [tabId: string, value: TabOutputView];
   fixWithAi: [tabId: string, errorMessage: string];
   sendSelectionToAi: [tabId: string, sql: string];

@@ -32,6 +32,7 @@ import {
 } from "@/lib/table/tableImport";
 import { importPreviewInput, importSourceDisplayName, uploadedImportSourceFromPreview } from "@/lib/import/importSource";
 import { getDataTypeOptions } from "@/lib/table/tableStructureEditorState";
+import { editableRowIdentifierColumns } from "@/lib/table/tableEditing";
 import { metadataSchemaForConnection, tableStructureDatabaseTypeForConnection } from "@/lib/database/jdbcDialect";
 import { isSchemaAware } from "@/lib/database/databaseFeatureSupport";
 import { schemaOptionsForConnection } from "@/composables/useSchemaOptions";
@@ -250,6 +251,13 @@ const requiredUnmappedColumns = computed(() =>
   ),
 );
 const isBatchImport = computed(() => targetMode.value === "create" && batchTasks.value.length > 1);
+/**
+ * The dialog is reachable from two entries: a table's own import (which lands on
+ * that table, `prefillTable` set) and the database-level "Import data" entry,
+ * which imports a backup and may create several tables. Both said
+ * "Import table data", which reads wrong for the second one (#13029).
+ */
+const dialogTitle = computed(() => (props.prefillTable ? t("tableImport.title") : t("tableImport.titleDatabase")));
 const selectedBatchTasks = computed(() => batchTasks.value.filter((task) => task.selected));
 const batchTargetNamesValid = computed(() => {
   const tableNames = selectedBatchTasks.value.map((task) => task.tableName.trim().toLowerCase());
@@ -301,6 +309,17 @@ const createColumnSummaries = computed(() =>
 const parseOptions = computed<api.TableImportParseOptions>(() => taskParseOptions(sourceFormat.value, selectedSheet.value));
 const terminalStatus = computed(() => !!progress.value?.status && ["done", "error", "cancelled"].includes(progress.value.status));
 const displayedElapsedMs = computed(() => resolveTableImportElapsed(liveElapsedMs.value, progress.value?.elapsedMs, terminalStatus.value));
+// Source file the live progress belongs to (#13164): the queue runs one file
+// at a time, so the running task is whatever activeTaskIndex points at; the
+// single-file path has no task entry and reads the preview directly.
+const activeImportFile = computed(() => {
+  if (wizardStep.value !== "execution" || !running.value) return "";
+  if (isBatchImport.value) {
+    const task = batchTasks.value[activeTaskIndex.value];
+    return task?.status === "running" ? task.preview.filePath || task.preview.fileName || "" : "";
+  }
+  return preview.value?.filePath || "";
+});
 const progressLabelKey = computed(() => {
   if (terminalStatus.value) return `tableImport.status_${progress.value?.status || "idle"}`;
   if (!running.value && !progress.value) return "tableImport.status_idle";
@@ -741,8 +760,28 @@ async function loadTargetColumns() {
   errorMessage.value = "";
   try {
     await store.ensureConnected(props.prefillConnectionId);
-    const columns = await withTimeout(api.getColumns(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, tableName), TARGET_COLUMNS_TIMEOUT_MS);
+    const columnsPromise = withTimeout(api.getColumns(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, tableName), TARGET_COLUMNS_TIMEOUT_MS);
+    const indexesPromise =
+      isUniqueKeyModelDatabase.value && typeof api.listIndexes === "function"
+        ? withTimeout(
+            api.listIndexes(props.prefillConnectionId, props.prefillDatabase, targetSchema.value || "", tableName).catch(() => []),
+            TARGET_COLUMNS_TIMEOUT_MS,
+          )
+        : Promise.resolve([]);
+    const [columns, indexes] = await Promise.all([columnsPromise, indexesPromise]);
     if (requestId !== targetColumnsRequestId) return;
+    if (isUniqueKeyModelDatabase.value && indexes.length > 0) {
+      const keyCols = editableRowIdentifierColumns(structureDatabaseType.value, columns, indexes);
+      if (keyCols.length > 0) {
+        const keySet = new Set(keyCols.map((c) => c.toLowerCase()));
+        for (const col of columns) {
+          if (keySet.has(col.name.toLowerCase())) {
+            col.is_unique = true;
+            col.is_primary_key = true;
+          }
+        }
+      }
+    }
     targetColumns.value = columns;
     loadedTargetTableName.value = tableName;
     applyAutoMapping();
@@ -948,6 +987,16 @@ function updateMapping(sourceColumn: string, value: any) {
     ...columnMapping.value,
     [sourceColumn]: target === SKIP_VALUE ? "" : target,
   };
+}
+
+function isSourceColumnSkipped(sourceColumn: string | undefined): boolean {
+  if (!sourceColumn) return false;
+  if (targetMode.value === "create") {
+    const target = columnMapping.value[sourceColumn] ?? sourceColumn;
+    return !target || !target.trim();
+  }
+  const target = columnMapping.value[sourceColumn];
+  return !target || target === SKIP_VALUE || !target.trim();
 }
 
 function mapByPosition() {
@@ -1389,7 +1438,7 @@ watch(rawProgressPercent, (percent) => {
       <DialogHeader class="shrink-0 flex-row items-center pr-8" @pointerdown="startDialogDrag">
         <DialogTitle class="flex min-w-0 flex-1 items-center gap-2 text-base">
           <FileUp class="h-4 w-4" />
-          {{ t("tableImport.title") }}
+          {{ dialogTitle }}
         </DialogTitle>
         <Button variant="ghost" size="icon-sm" :aria-label="t('tableImport.minimize')" :title="t('tableImport.minimize')" @pointerdown.stop @click="minimizeImport">
           <Minimize2 class="h-4 w-4" />
@@ -1825,15 +1874,29 @@ watch(rawProgressPercent, (percent) => {
                 <table class="min-w-full border-separate border-spacing-0 text-xs">
                   <thead class="sticky top-0 bg-background">
                     <tr>
-                      <th v-for="column in preview.columns" :key="column" class="border-b border-r px-2 py-1.5 text-left font-medium">
-                        <span class="block max-w-[140px] truncate">{{ column }}</span>
+                      <th v-for="column in preview.columns" :key="column" class="border-b border-r px-2 py-1.5 text-left font-medium transition-colors" :class="{ 'text-muted-foreground/60': isSourceColumnSkipped(column) }">
+                        <span
+                          class="block max-w-[140px] truncate"
+                          :class="{ 'line-through text-muted-foreground': isSourceColumnSkipped(column) }"
+                          :data-column-skipped="isSourceColumnSkipped(column) ? 'true' : undefined"
+                          :title="isSourceColumnSkipped(column) ? `${column} (${t('tableImport.skipColumn')})` : column"
+                          >{{ column }}</span
+                        >
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="(row, rowIndex) in preview.rows" :key="rowIndex">
-                      <td v-for="(cell, colIndex) in row" :key="colIndex" class="max-w-[180px] border-b border-r px-2 py-1.5 font-mono" :class="{ 'text-muted-foreground': cell === null }">
-                        <span class="block truncate">{{ formatTableImportPreviewCell(cell) }}</span>
+                      <td
+                        v-for="(cell, colIndex) in row"
+                        :key="colIndex"
+                        class="max-w-[180px] border-b border-r px-2 py-1.5 font-mono transition-colors"
+                        :class="{
+                          'text-muted-foreground': cell === null,
+                          'text-muted-foreground/50 bg-muted/20': isSourceColumnSkipped(preview.columns[colIndex]),
+                        }"
+                      >
+                        <span class="block truncate" :class="{ 'line-through': isSourceColumnSkipped(preview.columns[colIndex]) }" :data-cell-skipped="isSourceColumnSkipped(preview.columns[colIndex]) ? 'true' : undefined">{{ formatTableImportPreviewCell(cell) }}</span>
                       </td>
                     </tr>
                   </tbody>
@@ -1945,6 +2008,11 @@ watch(rawProgressPercent, (percent) => {
             <div class="mt-4 h-2 overflow-hidden rounded bg-muted">
               <div class="h-full bg-primary transition-all" :style="{ width: `${progressPercent}%` }" />
             </div>
+            <div v-if="activeImportFile" class="mt-3 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <FileText class="h-3.5 w-3.5 shrink-0" />
+              <span class="shrink-0">{{ t("tableImport.currentFile") }}</span>
+              <span class="min-w-0 truncate font-mono" :title="activeImportFile">{{ activeImportFile }}</span>
+            </div>
           </div>
           <div v-if="running" class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
             <AlertTriangle class="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -2023,6 +2091,7 @@ watch(rawProgressPercent, (percent) => {
       <CheckCircle2 v-else-if="progress?.status === 'done'" class="h-4 w-4 shrink-0 text-emerald-600" />
       <AlertTriangle v-else class="h-4 w-4 shrink-0 text-destructive" />
       <span class="min-w-0 truncate text-xs">{{ t(progressLabelKey) }} · {{ progressPercent }}%</span>
+      <span v-if="activeImportFile" class="max-w-44 truncate font-mono text-xs text-muted-foreground" :title="activeImportFile">{{ activeImportFile }}</span>
       <Button variant="ghost" size="icon-sm" :aria-label="t('tableImport.restoreImport')" :title="t('tableImport.restoreImport')" @click="restoreImport">
         <Maximize2 class="h-4 w-4" />
       </Button>
