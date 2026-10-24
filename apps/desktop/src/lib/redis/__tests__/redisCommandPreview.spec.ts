@@ -31,8 +31,41 @@ describe("quoteRedisArg and quoteRedisBytes", () => {
     expect(quoteRedisBytes(binaryBytes)).toBe('"\\x00\\x01\\x1f\\x7f\\xff"');
   });
 
-  it("preserves valid UTF-8 sequences verbatim inside quotes", () => {
+  it("preserves valid UTF-8 sequences verbatim inside quotes without swallowing adjacent ASCII or escaping", () => {
     expect(quoteRedisArg("用户:123:设置")).toBe('"用户:123:设置"');
+
+    // Reproductions from zipg review [P1]:
+    // 1) e4 b8 ad 5c 6e -> "中\n" in bytes, must escape backslash as \\ and preserve 'n', not produce "中\n"
+    const zhongBackslashN = new Uint8Array([0xe4, 0xb8, 0xad, 0x5c, 0x6e]);
+    expect(quoteRedisBytes(zhongBackslashN)).toBe('"中\\\\n"');
+
+    // 2) c3 a9 22 0a -> "é\"\n" in bytes, must escape quote as \" and newline as \n, not produce unclosed quote
+    const eAcuteQuoteNewline = new Uint8Array([0xc3, 0xa9, 0x22, 0x0a]);
+    expect(quoteRedisBytes(eAcuteQuoteNewline)).toBe('"é\\"\\n"');
+
+    // 3) Adjacent ASCII special characters before and after UTF-8 characters
+    // Space:
+    expect(quoteRedisBytes(new Uint8Array([0xe4, 0xb8, 0xad, 0x20]))).toBe('"中 "');
+    expect(quoteRedisBytes(new Uint8Array([0x20, 0xe4, 0xb8, 0xad]))).toBe('" 中"');
+    // Newline:
+    expect(quoteRedisBytes(new Uint8Array([0xe4, 0xb8, 0xad, 0x0a]))).toBe('"中\\n"');
+    expect(quoteRedisBytes(new Uint8Array([0x0a, 0xe4, 0xb8, 0xad]))).toBe('"\\n中"');
+    // Quote:
+    expect(quoteRedisBytes(new Uint8Array([0xe4, 0xb8, 0xad, 0x22]))).toBe('"中\\""');
+    expect(quoteRedisBytes(new Uint8Array([0x22, 0xe4, 0xb8, 0xad]))).toBe('"\\"中"');
+    // Backslash:
+    expect(quoteRedisBytes(new Uint8Array([0xe4, 0xb8, 0xad, 0x5c]))).toBe('"中\\\\"');
+    expect(quoteRedisBytes(new Uint8Array([0x5c, 0xe4, 0xb8, 0xad]))).toBe('"\\\\中"');
+    // Controls:
+    expect(quoteRedisBytes(new Uint8Array([0xe4, 0xb8, 0xad, 0x00]))).toBe('"中\\x00"');
+    expect(quoteRedisBytes(new Uint8Array([0x00, 0xe4, 0xb8, 0xad]))).toBe('"\\x00中"');
+    expect(quoteRedisBytes(new Uint8Array([0xe4, 0xb8, 0xad, 0x09]))).toBe('"中\\t"');
+    // Binary bytes:
+    expect(quoteRedisBytes(new Uint8Array([0xe4, 0xb8, 0xad, 0xff]))).toBe('"中\\xff"');
+    expect(quoteRedisBytes(new Uint8Array([0xff, 0xe4, 0xb8, 0xad]))).toBe('"\\xff中"');
+    expect(quoteRedisBytes(new Uint8Array([0x80, 0xe4, 0xb8, 0xad, 0x80]))).toBe('"\\x80中\\x80"');
+    // Broken/truncated UTF-8 sequence followed by space:
+    expect(quoteRedisBytes(new Uint8Array([0xc3, 0x20]))).toBe('"\\xc3 "');
   });
 
   it("quotes RedisBlob objects using raw_base64 bytes", () => {
@@ -103,7 +136,35 @@ describe("redisDeleteKeysPreview", () => {
     const keys = ["k1", "k2"];
     expect(redisDeleteKeysPreview(keys, { database: 3 })).toBe("SELECT 3\nDEL k1 k2");
     expect(redisDeleteKeysPreview(keys, { database: 0 })).toBe("DEL k1 k2");
-    expect(redisDeleteKeysPreview(keys, { database: 3, isCluster: true })).toBe("DEL k1 k2");
+  });
+
+  it("groups keys strictly by CRC16 hash slot in Cluster mode to prevent CROSSSLOT", () => {
+    // 1) Keys in different slots are segregated into separate DEL commands
+    // 'k1' (slot 12706) and 'k2' (slot 449)
+    expect(redisDeleteKeysPreview(["k1", "k2"], { isCluster: true })).toBe("DEL k1\nDEL k2");
+    // SELECT is also omitted in Cluster mode
+    expect(redisDeleteKeysPreview(["k1", "k2"], { database: 3, isCluster: true })).toBe("DEL k1\nDEL k2");
+
+    // 2) Keys sharing the same hash tag {user} belong to the exact same slot and can be combined
+    const sameSlotKeys = ["{user}:1", "{user}:2", "{user}:3"];
+    expect(redisDeleteKeysPreview(sameSlotKeys, { isCluster: true })).toBe('DEL "{user}:1" "{user}:2" "{user}:3"');
+
+    // 3) Mixed keys across multiple slots are grouped with their respective slot without cross-slot mixing
+    const mixedKeys = ["{alpha}:1", "{beta}:1", "{alpha}:2", "{gamma}:1", "{beta}:2"];
+    const clusterPreview = redisDeleteKeysPreview(mixedKeys, { isCluster: true });
+    expect(clusterPreview).toBe('DEL "{alpha}:1" "{alpha}:2"\nDEL "{beta}:1" "{beta}:2"\nDEL "{gamma}:1"');
+
+    // 4) Keys within the same slot exceeding chunkSize are chunked across lines
+    const sevenSameSlotKeys = Array.from({ length: 7 }, (_, i) => `{slot}:item:${i + 1}`);
+    const chunkedCluster = redisDeleteKeysPreview(sevenSameSlotKeys, { isCluster: true, chunkSize: 3 });
+    expect(chunkedCluster).toBe('DEL "{slot}:item:1" "{slot}:item:2" "{slot}:item:3"\nDEL "{slot}:item:4" "{slot}:item:5" "{slot}:item:6"\nDEL "{slot}:item:7"');
+
+    // 5) Base64 raw binary keys with hash tags in Cluster mode
+    const rawTagKey1 = redisKeyTextToRaw("{tag}:bin\x00key1");
+    const rawTagKey2 = redisKeyTextToRaw("{tag}:bin\x00key2");
+    const rawOtherKey = redisKeyTextToRaw("other_slot_key");
+    const rawClusterPreview = redisDeleteKeysPreview([rawTagKey1, rawTagKey2, rawOtherKey], { isCluster: true, raw: true });
+    expect(rawClusterPreview).toBe('DEL "{tag}:bin\\x00key1" "{tag}:bin\\x00key2"\nDEL other_slot_key');
   });
 });
 

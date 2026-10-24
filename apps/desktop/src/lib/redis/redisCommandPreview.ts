@@ -116,28 +116,35 @@ export function quoteRedisBytes(bytes: Uint8Array): string {
     } else if (b >= 0x20 && b <= 0x7e) {
       result += String.fromCharCode(b);
     } else if (b >= 0x80) {
-      // Check if this byte starts a valid UTF-8 character sequence
+      // Determine expected single UTF-8 codepoint length from lead byte
+      let length = 0;
+      if (b >= 0xc2 && b <= 0xdf) {
+        length = 2;
+      } else if (b >= 0xe0 && b <= 0xef) {
+        length = 3;
+      } else if (b >= 0xf0 && b <= 0xf4) {
+        length = 4;
+      }
+
       let decodedChar: string | null = null;
-      let matchedLen = 0;
-      for (let len = 4; len >= 2; len--) {
-        if (i + len <= bytes.length) {
-          try {
-            const candidate = utf8Decoder.decode(bytes.subarray(i, i + len));
-            // Ensure no C1 control characters (U+0080 to U+009F)
-            if (!/[\u0080-\u009f]/.test(candidate)) {
+      if (length > 0 && i + length <= bytes.length) {
+        try {
+          const candidate = utf8Decoder.decode(bytes.subarray(i, i + length));
+          if (Array.from(candidate).length === 1) {
+            const cp = candidate.codePointAt(0)!;
+            // Reject C1 controls (0x80..0x9F) and invisible separators
+            if (cp >= 0xa0 && cp !== 0x2028 && cp !== 0x2029 && cp !== 0xfeff) {
               decodedChar = candidate;
-              matchedLen = len;
-              break;
             }
-          } catch {
-            // Not a valid UTF-8 sequence of this length
           }
+        } catch {
+          // Invalid sequence of this length
         }
       }
 
-      if (decodedChar !== null && matchedLen > 0) {
+      if (decodedChar !== null) {
         result += decodedChar;
-        i += matchedLen - 1;
+        i += length - 1;
       } else {
         result += "\\x" + b.toString(16).padStart(2, "0");
       }
@@ -199,9 +206,44 @@ export function redisFlushDbPreview(database?: string | number | null, isCluster
 }
 
 /**
+ * Computes the Redis Cluster CRC16 hash slot (0 - 16383) for a key,
+ * respecting `{...}` hash tags according to the Redis Cluster specification.
+ */
+export function getRedisKeySlot(key: Uint8Array): number {
+  let s = -1;
+  let e = -1;
+  for (let i = 0; i < key.length; i++) {
+    if (key[i] === 0x7b /* '{' */ && s === -1) {
+      s = i + 1;
+    } else if (key[i] === 0x7d /* '}' */ && s !== -1) {
+      e = i;
+      break;
+    }
+  }
+  const tag = s !== -1 && e > s ? key.subarray(s, e) : key;
+  return crc16Xmodem(tag) % 16384;
+}
+
+function crc16Xmodem(bytes: Uint8Array): number {
+  let crc = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i]! << 8;
+    for (let bit = 0; bit < 8; bit++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = ((crc << 1) ^ 0x1021) & 0xffff;
+      } else {
+        crc = (crc << 1) & 0xffff;
+      }
+    }
+  }
+  return crc;
+}
+
+/**
  * Formats a list of Redis keys into `DEL` commands.
  * If keys exceed chunkSize, chunks them across multiple `DEL` lines.
  * In standalone mode with a non-zero database, prefixes with `SELECT <db>`.
+ * In Cluster mode, omits `SELECT` and groups keys strictly by CRC16 hash slot to prevent CROSSSLOT errors.
  */
 export function redisDeleteKeysPreview(keys: readonly (string | Uint8Array)[], options?: RedisDeleteKeysOptions | number): string {
   if (keys.length === 0) return "";
@@ -211,12 +253,6 @@ export function redisDeleteKeysPreview(keys: readonly (string | Uint8Array)[], o
   const isCluster = opts.isCluster ?? false;
   const isRaw = opts.raw ?? false;
 
-  const quoted = keys.map((key) => {
-    if (key instanceof Uint8Array) return quoteRedisBytes(key);
-    if (isRaw) return quoteRedisKeyRaw(key);
-    return quoteRedisArg(key);
-  });
-
   const lines: string[] = [];
   if (!isCluster && opts.database != null && String(opts.database).trim() !== "") {
     const dbIndex = Number(String(opts.database).trim().replace(/^db/i, ""));
@@ -225,8 +261,50 @@ export function redisDeleteKeysPreview(keys: readonly (string | Uint8Array)[], o
     }
   }
 
-  for (let i = 0; i < quoted.length; i += chunkSize) {
-    lines.push(`DEL ${quoted.slice(i, i + chunkSize).join(" ")}`);
+  if (isCluster) {
+    const slotGroups = new Map<number, string[]>();
+    for (const key of keys) {
+      let rawBytes: Uint8Array;
+      let quotedKey: string;
+      if (key instanceof Uint8Array) {
+        rawBytes = key;
+        quotedKey = quoteRedisBytes(key);
+      } else if (isRaw) {
+        try {
+          rawBytes = base64ToBytes(key);
+        } catch {
+          rawBytes = new TextEncoder().encode(key);
+        }
+        quotedKey = quoteRedisKeyRaw(key);
+      } else {
+        rawBytes = new TextEncoder().encode(key);
+        quotedKey = quoteRedisArg(key);
+      }
+
+      const slot = getRedisKeySlot(rawBytes);
+      let group = slotGroups.get(slot);
+      if (!group) {
+        group = [];
+        slotGroups.set(slot, group);
+      }
+      group.push(quotedKey);
+    }
+
+    for (const group of slotGroups.values()) {
+      for (let i = 0; i < group.length; i += chunkSize) {
+        lines.push(`DEL ${group.slice(i, i + chunkSize).join(" ")}`);
+      }
+    }
+  } else {
+    const quoted = keys.map((key) => {
+      if (key instanceof Uint8Array) return quoteRedisBytes(key);
+      if (isRaw) return quoteRedisKeyRaw(key);
+      return quoteRedisArg(key);
+    });
+
+    for (let i = 0; i < quoted.length; i += chunkSize) {
+      lines.push(`DEL ${quoted.slice(i, i + chunkSize).join(" ")}`);
+    }
   }
 
   return lines.join("\n");
@@ -343,20 +421,19 @@ export function redisDeleteGroupPreview(pattern: string, options?: RedisDeleteGr
     '        elif x == 0x08: res.append("\\\\b")',
     "        elif 0x20 <= x <= 0x7e: res.append(chr(x))",
     "        elif x >= 0x80:",
-    "            matched = False",
-    "            for length in (4, 3, 2):",
-    "                if i + length <= len(b):",
-    "                    try:",
-    '                        ch = b[i:i+length].decode("utf-8")',
-    "                        if not any(0x80 <= ord(c) <= 0x9f for c in ch):",
+    "            length = 2 if 0xc2 <= x <= 0xdf else 3 if 0xe0 <= x <= 0xef else 4 if 0xf0 <= x <= 0xf4 else 0",
+    "            if length > 0 and i + length <= len(b):",
+    "                try:",
+    '                    ch = b[i:i+length].decode("utf-8")',
+    "                    if len(ch) == 1:",
+    "                        cp = ord(ch)",
+    "                        if cp >= 0xa0 and cp not in (0x2028, 0x2029, 0xfeff):",
     "                            res.append(ch)",
     "                            i += length",
-    "                            matched = True",
-    "                            break",
-    "                    except UnicodeDecodeError: pass",
-    "            if not matched:",
-    '                res.append(f"\\\\x{x:02x}")',
-    "                i += 1",
+    "                            continue",
+    "                except UnicodeDecodeError: pass",
+    '            res.append(f"\\\\x{x:02x}")',
+    "            i += 1",
     "            continue",
     "        else:",
     '            res.append(f"\\\\x{x:02x}")',
