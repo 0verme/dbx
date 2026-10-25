@@ -8540,6 +8540,8 @@ export default {
     formatParquet: "Parquet",
     formatParquetDescription: "Parquet files for DuckDB",
     parquetOnlyDuckdb: "Parquet import is only supported for DuckDB connections",
+    formatNb3: "Navicat backup",
+    formatNb3Description: "Restore a .nb3 archive into this database",
     previewRows: "Preview rows",
     delimiter: "Delimiter",
     decimalSeparator: "Decimal separator",
