@@ -5272,6 +5272,24 @@ impl AppState {
         Ok(true)
     }
 
+    pub async fn close_client_session_pool_with_completion(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        client_session_id: &str,
+    ) -> Result<bool, String> {
+        let Some((_, pool)) = self
+            .take_client_session_pool(connection_id, database, client_session_id, AgentSessionRole::Workload)
+            .await?
+        else {
+            return Ok(false);
+        };
+        tokio::time::timeout(Duration::from_secs(POOL_CLOSE_TIMEOUT_SECS), close_pool_kind_with_completion(pool))
+            .await
+            .map_err(|_| "Export session close completion was not confirmed".to_string())??;
+        Ok(true)
+    }
+
     pub(crate) async fn close_metadata_session_pool(
         &self,
         connection_id: &str,
@@ -7468,9 +7486,20 @@ fn clone_pool_kind(pool: &PoolKind) -> PoolKind {
 }
 
 async fn close_pool_kind(pool: PoolKind) -> Result<(), String> {
+    close_pool_kind_inner(pool, false).await
+}
+
+async fn close_pool_kind_with_completion(pool: PoolKind) -> Result<(), String> {
+    close_pool_kind_inner(pool, true).await
+}
+
+async fn close_pool_kind_inner(pool: PoolKind, report_completion: bool) -> Result<(), String> {
     match pool {
         PoolKind::Mysql(p, _) => {
-            let _ = p.disconnect().await;
+            let result = p.disconnect().await;
+            if report_completion {
+                result.map_err(|error| error.to_string())?;
+            }
         }
         PoolKind::Postgres(p) => p.close(),
         PoolKind::Sqlite(pool) => {
@@ -7542,6 +7571,9 @@ async fn close_pool_kind(pool: PoolKind) -> Result<(), String> {
         }
         PoolKind::PluginConnection(handle) => {
             if let Err(error) = handle.disconnect().await {
+                if report_completion {
+                    return Err(error.to_string());
+                }
                 log::warn!(
                     "Failed to disconnect plugin connection '{}' ({}/{}): {error}",
                     handle.connection_id,
@@ -12186,6 +12218,84 @@ for line in sys.stdin:
 
         state.shutdown(Duration::from_secs(1)).await;
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn export_session_close_reports_failure_without_replacing_shared_transaction_runtime() {
+        let (state, dir) = test_app_state().await;
+        let (runtime, export_client, manual_client) = replace_runtime_on_error_clients(&dir, "close_session").await;
+        let mut config = mysql_config(Some("analytics"));
+        config.id = "conn".to_string();
+        config.db_type = DatabaseType::Dameng;
+        state.configs.write().await.insert(config.id.clone(), config);
+        let export_key = "conn:analytics:session:export-test";
+        let manual_key = "conn:analytics:session:manual-txn-test";
+        {
+            let mut pools = state.connections.write().await;
+            pools.insert(export_key.to_string(), PoolKind::Agent(export_client));
+            pools.insert(manual_key.to_string(), PoolKind::Agent(manual_client));
+        }
+        let error = state
+            .close_client_session_pool_with_completion("conn", Some("analytics"), "export-test")
+            .await
+            .unwrap_err();
+        assert!(error.contains("resource limit"), "{error}");
+        assert!(state.connections.read().await.contains_key(manual_key));
+        assert!(!runtime.is_failed());
+        state.shutdown(Duration::from_secs(1)).await;
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn export_core_entries_report_the_first_pool_close_failure() {
+        for table_export in [true, false] {
+            let (state, dir) = test_app_state().await;
+            let (runtime, export_client, manual_client) = replace_runtime_on_error_clients(&dir, "close_session").await;
+            let mut config = mysql_config(Some("analytics"));
+            config.id = "conn".to_string();
+            config.db_type = DatabaseType::Dameng;
+            state.configs.write().await.insert(config.id.clone(), config);
+            let session = if table_export { "table-export:close-test" } else { "query-export:close-test" };
+            let export_key = super::session_scoped_pool_key("conn:analytics".to_string(), Some(session));
+            let manual_key = "conn:analytics:session:manual-txn-test";
+            {
+                let mut pools = state.connections.write().await;
+                pools.insert(export_key.clone(), PoolKind::Agent(export_client));
+                pools.insert(manual_key.to_string(), PoolKind::Agent(manual_client));
+            }
+            let file_path = dir.join("missing-parent").join("export.csv").to_string_lossy().into_owned();
+            let completion = if table_export {
+                let request = serde_json::from_value(serde_json::json!({
+                    "exportId": "close-test", "connectionId": "conn", "database": "analytics",
+                    "tableName": "T", "filePath": file_path, "format": "csv", "columns": ["ID"],
+                    "columnTypes": [null], "primaryKeys": [], "skipCount": true,
+                }))
+                .unwrap();
+                crate::table_export::export_table_data_core_with_completion(&state, &request, |_| {}).await
+            } else {
+                let request = serde_json::from_value(serde_json::json!({
+                    "exportId": "close-test", "connectionId": "conn", "database": "analytics",
+                    "sql": "SELECT 1", "queryBaseSql": "SELECT 1", "databaseType": "dameng",
+                    "filePath": file_path, "format": "unsupported", "pageSize": 100,
+                    "clientSessionId": session,
+                }))
+                .unwrap();
+                crate::query_result_export::export_query_result_core_with_completion(&state, &request, None, |_| {})
+                    .await
+            };
+            assert!(completion.result.is_err());
+            let error = completion.cleanup.expect_err(if table_export {
+                "table cleanup must fail"
+            } else {
+                "query cleanup must fail"
+            });
+            assert!(error.contains("resource limit"), "table={table_export}: {error}");
+            assert!(!state.connections.read().await.contains_key(&export_key));
+            assert!(state.connections.read().await.contains_key(manual_key));
+            assert!(!runtime.is_failed());
+            state.shutdown(Duration::from_secs(1)).await;
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 
     #[tokio::test]

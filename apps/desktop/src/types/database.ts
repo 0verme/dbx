@@ -1842,6 +1842,20 @@ export interface QueryResult {
   large_value_context?: { connectionId: string; database: string; clientSessionId?: string; txnSessionId?: string; catalog?: string };
   /** Retained result refs also cover cells already hydrated into complete local values. */
   large_value_refs?: string[];
+  /** Frontend-only dispatch identity; absent on results without captured provenance. */
+  legacy_export_source?: {
+    connectionId: string;
+    database: string;
+    schema?: string;
+    catalog?: string;
+    databaseType?: DatabaseType;
+    connectionFingerprint: string;
+    identifierQuote?: string;
+    serverVersion?: string;
+    statementSql?: string;
+    hiddenPrimaryKeys?: Array<{ sourceName: string; alias: string }>;
+    ordinaryReadSafe: boolean;
+  };
   session_id?: string | null;
   /** Frontend-only owner of a manual transaction's result cursor, including retained runs. */
   manual_transaction_session_id?: string;

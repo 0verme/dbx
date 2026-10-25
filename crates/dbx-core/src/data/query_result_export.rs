@@ -191,6 +191,14 @@ impl StagedExportTarget {
     }
 
     pub fn commit(self) -> Result<(), String> {
+        self.commit_inner(false).result
+    }
+
+    pub fn commit_with_completion(self) -> crate::table_export::ExportCompletion {
+        self.commit_inner(true)
+    }
+
+    fn prepare_commit(&self) -> Result<(), String> {
         let staged_file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -203,10 +211,40 @@ impl StagedExportTarget {
         }
         staged_file.sync_all().map_err(|error| format!("Failed to synchronize export file: {error}"))?;
         drop(staged_file);
-        self.temporary
-            .persist(&self.destination)
-            .map(|_| ())
-            .map_err(|error| format!("Failed to replace export destination: {}", error.error))
+        Ok(())
+    }
+
+    fn commit_inner(self, report_completion: bool) -> crate::table_export::ExportCompletion {
+        if let Err(error) = self.prepare_commit() {
+            let cleanup = if report_completion {
+                self.discard()
+            } else {
+                drop(self);
+                Ok(())
+            };
+            return crate::table_export::ExportCompletion { result: Err(error), cleanup };
+        }
+        match self.temporary.persist(&self.destination) {
+            Ok(()) => crate::table_export::ExportCompletion { result: Ok(()), cleanup: Ok(()) },
+            Err(error) => {
+                let message = format!("Failed to replace export destination: {}", error.error);
+                let cleanup = if report_completion {
+                    Self { destination: self.destination, temporary: error.path }.discard()
+                } else {
+                    drop(error.path);
+                    Ok(())
+                };
+                crate::table_export::ExportCompletion { result: Err(message), cleanup }
+            }
+        }
+    }
+
+    pub fn discard(self) -> Result<(), String> {
+        match self.temporary.close() {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Failed to remove staged export file: {error}")),
+        }
     }
 }
 
@@ -451,13 +489,18 @@ struct JsonStreamWriter {
 }
 
 impl JsonStreamWriter {
+    #[cfg(test)]
     fn create(request: &QueryResultExportRequest) -> Result<Self, String> {
-        let target = StagedExportTarget::new(&request.file_path)?;
-        let mut file = BufWriter::new(
-            File::create(target.path()).map_err(|e| format!("Failed to create JSON export temp file: {e}"))?,
-        );
+        Self::create_for_export(request, false)
+    }
+
+    fn create_for_export(request: &QueryResultExportRequest, externally_staged: bool) -> Result<Self, String> {
+        let target = if externally_staged { None } else { Some(StagedExportTarget::new(&request.file_path)?) };
+        let path = target.as_ref().map_or_else(|| Path::new(&request.file_path), StagedExportTarget::path);
+        let mut file =
+            BufWriter::new(File::create(path).map_err(|e| format!("Failed to create JSON export temp file: {e}"))?);
         file.write_all(b"[\n").map_err(|e| format!("Failed to start JSON export: {e}"))?;
-        Ok(Self { file: Some(file), target: Some(target), wrote_row: false })
+        Ok(Self { file: Some(file), target, wrote_row: false })
     }
 
     fn write_row(&mut self, columns: &[String], row: &[Value]) -> Result<(), String> {
@@ -489,22 +532,26 @@ impl JsonStreamWriter {
         file.write_all(b"\n]\n").map_err(|e| format!("Failed to finish JSON export: {e}"))?;
         file.flush().map_err(|e| format!("Failed to flush JSON export: {e}"))?;
         self.file.take();
-        self.target
-            .take()
-            .ok_or_else(|| "JSON export target already finalized".to_string())?
-            .commit()
-            .map_err(|error| format!("Failed to finalize JSON export file: {error}"))
+        if let Some(target) = self.target.take() {
+            target.commit().map_err(|error| format!("Failed to finalize JSON export file: {error}"))?;
+        }
+        Ok(())
     }
 }
 
 impl SqlInsertWriter {
     /// Create the writer and open the temp file. Column metadata is supplied later
     /// via [`SqlInsertWriter::set_columns`] once the executed result is known.
+    #[cfg(test)]
     fn create(request: &QueryResultExportRequest) -> Result<Self, String> {
-        let target = StagedExportTarget::new(&request.file_path)?;
-        let file = BufWriter::new(
-            File::create(target.path()).map_err(|e| format!("Failed to create SQL export temp file: {e}"))?,
-        );
+        Self::create_for_export(request, false)
+    }
+
+    fn create_for_export(request: &QueryResultExportRequest, externally_staged: bool) -> Result<Self, String> {
+        let target = if externally_staged { None } else { Some(StagedExportTarget::new(&request.file_path)?) };
+        let path = target.as_ref().map_or_else(|| Path::new(&request.file_path), StagedExportTarget::path);
+        let file =
+            BufWriter::new(File::create(path).map_err(|e| format!("Failed to create SQL export temp file: {e}"))?);
         let table_name = request
             .export_table_name
             .as_deref()
@@ -513,7 +560,7 @@ impl SqlInsertWriter {
             .to_string();
         Ok(Self {
             file: Some(file),
-            target: Some(target),
+            target,
             pending_rows: Vec::new(),
             pending_spatial_values: Vec::new(),
             insert_mode: request.insert_mode,
@@ -630,11 +677,10 @@ impl SqlInsertWriter {
             file.flush().map_err(|e| format!("Failed to flush SQL file: {e}"))?;
         }
         self.file.take();
-        self.target
-            .take()
-            .ok_or_else(|| "SQL export target already finalized".to_string())?
-            .commit()
-            .map_err(|error| format!("Failed to finalize SQL export file: {error}"))
+        if let Some(target) = self.target.take() {
+            target.commit().map_err(|error| format!("Failed to finalize SQL export file: {error}"))?;
+        }
+        Ok(())
     }
 }
 
@@ -963,6 +1009,26 @@ pub async fn export_query_result_core(
     cancel_token: Option<CancellationToken>,
     on_progress: impl Fn(TableExportProgress),
 ) -> Result<(), String> {
+    export_query_result_with_cleanup(state, request, cancel_token, on_progress, false).await.result
+}
+
+/// The caller owns the staged destination and confirms its commit or removal.
+pub async fn export_query_result_core_with_completion(
+    state: &AppState,
+    request: &QueryResultExportRequest,
+    cancel_token: Option<CancellationToken>,
+    on_progress: impl Fn(TableExportProgress),
+) -> crate::table_export::ExportCompletion {
+    export_query_result_with_cleanup(state, request, cancel_token, on_progress, true).await
+}
+
+async fn export_query_result_with_cleanup(
+    state: &AppState,
+    request: &QueryResultExportRequest,
+    cancel_token: Option<CancellationToken>,
+    on_progress: impl Fn(TableExportProgress),
+    report_completion: bool,
+) -> crate::table_export::ExportCompletion {
     let mut session_id: Option<String> = None;
     let mut duckdb_snapshot = None;
     let result = export_query_result_core_inner(
@@ -971,16 +1037,23 @@ pub async fn export_query_result_core(
         cancel_token,
         &on_progress,
         &mut session_id,
+        report_completion,
         &mut duckdb_snapshot,
     )
     .await;
 
-    if let Some(snapshot) = duckdb_snapshot {
-        snapshot.close(state).await;
-    }
-
+    let mut cleanup = if let Some(snapshot) = duckdb_snapshot {
+        if report_completion {
+            snapshot.close_with_completion(state).await
+        } else {
+            snapshot.close(state).await;
+            Ok(())
+        }
+    } else {
+        Ok(())
+    };
     if let Some(session_id) = session_id {
-        let _ = close_query_session(
+        let cursor_close = close_query_session(
             state,
             &request.connection_id,
             &request.database,
@@ -989,14 +1062,25 @@ pub async fn export_query_result_core(
             None,
         )
         .await;
+        if report_completion {
+            cleanup = cleanup.and(cursor_close.map(|_| ()));
+        }
     }
     if let Some(client_session_id) = request.client_session_id.as_deref() {
         let database = request.database.trim();
         let database = if database.is_empty() { None } else { Some(database) };
-        let _ = state.close_client_session_pool(&request.connection_id, database, client_session_id).await;
+        if report_completion {
+            let pool_close = state
+                .close_client_session_pool_with_completion(&request.connection_id, database, client_session_id)
+                .await
+                .map(|_| ());
+            cleanup = cleanup.and(pool_close);
+        } else {
+            let _ = state.close_client_session_pool(&request.connection_id, database, client_session_id).await;
+        }
     }
 
-    result
+    crate::table_export::ExportCompletion { result, cleanup }
 }
 
 async fn export_query_result_core_inner(
@@ -1005,6 +1089,7 @@ async fn export_query_result_core_inner(
     cancel_token: Option<CancellationToken>,
     on_progress: &impl Fn(TableExportProgress),
     session_id: &mut Option<String>,
+    externally_staged: bool,
     duckdb_snapshot: &mut Option<DuckDbExportSnapshot>,
 ) -> Result<(), String> {
     let format = request.format.to_lowercase();
@@ -1026,23 +1111,58 @@ async fn export_query_result_core_inner(
     let use_agent_cursor = request.use_agent_cursor && txn_session_id.is_none();
 
     if txn_session_id.is_none() {
-        if try_export_postgres_query_result_stream(state, request, &format, cancel_token.clone(), on_progress).await? {
+        if try_export_postgres_query_result_stream(
+            state,
+            request,
+            &format,
+            cancel_token.clone(),
+            on_progress,
+            externally_staged,
+        )
+        .await?
+        {
             return Ok(());
         }
 
-        if try_export_sqlserver_query_result_stream(state, request, &format, cancel_token.clone(), on_progress).await? {
+        if try_export_sqlserver_query_result_stream(
+            state,
+            request,
+            &format,
+            cancel_token.clone(),
+            on_progress,
+            externally_staged,
+        )
+        .await?
+        {
             return Ok(());
         }
 
         // MySQL does not guarantee a stable row order for independent LIMIT/OFFSET
         // executions without ORDER BY, so query-result export must stream one run.
-        if try_export_mysql_query_result_stream(state, request, &format, cancel_token.clone(), on_progress).await? {
+        if try_export_mysql_query_result_stream(
+            state,
+            request,
+            &format,
+            cancel_token.clone(),
+            on_progress,
+            externally_staged,
+        )
+        .await?
+        {
             return Ok(());
         }
 
         // ClickHouse HTTP pagination is unsafe for unsorted result sets; stream one
         // response so large exports preserve the server's single execution order.
-        if try_export_clickhouse_query_result_stream(state, request, &format, cancel_token.clone(), on_progress).await?
+        if try_export_clickhouse_query_result_stream(
+            state,
+            request,
+            &format,
+            cancel_token.clone(),
+            on_progress,
+            externally_staged,
+        )
+        .await?
         {
             return Ok(());
         }
@@ -1095,9 +1215,10 @@ async fn export_query_result_core_inner(
         return Err(error.to_string());
     }
 
-    let mut json_writer = if format == "json" { Some(JsonStreamWriter::create(request)?) } else { None };
+    let mut json_writer =
+        if format == "json" { Some(JsonStreamWriter::create_for_export(request, externally_staged)?) } else { None };
     let mut sql_writer: Option<SqlInsertWriter> =
-        if format == "sql" { Some(SqlInsertWriter::create(request)?) } else { None };
+        if format == "sql" { Some(SqlInsertWriter::create_for_export(request, externally_staged)?) } else { None };
 
     loop {
         if cancel_token.as_ref().is_some_and(|token| token.is_cancelled())
@@ -1422,6 +1543,7 @@ async fn try_export_postgres_query_result_stream(
     format: &str,
     cancel_token: Option<CancellationToken>,
     on_progress: &impl Fn(TableExportProgress),
+    externally_staged: bool,
 ) -> Result<bool, String> {
     if request.use_agent_cursor
         || !crate::sql::starts_with_executable_sql_keyword(
@@ -1476,9 +1598,10 @@ async fn try_export_postgres_query_result_stream(
     };
     let mut xlsx = None;
     let mut text_buffer = String::new();
-    let mut json_writer = if format == "json" { Some(JsonStreamWriter::create(request)?) } else { None };
+    let mut json_writer =
+        if format == "json" { Some(JsonStreamWriter::create_for_export(request, externally_staged)?) } else { None };
     let mut sql_writer: Option<SqlInsertWriter> =
-        if format == "sql" { Some(SqlInsertWriter::create(request)?) } else { None };
+        if format == "sql" { Some(SqlInsertWriter::create_for_export(request, externally_staged)?) } else { None };
     let budget = operation_budget_for_pool_key(state, &pool_key, query_export_timeout(request.timeout_secs)).await;
     let cancel_context = state.get_postgres_cancel_context(&pool_key).await;
 
@@ -1620,6 +1743,7 @@ async fn try_export_mysql_query_result_stream(
     format: &str,
     cancel_token: Option<CancellationToken>,
     on_progress: &impl Fn(TableExportProgress),
+    externally_staged: bool,
 ) -> Result<bool, String> {
     if request.use_agent_cursor {
         return Ok(false);
@@ -1679,9 +1803,10 @@ async fn try_export_mysql_query_result_stream(
     };
     let mut xlsx = None;
     let mut text_buffer = String::new();
-    let mut json_writer = if format == "json" { Some(JsonStreamWriter::create(request)?) } else { None };
+    let mut json_writer =
+        if format == "json" { Some(JsonStreamWriter::create_for_export(request, externally_staged)?) } else { None };
     let mut sql_writer: Option<SqlInsertWriter> =
-        if format == "sql" { Some(SqlInsertWriter::create(request)?) } else { None };
+        if format == "sql" { Some(SqlInsertWriter::create_for_export(request, externally_staged)?) } else { None };
     let query_timeout = query_export_timeout(request.timeout_secs);
     let operation_budget = operation_budget_for_pool_key(state, &pool_key, query_timeout).await;
     let mut conn = crate::db::mysql::get_conn_with_health_check_with_cancel(
@@ -1914,6 +2039,7 @@ async fn try_export_clickhouse_query_result_stream(
     format: &str,
     cancel_token: Option<CancellationToken>,
     on_progress: &impl Fn(TableExportProgress),
+    externally_staged: bool,
 ) -> Result<bool, String> {
     if request.database_type != DatabaseType::ClickHouse
         || request.use_agent_cursor
@@ -1969,9 +2095,10 @@ async fn try_export_clickhouse_query_result_stream(
     };
     let mut xlsx = None;
     let mut text_buffer = String::new();
-    let mut json_writer = if format == "json" { Some(JsonStreamWriter::create(request)?) } else { None };
+    let mut json_writer =
+        if format == "json" { Some(JsonStreamWriter::create_for_export(request, externally_staged)?) } else { None };
     let mut sql_writer: Option<SqlInsertWriter> =
-        if format == "sql" { Some(SqlInsertWriter::create(request)?) } else { None };
+        if format == "sql" { Some(SqlInsertWriter::create_for_export(request, externally_staged)?) } else { None };
     let query_timeout = query_export_timeout(request.timeout_secs);
     let clickhouse_database = if database.is_empty() { "default" } else { database };
 
@@ -2119,6 +2246,7 @@ async fn try_export_sqlserver_query_result_stream(
     format: &str,
     cancel_token: Option<CancellationToken>,
     on_progress: &impl Fn(TableExportProgress),
+    externally_staged: bool,
 ) -> Result<bool, String> {
     if request.database_type != DatabaseType::SqlServer || request.use_agent_cursor {
         return Ok(false);
@@ -2155,9 +2283,10 @@ async fn try_export_sqlserver_query_result_stream(
     };
     let mut xlsx = None;
     let mut text_buffer = String::new();
-    let mut json_writer = if format == "json" { Some(JsonStreamWriter::create(request)?) } else { None };
+    let mut json_writer =
+        if format == "json" { Some(JsonStreamWriter::create_for_export(request, externally_staged)?) } else { None };
     let mut sql_writer: Option<SqlInsertWriter> =
-        if format == "sql" { Some(SqlInsertWriter::create(request)?) } else { None };
+        if format == "sql" { Some(SqlInsertWriter::create_for_export(request, externally_staged)?) } else { None };
     let query_timeout = query_export_timeout(request.timeout_secs);
 
     let mut client = match cancel_token.as_ref() {
@@ -2409,6 +2538,32 @@ mod tests {
         std::fs::remove_file(failed.path()).expect("remove staged path");
         assert!(failed.commit().expect_err("replace should fail").contains("open staged export file"));
         assert_eq!(std::fs::read_to_string(destination).expect("read destination"), "original");
+    }
+
+    #[test]
+    fn staged_export_completion_distinguishes_commit_failure_from_cleanup_failure() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let destination = dir.path().join("result.csv");
+        std::fs::write(&destination, "original").expect("original destination");
+        let target = StagedExportTarget::new(destination.to_str().unwrap()).unwrap();
+        let staged = target.path().to_path_buf();
+        std::fs::remove_file(&staged).unwrap();
+        std::fs::create_dir(&staged).unwrap();
+        let completion = target.commit_with_completion();
+        assert!(completion.result.is_err());
+        assert!(completion.cleanup.is_err());
+        assert_eq!(std::fs::read_to_string(&destination).unwrap(), "original");
+        std::fs::remove_dir(staged).unwrap();
+
+        let blocked_destination = dir.path().join("destination-directory");
+        std::fs::create_dir(&blocked_destination).unwrap();
+        let target = StagedExportTarget::new(blocked_destination.to_str().unwrap()).unwrap();
+        let staged = target.path().to_path_buf();
+        let completion = target.commit_with_completion();
+        assert!(completion.result.is_err());
+        assert!(completion.cleanup.is_ok());
+        assert!(!staged.exists());
+        assert!(blocked_destination.is_dir());
     }
 
     #[test]
@@ -2985,6 +3140,48 @@ mod tests {
             format_text_export_header("txt", &["id".to_string(), "note".to_string()], CsvQuoteMode::All, None),
             "id\tnote"
         );
+    }
+
+    #[test]
+    fn externally_staged_writers_leave_cleanup_with_the_caller_on_cancel_and_flush_failure() {
+        for format in ["json", "sql"] {
+            for flush_failure in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let destination = dir.path().join("result");
+                std::fs::write(&destination, "original").unwrap();
+                let target = StagedExportTarget::new(destination.to_str().unwrap()).unwrap();
+                let mut req = request(format, None, None);
+                req.file_path = target.path_string().unwrap();
+                if format == "json" {
+                    let mut writer = JsonStreamWriter::create_for_export(&req, true).unwrap();
+                    assert!(writer.target.is_none());
+                    if flush_failure {
+                        writer.file.take();
+                        writer.file = Some(BufWriter::new(File::open(target.path()).unwrap()));
+                        writer.write_row(&["ID".into()], &[json!(7)]).unwrap();
+                        assert!(writer.finish().unwrap_err().contains("flush"));
+                    } else {
+                        drop(writer);
+                    }
+                } else {
+                    let mut writer = SqlInsertWriter::create_for_export(&req, true).unwrap();
+                    assert!(writer.target.is_none());
+                    if flush_failure {
+                        writer.set_columns(vec!["ID".into()], &["NUMBER".into()], &[], &req).unwrap();
+                        writer.file.take();
+                        writer.file = Some(BufWriter::new(File::open(target.path()).unwrap()));
+                        writer.write_row(vec![json!(7)], None).unwrap();
+                        assert!(writer.finish().unwrap_err().contains("flush"));
+                    } else {
+                        drop(writer);
+                    }
+                }
+                assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+                target.discard().unwrap();
+                assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+                assert_eq!(std::fs::read_to_string(destination).unwrap(), "original");
+            }
+        }
     }
 
     #[test]

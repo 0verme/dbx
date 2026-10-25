@@ -113,6 +113,44 @@ function structuredSqlError(detail = "duplicate key") {
 }
 
 describe("queryStore multi-statement errors", () => {
+  it.each(["single", "indexed", "ambiguous", "use", "session_setup"] as const)("retains actual legacy export provenance without guessing statement positions (%s)", async (kind) => {
+    const preview = (index?: number): QueryResult => ({
+      columns: ["ID", "BODY"],
+      rows: [[1, "preview"]],
+      column_types: ["INT", "TEXT"],
+      affected_rows: 0,
+      execution_time_ms: 0,
+      large_value_cells: [{ row_index: 0, column_index: 1, original_bytes: 5000 }],
+      ...(index === undefined ? {} : { statement_index: index }),
+    });
+    const sql =
+      kind === "single"
+        ? "SELECT ID, BODY FROM app.FIRST"
+        : kind === "indexed"
+          ? "SELECT ID, BODY FROM app.FIRST; SELECT ID, BODY FROM app.SECOND"
+          : kind === "ambiguous"
+            ? "CALL p(); SELECT ID, BODY FROM app.SECOND"
+            : kind === "use"
+              ? "USE other; SELECT ID, BODY FROM other.SECOND"
+              : "SET @v = 1; SELECT ID, BODY FROM app.SECOND";
+    const results = kind === "single" ? [preview()] : kind === "indexed" ? [preview(0), preview(1)] : kind === "ambiguous" ? [preview(), preview()] : [{ columns: [], rows: [], affected_rows: 0, execution_time_ms: 0, statement_index: 0 }, preview(1)];
+    mocks.executeMulti.mockResolvedValue(results);
+    const { useQueryStore } = await import("@/stores/queryStore");
+    const store = useQueryStore();
+    const id = store.createTab("mysql-1", "app", "Query");
+    await store.executeTabSql(id, sql);
+    const tab = store.tabs.find((item) => item.id === id)!;
+    const source = (tab.results ?? [tab.result!]).at(-1)!.legacy_export_source!;
+    expect(source).toMatchObject({ connectionId: "mysql-1", database: kind === "use" ? "other" : "app", databaseType: "mysql", ordinaryReadSafe: kind !== "ambiguous" && kind !== "session_setup" });
+    expect(source.connectionFingerprint).toMatch(/^[0-9a-f]{16}$/);
+    if (kind === "ambiguous") expect(source.statementSql).toBeUndefined();
+    else expect(source.statementSql).toContain(kind === "single" ? "app.FIRST" : kind === "use" ? "other.SECOND" : "app.SECOND");
+    tab.connectionId = "other";
+    tab.database = "private";
+    expect(source.connectionId).toBe("mysql-1");
+    expect(source.database).toBe(kind === "use" ? "other" : "app");
+  });
+
   it.each([
     ["oracle", "BEGIN\n NULL;\n NULL;\nEND;\n/\nSELECT 3;"],
     ["mysql", "DELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END$$\nDELIMITER ;\nSELECT 3;"],

@@ -6,6 +6,7 @@ import { canReloadUnavailableDataTab, restoredDataTabReloadFilters } from "@/lib
 import { defaultViewForResult } from "@/lib/query/queryResultDefaultView";
 import { extractNeo4jNodeCells, projectNeo4jNodeResult } from "@/lib/neo4j/neo4jNodeResult";
 import { useNeo4jNodeTableResult } from "@/composables/useNeo4jNodeTableResult";
+import type { DataGridExportSheet } from "@/composables/useDataGridExport";
 import { extractGraphCells, graphPropertyFromUpdateResult, type GraphEdge, type GraphNode, type GraphProperty, type GraphResult } from "@/lib/graph/graphResult";
 import { graphAdapterForDatabase } from "@/lib/graph/graphAdapters";
 import { queryResultMessages } from "@/lib/query/queryResultMessages";
@@ -203,6 +204,7 @@ import { chartableColumnIndexes } from "@/lib/dataGrid/chartData";
 import { elasticsearchJsonResponseForResult } from "@/lib/elasticsearch/elasticsearchJsonResponse";
 import { elasticsearchProfileBodyForResult, parseElasticsearchProfile } from "@/lib/elasticsearch/elasticsearchProfile";
 import * as api from "@/lib/backend/api";
+import type { ExportReadControl } from "@/lib/export/snapshotCompletion";
 import type { SqlInsertMode } from "@/lib/export/sqlInsertMode";
 import { promptExportSavePath } from "@/lib/export/exportPath";
 import { queryResultExportBaseName } from "@/lib/export/saveTextFile";
@@ -259,7 +261,7 @@ type DataGridHandle = DataGridColumnLayoutHandle & {
   exportJson: () => Promise<void>;
   exportSql: () => Promise<void>;
   exportXlsx: () => Promise<void>;
-  exportResultSheetsXlsx: (sheets: Array<{ sheetName: string; result: QueryResult; sql?: string }>) => Promise<void>;
+  exportResultSheetsXlsx: (sheets: DataGridExportSheet[]) => Promise<void>;
   openXlsx: () => Promise<void>;
 };
 
@@ -692,13 +694,15 @@ const visibleResultItems = computed(() =>
   tabularResultItems(props.activeTab.results ?? (props.activeTab.result ? [props.activeTab.result] : undefined), { includeSourceDatabase: includeResultSourceDatabase.value, namingMode: resultTabNamingMode.value, preferComments: preferResultTabComments.value }),
 );
 const tabularResults = computed(() => tabularResultItems(props.activeTab.results, { includeSourceDatabase: includeResultSourceDatabase.value, namingMode: resultTabNamingMode.value, preferComments: preferResultTabComments.value }));
-const allResultExportSheets = computed(() =>
-  tabularResults.value.map((item) => ({
+const allResultExportSheets = computed(() => {
+  const tabId = props.activeTab.id;
+  return tabularResults.value.map((item) => ({
     sheetName: item.label || t("tabs.resultN", { n: item.n }),
     result: activeEffectiveDatabaseType.value === "neo4j" ? projectNeo4jNodeResult(item.result) : item.result,
     sql: item.index === props.activeTab.activeResultIndex ? queryResultExecutionSql(props.activeTab) : item.result.sourceStatement,
-  })),
-);
+    captureSourceValues: () => queryStore.captureResultLegacyValuesForExport(tabId, item.result),
+  }));
+});
 
 type ResultSetItem = (typeof visibleResultItems.value)[number];
 
@@ -746,7 +750,8 @@ async function exportSelectedResultSheets(items: ResultSetItem[]) {
   if (resultBatchBusy.value) return;
   const dataGrid = dataGridRef.value;
   if (!dataGrid) return;
-  const sheets = items.filter((item) => !item.result.execution_error && !item.result.server_message).map((item) => ({ sheetName: item.label || t("tabs.resultN", { n: item.n }), result: item.result }));
+  const tabId = props.activeTab.id;
+  const sheets = items.filter((item) => !item.result.execution_error && !item.result.server_message).map((item) => ({ sheetName: item.label || t("tabs.resultN", { n: item.n }), result: item.result, captureSourceValues: () => queryStore.captureResultLegacyValuesForExport(tabId, item.result) }));
   if (!sheets.length) return;
   resultBatchBusy.value = true;
   try {
@@ -809,6 +814,18 @@ async function fetchGridResultForExport(onProgress?: (info: { rowsExported: numb
   extractNeo4jNodeCells(result);
   extractGraphCells(result);
   return projectNeo4jNodeResult(result);
+}
+function captureGridResultForExport() {
+  const fetch = queryStore.captureTabResultForExport(props.activeTab.id);
+  const isNeo4j = activeEffectiveDatabaseType.value === "neo4j";
+  if (!fetch) return undefined;
+  return async (onProgress?: (info: { rowsExported: number; totalRows: number | null }) => void, control?: ExportReadControl) => {
+    const result = await fetch(onProgress, control);
+    if (!result || !isNeo4j) return result;
+    extractNeo4jNodeCells(result);
+    extractGraphCells(result);
+    return projectNeo4jNodeResult(result);
+  };
 }
 async function loadQueryResultSourceDdl(): Promise<string | undefined> {
   if (props.activeTab.mode !== "query") return undefined;
@@ -3044,6 +3061,8 @@ defineExpose({
                 :page-jump-progress="activeTab.resultPageJumpProgress"
                 :on-execute-sql="async (sql: string) => emit('executeSql', activeTab.id, sql)"
                 :full-export-result="fetchGridResultForExport"
+                :capture-full-export-result="captureGridResultForExport"
+                :capture-query-result-export-request="hasNeo4jNodes ? undefined : (queued: boolean) => queryStore.captureQueryResultExportRequest(activeTab.id, queued)"
                 :transfer-query-result="openQueryResultTransfer"
                 :query-result-export-request="
                   hasNeo4jNodes
@@ -3573,6 +3592,7 @@ defineExpose({
           :total-row-count-loading="activeTab.resultTotalRowCountLoading"
           :on-execute-sql="async (sql: string) => emit('executeSql', activeTab.id, sql)"
           :full-export-result="(onProgress?: (info: { rowsExported: number; totalRows: number | null }) => void) => queryStore.fetchTabResultForExport(activeTab.id, onProgress)"
+          :capture-full-export-result="() => queryStore.captureTabResultForExport(activeTab.id)"
           :export-file-base-name="activeTab.title"
           :show-cancel="shouldShowCancelAction(activeTab)"
           :cancelling="activeTab.isCancelling"

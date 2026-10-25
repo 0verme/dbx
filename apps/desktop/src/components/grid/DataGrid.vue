@@ -362,7 +362,7 @@ import { removeVirtualRowIdentifier, saveVirtualRowIdentifier, tableDataVirtualR
 import { useToast } from "@/composables/useToast";
 import { translateBackendError } from "@/i18n/backend-errors";
 import { useNavigationTargets } from "@/composables/useNavigationTargets";
-import { useDataGridExport, type MongoCopyUpdateTarget } from "@/composables/useDataGridExport";
+import { useDataGridExport, type DataGridExportSheet, type MongoCopyUpdateTarget, type UseDataGridExportOptions } from "@/composables/useDataGridExport";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { promptExportSavePath } from "@/lib/export/exportPath";
 import { eventTargetAllowsNativeClipboard, isPlainClipboardShortcut, readTextFromClipboard } from "@/lib/common/clipboard";
@@ -648,6 +648,8 @@ interface DataGridProps {
   pageSql?: string;
   onExecuteSql?: (sql: string) => Promise<void>;
   fullExportResult?: (onProgress?: (info: { rowsExported: number; totalRows: number | null }) => void) => Promise<QueryResult | undefined>;
+  captureFullExportResult?: UseDataGridExportOptions["captureFullExportResult"];
+  captureQueryResultExportRequest?: UseDataGridExportOptions["captureQueryResultExportRequest"];
   queryResultExportRequest?: (options: {
     exportId: string;
     filePath: string;
@@ -659,11 +661,7 @@ interface DataGridProps {
     insertMode?: SqlInsertMode;
   }) => Promise<api.QueryResultExportRequest | undefined>;
   transferQueryResult?: () => void;
-  allExportResults?: Array<{
-    sheetName: string;
-    result: QueryResult;
-    sql?: string;
-  }>;
+  allExportResults?: DataGridExportSheet[];
   exportFileBaseName?: string;
   customSaveHandler?: import("@/composables/useDataGridEditor").CustomSaveHandler;
   manualTransactionSessionId?: string;
@@ -9384,6 +9382,23 @@ const {
   columnComments: visibleColumnComments,
   allColumnComments,
   displayValue: (value, index) => formatCell(value, index, undefined, false),
+  captureColumnFormatterDisplay: () => {
+    const formatters = resolvedColumnFormatters.value.map((formatter) => (formatter ? (JSON.parse(JSON.stringify(formatter)) as ColumnFormatterConfig) : undefined));
+    const mongo = usesMongoDocumentGridValues.value;
+    const foreignKeys = new Map([...foreignKeyDisplayLabels.value].map(([index, state]) => [index, { ...state, labels: new Map(state.labels) }]));
+    return (value, index) => {
+      const formatter = formatters[index];
+      if (mongo) {
+        const text = mongoDocumentGridDisplayText(value, formatter);
+        if (text !== undefined) return text;
+      }
+      if (formatter?.kind === "foreign-key-display") {
+        const state = foreignKeys.get(index);
+        return formatForeignKeyDisplayValue(value, state?.labels, state?.keyDataType);
+      }
+      return applyColumnFormatter(value, formatter);
+    };
+  },
   editValue: (value, index) => cellEditorTextForValue(value, index),
   hasColumnFormatter: (index: number) => Boolean(resolvedColumnFormatters.value[index]),
   applyColumnFormattersOnExport: computed(() => settingsStore.editorSettings.applyColumnFormattersOnExport),
@@ -9408,7 +9423,10 @@ const {
   selectedRowIds,
   hasRowSelection,
   resolveSourceValues: resolveLargeValueCells,
+  captureSourceValues: largeValueRuntimeInstance.captureSourceValues,
   fullExportResult: props.fullExportResult,
+  captureFullExportResult: () => props.captureFullExportResult?.(),
+  captureQueryResultExportRequest: (queued) => props.captureQueryResultExportRequest?.(queued),
   queryResultExportRequest: props.queryResultExportRequest,
   hasCompleteLocalResult,
   partialLoadCopyInfo: computed(() =>

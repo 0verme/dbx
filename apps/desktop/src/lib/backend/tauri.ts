@@ -2,6 +2,7 @@ import type { StarRocksAlterOptions } from "@/lib/table/starrocksAlterOptions";
 import type { CreateTableDialectOptions } from "@/lib/table/starrocksPhysicalOptions";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { Channel } from "@tauri-apps/api/core";
+import { SnapshotCompletionError, unwrapSnapshotCompletion } from "@/lib/export/snapshotCompletion";
 import type { MongoDumpFormat, MongoDumpSourceInput, MongoDumpCatalog, MongoRestoreSourcePreview, MongoDatabaseDumpRequest, MongoDatabaseRestoreRequest, MongoDatabaseDumpProgress } from "./mongodbDumpTypes";
 import type { MongoRestoreUpload, MongoSourceReadOptions } from "./mongodbDumpTypes";
 import type { DamengDumpKind, DamengDumpRequest, DamengDumpProgress } from "./damengDumpTypes";
@@ -2221,7 +2222,11 @@ export async function cancelConditionalUpdate(executionId: string, options?: { c
   return invoke("cancel_conditional_update", { executionId, ...options });
 }
 
-export async function readLargeValueChunk(request: import("./http").LargeValueRequest): Promise<import("./http").LargeValueChunk> {
+export async function readLargeValueChunk(request: import("./http").LargeValueRequest, reportOutcome = false): Promise<import("./http").LargeValueChunk> {
+  if (reportOutcome) {
+    const { unwrapSnapshotCompletion } = await import("@/lib/export/snapshotCompletion");
+    return unwrapSnapshotCompletion(await invoke("read_large_value_chunk", { request, reportOutcome: true }));
+  }
   return invoke("read_large_value_chunk", { request });
 }
 
@@ -2236,8 +2241,13 @@ export async function downloadLargeValue(request: import("./http").LargeValueReq
   signal?.throwIfAborted();
 }
 
-export async function exportSnapshotResult(request: import("./http").SnapshotExportRequest, filePath: string, signal?: AbortSignal): Promise<void> {
+export async function exportSnapshotResult(request: import("./http").SnapshotExportRequest, filePath: string, signal?: AbortSignal, reportOutcome = false): Promise<void> {
   signal?.throwIfAborted();
+  if (reportOutcome) {
+    const { unwrapSnapshotCompletion } = await import("@/lib/export/snapshotCompletion");
+    unwrapSnapshotCompletion(await invoke("export_snapshot_result", { request, filePath, reportOutcome: true }));
+    return;
+  }
   await invoke("export_snapshot_result", { request, filePath });
   signal?.throwIfAborted();
 }
@@ -2253,12 +2263,13 @@ export async function closeQuerySession(connectionId: string, database: string, 
   });
 }
 
-export async function closeClientConnectionSession(connectionId: string, database: string, clientSessionId: string, catalog?: string): Promise<boolean> {
+export async function closeClientConnectionSession(connectionId: string, database: string, clientSessionId: string, catalog?: string, reportCompletion = false): Promise<boolean> {
   return invoke("close_client_connection_session", {
     connectionId,
     database,
     clientSessionId,
     catalog,
+    ...(reportCompletion ? { reportCompletion: true } : {}),
   });
 }
 
@@ -6517,22 +6528,32 @@ export async function releaseMongodbImportSource(_sourceRef: string): Promise<bo
   return false;
 }
 
-export async function exportMongodbQuery(request: MongoExportRequest, onProgress: (progress: MongoExportProgress) => void): Promise<MongoExportSummary> {
-  const unlisten: UnlistenFn = await listen<MongoExportProgress>("mongo-export-progress", (event) => {
-    if (event.payload.exportId === request.exportId) {
-      onProgress(event.payload);
-      if (event.payload.status === "done" || event.payload.status === "error" || event.payload.status === "cancelled") {
-        unlisten();
-      }
-    }
-  });
+export async function exportMongodbQuery(request: MongoExportRequest, onProgress: (progress: MongoExportProgress) => void, reportOutcome = false): Promise<MongoExportSummary> {
+  let unlisten: UnlistenFn;
   try {
+    unlisten = await listen<MongoExportProgress>("mongo-export-progress", (event) => {
+      if (event.payload.exportId === request.exportId) {
+        onProgress(event.payload);
+        if (event.payload.status === "done" || event.payload.status === "error" || event.payload.status === "cancelled") {
+          unlisten();
+        }
+      }
+    });
+  } catch (error) {
+    if (reportOutcome) throw new SnapshotCompletionError("failed", String(error));
+    throw error;
+  }
+  try {
+    if (reportOutcome) {
+      return unwrapSnapshotCompletion<MongoExportSummary>(await invoke("export_mongodb_query", { request, reportOutcome: true }));
+    }
     const summary = await invoke<MongoExportSummary>("export_mongodb_query", { request });
-    unlisten();
     return summary;
   } catch (e) {
-    unlisten();
+    if (reportOutcome) throw e;
     throw e instanceof BackendErrorException ? e : new BackendErrorException(e);
+  } finally {
+    unlisten();
   }
 }
 
@@ -6578,7 +6599,7 @@ export interface ExportProgress {
   totalObjects: number;
   rowsExported: number;
   totalRows: number | null;
-  status: "Running" | "Done" | "Error" | "Cancelled";
+  status: "Running" | "Done" | "Error" | "Cancelled" | "Unknown";
   error: string | null;
   /** True while listing schema / prefetching metadata before objects are written. */
   preparing?: boolean;
@@ -6589,7 +6610,7 @@ export interface ExportProgress {
 }
 
 // --- Table Export ---
-export type TableExportStatus = "Running" | "Writing" | "Done" | "Error" | "Cancelled";
+export type TableExportStatus = "Running" | "Writing" | "Done" | "Error" | "Cancelled" | "Unknown";
 
 export interface TableExportRequest {
   exportId: string;
@@ -6705,8 +6726,9 @@ export interface QueryResultExportRequest {
   primaryKeys?: string[];
 }
 
-export async function startTableExport(request: TableExportRequest, onProgress: (progress: TableExportProgress) => void): Promise<TableExportProgress> {
+export async function startTableExport(request: TableExportRequest, onProgress: (progress: TableExportProgress) => void, reportCompletion = false): Promise<TableExportProgress> {
   let unlisten: UnlistenFn | undefined;
+  let invoked = false;
   let settled = false;
   let resolveTerminal: (progress: TableExportProgress) => void = () => {};
   let rejectTerminal: (error: unknown) => void = () => {};
@@ -6727,7 +6749,9 @@ export async function startTableExport(request: TableExportRequest, onProgress: 
     unlisten = await listen<TableExportProgress>("table-export-progress", (event) => {
       if (event.payload.exportId !== request.exportId) return;
       onProgress(event.payload);
-      if (event.payload.status === "Done" || event.payload.status === "Error" || event.payload.status === "Cancelled") {
+      if (event.payload.status === "Unknown") {
+        finish(() => rejectTerminal(new SnapshotCompletionError("unknown", event.payload.errorMessage || "Export cleanup completion was not confirmed")));
+      } else if (event.payload.status === "Done" || event.payload.status === "Error" || event.payload.status === "Cancelled") {
         if (event.payload.status === "Error") {
           finish(() => rejectTerminal(new BackendErrorException(event.payload.errorMessage || "Export failed")));
         } else {
@@ -6735,12 +6759,16 @@ export async function startTableExport(request: TableExportRequest, onProgress: 
         }
       }
     });
+    invoked = true;
     await invoke("start_table_export", { request });
     return await terminalProgress;
   } catch (error) {
     if (!settled) {
       settled = true;
       unlisten?.();
+    }
+    if (reportCompletion && !invoked) {
+      throw new SnapshotCompletionError("failed", error instanceof Error ? error.message : String(error));
     }
     throw error instanceof BackendErrorException ? error : new BackendErrorException(error);
   }
@@ -6750,8 +6778,9 @@ export async function cancelTableExport(exportId: string): Promise<void> {
   return invoke("cancel_table_export", { exportId });
 }
 
-export async function startQueryResultExport(request: QueryResultExportRequest, onProgress: (progress: TableExportProgress) => void): Promise<TableExportProgress> {
+export async function startQueryResultExport(request: QueryResultExportRequest, onProgress: (progress: TableExportProgress) => void, reportCompletion = false): Promise<TableExportProgress> {
   let unlisten: UnlistenFn | undefined;
+  let invoked = false;
   let settled = false;
   let resolveTerminal: (progress: TableExportProgress) => void = () => {};
   let rejectTerminal: (error: unknown) => void = () => {};
@@ -6772,7 +6801,9 @@ export async function startQueryResultExport(request: QueryResultExportRequest, 
     unlisten = await listen<TableExportProgress>("query-result-export-progress", (event) => {
       if (event.payload.exportId !== request.exportId) return;
       onProgress(event.payload);
-      if (event.payload.status === "Done" || event.payload.status === "Error" || event.payload.status === "Cancelled") {
+      if (event.payload.status === "Unknown") {
+        finish(() => rejectTerminal(new SnapshotCompletionError("unknown", event.payload.errorMessage || "Export cleanup completion was not confirmed")));
+      } else if (event.payload.status === "Done" || event.payload.status === "Error" || event.payload.status === "Cancelled") {
         if (event.payload.status === "Error") {
           finish(() => rejectTerminal(new BackendErrorException(event.payload.errorMessage || "Export failed")));
         } else {
@@ -6780,12 +6811,16 @@ export async function startQueryResultExport(request: QueryResultExportRequest, 
         }
       }
     });
+    invoked = true;
     await invoke("start_query_result_export", { request });
     return await terminalProgress;
   } catch (error) {
     if (!settled) {
       settled = true;
       unlisten?.();
+    }
+    if (reportCompletion && !invoked) {
+      throw new SnapshotCompletionError("failed", error instanceof Error ? error.message : String(error));
     }
     throw error instanceof BackendErrorException ? error : new BackendErrorException(error);
   }
@@ -6806,20 +6841,24 @@ export async function beginDatabaseBackupSnapshot(connectionId: string, database
   return invoke("begin_database_backup_snapshot", { connectionId, database, exportId: exportId || null });
 }
 
-export async function exportDatabaseSql(request: DatabaseExportRequest, onProgress: (progress: ExportProgress) => void): Promise<void> {
-  const unlisten: UnlistenFn = await listen<ExportProgress>("database-export-progress", (event) => {
-    if (event.payload.exportId === request.exportId) {
-      onProgress(event.payload);
-      if (event.payload.status === "Done" || event.payload.status === "Error" || event.payload.status === "Cancelled") {
-        unlisten();
-      }
-    }
-  });
+export async function exportDatabaseSql(request: DatabaseExportRequest, onProgress: (progress: ExportProgress) => void, reportCompletion = false): Promise<void> {
+  let unlisten: UnlistenFn | undefined;
+  let invoked = false;
   try {
+    unlisten = await listen<ExportProgress>("database-export-progress", (event) => {
+      if (event.payload.exportId === request.exportId) {
+        onProgress(event.payload);
+        if (event.payload.status === "Done" || event.payload.status === "Error" || event.payload.status === "Cancelled" || event.payload.status === "Unknown") {
+          unlisten?.();
+        }
+      }
+    });
+    invoked = true;
     await invoke("export_database_sql", { request });
-  } catch (e) {
-    unlisten();
-    throw e;
+  } catch (error) {
+    unlisten?.();
+    if (reportCompletion && !invoked) throw new SnapshotCompletionError("failed", error instanceof Error ? error.message : String(error));
+    throw error;
   }
 }
 

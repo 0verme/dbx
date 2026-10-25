@@ -207,14 +207,19 @@ impl DuckDbExportSnapshot {
     }
 
     pub(super) async fn close(self, state: &AppState) {
+        let table = self.table.clone();
+        if let Err(error) = self.close_with_completion(state).await {
+            log::error!("Failed to remove DuckDB export snapshot table {table}: {error}");
+        }
+    }
+
+    pub(super) async fn close_with_completion(self, state: &AppState) -> Result<(), String> {
         // Cleanup must not inherit a cancelled execution id. The qualified name
         // can only refer to this export's temporary table.
         if self.pool_key.is_none() {
-            return;
+            return Ok(());
         }
         let sql = format!("DROP TABLE IF EXISTS {}", self.qualified_table());
-        if let Err(error) = self.execute_temporary_ddl(state, &sql, None, TemporaryDdlPolicy::Cleanup).await {
-            log::error!("Failed to remove DuckDB export snapshot table {}: {error}", self.table);
-        }
+        self.execute_temporary_ddl(state, &sql, None, TemporaryDdlPolicy::Cleanup).await
     }
 }

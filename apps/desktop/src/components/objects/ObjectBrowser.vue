@@ -145,6 +145,9 @@ import { autoRevealExportedPathIfConfigured, promptExportSavePath } from "@/lib/
 import { generateDatabaseExportId } from "@/lib/export/databaseExport";
 import { buildXlsxHeaderOverrides, hasXlsxHeaderComments, xlsxHeaderUsesCommentRows, type XlsxExportOptions, type XlsxHeaderMode } from "@/lib/export/xlsxHeader";
 import { showSqlInsertModeDialog, type SqlInsertDialect, type SqlInsertMode } from "@/lib/export/sqlInsertMode";
+import { showExportExecutionModeDialog } from "@/lib/export/exportExecutionMode";
+import type { ManualExportMode } from "@/lib/export/manualExportQueue";
+import { SnapshotCompletionError } from "@/lib/export/snapshotCompletion";
 import { csvNullLiteralForMode } from "@/lib/export/csvNullMode";
 import { copyToClipboard, eventTargetAllowsAppClipboardShortcut, eventTargetUsesNativeClipboard } from "@/lib/common/clipboard";
 import { encodeSpreadsheetTsvCell } from "@/lib/common/spreadsheetTsv";
@@ -646,7 +649,8 @@ let stopColumnResize: (() => void) | null = null;
 let preserveObjectFilterScrollOnce = false;
 
 // Export via background tracker
-const { addTask: addExportTask, updateTableExportTask } = useExportTracker();
+const exportTracker = useExportTracker();
+const { addTask: addExportTask, updateTableExportTask } = exportTracker;
 
 const needsSchema = computed(() => isSchemaAware(props.connection.db_type) && !connectionUsesDatabaseObjectTreeMode(props.connection));
 const canDropTargetCascade = computed(() => dropTarget.value?.type === "TABLE" && supportsDropTableCascade(effectiveDatabaseType.value));
@@ -3819,13 +3823,14 @@ async function exportDataLegacy(row: ObjectBrowserRow, format: "json") {
 }
 
 async function exportData(row: ObjectBrowserRow, format: "csv" | "json" | "sql", insertDialect: SqlInsertDialect = "source") {
-  if (format === "json") {
+  if (format === "json" && !isTauriRuntime()) {
     await exportDataLegacy(row, format);
     return;
   }
-  const sqlExportOptions = format === "sql" ? await showSqlInsertModeDialog({ allowSplit: true }) : undefined;
+  const captured = captureTableDataExport(row);
+  const sqlExportOptions = format === "sql" ? await showSqlInsertModeDialog({ allowSplit: true, showExecutionMode: isTauriRuntime() }) : undefined;
   if (format === "sql" && sqlExportOptions === null) return;
-  await exportTableData(row, format, undefined, "name", true, sqlExportOptions?.insertMode ?? "batch", sqlExportOptions?.splitMaxMb, insertDialect);
+  await exportTableData(row, format, undefined, "name", true, sqlExportOptions?.insertMode ?? "batch", sqlExportOptions?.splitMaxMb, insertDialect, captured, sqlExportOptions?.executionMode);
 }
 
 function showObjectBrowserXlsxHeaderDialog(hasComments: boolean): Promise<XlsxExportOptions | null> {
@@ -3837,6 +3842,7 @@ function showObjectBrowserXlsxHeaderDialog(hasComments: boolean): Promise<XlsxEx
     const app = createApp(XlsxHeaderDialog, {
       open: true,
       showHeaderOptions: hasComments,
+      showExecutionMode: isTauriRuntime(),
       onConfirm: (exportOptions: XlsxExportOptions) => {
         resolve(exportOptions);
         app.unmount();
@@ -3854,31 +3860,63 @@ function showObjectBrowserXlsxHeaderDialog(hasComments: boolean): Promise<XlsxEx
 }
 
 async function exportDataXlsx(row: ObjectBrowserRow) {
-  const schema = row.schema || selectedSchema.value;
+  const captured = captureTableDataExport(row);
+  const { connectionId, database, schema, catalog } = captured;
   let columnInfos: ColumnInfo[] | undefined;
 
   try {
-    columnInfos = await api.getColumns(props.connection.id, props.database, schema || props.database, row.name, props.catalog);
+    columnInfos = await api.getColumns(connectionId, database, schema || database, captured.tableName, catalog);
   } catch {
     // Export still works with field-name headers when column metadata is unavailable.
   }
 
   const exportOptions = await showObjectBrowserXlsxHeaderDialog(hasXlsxHeaderComments(columnInfos?.map((column) => column.comment)));
   if (exportOptions === null) return;
-  await exportTableData(row, "xlsx", columnInfos, exportOptions.headerMode, exportOptions.autoFilter);
+  await exportTableData(row, "xlsx", columnInfos, exportOptions.headerMode, exportOptions.autoFilter, "batch", undefined, "source", captured, exportOptions.executionMode);
 }
 
-async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx" | "sql", columnInfos?: ColumnInfo[], headerMode: XlsxHeaderMode = "name", autoFilter = true, insertMode: SqlInsertMode = "batch", splitMaxMb?: number, insertDialect: SqlInsertDialect = "source") {
-  const schema = row.schema || selectedSchema.value;
+function captureTableDataExport(row: ObjectBrowserRow) {
+  return {
+    connectionId: props.connection.id,
+    fingerprint: connectionConfigFingerprint(props.connection),
+    connectionType: props.connection.db_type,
+    timeoutSecs: props.connection.query_timeout_secs,
+    database: props.database,
+    catalog: props.catalog,
+    schema: row.schema || selectedSchema.value,
+    tableName: row.name,
+    databaseType: effectiveDatabaseType.value,
+    identifierQuote: connectionStore.connectionIdentifierQuote(props.connection.id),
+    settings: { ...settingsStore.editorSettings },
+  };
+}
+
+async function exportTableData(
+  row: ObjectBrowserRow,
+  format: "csv" | "xlsx" | "sql" | "json",
+  columnInfos?: ColumnInfo[],
+  headerMode: XlsxHeaderMode = "name",
+  autoFilter = true,
+  insertMode: SqlInsertMode = "batch",
+  splitMaxMb?: number,
+  insertDialect: SqlInsertDialect = "source",
+  captured = captureTableDataExport(row),
+  selectedMode?: ManualExportMode,
+) {
+  const { connectionId, database, schema, catalog, tableName, identifierQuote, databaseType, settings } = captured;
+  columnInfos = columnInfos?.map((column) => ({ ...column }));
+  const native = isTauriRuntime();
+  const mode = native ? (selectedMode ?? (await showExportExecutionModeDialog())) : "immediate";
+  if (mode === null) return;
   const splitSqlOutput = format === "sql" && splitMaxMb !== undefined;
 
   // Save dialog first
   let filePath = "";
-  const defaultName = `${row.name}.${splitSqlOutput ? "zip" : format}`;
+  const defaultName = `${tableName}.${splitSqlOutput ? "zip" : format}`;
 
   if (isTauriRuntime()) {
     try {
-      const filter = format === "csv" ? { name: "CSV", extensions: ["csv"] } : format === "xlsx" ? { name: "Excel", extensions: ["xlsx"] } : splitSqlOutput ? { name: "ZIP", extensions: ["zip"] } : { name: "SQL", extensions: ["sql"] };
+      const filter = format === "csv" ? { name: "CSV", extensions: ["csv"] } : format === "xlsx" ? { name: "Excel", extensions: ["xlsx"] } : format === "json" ? { name: "JSON", extensions: ["json"] } : splitSqlOutput ? { name: "ZIP", extensions: ["zip"] } : { name: "SQL", extensions: ["sql"] };
       const path = await promptExportSavePath({
         defaultFileName: defaultName,
         filters: [filter],
@@ -3894,87 +3932,181 @@ async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx" | "
     filePath = `__web_export_${webExportId}.${splitSqlOutput ? "zip" : format}`;
   }
 
-  let task: ExportTask | null = null;
-  try {
-    if (isVictoriaMetrics.value) {
-      const result = await fetchTableDataForExport({
-        databaseType: effectiveDatabaseType.value,
-        schema,
-        tableName: row.name,
-        executePage: (sql) => api.executeQuery(props.connection.id, props.database, sql),
-      });
-      if (format === "csv") {
-        await api.exportQueryResultCsv(filePath, result.columns, result.rows, settingsStore.editorSettings.csvQuoteMode, csvNullLiteralForMode(settingsStore.editorSettings.csvNullMode));
-      } else {
-        const comments = result.columns.map((name) => columnInfos?.find((column) => column.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.comment);
-        const headerOverrides = buildXlsxHeaderOverrides(result.columns, comments, headerMode);
-        await api.exportQueryResultXlsx(filePath, row.name, result.columns, result.column_types ?? result.columns.map(() => ""), headerOverrides, result.rows, undefined, autoFilter, settingsStore.editorSettings.globalDateTimeExportFormat || undefined, xlsxHeaderUsesCommentRows(headerMode));
-      }
-      toast(t("grid.exported"));
-      void autoRevealExportedPathIfConfigured(filePath);
-      return;
-    }
-    let columns: string[] | undefined;
-    let columnComments: (string | null)[] | undefined;
-
-    if (columnInfos) {
-      columns = columnInfos.map((c) => c.name);
-      if (format === "xlsx") {
-        columnComments = buildXlsxHeaderOverrides(
-          columns,
-          columnInfos.map((column) => column.comment),
-          headerMode,
-        );
-      }
-    } else if (props.connection.db_type === "neo4j") {
-      const infos = await api.getColumns(props.connection.id, props.database, schema || props.database, row.name, props.catalog);
-      columns = infos.map((c) => c.name);
-    }
-
-    task = addExportTask(row.name, format, filePath);
-    const currentTask = task;
-    const rowLimit = settingsStore.editorSettings.exportRowLimitEnabled ? settingsStore.editorSettings.exportRowLimit : null;
-    const request: api.TableExportRequest = {
-      exportId: currentTask.exportId,
-      connectionId: props.connection.id,
-      database: props.database,
-      schema,
-      identifierQuote: connectionStore.connectionIdentifierQuote(props.connection.id),
-      tableName: row.name,
-      filePath,
-      format,
-      ...(format === "sql"
-        ? {
-            insertMode,
-            insertDialect,
-            splitMaxMb,
-            omitDatabaseQualifier: dropsSchemaQualifier(effectiveDatabaseType.value, settingsStore.editorSettings.generateSqlIncludeDatabaseName, props.catalog),
-          }
-        : {}),
-      csvQuoteMode: settingsStore.editorSettings.csvQuoteMode,
-      nullLiteral: csvNullLiteralForMode(settingsStore.editorSettings.csvNullMode),
-      columns,
-      columnComments: format === "xlsx" ? columnComments : undefined,
-      headerCommentRows: format === "xlsx" ? xlsxHeaderUsesCommentRows(headerMode) : undefined,
-      autoFilter: format === "xlsx" ? autoFilter : undefined,
-      batchSize: settingsStore.editorSettings.exportBatchSize,
-      skipCount: format === "sql",
-      rowLimit,
-    };
-
-    const terminalProgress = await api.startTableExport(request, (progress) => {
-      updateTableExportTask(currentTask.exportId, progress);
-    });
-    if (terminalProgress.status === "Done") {
-      toast(t("grid.exported"));
-    }
-  } catch (e: any) {
-    if (task) {
-      task.status = "Error";
-      task.errorMessage = e?.message || String(e);
-    }
-    toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+  if (native && (props.connection.id !== connectionId || props.database !== database || props.catalog !== catalog || (row.schema || selectedSchema.value) !== schema || row.name !== tableName || connectionConfigFingerprint(props.connection) !== captured.fingerprint)) {
+    toast(t("exportProgress.connectionChanged"), 5000);
+    return;
   }
+  let task: ExportTask | null = native ? addExportTask(tableName, format, filePath) : null;
+  const controller = new AbortController();
+  let backendStarted = false;
+  let unknown = false;
+  let unknownMessage: string | undefined;
+  let terminal: api.TableExportProgress | undefined;
+  const check = () => {
+    if (!native) return;
+    if (unknown) throw new SnapshotCompletionError("unknown", unknownMessage ?? "Export completion was not confirmed");
+    if (controller.signal.aborted) throw new SnapshotCompletionError("cancelled", "Export cancelled");
+    const config = connectionStore.getConfig(connectionId);
+    if (!config || connectionConfigFingerprint(config) !== captured.fingerprint) throw new SnapshotCompletionError("failed", t("exportProgress.connectionChanged"));
+  };
+  const read = async <T>(request: () => Promise<T>, cleanup = false): Promise<T> => {
+    if (!cleanup) check();
+    let value: T;
+    try {
+      value = await request();
+    } catch (error) {
+      if (!native) throw error;
+      unknown = true;
+      unknownMessage ??= error instanceof Error ? error.message : String(error);
+      throw new SnapshotCompletionError("unknown", unknownMessage);
+    }
+    if (!cleanup && task?.canCancel !== false) check();
+    return value;
+  };
+  const execute = async (): Promise<"settled" | "unknown"> => {
+    if (native && task)
+      exportTracker.registerTaskCancelHandler(task.exportId, async () => {
+        controller.abort();
+        task!.status = "Cancelling";
+        if (backendStarted) await api.cancelTableExport(task!.exportId);
+      });
+    try {
+      check();
+      if (databaseType === "victoriametrics" || format === "json") {
+        const queryColumns = captured.connectionType === "neo4j" ? (await read(() => api.getColumns(connectionId, database, schema || database, tableName, catalog))).map((column) => column.name) : undefined;
+        const useAgentCursor = captured.connectionType === "cassandra";
+        const clientSessionId = useAgentCursor ? `table-export:${generateDatabaseExportId()}` : undefined;
+        const result = await fetchTableDataForExport({
+          databaseType,
+          identifierQuote,
+          schema,
+          tableName,
+          columns: queryColumns,
+          useAgentCursor,
+          executePage: async (sql, cursorOptions) => {
+            const result = await read(() => (cursorOptions ? api.executeQuery(connectionId, database, sql, undefined, undefined, { ...cursorOptions, clientSessionId, catalog, timeoutSecs: captured.timeoutSecs }) : api.executeQuery(connectionId, database, sql)));
+            if (native && result.execution_error) throw new SnapshotCompletionError(result.error?.operationOutcome === "not_started" ? "failed" : "unknown", translateBackendError(t, result.error ?? String(result.rows[0]?.[0] ?? "Query failed")));
+            if (native && (result.truncated || result.large_value_cells?.length)) throw new SnapshotCompletionError("failed", "Incomplete table export result");
+            return result;
+          },
+          closeCursor: useAgentCursor
+            ? async (sessionId) => {
+                try {
+                  if (sessionId) await read(() => api.closeQuerySession(connectionId, database, sessionId, clientSessionId, catalog), true);
+                } finally {
+                  await read(() => (native ? api.closeClientConnectionSession(connectionId, database, clientSessionId!, catalog, true) : api.closeClientConnectionSession(connectionId, database, clientSessionId!, catalog)), true);
+                }
+              }
+            : undefined,
+        });
+        check();
+        if (native && task) task.canCancel = false;
+        if (format === "json") await read(() => api.exportQueryResultJson(filePath, result.columns, result.rows));
+        else if (format === "csv") {
+          await read(() => api.exportQueryResultCsv(filePath, result.columns, result.rows, settings.csvQuoteMode, csvNullLiteralForMode(settings.csvNullMode)));
+        } else {
+          const comments = result.columns.map((name) => columnInfos?.find((column) => column.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.comment);
+          const headerOverrides = buildXlsxHeaderOverrides(result.columns, comments, headerMode);
+          await read(() => api.exportQueryResultXlsx(filePath, tableName, result.columns, result.column_types ?? result.columns.map(() => ""), headerOverrides, result.rows, undefined, autoFilter, settings.globalDateTimeExportFormat || undefined, xlsxHeaderUsesCommentRows(headerMode)));
+        }
+        if (task) {
+          task.status = "Done";
+          task.rowsExported = result.rows.length;
+          task.totalRows = result.rows.length;
+          task.finishedAt = Date.now();
+        }
+        toast(t("grid.exported"));
+        void autoRevealExportedPathIfConfigured(filePath);
+        return "settled";
+      }
+      let columns: string[] | undefined;
+      let columnComments: (string | null)[] | undefined;
+
+      if (columnInfos) {
+        columns = columnInfos.map((c) => c.name);
+        if (format === "xlsx") {
+          columnComments = buildXlsxHeaderOverrides(
+            columns,
+            columnInfos.map((column) => column.comment),
+            headerMode,
+          );
+        }
+      } else if (captured.connectionType === "neo4j") {
+        const infos = await read(() => api.getColumns(connectionId, database, schema || database, tableName, catalog));
+        columns = infos.map((c) => c.name);
+      }
+
+      task ??= addExportTask(tableName, format, filePath);
+      const currentTask = task;
+      const rowLimit = settings.exportRowLimitEnabled ? settings.exportRowLimit : null;
+      const request: api.TableExportRequest = {
+        exportId: currentTask.exportId,
+        connectionId,
+        database,
+        schema,
+        identifierQuote,
+        tableName,
+        filePath,
+        format,
+        ...(format === "sql"
+          ? {
+              insertMode,
+              insertDialect,
+              splitMaxMb,
+              omitDatabaseQualifier: dropsSchemaQualifier(databaseType, settings.generateSqlIncludeDatabaseName, catalog),
+            }
+          : {}),
+        csvQuoteMode: settings.csvQuoteMode,
+        nullLiteral: csvNullLiteralForMode(settings.csvNullMode),
+        columns,
+        columnComments: format === "xlsx" ? columnComments : undefined,
+        headerCommentRows: format === "xlsx" ? xlsxHeaderUsesCommentRows(headerMode) : undefined,
+        autoFilter: format === "xlsx" ? autoFilter : undefined,
+        batchSize: settings.exportBatchSize,
+        skipCount: format === "sql",
+        rowLimit,
+      };
+
+      check();
+      backendStarted = true;
+      const onProgress = (progress: api.TableExportProgress) => {
+        if (progress.status === "Done" || progress.status === "Error" || progress.status === "Cancelled") terminal = progress;
+        updateTableExportTask(currentTask.exportId, progress);
+      };
+      const terminalProgress = await (native ? api.startTableExport(request, onProgress, true) : api.startTableExport(request, onProgress));
+      if (native && terminalProgress.status !== "Done" && terminalProgress.status !== "Error" && terminalProgress.status !== "Cancelled") throw new SnapshotCompletionError("unknown", "Export completion was not confirmed");
+      updateTableExportTask(currentTask.exportId, terminalProgress);
+      if (terminalProgress.status === "Done") {
+        toast(t("grid.exported"));
+      }
+      return "settled";
+    } catch (e: any) {
+      if (native && terminal?.status === "Done" && task) {
+        updateTableExportTask(task.exportId, terminal);
+        return "settled";
+      }
+      unknown ||= native && ((backendStarted && !terminal && !(e instanceof SnapshotCompletionError && e.status === "failed")) || (e instanceof SnapshotCompletionError && e.status === "unknown"));
+      if (task) {
+        task.status = unknown ? "Unknown" : native && (terminal?.status === "Cancelled" || (e instanceof SnapshotCompletionError && e.status === "cancelled")) ? "Cancelled" : "Error";
+        task.errorMessage = e?.message || String(e);
+        task.finishedAt = unknown ? undefined : Date.now();
+      }
+      toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+      return unknown ? "unknown" : "settled";
+    } finally {
+      if (native && task) {
+        task.canCancel = false;
+        if (!unknown) exportTracker.unregisterTaskCancelHandler(task.exportId);
+      }
+    }
+  };
+  if (!native) {
+    await execute();
+    return;
+  }
+  let completion: Promise<"settled" | "unknown"> | undefined;
+  exportTracker.submitExportTask(task!, mode, () => (completion = execute()));
+  if (mode === "immediate") await completion;
 }
 
 function requestCopyAsNewTable(row: ObjectBrowserRow) {
