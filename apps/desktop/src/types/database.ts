@@ -1766,6 +1766,8 @@ export interface QueryResult {
   appended_from_row_count?: number;
   /** Set for synthesized query execution failures. */
   execution_error?: true;
+  /** Frontend execution that published this result; absent on older cached results. */
+  sourceExecutionId?: string;
   /** Set only for SQL Server informational messages emitted by the backend. */
   server_message?: true;
   /** Manual-transaction UX marker for sticky proven-read-only dialects (Oracle,
