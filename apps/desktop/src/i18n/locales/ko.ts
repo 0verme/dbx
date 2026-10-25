@@ -10236,6 +10236,7 @@ export default withEnglishFallback({
     formatSql: "SQL(.sql)",
     formatNb3: "Navicat 백업(.nb3)",
     formatNb3Hint: "MySQL 및 PostgreSQL용 Navicat 백업 형식입니다. DBX에서는 일반 SQL 백업처럼 복원할 수 있습니다.",
+    formatNb3Unsupported: "Navicat .nb3 백업은 MySQL 및 PostgreSQL 연결에서만 지원됩니다. SQL 또는 Gzip을 선택하세요.",
     restoreFromFile: "파일에서 복원",
     restoreFromFileHint: "어느 위치에 있든 .sql, .sql.gz, .nb3 백업 파일을 복원합니다",
     importBackup: "백업 가져오기",

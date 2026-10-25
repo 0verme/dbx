@@ -11913,6 +11913,7 @@ export default withEnglishFallback({
     formatSql: "SQL（.sql）",
     formatNb3: "Navicat 備份（.nb3）",
     formatNb3Hint: "適用於 MySQL 與 PostgreSQL 的 Navicat 備份格式，DBX 可像一般 SQL 備份一樣還原。",
+    formatNb3Unsupported: "Navicat .nb3 備份僅支援 MySQL 與 PostgreSQL 連線，請選擇 SQL 或 Gzip。",
     restoreFromFile: "從檔案還原",
     restoreFromFileHint: "從任意位置還原 .sql、.sql.gz 或 .nb3 備份檔案",
     importBackup: "匯入備份",

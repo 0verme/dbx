@@ -11457,6 +11457,7 @@ export default {
     formatSql: "SQL (.sql)",
     formatNb3: "Navicat backup (.nb3)",
     formatNb3Hint: "Navicat backup format for MySQL and PostgreSQL. DBX restores it like any SQL backup.",
+    formatNb3Unsupported: "Navicat .nb3 backups support MySQL and PostgreSQL connections only. Choose SQL or Gzip.",
     restoreFromFile: "Restore from file",
     restoreFromFileHint: "Restore a .sql, .sql.gz or .nb3 backup file from anywhere",
     importBackup: "Import backup",

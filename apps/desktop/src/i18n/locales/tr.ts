@@ -9052,6 +9052,7 @@ export default withEnglishFallback({
     formatSql: "SQL (.sql)",
     formatNb3: "Navicat yedeği (.nb3)",
     formatNb3Hint: "MySQL ve PostgreSQL için Navicat yedek biçimi. DBX bunu herhangi bir SQL yedeği gibi geri yükler.",
+    formatNb3Unsupported: "Navicat .nb3 yedekleri yalnızca MySQL ve PostgreSQL bağlantılarını destekler. SQL veya Gzip seçin.",
     restoreFromFile: "Dosyadan geri yükle",
     restoreFromFileHint: "Herhangi bir konumdaki .sql, .sql.gz veya .nb3 yedek dosyasını geri yükleyin",
     importBackup: "Yedeği içe aktar",

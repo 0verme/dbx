@@ -9158,6 +9158,7 @@ export default withEnglishFallback({
     formatSql: "SQL (.sql)",
     formatNb3: "Navicat ehtiyat nüsxəsi (.nb3)",
     formatNb3Hint: "MySQL və PostgreSQL üçün Navicat ehtiyat nüsxə formatı. DBX onu istənilən SQL ehtiyat nüsxəsi kimi bərpa edir.",
+    formatNb3Unsupported: "Navicat .nb3 ehtiyat nüsxələri yalnız MySQL və PostgreSQL bağlantılarını dəstəkləyir. SQL və ya Gzip seçin.",
     restoreFromFile: "Fayldan bərpa et",
     restoreFromFileHint: "İstənilən yerdən .sql, .sql.gz və ya .nb3 ehtiyat nüsxə faylını bərpa edin",
     importBackup: "Ehtiyat nüsxəni idxal et",

@@ -11658,6 +11658,7 @@ export default withEnglishFallback({
     formatSql: "SQL (.sql)",
     formatNb3: "Резервная копия Navicat (.nb3)",
     formatNb3Hint: "Формат резервной копии Navicat для MySQL и PostgreSQL. DBX восстанавливает его так же, как обычную SQL-копию.",
+    formatNb3Unsupported: "Резервные копии Navicat .nb3 поддерживаются только для подключений MySQL и PostgreSQL. Выберите SQL или Gzip.",
     restoreFromFile: "Восстановить из файла",
     restoreFromFileHint: "Восстановить резервную копию из файла .sql, .sql.gz или .nb3 в любом месте",
     importBackup: "Импортировать копию",
