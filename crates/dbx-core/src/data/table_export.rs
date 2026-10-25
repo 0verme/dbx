@@ -1,3 +1,4 @@
+use super::duckdb_export::DuckDbExportSnapshot;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -725,8 +726,12 @@ async fn fetch_table_export_batch(
     cursor_session: &mut Option<TableExportCursorSession>,
     table_read_attempted: &mut bool,
     table_read_completed: &mut bool,
+    duckdb_snapshot: Option<&DuckDbExportSnapshot>,
     cancel_token: CancellationToken,
 ) -> Result<QueryResult, String> {
+    if let Some(snapshot) = duckdb_snapshot {
+        return snapshot.page(state, offset, active_batch_size, Some(cancel_token)).await;
+    }
     if *table_read_completed {
         return Ok(QueryResult {
             columns: col_names.to_vec(),
@@ -1579,9 +1584,20 @@ pub async fn export_table_data_core(
         last_rows_exported.store(progress.rows_exported, Ordering::SeqCst);
         on_progress(progress);
     };
-    let result =
-        export_table_data_core_inner(state, request, &tracked_progress, cancelled.clone(), cancel_token.clone()).await;
+    let mut duckdb_snapshot = None;
+    let result = export_table_data_core_inner(
+        state,
+        request,
+        &tracked_progress,
+        cancelled.clone(),
+        cancel_token.clone(),
+        &mut duckdb_snapshot,
+    )
+    .await;
     cancel_watcher.abort();
+    if let Some(snapshot) = duckdb_snapshot {
+        snapshot.close(state).await;
+    }
     let client_session_id = table_export_client_session_id(&request.export_id);
     let _ = state.close_client_session_pool(&request.connection_id, Some(&request.database), &client_session_id).await;
     match result {
@@ -1606,6 +1622,7 @@ async fn export_table_data_core_inner(
     on_progress: &impl Fn(TableExportProgress),
     cancelled: Arc<AtomicBool>,
     cancel_token: CancellationToken,
+    duckdb_snapshot: &mut Option<DuckDbExportSnapshot>,
 ) -> Result<(), String> {
     // 1. Get database type
     let db_type = {
@@ -1798,6 +1815,24 @@ async fn export_table_data_core_inner(
         return Ok(());
     }
 
+    if db_type == DatabaseType::DuckDb {
+        let snapshot = duckdb_snapshot.insert(DuckDbExportSnapshot::new(
+            &request.connection_id,
+            &request.database,
+            request.schema.as_deref(),
+            QueryExecutionOptions {
+                client_session_id: Some(client_session_id),
+                // Bounds the small paged reads only: materialization runs as a
+                // full source scan and deliberately ignores the interactive
+                // query timeout so it cannot SIGKILL the worker mid-export.
+                timeout_secs: Some(table_export_query_timeout_secs(state, &pool_key).await),
+                ..Default::default()
+            },
+        ));
+        let sql = table_cursor_sql(request, &sql_context, query_col_names.as_ref(), &column_types, &primary_keys);
+        snapshot.materialize(state, &sql, row_limit, Some(cancel_token.clone())).await?;
+    }
+
     // 8. Create output file
     let mut file = if request.format.eq_ignore_ascii_case("sql") {
         create_table_export_sql_writer(request)?
@@ -1860,6 +1895,7 @@ async fn export_table_data_core_inner(
                     &mut cursor_session,
                     &mut table_read_attempted,
                     &mut table_read_completed,
+                    duckdb_snapshot.as_ref(),
                     cancel_token.clone(),
                 )
                 .await?;
@@ -1960,6 +1996,7 @@ async fn export_table_data_core_inner(
                     &mut cursor_session,
                     &mut table_read_attempted,
                     &mut table_read_completed,
+                    duckdb_snapshot.as_ref(),
                     cancel_token.clone(),
                 )
                 .await?;
@@ -2074,6 +2111,7 @@ async fn export_table_data_core_inner(
                     &mut cursor_session,
                     &mut table_read_attempted,
                     &mut table_read_completed,
+                    duckdb_snapshot.as_ref(),
                     cancel_token.clone(),
                 )
                 .await?;
@@ -2170,6 +2208,7 @@ async fn export_table_data_core_inner(
                     &mut cursor_session,
                     &mut table_read_attempted,
                     &mut table_read_completed,
+                    duckdb_snapshot.as_ref(),
                     cancel_token.clone(),
                 )
                 .await?;
@@ -2255,6 +2294,7 @@ async fn export_table_data_core_inner(
                     &mut cursor_session,
                     &mut table_read_attempted,
                     &mut table_read_completed,
+                    duckdb_snapshot.as_ref(),
                     cancel_token.clone(),
                 )
                 .await?;
@@ -2340,6 +2380,7 @@ async fn export_table_data_core_inner(
                     &mut cursor_session,
                     &mut table_read_attempted,
                     &mut table_read_completed,
+                    duckdb_snapshot.as_ref(),
                     cancel_token.clone(),
                 )
                 .await?;
