@@ -39,8 +39,24 @@ pub(super) fn cleanup_directory(directory: &Path) -> io::Result<usize> {
         }
         let path = entry.path();
         let Ok(metadata) = fs::symlink_metadata(&path) else { continue };
-        // Never recurse or follow links; locked/read-only leftovers can be retried next launch.
-        if metadata.is_file() && !is_link(&metadata) && fs::remove_file(&path).is_ok() {
+        // Never recurse or follow links; locked leftovers can be retried next launch.
+        if !metadata.is_file() || is_link(&metadata) {
+            continue;
+        }
+        // A READONLY attribute makes fs::remove_file fail with Access Denied on
+        // Windows, so one read-only leftover would otherwise survive every
+        // startup pass. Clear the attribute (the name pattern is strict enough)
+        // before deleting. This is Windows-only: on Unix unlinking only needs a
+        // writable directory, and clearing the write bits would widen the mode
+        // to 0666 if the delete failed. The clear is best-effort so a failed
+        // attribute write never skips the delete attempt.
+        #[cfg(windows)]
+        if metadata.permissions().readonly() {
+            let mut permissions = metadata.permissions();
+            permissions.set_readonly(false);
+            let _ = fs::set_permissions(&path, permissions);
+        }
+        if fs::remove_file(&path).is_ok() {
             removed += 1;
         }
     }
@@ -122,6 +138,20 @@ mod tests {
         let missing = directory.0.join("missing");
         assert_eq!(cleanup_directory(&missing).unwrap(), 0);
         assert!(!missing.exists());
+    }
+
+    #[test]
+    fn removes_read_only_leftovers() {
+        let directory = TestDirectory::new();
+        let readonly_path = directory.0.join("dbx-mcp.exe~RF8c73e4f.TMP");
+        fs::write(&readonly_path, b"readonly leftover").unwrap();
+        let mut permissions = fs::metadata(&readonly_path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&readonly_path, permissions).unwrap();
+        assert!(fs::metadata(&readonly_path).unwrap().permissions().readonly());
+
+        assert_eq!(cleanup_directory(&directory.0).unwrap(), 1);
+        assert!(!readonly_path.exists());
     }
 
     #[cfg(unix)]
