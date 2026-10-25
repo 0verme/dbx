@@ -900,9 +900,18 @@ const groupDefs: Array<{
   {
     key: "__packages",
     label: "tree.packages",
-    objectTypes: ["PACKAGE", "PACKAGE_BODY"],
+    objectTypes: ["PACKAGE"],
     nodeType: "group-packages",
-    childType: (objectType) => (objectType === "PACKAGE_BODY" ? "package-body" : "package"),
+    childType: "package",
+  },
+  {
+    // #13239: package bodies live in their own group (PL/SQL Developer style)
+    // so browsing/editing the body no longer risks picking the spec.
+    key: "__package_bodies",
+    label: "tree.packageBodies",
+    objectTypes: ["PACKAGE_BODY"],
+    nodeType: "group-package-bodies",
+    childType: "package-body",
   },
   {
     key: "__types",
@@ -929,6 +938,7 @@ const objectGroupNodeTypes = new Set<TreeNodeType>([
   "group-synonyms",
   "group-jobs",
   "group-packages",
+  "group-package-bodies",
   "group-types",
 ]);
 
@@ -974,8 +984,16 @@ export function objectGroupRefreshParentId(node: TreeNode): string | null {
   return node.id.slice(0, suffixStart);
 }
 
-export function objectTypesForGroupNode(type: TreeNodeType): DatabaseObjectTreeKind[] | null {
-  return groupDefs.find((def) => def.nodeType === type)?.objectTypes ?? null;
+/**
+ * #13239: Xugu folds a package body into its package spec node, so the packages
+ * group must still fetch and keep PACKAGE_BODY rows — a body that only arrives
+ * on a later page then collapses into the spec child through
+ * `coalesceXuguPackageObjects`. Other drivers keep bodies in their own
+ * `__package_bodies` group.
+ */
+export function objectTypesForGroupNode(type: TreeNodeType, databaseType?: DatabaseType): DatabaseObjectTreeKind[] | null {
+  const objectTypes = groupDefs.find((def) => def.nodeType === type)?.objectTypes ?? null;
+  return objectTypes && type === "group-packages" && databaseType === "xugu" ? ["PACKAGE", "PACKAGE_BODY"] : objectTypes;
 }
 
 export function buildGroupedObjectTreeNodes({
