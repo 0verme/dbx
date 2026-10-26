@@ -7946,7 +7946,18 @@ async fn list_objects_once(
             } else if db_config.as_ref().is_some_and(db::starrocks::is_config) {
                 db::starrocks::list_table_objects(p, database).await.map(unpaged_object_list)
             } else if db_config.as_ref().is_some_and(db::oceanbase_mysql::is_config) {
-                db::oceanbase_mysql::list_objects(p, database).await.map(unpaged_object_list)
+                let mut objects = db::oceanbase_mysql::list_objects(p, database).await?;
+                // The OceanBase MySQL branch only lists tables/materialized views and
+                // routines; reuse the generic MySQL trigger/event queries so the object
+                // browser counts match SHOW TRIGGERS / information_schema.EVENTS.
+                let supplemental_types = vec!["TRIGGER".to_string(), "EVENT".to_string()];
+                match db::mysql::list_objects(p, database, Some(&supplemental_types), None, None).await {
+                    Ok(supplemental) => objects.extend(supplemental.objects),
+                    Err(error) => log::warn!(
+                        "Skipping triggers/events for OceanBase database `{database}` in object browser: {error}"
+                    ),
+                }
+                Ok(unpaged_object_list(objects))
             } else if db_config.as_ref().is_some_and(db::mysql_compatible::uses_show_metadata) {
                 db::mysql::list_table_objects_show(p, database).await.map(unpaged_object_list)
             } else if mysql_table_list_source_for_config(db_config.as_ref()) == MysqlTableListSource::ShowFullTables {
