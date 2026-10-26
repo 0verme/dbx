@@ -331,6 +331,16 @@ describe.each([false, true])("Snowflake namespace completion (semantic=%s)", (se
     expect(tables.map((table) => table.name)).toContain("NEW_TABLE");
   });
 
+  it("prefetches the active database completion tables", async () => {
+    const { metadata, store } = createHarness({ database: "shop" });
+    store.listCompletionTables.mockResolvedValue([{ name: "TIS_ORDER", database: "shop" }]);
+
+    await metadata.prefetchCompletionTables();
+
+    expect(store.listCompletionTables).toHaveBeenCalledWith("connection", "shop", "", 500, undefined, false, undefined, undefined, { activateConnection: false });
+    expect(metadata.cachedTables.map((table) => table.name)).toContain("TIS_ORDER");
+  });
+
   it.each([false, true])("preserves the quote-identifiers preference (%s) for mixed-case table insertion", async (quoteIdentifiers) => {
     const { catalogs, provide, currentView, settings } = snowflakeHarness("SELECT * FROM ");
     catalogs.DEFAULT_DB!.PUBLIC = ["DimCustomer"];
