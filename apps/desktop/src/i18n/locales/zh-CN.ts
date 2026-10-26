@@ -1080,6 +1080,11 @@ export default withEnglishFallback({
     alwaysOnTop: "窗口置顶",
     alwaysOnTopOff: "取消置顶",
     blockDangerousRedisCommands: "拦截危险命令",
+    mongoQueryLanguage: "MongoDB 查询语言",
+    mongoShellMode: "Shell",
+    mongoSqlMode: "SQL",
+    copyMongoShell: "复制生成的 shell",
+    mongoShellCopied: "已复制 Mongo shell 命令",
     multiDbExecute: "多库执行",
   },
   multiDbExecute: {
@@ -2827,6 +2832,8 @@ export default withEnglishFallback({
   queryMessages: {
     empty: "没有消息",
     code: "代码：{code}",
+    mongoShell: "生成的 mongo shell",
+    copyMongoShell: "复制 shell",
   },
   chart: {
     title: "图表",

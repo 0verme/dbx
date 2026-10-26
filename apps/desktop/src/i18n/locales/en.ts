@@ -1144,6 +1144,11 @@ export default {
     alwaysOnTop: "Keep window on top",
     alwaysOnTopOff: "Don't keep on top",
     blockDangerousRedisCommands: "Block dangerous commands",
+    mongoQueryLanguage: "MongoDB query language",
+    mongoShellMode: "Shell",
+    mongoSqlMode: "SQL",
+    copyMongoShell: "Copy generated shell",
+    mongoShellCopied: "Mongo shell command copied",
     multiDbExecute: "Multi-db execute",
   },
   multiDbExecute: {
@@ -2895,6 +2900,8 @@ export default {
   queryMessages: {
     empty: "No messages",
     code: "Code: {code}",
+    mongoShell: "Generated mongo shell",
+    copyMongoShell: "Copy shell",
   },
   chart: {
     title: "Chart",
