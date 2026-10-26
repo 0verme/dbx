@@ -111,16 +111,9 @@ interface OrderKey {
   direction: 1 | -1;
 }
 
-type Tok =
-  | { kind: "ident"; text: string }
-  | { kind: "string"; text: string }
-  | { kind: "number"; value: number }
-  | { kind: "op"; text: string }
-  | { kind: "eof" };
+type Tok = { kind: "ident"; text: string } | { kind: "string"; text: string } | { kind: "number"; value: number } | { kind: "op"; text: string } | { kind: "eof" };
 
-const RESERVED = new Set(
-  "select from where group by order limit offset insert into values update set delete as join inner left right full cross outer on and or not in is null like ilike between union intersect except with distinct having over window true false".split(" "),
-);
+const RESERVED = new Set("select from where group by order limit offset insert into values update set delete as join inner left right full cross outer on and or not in is null like ilike between union intersect except with distinct having over window true false".split(" "));
 
 function translateMongoSqlStatement(sql: string): string {
   const parser = new Parser(sql);
@@ -379,7 +372,8 @@ class Parser {
     if (this.eatKeyword("like")) return this.finishLike(left, false);
     if (this.eatKeyword("ilike")) return this.finishLike(left, false, true);
     if (this.eatKeyword("between")) return this.finishBetween(left, false);
-    const op = this.peek().kind === "op" ? this.peek().text : undefined;
+    const peekedOp = this.peek();
+    const op = peekedOp.kind === "op" ? peekedOp.text : undefined;
     if (op === "=" || op === "!=" || op === "<>" || op === ">" || op === "<" || op === ">=" || op === "<=") {
       this.next();
       const right = this.parsePrimary();
@@ -521,7 +515,7 @@ class Parser {
     return token;
   }
 
-  private peekKeyword(): string | undefined {
+  peekKeyword(): string | undefined {
     const token = this.peek();
     return token.kind === "ident" ? token.text.toLowerCase() : undefined;
   }
@@ -690,7 +684,7 @@ function compileSelect(items: SelectItem[], from: TableRef, joins: Join[], where
     const chain = [orderBy.length ? `.sort(${printShell(orderDocument(orderBy, items, false, aliases, from))})` : "", offset ? `.skip(${offset})` : "", limit !== undefined ? `.limit(${limit})` : ""].join("");
     return `${mongoCall(from, "find", args)}${chain}`;
   }
-    if (items.some((item) => item.type === "agg") && !groupBy) {
+  if (items.some((item) => item.type === "agg") && !groupBy) {
     const onlyCount = items.length === 1 && items[0]?.fn === "count" && items[0].star && !items[0].alias;
     if (onlyCount && !orderBy.length && limit === undefined && offset === undefined && joins.length === 0) {
       const filter = where ? exprToFilter(where, aliases) : {};
@@ -775,7 +769,7 @@ function groupStage(items: SelectItem[], groupBy: FieldRef[], aliases: AliasMap,
     if (item.field) rejectNegativeIndex(item.field, "an aggregate");
     const path = item.star || !item.field ? undefined : `$${qualifiedPath(fieldPath(item.field, aliases, from))}`;
     if (item.fn === "count") {
-      group[name] = item.star ? { $sum: 1 } : { $sum: { $cond: [{ $ne: [path, null] }, 1, 0] } };
+      group[name] = item.star || !path ? { $sum: 1 } : { $sum: { $cond: [{ $ne: [path, null] }, 1, 0] } };
     } else {
       if (!path) throw new MongoSqlError(`${item.fn.toUpperCase()}() requires a field.`);
       group[name] = { [`$${item.fn}`]: path };
@@ -816,6 +810,10 @@ function assignGroupKey(target: Record<string, ShellValue>, path: string, value:
   cursor[leaf] = value;
 }
 
+function lastPartName(field: FieldRef | undefined): string | undefined {
+  return field?.parts[field.parts.length - 1]?.name;
+}
+
 function groupProject(items: SelectItem[], groupBy: FieldRef[], aliases: AliasMap, from: TableRef): ShellValue | undefined {
   if (groupBy.length !== 1) return undefined;
   const grouped = fieldPath(groupBy[0]!, aliases, from).path.split(".").pop() ?? "";
@@ -827,7 +825,7 @@ function groupProject(items: SelectItem[], groupBy: FieldRef[], aliases: AliasMa
     if (!name) continue;
     project[name] = "$_id";
   }
-  if (!(grouped in project) && selected.some((item) => (item.alias ?? item.field?.parts.at(-1)?.name) === grouped)) {
+  if (!(grouped in project) && selected.some((item) => (item.alias ?? lastPartName(item.field)) === grouped)) {
     project[grouped] = "$_id";
   }
   const used = new Set<string>();
@@ -862,7 +860,7 @@ function aggregateName(item: SelectItem, used: Set<string>): string {
     used.add(item.alias);
     return item.alias;
   }
-  const base = item.fn === "count" && item.star ? "count" : `${item.fn}_${item.field?.parts.at(-1)?.name ?? "value"}`;
+  const base = item.fn === "count" && item.star ? "count" : `${item.fn}_${lastPartName(item.field) ?? "value"}`;
   let name = base;
   let n = 2;
   while (used.has(name)) {
@@ -1018,24 +1016,23 @@ function exprToFilter(expr: Expr, aliases: AliasMap, options?: { qualifyJoin?: b
     if (expr.insensitive) regex.$options = "i";
     return expr.negated ? { [key]: { $not: regex } } : { [key]: regex };
   }
-  return comparisonToFilter(expr, aliases, options);
+  if (expr.type === "cmp") return comparisonToFilter(expr, aliases, options);
+  throw new MongoSqlError(`Unsupported expression type: ${expr.type}.`);
 }
 
 function comparisonToFilter(expr: Extract<Expr, { type: "cmp" }>, aliases: AliasMap, options?: { qualifyJoin?: boolean }): ShellValue {
   const mongoOp = expr.op === "=" ? undefined : expr.op === "!=" ? "$ne" : expr.op === ">" ? "$gt" : expr.op === "<" ? "$lt" : expr.op === ">=" ? "$gte" : "$lte";
-  const leftField = expr.left.type === "field";
-  const rightField = expr.right.type === "field";
-  if (leftField && rightField) {
+  if (expr.left.type === "field" && expr.right.type === "field") {
     const left = `$${filterKey(expr.left.field, aliases, options)}`;
     const right = `$${filterKey(expr.right.field, aliases, options)}`;
     const op = mongoOp ?? "$eq";
     return { $expr: { [op]: [left, right] } };
   }
-  if (!leftField && !rightField) throw new MongoSqlError("A comparison needs a field.");
-  const field = leftField ? expr.left.field : expr.right.field;
-  const value = leftField ? (expr.right as Extract<Primary, { type: "value" }>).value : (expr.left as Extract<Primary, { type: "value" }>).value;
+  if (expr.left.type !== "field" && expr.right.type !== "field") throw new MongoSqlError("A comparison needs a field.");
+  const field = expr.left.type === "field" ? expr.left.field : (expr.right as Extract<Primary, { type: "field" }>).field;
+  const value = expr.left.type === "field" ? (expr.right as Extract<Primary, { type: "value" }>).value : (expr.left as Extract<Primary, { type: "value" }>).value;
   let op = mongoOp;
-  if (!leftField && op) {
+  if (expr.left.type !== "field" && op) {
     op = op === "$gt" ? "$lt" : op === "$lt" ? "$gt" : op === "$gte" ? "$lte" : op === "$lte" ? "$gte" : op;
   }
   const key = filterKey(field, aliases, options);
@@ -1114,12 +1111,16 @@ function exprOwners(expr: Expr, aliases: AliasMap, from: TableRef): Set<string> 
     owners.add(resolved.owner === "base" ? "base" : resolved.owner);
   };
   const visit = (node: Expr) => {
-    if (node.type === "and" || node.type === "or") node.items.forEach(visit);
-    else if (node.type === "not") visit(node.item);
-    else if (node.type === "cmp") {
+    if (node.type === "and" || node.type === "or") {
+      node.items.forEach(visit);
+    } else if (node.type === "not") {
+      visit(node.item);
+    } else if (node.type === "cmp") {
       if (node.left.type === "field") visitField(node.left.field);
       if (node.right.type === "field") visitField(node.right.field);
-    } else visitField(node.field);
+    } else if (node.type === "in" || node.type === "between" || node.type === "like" || node.type === "null") {
+      visitField(node.field);
+    }
   };
   visit(expr);
   return owners;
