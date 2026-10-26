@@ -10229,7 +10229,7 @@ export default withEnglishFallback({
     supportInfoLocalDriverVersions: "Versiones de controladores locales",
     supportInfoAiProviders: "Proveedores de IA",
     sidebarSearchOpenedDatabasesOnly: "Buscar solo en bases de datos abiertas",
-    sidebarSearchOpenedDatabasesOnlyDescription: "La búsqueda de la barra lateral solo carga las bases de datos abiertas en la conexión actual (si no hay ninguna abierta, busca en todas). Al desactivarla, se buscará en todas las bases de datos de esa conexión.",
+    sidebarSearchOpenedDatabasesOnlyDescription: "La búsqueda de la barra lateral solo carga las bases de datos abiertas en la conexión actual. Al desactivarla, se buscará en todas las bases de datos de esa conexión.",
     shortcutSelectLineEnds: "Seleccionar finales de línea",
     openQueryOnConnectionOpen: "Abrir la página de consulta al abrir la conexión",
     openQueryOnConnectionOpenDescription: "Al abrir una conexión o base de datos, abre su consulta default.sql y guarda los cambios automáticamente.",

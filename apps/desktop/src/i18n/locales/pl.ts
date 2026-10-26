@@ -8787,7 +8787,7 @@ export default withEnglishFallback({
     sidebarTableSearchEnabled: "Włącz wyszukiwanie tabel w bazach danych",
     sidebarTableSearchEnabledDescription: "Wyświetlaj lokalne pole wyszukiwania tabel pod rozwiniętymi bazami danych, schematami lub grupami, aby każdy zakres mógł filtrować niezależnie.",
     sidebarSearchOpenedDatabasesOnly: "Szukaj tylko w otwartych bazach danych",
-    sidebarSearchOpenedDatabasesOnlyDescription: "Wyszukiwanie w pasku bocznym przeszukuje tylko bazy otwarte w aktywnym połączeniu (lub wszystkie, jeśli żadna nie jest otwarta). Wyłącz, aby przeszukiwać każdą bazę połączenia.",
+    sidebarSearchOpenedDatabasesOnlyDescription: "Wyszukiwanie w pasku bocznym przeszukuje tylko bazy otwarte w aktywnym połączeniu. Wyłącz, aby przeszukiwać każdą bazę połączenia.",
     sidebarObjectInfoMode: "Informacje uzupełniające na pasku bocznym",
     sidebarObjectInfoModeDescription:
       "Choose comments, object sizes, or no supplementary text after names. Comments and sizes are mutually exclusive. Database totals currently support PostgreSQL; table sizes support MySQL, PostgreSQL, GaussDB, KingbaseES, GBase 8a, SQL Server, Oracle, Dameng, and ClickHouse.",

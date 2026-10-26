@@ -10404,7 +10404,7 @@ export default {
     sidebarTableSearchEnabled: "Enable table search inside databases",
     sidebarTableSearchEnabledDescription: "Show a local table search box under expanded databases, schemas, or table groups so each scope can filter tables independently.",
     sidebarSearchOpenedDatabasesOnly: "Search only opened databases",
-    sidebarSearchOpenedDatabasesOnlyDescription: "The sidebar search loads only databases you have opened in the active connection (all of them when none is opened). Turn off to search every database of the connection.",
+    sidebarSearchOpenedDatabasesOnlyDescription: "The sidebar search loads only databases you have opened in the active connection. Turn off to search every database of the connection.",
     sidebarObjectInfoMode: "Sidebar supplementary info",
     sidebarObjectInfoModeDescription:
       "Choose comments, object sizes, both, or no supplementary text after names. When both are enabled, the comment follows the name and the size is shown at the far right. Information with no corresponding data is hidden. Database totals currently support PostgreSQL; table sizes support MySQL, PostgreSQL, GaussDB, KingbaseES, GBase 8a, SQL Server, Oracle, Dameng, and ClickHouse.",

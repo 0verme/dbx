@@ -11551,7 +11551,7 @@ export default withEnglishFallback({
     resultTabPreferComments: "Предпочитать комментарии SQL, если они есть",
     resultTabPreferCommentsDescription: "Использовать комментарий над SQL-запросом; отключите, чтобы всегда отображать имя исходной таблицы.",
     sidebarSearchOpenedDatabasesOnly: "Искать только в открытых базах данных",
-    sidebarSearchOpenedDatabasesOnlyDescription: "Поиск на боковой панели загружает только открытые базы данных в текущем подключении (если ни одна не открыта, поиск выполняется по всем). Если отключить, поиск будет выполняться по всем базам данных этого подключения.",
+    sidebarSearchOpenedDatabasesOnlyDescription: "Поиск на боковой панели загружает только открытые базы данных в текущем подключении. Если отключить, поиск будет выполняться по всем базам данных этого подключения.",
     shortcutSelectLineEnds: "Выделить концы строк",
     openQueryOnConnectionOpen: "Открывать страницу запроса при открытии подключения",
     openQueryOnConnectionOpenDescription: "При открытии подключения или базы данных открывается запрос default.sql. Изменения сохраняются автоматически.",

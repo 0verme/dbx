@@ -8715,7 +8715,7 @@ export default withEnglishFallback({
     sidebarTableSearchEnabled: "Aktifkan pencarian tabel dalam database",
     sidebarTableSearchEnabledDescription: "Tampilkan kotak pencarian tabel lokal di bawah database, skema, atau grup tabel yang diperluas sehingga setiap cakupan dapat memfilter tabelnya sendiri.",
     sidebarSearchOpenedDatabasesOnly: "Cari hanya pada database yang terbuka",
-    sidebarSearchOpenedDatabasesOnlyDescription: "Pencarian bilah sisi hanya memuat database yang sudah Anda buka pada koneksi aktif (semuanya jika tidak ada yang terbuka). Nonaktifkan untuk mencari semua database pada koneksi tersebut.",
+    sidebarSearchOpenedDatabasesOnlyDescription: "Pencarian bilah sisi hanya memuat database yang sudah Anda buka pada koneksi aktif. Nonaktifkan untuk mencari semua database pada koneksi tersebut.",
     sidebarObjectInfoMode: "Info tambahan bilah sisi",
     sidebarObjectInfoModeDescription:
       "Pilih komentar, ukuran objek, keduanya, atau tanpa info tambahan. Jika keduanya dipilih, komentar tampil setelah nama dan ukuran di paling kanan. Informasi yang datanya tidak tersedia akan disembunyikan. Total database saat ini mendukung PostgreSQL; ukuran tabel mendukung MySQL, PostgreSQL, GaussDB, KingbaseES, GBase 8a, SQL Server, Oracle, Dameng, dan ClickHouse.",

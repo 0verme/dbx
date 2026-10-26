@@ -10074,7 +10074,7 @@ export default withEnglishFallback({
     supportInfoLocalDriverVersions: "로컬 드라이버 버전",
     supportInfoAiProviders: "AI 제공자",
     sidebarSearchOpenedDatabasesOnly: "열려 있는 데이터베이스만 검색",
-    sidebarSearchOpenedDatabasesOnlyDescription: "사이드바 검색은 현재 연결에서 열려 있는 데이터베이스만 로드합니다(열려 있는 데이터베이스가 하나도 없으면 전체를 검색). 끄면 해당 연결의 모든 데이터베이스를 검색합니다.",
+    sidebarSearchOpenedDatabasesOnlyDescription: "사이드바 검색은 현재 연결에서 열려 있는 데이터베이스만 로드합니다. 끄면 해당 연결의 모든 데이터베이스를 검색합니다.",
     shortcutSelectLineEnds: "줄 끝 선택",
     openQueryOnConnectionOpen: "연결을 열 때 쿼리 페이지로 이동",
     openQueryOnConnectionOpenDescription: "활성화하면 연결 또는 데이터베이스를 열 때 default.sql 쿼리를 열고 변경 사항을 자동 저장합니다.",

@@ -10006,7 +10006,7 @@ export default withEnglishFallback({
     supportInfoLocalDriverVersions: "ローカルドライバーのバージョン",
     supportInfoAiProviders: "AIプロバイダー",
     sidebarSearchOpenedDatabasesOnly: "開いているデータベースのみを検索",
-    sidebarSearchOpenedDatabasesOnlyDescription: "サイドバー検索は、現在の接続で開いているデータベースのみを読み込みます（1つも開いていない場合はすべてを検索します）。オフにすると、その接続のすべてのデータベースを検索します。",
+    sidebarSearchOpenedDatabasesOnlyDescription: "サイドバー検索は、現在の接続で開いているデータベースのみを読み込みます。オフにすると、その接続のすべてのデータベースを検索します。",
     shortcutSelectLineEnds: "行末を選択",
     openQueryOnConnectionOpen: "接続を開いたときにクエリページを開く",
     openQueryOnConnectionOpenDescription: "有効にすると、接続またはデータベースを開いたときに default.sql を開き、変更を自動保存します。",

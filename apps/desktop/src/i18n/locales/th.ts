@@ -10927,7 +10927,7 @@ export default withEnglishFallback({
     sidebarTableSearchEnabled: "เปิดใช้การค้นหาตารางภายในฐานข้อมูล",
     sidebarTableSearchEnabledDescription: "แสดงช่องค้นหาตารางเฉพาะที่ใต้ฐานข้อมูล Schema หรือกลุ่มตารางที่ขยาย เพื่อให้แต่ละขอบเขตกรองตารางได้อิสระ",
     sidebarSearchOpenedDatabasesOnly: "ค้นหาเฉพาะฐานข้อมูลที่เปิด",
-    sidebarSearchOpenedDatabasesOnlyDescription: "การค้นหา Sidebar จะโหลดเฉพาะฐานข้อมูลที่เปิดในการเชื่อมต่อปัจจุบัน (ทั้งหมดเมื่อยังไม่ได้เปิด) ปิดเพื่อค้นหาทุกฐานข้อมูลของการเชื่อมต่อ",
+    sidebarSearchOpenedDatabasesOnlyDescription: "การค้นหา Sidebar จะโหลดเฉพาะฐานข้อมูลที่เปิดในการเชื่อมต่อปัจจุบัน ปิดเพื่อค้นหาทุกฐานข้อมูลของการเชื่อมต่อ",
     sidebarObjectInfoMode: "ข้อมูลเสริมของ Sidebar",
     sidebarObjectInfoModeDescription:
       "เลือกคอมเมนต์ ขนาดออบเจ็กต์ ทั้งสองอย่าง หรือไม่แสดงข้อมูลเสริม เมื่อแสดงทั้งสองอย่าง คอมเมนต์จะอยู่หลังชื่อและขนาดจะแสดงทางขวาสุด ข้อมูลที่ไม่มีจะถูกซ่อน ขณะนี้ยอดฐานข้อมูลรองรับ PostgreSQL ส่วนขนาดตารางรองรับ MySQL, PostgreSQL, GaussDB, KingbaseES, GBase 8a, SQL Server, Oracle, Dameng และ ClickHouse",

@@ -288,7 +288,7 @@ import { buildXuguCompileSql } from "@/lib/database/xuguCompileSql";
 import { buildDamengCompileViewSql } from "@/lib/database/damengCompileSql";
 import { buildTriggerToggleSql, supportsTriggerToggle } from "@/lib/database/triggerToggleSql";
 import type { SidebarDataOpenRequest } from "@/lib/sidebar/sidebarDataOpenCoordinator";
-import { createSidebarActionRequest, createSidebarActionTarget, findSidebarActionTarget, releaseRemovedSidebarActionTarget, type SidebarActionRequest, type SidebarActionTarget } from "@/lib/sidebar/sidebarActionTarget";
+import { createSidebarActionRequest, createSidebarActionTarget, findSidebarActionTarget, matchesSidebarActionTarget, releaseRemovedSidebarActionTarget, type SidebarActionRequest, type SidebarActionTarget } from "@/lib/sidebar/sidebarActionTarget";
 import { collapseSubtreeDescendants } from "@/lib/sidebar/sidebarTreeCollapse";
 import { createSidebarMenuContext, normalizeSidebarMenuDescriptors } from "@/lib/sidebar/sidebarTreeMenuDescriptors";
 import { driverProfileDatabaseWorkspace } from "@/lib/database/driverProfileExtensions";
@@ -954,12 +954,17 @@ async function toggle(requestId = beginNavigationRequest()) {
   emit("search-toggle", node);
   const wasExpanded = !!node.isExpanded;
 
-  // A search result is a projection over children that are already loaded for
-  // the query. Expanding a collapsed result must only remove it from the
-  // projection's collapsed set; entering the normal load path here can replace
-  // the live subtree with the filtered projection and leave the sidebar blank.
-  if (!wasExpanded && node.children?.length && sidebarTreeContext?.isSearchProjectionActive?.()) {
-    return;
+  // Skip loading only when removing the collapsed marker actually expanded
+  // the projection. Descendants of a matching connection retain their live
+  // expansion state and still need the normal lazy-load path. A saved-SQL
+  // shortcut alone also does not mean a database's objects have been loaded.
+  if (!wasExpanded && node.children?.some((child) => child.type !== "saved-sql-root") && sidebarTreeContext?.isSearchProjectionActive?.()) {
+    const visible = sidebarTreeContext.getVisibleNodes();
+    const index = sidebarTreeContext.getVisibleNodeIndex(node.id);
+    const indexed = visible[index];
+    // Database names containing ':' can share an id with a schema in another database.
+    const projected = indexed && matchesSidebarActionTarget(indexed, node) ? indexed : visible.find((candidate) => matchesSidebarActionTarget(candidate, node));
+    if (projected?.isExpanded) return;
   }
 
   if (node.type === "connection-group") {
