@@ -7011,6 +7011,13 @@ export default withEnglishFallback({
     },
   },
   transfer: {
+    log: {
+      title: "Log eksekusi",
+      tableStarted: "Mentransfer tabel {table} ({index}/{total})",
+      completed: "Transfer selesai: {total} tabel, {failed} gagal",
+      failed: "Transfer gagal: {error}",
+      cancelled: "Transfer dibatalkan (berhenti di tabel {index}/{total})",
+    },
     title: "Transfer Data",
     content: "Isi transfer",
     contentStructureAndData: "Struktur dan data",
@@ -8479,6 +8486,9 @@ export default withEnglishFallback({
     closeActionPromptTitle: "Tutup jendela",
     closeActionPromptDescription: "Pilih apa yang terjadi saat Anda mengklik tombol tutup. Anda dapat mengubah ini nanti di Pengaturan > Tampilan.",
     closeActionQuit: "Keluar dari DBX",
+    closeWithBackgroundTasksTitle: "Tugas latar belakang sedang berjalan",
+    closeWithBackgroundTasksDescription: "Keluar dari DBX akan menghentikan {count} tugas latar belakang yang sedang berjalan (seperti transfer data dan ekspor). Anda juga dapat membatalkan dan menunggu tugas selesai.",
+    closeWithBackgroundTasksQuit: "Keluar dan hentikan tugas",
     closeActionMinimize: "Perkecil ke tray",
     updateNotificationsEnabled: "Aktifkan pengingat pembaruan",
     updateNotificationsEnabledDescription: "Secara otomatis memeriksa pembaruan aplikasi dan komponen serta menampilkan pengingat. Halaman pembaruan mengontrol apakah setiap kategori terpasang secara otomatis.",

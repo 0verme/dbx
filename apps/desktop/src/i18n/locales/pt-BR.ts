@@ -7318,6 +7318,13 @@ export default withEnglishFallback({
     },
   },
   transfer: {
+    log: {
+      title: "Registro de execução",
+      tableStarted: "Transferindo tabela {table} ({index}/{total})",
+      completed: "Transferência concluída: {total} tabela(s), {failed} com falha",
+      failed: "Falha na transferência: {error}",
+      cancelled: "Transferência cancelada (parou na tabela {index}/{total})",
+    },
     title: "Transferência de Dados",
     content: "Conteúdo da transferência",
     contentStructureAndData: "Estrutura e dados",
@@ -8723,6 +8730,9 @@ export default withEnglishFallback({
     closeActionPromptTitle: "Fechar janela",
     closeActionPromptDescription: "Escolha o que acontece ao clicar no botão de fechar. Você pode alterar depois em Configurações → Aparência.",
     closeActionQuit: "Sair do DBX",
+    closeWithBackgroundTasksTitle: "Há tarefas em segundo plano em execução",
+    closeWithBackgroundTasksDescription: "Sair do DBX interromperá {count} tarefa(s) em segundo plano em execução (como transferência de dados e exportação). Você também pode cancelar e esperar que terminem.",
+    closeWithBackgroundTasksQuit: "Sair e interromper tarefas",
     closeActionMinimize: "Minimizar para a bandeja",
     updateNotificationsEnabled: "Ativar lembretes de atualização",
     updateNotificationsEnabledDescription: "Verifica automaticamente atualizações do aplicativo e dos componentes e mostra lembretes. A página de atualizações controla se cada categoria é instalada automaticamente.",
