@@ -4096,6 +4096,7 @@ export default withEnglishFallback({
     copyDsn: "DSN (key=value)",
     copyDsnWithPassword: "DSN (parol ilə)",
     copyPsqlCommand: "psql əmri",
+    copyPasswordText: "Parol (düz mətn)",
     copyPasswordConfirmTitle: "Parol ilə kopyala",
     copyPasswordConfirmMessage: "Kopyalanan mətndə saxlanılan parol açıq şəkildə olacaq. Davam edilsin?",
     copyPasswordConfirmAction: "Kopyala",

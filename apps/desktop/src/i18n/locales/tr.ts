@@ -4065,6 +4065,7 @@ export default withEnglishFallback({
     copyDsn: "DSN (key=value)",
     copyDsnWithPassword: "DSN (parolalı)",
     copyPsqlCommand: "psql komutu",
+    copyPasswordText: "Parola (düz metin)",
     copyPasswordConfirmTitle: "Parolayla kopyala",
     copyPasswordConfirmMessage: "Kopyalanan metin depolanan parolayı düz metin olarak içerecek. Devam edilsin mi?",
     copyPasswordConfirmAction: "Kopyala",

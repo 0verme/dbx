@@ -5067,6 +5067,7 @@ export default withEnglishFallback({
     disableTrigger: "Отключить триггер",
     enableTriggerSuccess: "Триггер «{name}» включён",
     disableTriggerSuccess: "Триггер «{name}» отключён",
+    copyPasswordText: "Пароль (исходный текст)",
   },
   visibleDatabases: {
     title: "Видимые базы данных",
