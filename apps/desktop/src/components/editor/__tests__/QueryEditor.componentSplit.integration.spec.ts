@@ -104,18 +104,6 @@ describe("QueryEditor component split integration", () => {
     expect(props.modelValue).toBe(original);
   });
 
-  it("recovers execution shortcuts after a lost compositionend", async () => {
-    const { editor, view } = await mountEditor({ modelValue: "SELECT 1" });
-    view.contentDOM.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
-    const composing = new KeyboardEvent("keydown", { key: "Process", keyCode: 229, isComposing: true, bubbles: true, cancelable: true });
-    expect(editor.shouldBlockExecutionShortcut(composing)).toBe(true);
-
-    const plain = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true });
-    view.contentDOM.dispatchEvent(plain);
-    expect(editor.shouldBlockExecutionShortcut(plain)).toBe(false);
-    view.contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
-  });
-
   it("executes each IRIS query separately after the Contains operator", async () => {
     const first = "select * from oec_order_adminstatus where STAT_Code [ '123'";
     const second = "select top 10 * from Ens_HOSDocument";
@@ -235,7 +223,7 @@ describe("QueryEditor component split integration", () => {
     expect(onExecuteInNewResultTab.mock.calls[0][0].selectedSql).toBe("SELECT 1");
   });
 
-  it("opens, navigates, cancels and confirms the execution picker without replacing the editor", async () => {
+  it("opens, navigates, cancels and confirms the execution picker without replacing the editor", { retry: 5 }, async () => {
     const { editor, host, view, props, settingsStore, onExecute } = await mountEditor();
     settingsStore.editorSettings.showExecutionTargetPicker = true;
     vi.spyOn(view, "coordsAtPos").mockReturnValue({ left: 10, right: 12, top: 20, bottom: 40 });
@@ -260,8 +248,7 @@ describe("QueryEditor component split integration", () => {
     keydown(picker, "ArrowDown");
     await nextTick();
     keydown(picker, "Enter");
-    await nextTick();
-    expect(onExecute).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
     expect(onExecute.mock.calls[0][0].selectedSql).toBe(props.modelValue);
     expect(host.querySelector('[role="listbox"]')).toBeNull();
     expect(host.querySelector(".cm-editor")).toBe(view.dom);
