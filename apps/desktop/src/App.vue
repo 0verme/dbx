@@ -25,6 +25,8 @@ import WelcomeScreen from "@/components/layout/WelcomeScreen.vue";
 import type { ConfigTab } from "@/components/connection/ConnectionDialog.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
+import { usePlDebugStore } from "@/stores/plDebugStore";
+import { dispatchPlDebugStepShortcut } from "@/lib/editor/plDebugStepShortcut";
 import { useNavigationStore } from "@/stores/navigationStore";
 import { useSqlExecutionDangerStore } from "@/stores/sqlExecutionDangerStore";
 import type { MultiDbExecutionContext } from "@/composables/useMultiDbExecution";
@@ -4678,6 +4680,20 @@ async function handleKeydown(e: KeyboardEvent) {
     e.stopPropagation();
     openSettings();
     return;
+  }
+  if (workspaceRendered() && activeTab.value?.mode === "pl-debug") {
+    const debug = usePlDebugStore();
+    if (
+      dispatchPlDebugStepShortcut(e, {
+        isDebugTab: true,
+        canStep: debug.hasSession && !debug.busy && !debug.recoveryRequired && debug.publicSnapshot?.state === "paused",
+        shortcuts,
+        run: (command) => {
+          void (command === "stepInto" ? debug.stepIn() : command === "stepOut" ? debug.stepOut() : debug.stepOver()).catch(() => undefined);
+        },
+      })
+    )
+      return;
   }
   if (isQuickOpenShortcut(e, shortcuts)) {
     e.preventDefault();

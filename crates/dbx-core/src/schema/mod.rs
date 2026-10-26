@@ -8231,7 +8231,7 @@ where
     retry_metadata_connection_for_session(state, connection_id, database, None, operation).await
 }
 
-async fn retry_metadata_connection_for_session<T, F, Fut>(
+pub(crate) async fn retry_metadata_connection_for_session<T, F, Fut>(
     state: &AppState,
     connection_id: &str,
     database: Option<&str>,
@@ -8246,7 +8246,7 @@ where
         .await
 }
 
-async fn run_metadata_connection_for_session<T, F, Fut>(
+pub(crate) async fn run_metadata_connection_for_session<T, F, Fut>(
     state: &AppState,
     connection_id: &str,
     database: Option<&str>,

@@ -6,6 +6,7 @@ import { mergeQueryMessages, queryResultMessages } from "@/lib/query/queryResult
 import { appendNeo4jNodeCells, extractNeo4jNodeCells } from "@/lib/neo4j/neo4jNodeResult";
 import { UPDATE_RESTORE_KEY, assertUpdateAllowsInteraction } from "@/lib/app/updatePreparation";
 import { defineStore } from "pinia";
+import { usePlDebugStore } from "@/stores/plDebugStore";
 import { isRedisMonitorCommand, startRedisMonitor } from "@/lib/redis/redisMonitor";
 import { uuid } from "@/lib/common/utils";
 import { computed, markRaw, nextTick, onScopeDispose, reactive, ref, toRaw, watch } from "vue";
@@ -4068,6 +4069,20 @@ export const useQueryStore = defineStore("query", () => {
     return registerOpenTab(tab);
   }
 
+  function openPlDebugTab(options: { connectionId: string; database: string; schema?: string; title: string }): string {
+    const existing = tabs.value.find((tab) => tab.mode === "pl-debug");
+    const debug = usePlDebugStore();
+    const original = debug.publicSnapshot ?? debug.pendingStart;
+    const context = original ? { connectionId: original.connectionId, database: original.database, schema: debug.target?.schema ?? options.schema } : options;
+    const title = debug.target ? (debug.target.objectType === "ANONYMOUS" ? t("plDebug.launch.anonymousTitle") : `${debug.target.packageName ? `${debug.target.packageName}.` : ""}${debug.target.objectName ?? ""}`) : options.title;
+    if (existing) {
+      Object.assign(existing, context, { title });
+      switchTab(existing.id);
+      return existing.id;
+    }
+    return registerOpenTab({ id: uuid(), title, connectionId: context.connectionId, database: context.database, schema: context.schema, sql: "", isExecuting: false, isCancelling: false, isExplaining: false, mode: "pl-debug" });
+  }
+
   function openMysqlDashboard(connectionId: string) {
     const existing = tabs.value.find((tab) => tab.mode === "mysql-dashboard" && tab.connectionId === connectionId);
     if (existing) {
@@ -5037,9 +5052,36 @@ export const useQueryStore = defineStore("query", () => {
       return;
     }
 
+    const debugTab = remainingIds.map((id) => tabs.value.find((tab) => tab.id === id)).find((tab) => tab?.mode === "pl-debug");
+    if (debugTab && waitForPlDebugRelease(debugTab, continuePendingBatchClose)) return;
+
     const onComplete = finishPendingBatchClose();
     for (const id of remainingIds) closeTab(id, { force: true });
     onComplete?.();
+  }
+
+  let debugTabRelease: Promise<void> | null = null;
+  function waitForPlDebugRelease(tab: QueryTab, onReleased: () => void): boolean {
+    if (tab.mode !== "pl-debug") return false;
+    const debug = usePlDebugStore();
+    if (!debug.sessionRef && !debug.pendingStart && !debug.pendingClose) return false;
+    if (debug.publicSnapshot?.releaseState === "released" && debug.publicSnapshot.runtimeExited && !debug.recoveryRequired && !debug.pendingStart && !debug.pendingClose) return false;
+    if (!debugTabRelease) {
+      debugTabRelease = debug
+        .close()
+        .then(() => {
+          if (debug.recoveryRequired || debug.publicSnapshot?.releaseState !== "released" || !debug.publicSnapshot.runtimeExited) throw new Error(debug.error || "The original debugger has not confirmed resource release");
+        })
+        .finally(() => {
+          debugTabRelease = null;
+        });
+    }
+    void debugTabRelease.then(onReleased).catch((error) => {
+      cancelClosePendingTab();
+      activateTab(tab.id);
+      useToast().toast(String(error), 5000);
+    });
+    return true;
   }
 
   function beginBatchClose(ids: string[], finalActiveTabId?: string | null, onComplete?: () => void) {
@@ -5154,6 +5196,7 @@ export const useQueryStore = defineStore("query", () => {
       useToast().toast(t("objects.typeManagementRunningClose"), 5000);
       return;
     }
+    if (waitForPlDebugRelease(tab, () => closeTab(id, { force, skipHistory }))) return;
     if (needsDefaultQuerySave(tab) || (tab.isDefaultQuery && defaultQuerySaves.has(id))) {
       void flushDefaultQuery(tab)
         .then(() => closeTab(id, { force, skipHistory }))
@@ -5176,8 +5219,10 @@ export const useQueryStore = defineStore("query", () => {
     if (tabs.value[idx].txnSessionId) void rollbackTransaction(id);
     if (tabs.value[idx].isExecuting) void cancelTabExecution(id);
     if (tabs.value[idx].isExplaining) void cancelTabExplain(id);
-    void closeResultSession(tabs.value[idx]);
-    void closeClientConnectionSession(tabs.value[idx]);
+    if (tab.mode !== "pl-debug") {
+      void closeResultSession(tabs.value[idx]);
+      void closeClientConnectionSession(tabs.value[idx]);
+    }
     clearResultRunSnapshots(tabs.value[idx]);
     void deleteTabResultSnapshot(tabResultCacheKey(id));
     releaseTabResultObjectPayloads(tabs.value[idx]);
@@ -5444,6 +5489,10 @@ export const useQueryStore = defineStore("query", () => {
     const idx = tabs.value.findIndex((t) => t.id === id);
     if (idx < 0) return;
     const original = tabs.value[idx];
+    if (original.mode === "pl-debug") {
+      switchTab(id);
+      return;
+    }
     const newId = uuid();
     const newTab: QueryTab = {
       id: newId,
@@ -5562,6 +5611,7 @@ export const useQueryStore = defineStore("query", () => {
     if (!entry) return null;
 
     const restoredTab = snapshotClosedTab(entry.tab);
+    if (restoredTab.mode === "pl-debug") return openPlDebugTab(restoredTab);
     if (restoredTab.isDefaultQuery) {
       const existing = tabs.value.find((tab) => tab.savedSqlId === restoredTab.savedSqlId);
       if (existing) {
@@ -5618,6 +5668,8 @@ export const useQueryStore = defineStore("query", () => {
     if (closingIds.size === 0) return;
 
     const closingTabs = tabs.value.filter((tab) => closingIds.has(tab.id));
+    const debugTab = closingTabs.find((tab) => tab.mode === "pl-debug");
+    if (debugTab && waitForPlDebugRelease(debugTab, () => closeTabsWhere((tab) => closingIds.has(tab.id)))) return;
     if (closingTabs.some((tab) => needsDefaultQuerySave(tab) || (tab.isDefaultQuery && defaultQuerySaves.has(tab.id)))) {
       void flushDefaultQueries([...closingIds])
         .then(() => closeTabsWhere((tab) => closingIds.has(tab.id)))
@@ -5634,8 +5686,10 @@ export const useQueryStore = defineStore("query", () => {
       if (tab.txnSessionId) void rollbackTransaction(tab.id);
       if (tab.isExecuting) void cancelTabExecution(tab.id);
       if (tab.isExplaining) void cancelTabExplain(tab.id);
-      void closeResultSession(tab);
-      void closeClientConnectionSession(tab);
+      if (tab.mode !== "pl-debug") {
+        void closeResultSession(tab);
+        void closeClientConnectionSession(tab);
+      }
       clearResultRunSnapshots(tab);
       void deleteTabResultSnapshot(tabResultCacheKey(tab.id));
       releaseTabResultObjectPayloads(tab);
@@ -11720,6 +11774,7 @@ export const useQueryStore = defineStore("query", () => {
     openXuguUserAdmin,
     openProcessList,
     openSqlServerActivityTrace,
+    openPlDebugTab,
     openMysqlDashboard,
     openPostgresDashboard,
     openXuguDashboard,

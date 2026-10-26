@@ -15,6 +15,8 @@ import { useSidebarTreeToolRuntime } from "@/composables/useSidebarTreeToolRunti
 import { canDropDatabaseNode, notifyDatabaseBrowserMutation } from "@/lib/database/databaseBrowserActions";
 import { canDropDatabaseTables, canEmptyDatabaseTables, useDatabaseTableEmpty } from "@/composables/useDatabaseTableEmpty";
 import { useI18n } from "vue-i18n";
+import { launchPlDebug, openPlDebugRecovery } from "@/components/debug/plDebugLaunch";
+import { supportsPlDebugRoutine } from "@/lib/database/databaseFeatureSupport";
 import { translateBackendError } from "@/i18n/backend-errors";
 import { normalizeBackendError } from "@/lib/backend/errorUtils";
 import { isConnectionTimeoutErrorMessage } from "@/lib/sql/queryError";
@@ -7259,6 +7261,9 @@ function buildConnectionSidebarMenu(context: SidebarMenuFactoryContext): boolean
     } else if (!isConnected.value) {
       items.push({ sidebarActionId: "contextMenu.openConnection", label: t("contextMenu.openConnection"), action: toggle, icon: Plug });
     }
+    if (node.connectionId && supportsPlDebugRoutine(currentDatabaseType())) {
+      items.push({ sidebarActionId: "plDebug.recovery", label: t("plDebug.recovery.title"), action: () => openPlDebugRecovery(node.connectionId!), icon: RefreshCw });
+    }
     items.push({ label: "", separator: true });
     items.push({ sidebarActionId: "contextMenu.copyName", label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     const connectionUrlCopyMenu = connectionUrlCopyMenuItem();
@@ -8296,6 +8301,25 @@ function buildObjectSidebarMenu(context: SidebarMenuFactoryContext): boolean {
   // 8. Procedure / Function / Package
   if (node.type === "procedure" || node.type === "function") {
     const isPackageMember = node.parentType === "package" && !!node.parentName;
+    if (node.connectionId && node.database && supportsPlDebugRoutine(currentDatabaseType())) {
+      const target = {
+        connectionId: node.connectionId,
+        database: node.database,
+        databaseType: currentDatabaseType(),
+        schema: node.schema,
+        objectType: node.type === "procedure" ? "PROCEDURE" : "FUNCTION",
+        objectName: node.objectName || node.label,
+        packageName: isPackageMember ? node.parentName : undefined,
+        valid: node.valid,
+      };
+      items.push({
+        label: t("plDebug.start.title"),
+        action: () => {
+          void launchPlDebug(target);
+        },
+        icon: Play,
+      });
+    }
     if (node.type === "procedure" && !isPackageMember) {
       items.push({ label: t("contextMenu.executeProcedure"), action: openProcedureExecution, icon: Play });
     }

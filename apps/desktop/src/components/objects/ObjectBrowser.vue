@@ -78,6 +78,8 @@ import { useToolbarOverflow } from "@/composables/useToolbarOverflow";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
+import { launchPlDebug } from "@/components/debug/plDebugLaunch";
+import { supportsPlDebugRoutine } from "@/lib/database/databaseFeatureSupport";
 import CustomTypeInfoPanel from "@/components/objects/CustomTypeInfoPanel.vue";
 import TablePartitionsPanel from "@/components/structure/TablePartitionsPanel.vue";
 import XlsxHeaderDialog from "@/components/export/XlsxHeaderDialog.vue";
@@ -5730,6 +5732,17 @@ function getViewMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
 
 function getProcFuncMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
   return [
+    ...(supportsPlDebugRoutine(effectiveDatabaseType.value)
+      ? [
+          {
+            label: t("plDebug.start.title"),
+            icon: Play,
+            action: () => {
+              void launchPlDebug({ connectionId: props.connection.id, database: props.database, databaseType: effectiveDatabaseType.value, schema: item.schema ?? selectedSchema.value, objectType: item.type, objectName: item.name, valid: item.valid });
+            },
+          },
+        ]
+      : []),
     ...(item.type === "PROCEDURE" ? [{ label: t("contextMenu.executeProcedure"), action: () => openProcedureExecution(item), icon: Play }] : []),
     ...(effectiveDatabaseType.value === "xugu" && buildXuguCompileSql({ objectType: item.type, schema: item.schema || selectedSchema.value, name: item.name }) ? [{ label: t("contextMenu.compileObject"), action: () => compileXuguObject(item), icon: Wrench }] : []),
     { sidebarActionId: "contextMenu.editObject", label: t("contextMenu.editObject"), action: () => openSource(item), icon: PencilLine },
