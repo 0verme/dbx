@@ -6748,6 +6748,8 @@ export default withEnglishFallback({
     exportData: "Veri Dışa Aktar",
   },
   sqlFile: {
+    resolveIncludes: "SQL dosyası eklemelerini çöz",
+    resolveIncludesHint: "-- {'@'}include \"path.sql\" desteklenir; yalnızca giriş betiği dizinindeki .sql dosyalarına izin verilir.",
     encodingHint: "Seçilen tüm dosyalara uygulanır. BOM varsa belirttiği kodlama önceliklidir.",
     restoreScope: "Geri yükleme kapsamı",
     restoreAll: "Tüm içerik",

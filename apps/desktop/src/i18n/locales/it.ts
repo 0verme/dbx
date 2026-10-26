@@ -7683,6 +7683,8 @@ export default withEnglishFallback({
     exportData: "Esporta dati",
   },
   sqlFile: {
+    resolveIncludes: "Risolvi inclusioni di file SQL",
+    resolveIncludesHint: "Supporta -- {'@'}include \"percorso.sql\"; sono ammessi solo file .sql nella cartella dello script principale.",
     encodingHint: "Si applica a tutti i file selezionati. Se presente, la codifica indicata dal BOM ha la precedenza.",
     manualTransactionHint: "Le modifiche attendono commit o rollback. Gli errori causano il rollback. DDL e COMMIT nel file possono comunque confermare le modifiche.",
     manualCancelHint: "L'annullamento attende la fine dell'istruzione corrente, poi esegue il rollback delle modifiche non confermate.",

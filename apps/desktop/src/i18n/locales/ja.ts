@@ -7703,6 +7703,8 @@ export default withEnglishFallback({
     exportData: "データをエクスポート",
   },
   sqlFile: {
+    resolveIncludes: "SQL ファイルの参照を解決",
+    resolveIncludesHint: "-- {'@'}include \"path.sql\" に対応。参照はエントリースクリプトのディレクトリ内の .sql ファイルに限定されます。",
     encodingHint: "選択したすべてのファイルに適用します。BOM がある場合は、そのエンコーディングを優先します。",
     manualTransactionHint: "変更は手動でコミットまたはロールバックするまで保留されます。エラー時はロールバックします。ファイル内の DDL や COMMIT により変更が確定する場合があります。",
     manualCancelHint: "キャンセルすると現在の文の終了を待ち、未コミットの変更をロールバックします。",

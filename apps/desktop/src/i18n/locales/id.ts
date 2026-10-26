@@ -7555,6 +7555,8 @@ export default withEnglishFallback({
     exportData: "Ekspor Data",
   },
   sqlFile: {
+    resolveIncludes: "Proses penyertaan file SQL",
+    resolveIncludesHint: "Mendukung -- {'@'}include \"path.sql\"; hanya file .sql dalam direktori skrip utama yang diizinkan.",
     encodingHint: "Berlaku untuk semua file yang dipilih. Jika ada BOM, pengodean yang ditunjukkannya diutamakan.",
     manualTransactionHint: "Perubahan menunggu Commit atau Rollback. Galat akan di-rollback. DDL dan COMMIT di dalam file tetap dapat melakukan commit perubahan.",
     manualCancelHint: "Pembatalan menunggu pernyataan saat ini selesai, lalu me-rollback perubahan yang belum di-commit.",

@@ -5894,6 +5894,7 @@ export type SqlFileStatus = "started" | "running" | "statementDone" | "statement
 export type SqlFileEncoding = "auto" | "utf8" | "gbk" | "utf16Le" | "utf16Be";
 
 export interface SqlFileRequest {
+  resolveIncludes?: boolean;
   encoding?: SqlFileEncoding;
   executionId: string;
   connectionId: string;

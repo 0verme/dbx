@@ -8905,6 +8905,8 @@ export default {
     exportData: "Export Data",
   },
   sqlFile: {
+    resolveIncludes: "Resolve SQL file includes",
+    resolveIncludesHint: "Supports -- {'@'}include \"path.sql\"; only .sql files within the entry script directory are allowed.",
     encodingHint: "Applies to all selected files. A byte order mark (BOM), if present, takes precedence.",
     manualTransactionHint: "Changes wait for Commit or Rollback. Errors roll back. DDL and COMMIT inside the file can still commit changes.",
     manualCancelHint: "Cancel waits for the current statement, then rolls back uncommitted changes.",

@@ -6819,6 +6819,8 @@ export default withEnglishFallback({
     exportData: "匯出資料",
   },
   sqlFile: {
+    resolveIncludes: "解析 SQL 檔案引用",
+    resolveIncludesHint: "支援 -- {'@'}include \"路徑.sql\"；引用僅限入口指令碼目錄內的 .sql 檔案。",
     encodingHint: "套用至本次選取的所有檔案；檔案含位元組順序標記（BOM）時，優先採用 BOM 指定的編碼。",
     manualTransactionHint: "修改等待手動提交或回復，出錯時回復。檔案中的 DDL 和 COMMIT 仍可能提交修改。",
     manualCancelHint: "取消會等待目前陳述式結束，再回復未提交的修改。",

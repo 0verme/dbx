@@ -8872,6 +8872,8 @@ export default withEnglishFallback({
     exportData: "导出数据",
   },
   sqlFile: {
+    resolveIncludes: "解析 SQL 文件引用",
+    resolveIncludesHint: "支持 -- {'@'}include \"路径.sql\"；引用仅限入口脚本目录内的 .sql 文件。",
     encodingHint: "应用于本次选择的所有文件；文件含字节序标记（BOM）时，优先采用 BOM 指定的编码。",
     manualTransactionHint: "修改等待手动提交或回滚，出错时回滚。文件中的 DDL 和 COMMIT 仍可能提交修改。",
     manualCancelHint: "取消会等待当前语句结束，再回滚未提交的修改。",

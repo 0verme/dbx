@@ -7612,6 +7612,8 @@ export default withEnglishFallback({
     exportData: "Eksportuj dane",
   },
   sqlFile: {
+    resolveIncludes: "Rozwiązuj dołączanie plików SQL",
+    resolveIncludesHint: "Obsługuje -- {'@'}include \"path.sql\"; dozwolone są tylko pliki .sql w katalogu skryptu wejściowego.",
     manualTransactionHint: "Zmiany oczekują na Commit lub Rollback. W przypadku błędów następuje wycofanie. DDL i jawny COMMIT w pliku mogą nadal zatwierdzać zmiany.",
     manualCancelHint: "Anulowanie czeka na bieżącą instrukcję, a następnie wycofuje niezatwierdzone zmiany.",
     pendingTransaction: "Oczekiwanie na zatwierdzenie lub wycofanie",

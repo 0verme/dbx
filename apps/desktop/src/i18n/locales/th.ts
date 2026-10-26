@@ -9510,6 +9510,8 @@ export default withEnglishFallback({
     exportData: "ส่งออกข้อมูล",
   },
   sqlFile: {
+    resolveIncludes: "ประมวลผลการรวมไฟล์ SQL",
+    resolveIncludesHint: "รองรับ -- {'@'}include \"path.sql\" โดยอนุญาตเฉพาะไฟล์ .sql ภายในไดเรกทอรีของสคริปต์หลัก",
     encodingHint: "ใช้กับไฟล์ทั้งหมดที่เลือกในครั้งนี้ หากไฟล์มีเครื่องหมายลำดับไบต์ (BOM) จะใช้การเข้ารหัสที่ระบุโดย BOM เป็นอันดับแรก",
     manualTransactionHint: "การเปลี่ยนแปลงจะรอ Commit หรือ Rollback ข้อผิดพลาดจะ Rollback แต่ DDL และ COMMIT ภายในไฟล์ยังสามารถ Commit การเปลี่ยนแปลงได้",
     manualCancelHint: "การยกเลิกจะรอ statement ปัจจุบัน แล้ว Rollback การเปลี่ยนแปลงที่ยังไม่ Commit",

@@ -6868,6 +6868,8 @@ export default withEnglishFallback({
     exportData: "Məlumatları ixrac et",
   },
   sqlFile: {
+    resolveIncludes: "SQL fayl istinadlarını həll et",
+    resolveIncludesHint: "-- {'@'}include \"path.sql\" dəstəklənir; yalnız əsas skript qovluğundakı .sql fayllarına icazə verilir.",
     encodingHint: "Bütün seçilmiş fayllara tətbiq olunur. BOM varsa, onun göstərdiyi kodlaşdırmaya üstünlük verilir.",
     restoreScope: "Bərpa əhatəsi",
     restoreAll: "Bütün məzmun",

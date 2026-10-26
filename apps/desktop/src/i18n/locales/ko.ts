@@ -7717,6 +7717,8 @@ export default withEnglishFallback({
     exportData: "데이터 내보내기",
   },
   sqlFile: {
+    resolveIncludes: "SQL 파일 포함 처리",
+    resolveIncludesHint: "-- {'@'}include \"path.sql\" 지원. 시작 스크립트 디렉터리 내의 .sql 파일만 허용됩니다.",
     encodingHint: "선택한 모든 파일에 적용됩니다. BOM이 있으면 해당 인코딩을 우선합니다.",
     manualTransactionHint: "변경 사항은 수동 커밋 또는 롤백을 기다립니다. 오류가 발생하면 롤백합니다. 파일의 DDL과 COMMIT은 변경 사항을 커밋할 수 있습니다.",
     manualCancelHint: "취소하면 현재 구문이 끝날 때까지 기다린 후 커밋되지 않은 변경 사항을 롤백합니다.",
