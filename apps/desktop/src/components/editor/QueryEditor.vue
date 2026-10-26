@@ -2707,12 +2707,16 @@ watch(
   { deep: true },
 );
 
+function prefetchCompletionTablesIfEnabled() {
+  if (props.prefetchCompletion) prefetchCompletionTablesIfEnabled();
+}
+
 watch(
   () => props.connectionId,
   () => {
     completion.invalidateRequests();
     refreshCompletionCache();
-    void completionMetadata.prefetchCompletionTables();
+    prefetchCompletionTablesIfEnabled();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
   },
@@ -2723,7 +2727,7 @@ watch(
   () => {
     completion.invalidateRequests();
     refreshCompletionCache();
-    void completionMetadata.prefetchCompletionTables();
+    prefetchCompletionTablesIfEnabled();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
   },
@@ -2734,7 +2738,7 @@ watch(
   () => {
     completion.invalidateRequests();
     refreshCompletionCache();
-    void completionMetadata.prefetchCompletionTables();
+    prefetchCompletionTablesIfEnabled();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
   },
@@ -2745,7 +2749,7 @@ watch(
   () => {
     completion.invalidateRequests();
     refreshCompletionCache();
-    void completionMetadata.prefetchCompletionTables();
+    prefetchCompletionTablesIfEnabled();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
   },
@@ -2761,7 +2765,7 @@ watch(
   },
 );
 
-void completionMetadata.prefetchCompletionTables();
+prefetchCompletionTablesIfEnabled();
 
 watch([() => props.clientSessionId, () => props.completionContextVersion], () => {
   completion.invalidateRequests();
