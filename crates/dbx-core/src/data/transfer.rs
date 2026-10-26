@@ -24,6 +24,7 @@ mod iris_tests;
 
 mod db2;
 mod ddl_plan;
+pub(crate) mod mysql_xugu;
 pub(crate) mod oracle_table_contract;
 mod overwrite_clear;
 mod structure_plan;
@@ -1190,8 +1191,18 @@ pub fn validate_transfer_database_pair(
     if !matches!(source_db_type, DatabaseType::Xugu) && !matches!(target_db_type, DatabaseType::Xugu) {
         return Ok(());
     }
-    if !matches!((source_db_type, target_db_type), (DatabaseType::Xugu, DatabaseType::Xugu)) {
-        return Err("虚谷数据传输当前仅支持虚谷到虚谷".to_string());
+    let mysql_to_xugu = mysql_xugu::is_pair(source_db_type, target_db_type);
+    if !matches!((source_db_type, target_db_type), (DatabaseType::Xugu, DatabaseType::Xugu)) && !mysql_to_xugu {
+        return Err("虚谷数据传输当前仅支持虚谷到虚谷，以及 MySQL 到虚谷的表传输".to_string());
+    }
+    if mysql_to_xugu
+        && request.objects.as_ref().is_some_and(|objects| {
+            objects
+                .iter()
+                .any(|selection| selection.object_type != TransferObjectKind::Table && !selection.names.is_empty())
+        })
+    {
+        return Err("MySQL 到虚谷当前仅支持表结构和表数据".into());
     }
     if request.objects.as_ref().is_some_and(|objects| {
         objects.iter().any(|selection| !xugu_objects::supported_kinds().contains(&selection.object_type))
@@ -11293,6 +11304,9 @@ pub async fn preview_transfer_ownership(
     }
     validate_transfer_database_pair(request, source_db_type, target_db_type)?;
     // PostgreSQL-compatible transfers report role ownership gaps for the confirmation flow.
+    if mysql_xugu::is_pair(source_db_type, target_db_type) {
+        mysql_xugu::preflight(state, request, source_pool_key, target_pool_key).await?;
+    }
     let (missing_owners, target_owner) =
         if request.create_table && is_postgres_compat_transfer(source_db_type, target_db_type) {
             let has_prokind = postgres_transfer_catalog_capabilities(state, source_pool_key).await?.has_prokind;
@@ -12960,6 +12974,12 @@ where
         return Err(format!("No columns found for table {table}"));
     }
     ensure_target_column_names_unique(request, table, &columns)?;
+    let mysql_to_xugu = mysql_xugu::is_pair(source_db_type, target_db_type);
+    let mysql_xugu_types = if mysql_to_xugu {
+        Some(columns.iter().map(mysql_xugu::column_type).collect::<Result<Vec<_>, _>>()?)
+    } else {
+        None
+    };
 
     let is_doris_source = {
         let configs = state.configs.read().await;
@@ -12991,6 +13011,12 @@ where
     // preexisting-target validation and write SQL compare/emit these, reads keep `col_names`.
     let mut target_col_names: Vec<String> = col_names.iter().map(|name| request.target_column_name(name)).collect();
     let mut col_types: Vec<Option<String>> = writable_columns.iter().map(|c| Some(c.data_type.clone())).collect();
+    if let Some(types) = &mysql_xugu_types {
+        col_types = writable_columns
+            .iter()
+            .map(|column| columns.iter().position(|c| c.name == column.name).map(|index| types[index].clone()))
+            .collect();
+    }
     let primary_key_columns = transfer_key_columns(&writable_columns, source_db_type);
     if should_copy_data(&request.content) {
         log::info!("[transfer] {} has {} columns, counting rows...", table, columns.len());
@@ -13149,14 +13175,15 @@ where
     // whether the batch needs the `SET IDENTITY_INSERT` wrapper, and without the
     // target metadata it stays false — SQL Server then rejects the explicit
     // identity values with 544.
-    let needs_target_columns = default_rows_only
+    let needs_target_columns = mysql_to_xugu
+        || default_rows_only
         || target_table_preexisting
         || (request.mode == TransferMode::Upsert && !transfer_upsert_falls_back_to_append(target_db_type))
         || matches!(
             target_db_type,
             DatabaseType::Postgres | DatabaseType::Dameng | DatabaseType::H2 | DatabaseType::SqlServer
         );
-    let target_columns = if needs_target_columns {
+    let mut target_columns = if needs_target_columns {
         get_columns_for_transfer(
             state,
             target_pool_key,
@@ -13172,11 +13199,25 @@ where
         Vec::new()
     };
 
+    if mysql_to_xugu {
+        mysql_xugu::enrich_target_temporal_precision(
+            state,
+            target_pool_key,
+            &request.target_schema,
+            &target_table,
+            &mut target_columns,
+        )
+        .await?;
+    }
+
     // Empty-column INSERTs are safe only when the target also computes every
     // value. Reject incompatible data-only targets before an overwrite truncates
     // them; otherwise ordinary columns could silently receive defaults instead.
     let target_default_rows_only = mysql_generated_only_transfer(&target_columns, target_db_type, target_db_type)
         || xugu_rowversion_only_transfer(&target_columns, target_db_type, target_db_type);
+    if mysql_to_xugu {
+        mysql_xugu::validate_target(&writable_columns, &target_columns)?;
+    }
     if default_rows_only && !target_default_rows_only {
         return Err(format!(
             "Target table '{target_table}' must contain only generated columns for default-row transfer"
@@ -13567,8 +13608,11 @@ where
                         request.source_catalog.as_deref(),
                     )
                 };
-                let (sql, mysql_spatial_markers) =
-                    mysql_spatial_transfer_select_sql(sql, &col_names, &col_types, source_db_type, target_db_type);
+                let (sql, mysql_spatial_markers) = if mysql_to_xugu {
+                    (mysql_xugu::project_page(&sql, &writable_columns)?, false)
+                } else {
+                    mysql_spatial_transfer_select_sql(sql, &col_names, &col_types, source_db_type, target_db_type)
+                };
                 // Cap the result at `batch_size` (not the 10k default row limit), so a
                 // large batch is never truncated into looking like a short final page.
                 (
@@ -13578,6 +13622,9 @@ where
             };
             let has_more = result.has_more;
             let row_count = result.rows.len();
+            if mysql_to_xugu {
+                mysql_xugu::validate_rows(&writable_columns, &result.rows)?;
+            }
 
             if row_count == 0 {
                 // A `ctid` window can be empty — its rows were deleted, or the
@@ -13623,21 +13670,38 @@ where
                     row.clear();
                 }
             }
-            let write_statements = generate_transfer_write_sql_batches_with_column_quoting(
-                &effective_mode,
-                &write_col_names,
-                &col_types,
-                &result.rows,
-                &target_table,
-                &request.target_schema,
-                target_db_type,
-                &pk_columns,
-                request.target_catalog.as_deref(),
-                overrides_postgres_system_values,
-                mysql_spatial_markers,
-                request.quote_target_column_names,
-                write_hard_limit,
-            )?;
+            let write_statements = if mysql_to_xugu {
+                mysql_xugu::write_batches(
+                    &write_col_names,
+                    &col_types,
+                    &result.rows,
+                    &target_table,
+                    &request.target_schema,
+                    request.target_catalog.as_deref(),
+                    SqlBatchLimits::for_database(
+                        target_db_type,
+                        max_transfer_write_rows(target_db_type, &effective_mode),
+                    )
+                    .with_hard_sql_bytes(write_hard_limit),
+                    request.quote_target_column_names,
+                )?
+            } else {
+                generate_transfer_write_sql_batches_with_column_quoting(
+                    &effective_mode,
+                    &write_col_names,
+                    &col_types,
+                    &result.rows,
+                    &target_table,
+                    &request.target_schema,
+                    target_db_type,
+                    &pk_columns,
+                    request.target_catalog.as_deref(),
+                    overrides_postgres_system_values,
+                    mysql_spatial_markers,
+                    request.quote_target_column_names,
+                    write_hard_limit,
+                )?
+            };
             for (statement_index, batch_sql) in write_statements.iter().enumerate() {
                 execute_transfer_write_statement(
                     state,
@@ -13707,7 +13771,7 @@ where
             &target_table,
             &request.target_schema,
             &write_col_names,
-            target_table_preexisting,
+            target_table_preexisting || mysql_to_xugu,
         )
         .await?;
     }
@@ -14123,6 +14187,11 @@ where
 {
     validate_transfer_database_pair(request, source_db_type, target_db_type)?;
     let state = state.clone();
+    if mysql_xugu::is_pair(source_db_type, target_db_type) {
+        let mut table_request = request.clone();
+        table_request.tables = vec![table.to_string()];
+        mysql_xugu::preflight(&state, &table_request, source_pool_key, target_pool_key).await?;
+    }
     let request = request.clone();
     let table = table.to_string();
     let source_db_type = *source_db_type;
@@ -15897,8 +15966,9 @@ CREATE TABLE "Other"."prefix""Source"."NAME" ("ID" INT);"#;
             let err =
                 validate_transfer_database_pair(&request, &DatabaseType::Xugu, &DatabaseType::Postgres).unwrap_err();
             assert!(err.contains("虚谷到虚谷"), "{err}");
-            let err = validate_transfer_database_pair(&request, &DatabaseType::Mysql, &DatabaseType::Xugu).unwrap_err();
-            assert!(err.contains("虚谷到虚谷"), "{err}");
+            assert!(validate_transfer_database_pair(&request, &DatabaseType::Mysql, &DatabaseType::Xugu).is_ok());
+            assert!(validate_transfer_database_pair(&request, &DatabaseType::Xugu, &DatabaseType::Mysql).is_err());
+            assert!(validate_transfer_database_pair(&request, &DatabaseType::Doris, &DatabaseType::Xugu).is_err());
 
             for mode in [TransferMode::Append, TransferMode::Overwrite] {
                 let request = TransferRequest { mode, ..request.clone() };
