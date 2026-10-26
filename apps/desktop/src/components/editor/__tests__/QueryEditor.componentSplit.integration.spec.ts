@@ -104,6 +104,18 @@ describe("QueryEditor component split integration", () => {
     expect(props.modelValue).toBe(original);
   });
 
+  it("recovers execution shortcuts after a lost compositionend", async () => {
+    const { editor, view } = await mountEditor({ modelValue: "SELECT 1" });
+    view.contentDOM.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    const composing = new KeyboardEvent("keydown", { key: "Process", keyCode: 229, isComposing: true, bubbles: true, cancelable: true });
+    expect(editor.shouldBlockExecutionShortcut(composing)).toBe(true);
+
+    const plain = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true });
+    view.contentDOM.dispatchEvent(plain);
+    expect(editor.shouldBlockExecutionShortcut(plain)).toBe(false);
+    view.contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+  });
+
   it("executes each IRIS query separately after the Contains operator", async () => {
     const first = "select * from oec_order_adminstatus where STAT_Code [ '123'";
     const second = "select top 10 * from Ens_HOSDocument";
