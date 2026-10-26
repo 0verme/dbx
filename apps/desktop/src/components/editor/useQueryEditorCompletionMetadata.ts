@@ -50,6 +50,7 @@ export function useQueryEditorCompletionMetadata(options: QueryEditorCompletionM
 
   // Completion cache
   let cachedTables: SqlCompletionTable[] = [];
+  let completionCacheGeneration = 0;
 
   const cachedCompletionObjectsByScope = new Map<string, SqlCompletionObject[]>();
 
@@ -548,8 +549,12 @@ export function useQueryEditorCompletionMetadata(options: QueryEditorCompletionM
   }
 
   function listCompletionTablesWithLatencyBudget(connectionId: string, database: string, filter: string, limit: number, schema?: string, globalSearch = false, catalog = props.catalog, currentSchema = props.schema): Promise<SqlCompletionTable[]> {
+    const generation = completionCacheGeneration;
     const local = connectionStore.lookupLocalCompletionTables(connectionId, database, filter, limit, globalSearch ? undefined : schema, catalog).map((table) => ({ ...table, catalog: table.catalog ?? catalog, database: table.database ?? database }));
     const remote = connectionStore.listCompletionTables(connectionId, database, filter, limit, schema, globalSearch, currentSchema, catalog).then((tables) => {
+      // A database/schema switch clears the cache while this request is still in
+      // flight; never merge the old result into the new scope.
+      if (generation !== completionCacheGeneration) return [];
       const scopedTables = tables.map((table) => ({ ...table, catalog: table.catalog ?? catalog, database: table.database ?? database }));
       cachedTables = mergeCompletionTables(cachedTables, scopedTables);
       return scopedTables;
@@ -609,6 +614,7 @@ export function useQueryEditorCompletionMetadata(options: QueryEditorCompletionM
   }
 
   function refreshCompletionCache() {
+    completionCacheGeneration++;
     cancelEditorSqlCompletionAnalysis();
     cachedTables = [];
     cachedCompletionObjectsByScope.clear();

@@ -2710,6 +2710,7 @@ watch(
 watch(
   () => props.connectionId,
   () => {
+    completion.invalidateRequests();
     refreshCompletionCache();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
@@ -2719,6 +2720,7 @@ watch(
 watch(
   () => props.database,
   () => {
+    completion.invalidateRequests();
     refreshCompletionCache();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
@@ -2728,6 +2730,7 @@ watch(
 watch(
   () => props.catalog,
   () => {
+    completion.invalidateRequests();
     refreshCompletionCache();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
@@ -2737,6 +2740,7 @@ watch(
 watch(
   () => props.schema,
   () => {
+    completion.invalidateRequests();
     refreshCompletionCache();
     setSemanticDiagnostics([]);
     scheduleSemanticDiagnostics();
