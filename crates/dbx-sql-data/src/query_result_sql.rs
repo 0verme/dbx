@@ -161,6 +161,13 @@ pub fn build_query_pagination_execution_plan(
             }
         }
         TablePaginationStrategy::LimitOffset => top_level_limit_row_count(&options.query_base_sql),
+        // Dameng accepts MySQL-style `LIMIT n` alongside its ROWNUM pagination.
+        // A user-written LIMIT is an exact bound there too, so a `LIMIT 1000`
+        // query with 258 matching rows is fetched in one shot instead of
+        // stopping at the first 100-row agent page (#13502).
+        TablePaginationStrategy::Rownum if options.database_type == Some(DatabaseType::Dameng) => {
+            top_level_limit_row_count(&options.query_base_sql)
+        }
         _ => None,
     };
     let mut plan = QueryPaginationExecutionPlan {
@@ -5404,6 +5411,28 @@ WHERE u.id = picked.id;
     }
 
     #[test]
+    fn dameng_user_limit_bounds_the_query_row_count() {
+        // DM8 accepts MySQL-style LIMIT alongside ROWNUM pagination; a
+        // user-written LIMIT must bound the fetch so the whole result comes
+        // back in one shot instead of stopping at the first agent page (#13502).
+        let sql = "SELECT DATE, COUNT(*) FROM t GROUP BY DATE ORDER BY DATE LIMIT 1000";
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.to_string(),
+            query_base_sql: sql.to_string(),
+            database_type: Some(DatabaseType::Dameng),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: true,
+            first_page_uses_actual_sql: false,
+            execution_hint: None,
+        });
+        assert_eq!(plan.exact_query_row_bound, Some(1000));
+
+        // ROWNUM remains the pagination strategy, so the bound does not change
+        // generated page SQL.
+        assert_eq!(plan.page_limit, Some(100));
+    }
+
+    #[test]
     fn mysql_pagination_keeps_the_user_limit_without_a_probe() {
         let sql = "SELECT id FROM people LIMIT 10";
         let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
@@ -6894,6 +6923,15 @@ WHERE u.id = picked.id;
             (Some(DatabaseType::ClickHouse), "SELECT * FROM events LIMIT 10 WITH TIES", None),
             (Some(DatabaseType::DuckDb), "SELECT * FROM events LIMIT 10%", None),
             (Some(DatabaseType::DuckDb), "SELECT * FROM events LIMIT 10 PERCENT", None),
+            // Dameng accepts MySQL-style LIMIT alongside its ROWNUM pagination
+            // (#13502); the other ROWNUM dialects reject LIMIT syntax, so a
+            // top-level LIMIT must not bound them.
+            (Some(DatabaseType::Dameng), "SELECT * FROM events LIMIT 1000", Some(1000)),
+            (Some(DatabaseType::Dameng), "SELECT * FROM events LIMIT 1000 OFFSET 50", Some(1000)),
+            (Some(DatabaseType::Dameng), "SELECT * FROM events LIMIT 50, 1000", Some(1000)),
+            (Some(DatabaseType::Dameng), "SELECT * FROM (SELECT * FROM events LIMIT 5) t", None),
+            (Some(DatabaseType::Oracle), "SELECT * FROM events LIMIT 100", None),
+            (Some(DatabaseType::OceanbaseOracle), "SELECT * FROM events LIMIT 100", None),
             (None, "SELECT * FROM events LIMIT 100", Some(100)),
             (Some(DatabaseType::Postgres), "SELECT * FROM events", None),
         ] {
