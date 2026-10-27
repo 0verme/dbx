@@ -2496,6 +2496,7 @@ name = "dbx-drivers"
 version = "0.1.0"
 dependencies = [
  "aws-sdk-dynamodb",
+ "axum",
  "base64 0.22.1",
  "bytes",
  "chrono",

@@ -176,6 +176,16 @@ pub fn build_query_pagination_execution_plan(
         pagination_row_number_column: None,
         single_execution: false,
     };
+    // DynamoDB paginates ExecuteStatement with opaque API tokens, not SQL
+    // LIMIT/OFFSET or derived COUNT queries. Keep PartiQL byte-for-byte intact.
+    if options.database_type == Some(DatabaseType::DynamoDb) {
+        plan.exact_query_row_bound = None;
+        plan.single_execution = true;
+        if options.pagination.offset > 0 || options.pagination.session_id.is_some() {
+            plan.pagination_error = Some("DynamoDB PartiQL does not support SQL offset pagination".into());
+        }
+        return plan;
+    }
     let execution_hint = options.execution_hint.as_deref().filter(|hint| !hint.trim().is_empty());
 
     let sql_server_cte =
@@ -735,6 +745,7 @@ fn unsupported_pagination_type(database_type: Option<DatabaseType>) -> bool {
                 | DatabaseType::Salesforce
                 | DatabaseType::Solr
                 | DatabaseType::CouchDb
+                | DatabaseType::DynamoDb
         )
     )
 }
@@ -2956,6 +2967,54 @@ fn fallback_alias(index: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dynamodb_partiql_uses_api_bounds_without_sql_rewrites() {
+        for sql in [
+            "SELECT * FROM \"orders\" WHERE status = 'PAID';",
+            "SELECT VALUE {'id': o.id} FROM \"orders\" o;",
+            "SELECT * FROM \"orders\"; SELECT * FROM \"archive\";",
+            "UPDATE \"orders\" SET status = 'PAID' WHERE id = '1';",
+        ] {
+            for (offset, session_id) in [(0, None), (100, None), (0, Some("opaque".into()))] {
+                let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+                    sql: sql.into(),
+                    query_base_sql: sql.into(),
+                    database_type: Some(DatabaseType::DynamoDb),
+                    pagination: QueryPagination { limit: 100, offset, session_id: session_id.clone() },
+                    use_agent_cursor: false,
+                    first_page_uses_actual_sql: false,
+                    execution_hint: None,
+                });
+                assert_eq!(plan.sql_to_execute, sql);
+                assert!(plan.page_sql.is_none());
+                assert!(plan.page_limit.is_none());
+                assert!(plan.page_offset.is_none());
+                assert!(plan.count_sql.is_none());
+                assert!(plan.exact_query_row_bound.is_none());
+                assert!(!plan.use_agent_result_session);
+                assert!(plan.single_execution);
+                assert_eq!(plan.pagination_error.is_some(), offset > 0 || session_id.is_some());
+            }
+        }
+        let sql = "SELECT * FROM \"orders\"";
+        assert!(
+            !build_paginated_query_sql(PaginatedQuerySqlOptions {
+                original_sql: sql.into(),
+                database_type: Some(DatabaseType::DynamoDb),
+                limit: 100,
+                offset: 0,
+            })
+            .ok
+        );
+        assert!(
+            !build_count_query_sql(CountQuerySqlOptions {
+                original_sql: sql.into(),
+                database_type: Some(DatabaseType::DynamoDb),
+            })
+            .ok
+        );
+    }
+
     fn oceanbase_plan(sql: &str, limit: usize, offset: usize, cursor: bool) -> QueryPaginationExecutionPlan {
         build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
             sql: sql.into(),
