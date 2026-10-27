@@ -494,6 +494,15 @@ const isAiPanelMaximized = ref(false);
 const isHistoryPanelMaximized = ref(false);
 const isZenMode = ref(false);
 const showSqlLibraryPanel = ref(safeLocalStorageGet("dbx-sql-library-open") === "true");
+const sqlLibraryLocateRequest = ref<{ id: number; fileId: string } | null>(null);
+let sqlLibraryLocateRequestId = 0;
+watch(
+  showSqlLibraryPanel,
+  (open) => {
+    if (!open) sqlLibraryLocateRequest.value = null;
+  },
+  { flush: "sync" },
+);
 const sqlFileLocateRequest = ref<{ id: number; path: string } | null>(null);
 let sqlFileLocateRequestId = 0;
 const showSqlFilePanel = ref(safeLocalStorageGet("dbx-sql-file-panel-open") === "true");
@@ -3740,6 +3749,17 @@ function finishSqlFileLocate(requestId: number) {
   if (sqlFileLocateRequest.value?.id === requestId) sqlFileLocateRequest.value = null;
 }
 
+function locateSqlLibraryFile(tab: QueryTab) {
+  if (!tab.savedSqlId || isDetachedWindowContext) return;
+  isZenMode.value = false;
+  openRightSidebarPanel("sqlLibrary");
+  sqlLibraryLocateRequest.value = { id: ++sqlLibraryLocateRequestId, fileId: tab.savedSqlId };
+}
+
+function finishSqlLibraryLocate(requestId: number) {
+  if (sqlLibraryLocateRequest.value?.id === requestId) sqlLibraryLocateRequest.value = null;
+}
+
 async function locateTabInSidebar(tab: QueryTab) {
   setSidebarOpen(true);
   await nextTick();
@@ -5586,6 +5606,7 @@ onUnmounted(() => {
                     :content-suppressed="activeTab?.mode === 'plugin-workbench'"
                     @locate-tab="locateTabInSidebar"
                     @locate-sql-file="locateSqlFile"
+                    @locate-sql-library-file="locateSqlLibraryFile"
                     @close-tab="
                       (tabId: string) => {
                         if (tabId === queryStore.activeTabId) void closeActiveSurface();
@@ -5819,7 +5840,7 @@ onUnmounted(() => {
             <div class="panel-resize-handle panel-resize-handle--left" @pointerdown="startSqlLibraryResize" />
             <div class="h-full min-h-0 overflow-hidden rounded-[inherit]" @mousedown="rememberAuxiliarySearchSurface('sqlLibrary')">
               <div data-sql-library-panel class="h-full min-h-0">
-                <SqlLibraryPanel @close="closeRightSidebarPanel('sqlLibrary')" />
+                <SqlLibraryPanel :locate-request="sqlLibraryLocateRequest" @locate-handled="finishSqlLibraryLocate" @close="closeRightSidebarPanel('sqlLibrary')" />
               </div>
             </div>
           </div>
