@@ -886,9 +886,14 @@ async fn connection_statement_split_database_type(state: &AppState, connection_i
 /// A generic JDBC connection to Oracle runs PL/SQL through the JDBC plugin, so its
 /// script is split with the Oracle rules. The plain `Jdbc` profile would cut every
 /// routine body at its first inner semicolon and replace the object with the fragment.
-fn statement_split_database_type(config: &ConnectionConfig) -> DatabaseType {
+/// A JDBC connection to SQL Server runs T-SQL through the JDBC plugin, so its script
+/// keeps top-level control-flow batches whole (#13514). Both mappings only change
+/// statement-splitting semantics; the connection's `db_type` still routes the query.
+pub fn statement_split_database_type(config: &ConnectionConfig) -> DatabaseType {
     if crate::schema::is_oracle_external_driver_config(config) {
         DatabaseType::Oracle
+    } else if crate::schema::is_sqlserver_external_driver_config(config) {
+        DatabaseType::SqlServer
     } else {
         config.db_type
     }
@@ -6799,6 +6804,10 @@ pub async fn execute_in_manual_transaction_with_options(
 
     let db_type = connection_database_type(state, &connection_id).await;
     let compatibility_mode = connection_sql_compatibility_mode(state, &pool_key, db_type).await;
+    // Split with the connection's statement-splitting dialect, not its routing
+    // `db_type`: a JDBC SQL Server connection keeps control-flow batches whole
+    // (#13514) while still executing through the generic external-driver path.
+    let split_db_type = connection_statement_split_database_type(state, &connection_id).await;
     let statements = if let Some(bound) = options.bound_statements.as_ref() {
         if db_type != Some(DatabaseType::OceanbaseOracle) {
             return Err("Bound BLOB saves are only supported for OceanBase Oracle.".into());
@@ -6810,12 +6819,12 @@ pub async fn execute_in_manual_transaction_with_options(
         dbx_types::types::validate_blob_bound_statements(&previews, bound)?;
         previews
     } else {
-        db_type.map_or_else(
+        split_db_type.map_or_else(
             || split_sql_statements(sql),
-            |db_type| {
+            |split_db_type| {
                 crate::sql::split_sql_statements_for_database_with_compatibility(
                     sql,
-                    db_type,
+                    split_db_type,
                     compatibility_mode.as_deref(),
                 )
             },
@@ -10887,6 +10896,46 @@ for line in sys.stdin:
         let mut other = test_connection_config(DatabaseType::Jdbc);
         other.connection_string = Some("jdbc:h2:mem:test".to_string());
         assert_eq!(statement_split_database_type(&other), DatabaseType::Jdbc);
+    }
+
+    // #13514: a generic JDBC connection to SQL Server splits with the SQL Server
+    // rules, so the reported TRY/CATCH script keeps its batch whole while the
+    // leading `SET` stays its own statement. Other JDBC configs stay on the
+    // plain `Jdbc` profile.
+    #[test]
+    fn jdbc_sqlserver_execution_plan_keeps_control_flow_batches_whole() {
+        let mut sqlserver = test_connection_config(DatabaseType::Jdbc);
+        sqlserver.connection_string = Some("jdbc:sqlserver://127.0.0.1:1433;databaseName=demo".to_string());
+        assert_eq!(statement_split_database_type(&sqlserver), DatabaseType::SqlServer);
+
+        let sql = "SET XACT_ABORT ON;\n\
+                   BEGIN TRY\n\
+                   BEGIN TRANSACTION;\n\
+                   UPDATE dbo.Documents SET Deleted = 0 WHERE Deleted = 1;\n\
+                   COMMIT TRANSACTION;\n\
+                   END TRY\n\
+                   BEGIN CATCH\n\
+                   IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n\
+                   THROW;\n\
+                   END CATCH;";
+        let block = &sql[sql.find("BEGIN TRY").unwrap()..];
+
+        let plan = query_execution_plan(sql, Some(statement_split_database_type(&sqlserver)), false);
+        assert_eq!(plan.statements, vec!["SET XACT_ABORT ON".to_string(), block.to_string()]);
+
+        let mut other = test_connection_config(DatabaseType::Jdbc);
+        other.connection_string = Some("jdbc:h2:mem:test".to_string());
+        let plan = query_execution_plan("SELECT 1; SELECT 2;", Some(statement_split_database_type(&other)), false);
+        assert_eq!(plan.statements, vec!["SELECT 1", "SELECT 2"]);
+
+        let mut postgres = test_connection_config(DatabaseType::Jdbc);
+        postgres.connection_string = Some("jdbc:postgresql://127.0.0.1:5432/demo".to_string());
+        assert_eq!(statement_split_database_type(&postgres), DatabaseType::Jdbc);
+
+        let mut jtds = test_connection_config(DatabaseType::Jdbc);
+        jtds.connection_string = Some("jdbc:jtds:sqlserver://127.0.0.1:1433/demo".to_string());
+        jtds.jdbc_driver_class = Some("net.sourceforge.jtds.jdbc.Driver".to_string());
+        assert_eq!(statement_split_database_type(&jtds), DatabaseType::SqlServer);
     }
 
     #[test]

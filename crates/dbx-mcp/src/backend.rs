@@ -1403,7 +1403,15 @@ impl DbxBackend for LocalBackend {
     ) -> dbx_core::sql::SqlExecutionPlan {
         let is_sqlserver_agent =
             dbx_core::query::connection_pool_is_sqlserver_agent(self.state.as_ref(), &connection.id, database).await;
-        dbx_core::query::query_execution_plan(sql, Some(connection.db_type), is_sqlserver_agent)
+        // Split with the connection's statement-splitting dialect, not its
+        // routing `db_type`: a JDBC SQL Server connection keeps control-flow
+        // batches whole (#13514), a JDBC Oracle connection keeps PL/SQL units
+        // whole, matching the core's own execution plan.
+        dbx_core::query::query_execution_plan(
+            sql,
+            Some(dbx_core::query::statement_split_database_type(connection)),
+            is_sqlserver_agent,
+        )
     }
 
     async fn add_connection_for_mcp(&self, config: ConnectionConfig) -> Result<ConnectionConfig, String> {
