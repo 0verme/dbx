@@ -8899,7 +8899,9 @@ fn postgres_query_body_dml(body: &SetExpr) -> Option<&Statement> {
 /// retrieval path. DML without `RETURNING` needs `execute` for its command
 /// tag/affected-row count, while DML with `RETURNING` produces a result set.
 pub fn postgres_statement_returns_rows(sql: &str) -> bool {
-    if starts_with_executable_sql_keyword(sql, &["SELECT", "SHOW", "EXPLAIN", "TABLE"]) {
+    // FETCH returns a cursor result set (including column metadata when empty),
+    // unlike MOVE, which only reports the number of cursor rows skipped.
+    if starts_with_executable_sql_keyword(sql, &["SELECT", "SHOW", "EXPLAIN", "TABLE", "FETCH"]) {
         return true;
     }
 
@@ -12556,6 +12558,82 @@ mod tests {
         assert!(!postgres_requires_single_schema_search_path(
             "ERROR: syntax error at or near \"$\" in context \"SELECT * FROM t WHERE id = $1\", at line 1"
         ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires DBX_TEST_POSTGRES_URL pointing at a writable PostgreSQL database"]
+    async fn live_postgres_cursor_fetch_returns_result_sets() {
+        let url = std::env::var("DBX_TEST_POSTGRES_URL").expect("DBX_TEST_POSTGRES_URL");
+        let pool = connect(&url, Duration::from_secs(5)).await.expect("connect");
+        let client = pool.get().await.expect("checkout pinned session");
+        client
+            .batch_execute(
+                "CREATE OR REPLACE PROCEDURE pg_temp.open_test_cursors(INOUT c1 refcursor, INOUT c2 refcursor) \
+             LANGUAGE plpgsql AS $$ BEGIN \
+             OPEN c1 FOR SELECT 42::integer AS id, 'cursor value'::text AS label; \
+             OPEN c2 FOR SELECT 7::integer AS id WHERE false; END $$;",
+            )
+            .await
+            .expect("create session-local procedure");
+
+        // Exercise cached prepared, unnamed, and text-protocol execution on
+        // one pinned session, as required by transaction-scoped refcursors.
+        for (prefer_text, unnamed) in [(false, false), (false, true), (true, false)] {
+            client.batch_execute("BEGIN; CALL pg_temp.open_test_cursors('c1', 'c2')").await.expect("open cursors");
+            let result = execute_query_with_max_rows_inner(
+                &client,
+                "FETCH ALL FROM \"c1\"",
+                Some(100),
+                prefer_text,
+                None,
+                unnamed,
+            )
+            .await
+            .expect("fetch rows");
+            assert_eq!(result.columns, vec!["id", "label"]);
+            let expected_id = if prefer_text { serde_json::json!("42") } else { serde_json::json!(42) };
+            assert_eq!(
+                result.rows,
+                vec![vec![expected_id, serde_json::json!("cursor value")]],
+                "text={prefer_text}, unnamed={unnamed}"
+            );
+
+            for sql in ["FETCH ALL FROM c1", "FETCH ALL FROM c2"] {
+                let empty = execute_query_with_max_rows_inner(&client, sql, Some(100), prefer_text, None, unnamed)
+                    .await
+                    .expect("fetch empty cursor");
+                assert!(!empty.columns.is_empty(), "empty FETCH must retain column metadata: {sql}");
+                assert!(empty.rows.is_empty());
+            }
+            client.batch_execute("ROLLBACK").await.expect("rollback");
+        }
+    }
+
+    #[test]
+    fn postgres_statement_returns_rows_for_cursor_fetch() {
+        for sql in [
+            "FETCH ALL FROM \"c1\"",
+            "fetch next from c1",
+            "FETCH FORWARD 10 FROM c1",
+            "FETCH BACKWARD ALL IN c1",
+            "FETCH ABSOLUTE 2 FROM c1",
+            "FETCH RELATIVE -1 FROM c1",
+            "FETCH FIRST FROM c1",
+            "FETCH LAST FROM c1",
+            "FETCH 0 FROM c1",
+            "-- read a refcursor\n/* result set */ FETCH ALL FROM c1",
+        ] {
+            assert!(postgres_statement_returns_rows(sql), "expected cursor rows for: {sql}");
+        }
+        for sql in [
+            "MOVE ALL FROM c1",
+            "DECLARE c1 CURSOR FOR SELECT 1",
+            "CLOSE c1",
+            "FETCHING c1",
+            "DO $$ BEGIN FETCH c1 INTO value; END $$",
+        ] {
+            assert!(!postgres_statement_returns_rows(sql), "expected command result for: {sql}");
+        }
     }
 
     #[test]
