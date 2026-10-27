@@ -29,6 +29,7 @@ const connectionStore = {
     node.isExpanded = true;
   }),
   loadTables: vi.fn(async () => undefined),
+  loadDatabases: vi.fn(async () => undefined),
   loadCustomTypeChildren: vi.fn(async (node: TreeNode) => {
     node.hasMembers = true;
     node.children = [{ id: `${node.id}:attribute`, label: "STREET", type: "type-member", connectionId: node.connectionId, database: node.database }];
@@ -1343,5 +1344,121 @@ describe("SidebarTreeRuntimeHost expansion", () => {
     expect(groupNode.isExpanded).toBe(false);
     expect(connectionNode.isExpanded).toBe(false);
     expect(databaseNode.isExpanded).toBe(false);
+  });
+
+  it("expands a connection on first click even when loader does not pre-set isExpanded (issue #13536)", async () => {
+    const databaseNode: TreeNode = {
+      id: "mysql:db1",
+      label: "db1",
+      type: "database",
+      connectionId: "mysql",
+      database: "db1",
+      isExpanded: false,
+      children: [],
+    };
+    const connectionNode = reactive<TreeNode>({
+      id: "mysql",
+      label: "MySQL Prod",
+      type: "connection",
+      connectionId: "mysql",
+      isExpanded: false,
+      children: [],
+    });
+
+    connectionStore.treeNodes = [connectionNode];
+    connectionStore.loadDatabases = vi.fn(async () => {
+      // Loader attaches children but does not set isExpanded (e.g. sidebarExpandTreeOnConnect is false)
+      connectionNode.children = [databaseNode];
+    });
+
+    const host = ref<InstanceType<typeof SidebarTreeRuntimeHost> | null>(null);
+    const toggled = vi.fn((node: TreeNode, expanded: boolean) => {
+      syncSidebarTreeNodeExpansion(connectionStore.treeNodes, node, expanded);
+    });
+    const app = createApp(
+      defineComponent({
+        setup: () => () => h(SidebarTreeRuntimeHost, { ref: host, node: connectionNode, depth: 0, onNodeToggled: toggled }),
+      }),
+    );
+    mountedApps.push(app);
+    const container = document.createElement("div");
+    document.body.append(container);
+    app.use(i18n);
+    app.mount(container);
+
+    host.value?.toggleNode(connectionNode);
+    await vi.waitFor(() => expect(connectionNode.isExpanded).toBe(true));
+
+    expect(connectionStore.loadDatabases).toHaveBeenCalledWith("mysql", undefined);
+    expect(connectionStore.treeNodes[0].isExpanded).toBe(true);
+    expect(toggled).toHaveBeenCalledWith(connectionNode, true);
+  });
+
+  it("expands a connection during search on first click (issue #13536)", async () => {
+    const databaseNode: TreeNode = {
+      id: "mysql:db1",
+      label: "db1",
+      type: "database",
+      connectionId: "mysql",
+      database: "db1",
+      isExpanded: false,
+      children: [],
+    };
+    const connectionNode = reactive<TreeNode>({
+      id: "mysql",
+      label: "MySQL Prod",
+      type: "connection",
+      connectionId: "mysql",
+      isExpanded: false,
+      children: [],
+    });
+
+    connectionStore.treeNodes = [connectionNode];
+    connectionStore.loadDatabases = vi.fn(async () => {
+      connectionNode.children = [databaseNode];
+    });
+
+    const collapsedIds = ref(new Set<string>());
+    const projection = computed(() => filterSidebarTree(connectionStore.treeNodes, "MySQL", collapsedIds.value));
+    const handlers = searchHandlers(collapsedIds);
+
+    const host = ref<InstanceType<typeof SidebarTreeRuntimeHost> | null>(null);
+    const app = createApp(
+      defineComponent({
+        setup() {
+          provide(sidebarTreeContextKey, {
+            getVisibleNodes: () => projection.value,
+            getVisibleNodeIndex: () => 0,
+            isSearchProjectionActive: () => true,
+            getTreeLoadSearchOptions: () => ({ searchFilter: "", allowGlobalSearchMismatch: true, expectedSidebarSearchQuery: "" }),
+          });
+          return () =>
+            h(SidebarTreeRuntimeHost, {
+              ref: host,
+              node: projection.value[0],
+              depth: 0,
+              onSearchToggle: handlers.onSearchToggle,
+              onNodeToggled: handlers.onNodeToggled,
+            });
+        },
+      }),
+    );
+    mountedApps.push(app);
+    const container = document.createElement("div");
+    document.body.append(container);
+    app.use(i18n);
+    app.mount(container);
+
+    host.value?.toggleNode(projection.value[0]);
+    await vi.waitFor(() => expect(projection.value[0].isExpanded).toBe(true));
+
+    expect(connectionStore.loadDatabases).toHaveBeenCalledWith("mysql", {
+      searchFilter: "",
+      allowGlobalSearchMismatch: true,
+      expectedSidebarSearchQuery: "",
+    });
+    expect(connectionStore.treeNodes[0].isExpanded).toBe(true);
+    expect(projection.value[0].isExpanded).toBe(true);
+    expect(projection.value[0].children?.map((c) => c.label)).toEqual(["db1"]);
   });
 });
