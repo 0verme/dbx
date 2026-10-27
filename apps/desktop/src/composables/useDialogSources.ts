@@ -75,6 +75,7 @@ const sqlFilePrefillPreview = ref<SqlFilePreview>();
 const diagramPrefillConnectionId = ref("");
 const diagramPrefillDatabase = ref("");
 const diagramPrefillSchema = ref("");
+const diagramPrefillCatalog = ref<string>();
 const diagramFocusTableName = ref("");
 const diagramFocusTableNames = ref<string[]>([]);
 const docsPrefillConnectionId = ref("");
@@ -257,6 +258,7 @@ export function useDialogSources() {
           diagramPrefillConnectionId.value = v.connectionId;
           diagramPrefillDatabase.value = v.database;
           diagramPrefillSchema.value = v.schema ?? "";
+          diagramPrefillCatalog.value = v.catalog;
           diagramFocusTableName.value = v.tableName ?? "";
           diagramFocusTableNames.value = v.tableNames ?? (v.tableName ? [v.tableName] : []);
           showDiagramDialog.value = true;
@@ -668,6 +670,7 @@ export function useDialogSources() {
     diagramPrefillConnectionId,
     diagramPrefillDatabase,
     diagramPrefillSchema,
+    diagramPrefillCatalog,
     diagramFocusTableName,
     diagramFocusTableNames,
     docsPrefillConnectionId,

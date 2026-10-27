@@ -641,6 +641,7 @@ export const useConnectionStore = defineStore("connection", () => {
     connectionId: string;
     database: string;
     schema?: string;
+    catalog?: string;
     tableName?: string;
     tableNames?: string[];
   } | null>(null);

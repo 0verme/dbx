@@ -3225,6 +3225,7 @@ function openDiagram(row: ObjectBrowserRow) {
   connectionStore.diagramSource = {
     connectionId: props.connection.id,
     database: props.database,
+    catalog: props.catalog,
     schema: row.schema || selectedSchema.value,
     tableName: row.type === "TABLE" ? row.name : undefined,
   };
