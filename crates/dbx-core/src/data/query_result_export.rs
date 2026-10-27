@@ -1185,6 +1185,7 @@ async fn export_query_result_core_inner(
     let mut offset: usize = 0;
     let mut wrote_text_header = false;
     if request.database_type == DatabaseType::DuckDb && txn_session_id.is_none() {
+        on_progress(progress(request, 0, ExportStatus::PreparingSnapshot, None));
         let snapshot = duckdb_snapshot.insert(DuckDbExportSnapshot::new(
             &request.connection_id,
             &request.database,

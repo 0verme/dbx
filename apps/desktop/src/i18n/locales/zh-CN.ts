@@ -3879,6 +3879,8 @@ export default withEnglishFallback({
     agentSessionMissing: "流式导出需要结果集会话，但当前驱动未返回 session_id。",
     title: "导出表数据",
     fetching: "正在从数据库获取数据...",
+    preparingSnapshot: "正在生成一致的导出快照...",
+    snapshotResources: "大数据量可能使用临时磁盘空间。此连接上的其他查询需等待快照生成完成。",
     writing: "正在写入文件...",
     done: "导出完成！",
     error: "导出失败",

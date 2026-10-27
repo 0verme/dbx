@@ -3616,6 +3616,8 @@ export default withEnglishFallback({
     multiDbExecutionTitle: "複数データベースで実行：{name}",
     multiDbTargets: "ターゲット {completed}/{total}、成功 {success}、失敗 {failed}",
     openTask: "タスクを開く",
+    preparingSnapshot: "一貫したエクスポートスナップショットを生成しています...",
+    snapshotResources: "大量のデータの場合、一時ディスク領域を使用する可能性があります。この接続上の他のクエリは、スナップショットの生成が完了するまで待機する必要があります。",
   },
   welcome: {
     introEyebrow: "データベースワークスペース",

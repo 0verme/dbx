@@ -3693,6 +3693,8 @@ export default withEnglishFallback({
     copyFailureDetail: "Копировать детали ошибок",
     failureDetailCopied: "Детали ошибок скопированы",
     failureDetailCopyFailed: "Не удалось скопировать детали ошибок: {message}",
+    preparingSnapshot: "Создание согласованного снимка для экспорта...",
+    snapshotResources: "Большие объёмы данных могут занимать временное дисковое пространство. Другим запросам в этом подключении придётся ждать завершения создания снимка.",
   },
   welcome: {
     introEyebrow: "Рабочее пространство базы данных",

@@ -3869,6 +3869,8 @@ export default withEnglishFallback({
     copyFailureDetail: "คัดลอกรายละเอียดความล้มเหลว",
     failureDetailCopied: "คัดลอกรายละเอียดความล้มเหลวแล้ว",
     failureDetailCopyFailed: "คัดลอกรายละเอียดความล้มเหลวไม่สำเร็จ: {message}",
+    preparingSnapshot: "กำลังสร้างสแนปช็อตการส่งออกที่สอดคล้องกัน...",
+    snapshotResources: "ข้อมูลปริมาณมากอาจใช้พื้นที่ดิสก์ชั่วคราว คิวรีอื่นบนการเชื่อมต่อนี้ต้องรอจนกว่าการสร้างสแนปช็อตจะเสร็จสิ้น",
   },
   welcome: {
     introEyebrow: "Workspace ฐานข้อมูล",

@@ -3514,6 +3514,8 @@ export default withEnglishFallback({
     agentSessionMissing: "串流匯出需要結果集工作階段，但目前驅動程式未回傳 session_id。",
     title: "匯出資料表資料",
     fetching: "正在從資料庫擷取資料...",
+    preparingSnapshot: "正在產生一致的匯出快照...",
+    snapshotResources: "大量資料可能使用暫存磁碟空間。此連線上的其他查詢需等候快照產生完成。",
     writing: "正在寫入檔案...",
     done: "匯出完成！",
     error: "匯出失敗",

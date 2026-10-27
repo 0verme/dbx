@@ -3949,6 +3949,8 @@ export default {
     agentSessionMissing: "Streaming export needs a result-set session, but this driver returned no session_id.",
     title: "Exporting Table Data",
     fetching: "Fetching data from database...",
+    preparingSnapshot: "Preparing a consistent export snapshot...",
+    snapshotResources: "Large results may use temporary disk space. Other queries on this connection wait until the snapshot is ready.",
     writing: "Writing to file...",
     done: "Export completed!",
     error: "Export failed",

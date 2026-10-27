@@ -3592,6 +3592,8 @@ export default withEnglishFallback({
     copyFailureDetail: "Copia dettagli dell'errore",
     failureDetailCopied: "Dettagli dell'errore copiati",
     failureDetailCopyFailed: "Impossibile copiare i dettagli dell'errore: {message}",
+    preparingSnapshot: "Generazione di uno snapshot di esportazione coerente in corso...",
+    snapshotResources: "Con grandi volumi di dati potrebbe essere utilizzato spazio su disco temporaneo. Le altre query su questa connessione devono attendere il completamento della generazione dello snapshot.",
   },
   welcome: {
     introEyebrow: "Spazio di lavoro del database",

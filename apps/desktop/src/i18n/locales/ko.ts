@@ -3546,6 +3546,8 @@ export default withEnglishFallback({
     multiDbExecutionTitle: "다중 데이터베이스 실행: {name}",
     multiDbTargets: "대상 {completed}/{total}, 성공 {success}, 실패 {failed}",
     openTask: "작업 열기",
+    preparingSnapshot: "일관된 내보내기 스냅샷을 생성하는 중...",
+    snapshotResources: "대용량 데이터는 임시 디스크 공간을 사용할 수 있습니다. 이 연결의 다른 쿼리는 스냅샷 생성이 완료될 때까지 기다려야 합니다.",
   },
   welcome: {
     introEyebrow: "데이터베이스 작업 공간",

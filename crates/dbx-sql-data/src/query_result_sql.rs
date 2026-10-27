@@ -214,7 +214,9 @@ pub fn build_query_pagination_execution_plan(
     // example Db2 for z/OS before V12). DBX connections use the Agent/JDBC
     // cursor for DB2, so keep every page on that cursor path instead of
     // generating OFFSET ... FETCH FIRST SQL that fails with SQLCODE -104.
-    if options.database_type == Some(DatabaseType::Db2) && options.use_agent_cursor {
+    // DuckDB must also keep offset replay on one result session: independent
+    // LIMIT/OFFSET executions can return overlapping rows even with ORDER BY.
+    if matches!(options.database_type, Some(DatabaseType::Db2 | DatabaseType::DuckDb)) && options.use_agent_cursor {
         if !options.first_page_uses_actual_sql && options.sql == options.query_base_sql {
             plan.sql_to_execute = options.query_base_sql;
         }
@@ -2967,6 +2969,29 @@ fn fallback_alias(index: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn duckdb_pages_and_offset_replays_keep_a_single_result_session() {
+        for offset in [0, 100, 500] {
+            for session_id in [None, Some("duckdb-result".to_string())] {
+                let sql = "SELECT * FROM settlements ORDER BY period";
+                let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+                    sql: sql.into(),
+                    query_base_sql: sql.into(),
+                    database_type: Some(DatabaseType::DuckDb),
+                    pagination: QueryPagination { limit: 100, offset, session_id },
+                    use_agent_cursor: true,
+                    first_page_uses_actual_sql: true,
+                    execution_hint: None,
+                });
+                assert!(plan.use_agent_result_session);
+                assert_eq!(plan.sql_to_execute, sql);
+                assert_eq!(plan.page_offset, Some(offset));
+                assert_eq!(plan.page_limit, Some(100));
+                assert!(plan.pagination_error.is_none());
+            }
+        }
+    }
+
     #[test]
     fn dynamodb_partiql_uses_api_bounds_without_sql_rewrites() {
         for sql in [

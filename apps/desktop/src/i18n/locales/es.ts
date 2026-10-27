@@ -3737,6 +3737,8 @@ export default withEnglishFallback({
     copyFailureDetail: "Copiar detalles del fallo",
     failureDetailCopied: "Detalles del fallo copiados",
     failureDetailCopyFailed: "No se pudieron copiar los detalles del fallo: {message}",
+    preparingSnapshot: "Generando una instantánea de exportación coherente...",
+    snapshotResources: "Los grandes volúmenes de datos pueden utilizar espacio temporal en disco. Las demás consultas de esta conexión deben esperar a que finalice la generación de la instantánea.",
   },
   welcome: {
     introEyebrow: "Espacio de trabajo de bases de datos",

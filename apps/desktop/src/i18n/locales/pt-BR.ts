@@ -3592,6 +3592,8 @@ export default withEnglishFallback({
     multiDbExecutionTitle: "Execução em vários bancos de dados: {name}",
     multiDbTargets: "Destinos {completed}/{total}, sucesso {success}, falha {failed}",
     openTask: "Abrir tarefa",
+    preparingSnapshot: "Gerando um snapshot de exportação consistente...",
+    snapshotResources: "Grandes volumes de dados podem usar espaço temporário em disco. Outras consultas nesta conexão precisam aguardar a conclusão da geração do snapshot.",
   },
   welcome: {
     introEyebrow: "Espaço de trabalho de banco de dados",
