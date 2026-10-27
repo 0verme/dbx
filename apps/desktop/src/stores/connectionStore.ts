@@ -334,7 +334,7 @@ function isFlatMqConnection(config: ConnectionConfig | undefined): boolean {
   return kind === "kafka" || kind === "rocketmq" || kind === "rabbitmq";
 }
 
-type ImportSource = "dbx" | "navicat" | "dbeaver" | "datagrip" | "rdm";
+type ImportSource = "dbx" | "navicat" | "dbeaver" | "datagrip" | "rdm" | "another-redis";
 
 interface LocateTableTarget {
   catalog?: string;
@@ -11089,7 +11089,7 @@ export const useConnectionStore = defineStore("connection", () => {
       const { readFile } = await import("@tauri-apps/plugin-fs");
       const { decodeImportFileText } = await import("@/lib/common/decodeText");
       const path = await open({
-        filters: source === "navicat" ? [{ name: "Navicat Connection Export", extensions: ["ncx", "xml"] }] : [{ name: source === "rdm" ? "RedisDesktopManager JSON" : "DBX JSON", extensions: ["json"] }],
+        filters: source === "another-redis" ? [{ name: "Another Redis Desktop Manager", extensions: ["ano"] }] : source === "navicat" ? [{ name: "Navicat Connection Export", extensions: ["ncx", "xml"] }] : [{ name: source === "rdm" ? "RedisDesktopManager JSON" : "DBX JSON", extensions: ["json"] }],
         multiple: false,
       });
       if (!path) return null;
@@ -11101,7 +11101,7 @@ export const useConnectionStore = defineStore("connection", () => {
       content = await new Promise<string>((resolve, reject) => {
         const input = document.createElement("input");
         input.type = "file";
-        input.accept = source === "navicat" ? ".ncx,.xml" : ".json";
+        input.accept = source === "another-redis" ? ".ano" : source === "navicat" ? ".ncx,.xml" : ".json";
         input.onchange = () => {
           const file = input.files?.[0];
           if (!file) {
@@ -11118,6 +11118,7 @@ export const useConnectionStore = defineStore("connection", () => {
     }
 
     if (source === "rdm") return { content: JSON.stringify({ format: "rdm-import", content }), encrypted: false };
+    if (source === "another-redis") return { content: JSON.stringify({ format: "another-redis-import", content }), encrypted: false };
     if (content.trimStart().startsWith("<")) {
       return { content, encrypted: false };
     }
@@ -11135,6 +11136,11 @@ export const useConnectionStore = defineStore("connection", () => {
 
     if (!passphrase) {
       const payload: unknown = JSON.parse(content);
+      if (payload && typeof payload === "object" && "format" in payload && payload.format === "another-redis-import") {
+        if (!("content" in payload) || typeof payload.content !== "string") throw new Error("Another Redis Desktop Manager: invalid import payload.");
+        const { parseAnotherRedisImport } = await import("@/lib/imports/anotherRedisImport");
+        return parseAnotherRedisImport(payload.content);
+      }
       if (payload && typeof payload === "object" && "format" in payload && payload.format === "rdm-import") {
         if (!("content" in payload) || typeof payload.content !== "string") throw new Error("RedisDesktopManager: invalid import payload.");
         const { parseRedisDesktopManagerImport } = await import("@/lib/imports/redisDesktopManagerImport");

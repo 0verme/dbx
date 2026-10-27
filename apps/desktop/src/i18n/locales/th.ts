@@ -1241,6 +1241,7 @@ export default withEnglishFallback({
     importDbeaver: "นำเข้า DBeaver",
     importDatagrip: "นำเข้า DataGrip",
     importRdm: "นำเข้า RedisDesktopManager",
+    importAnotherRedis: "นำเข้า Another Redis Desktop Manager",
     export: "ส่งออกการเชื่อมต่อ",
     collapseAll: "ยุบทั้งหมด",
     collapse: "ยุบแถบด้านข้าง",

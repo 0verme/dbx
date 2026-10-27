@@ -1309,6 +1309,7 @@ export default withEnglishFallback({
     importDbeaver: "导入 DBeaver",
     importDatagrip: "导入 DataGrip",
     importRdm: "导入 RedisDesktopManager",
+    importAnotherRedis: "导入 Another Redis Desktop Manager",
     export: "导出连接",
     collapseAll: "一键折叠",
     collapse: "收起侧边栏",

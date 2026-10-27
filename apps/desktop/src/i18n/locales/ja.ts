@@ -1161,6 +1161,7 @@ export default withEnglishFallback({
     importDbeaver: "DBeaverをインポート",
     importDatagrip: "DataGripをインポート",
     importRdm: "RedisDesktopManager をインポート",
+    importAnotherRedis: "Another Redis Desktop Manager をインポート",
     export: "接続をエクスポート",
     collapseAll: "すべて折りたたむ",
     collapse: "サイドバーを折りたたむ",

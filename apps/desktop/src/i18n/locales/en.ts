@@ -1373,6 +1373,7 @@ export default {
     importDbeaver: "Import DBeaver",
     importDatagrip: "Import DataGrip",
     importRdm: "Import RedisDesktopManager",
+    importAnotherRedis: "Import Another Redis Desktop Manager",
     export: "Export Connections",
     collapseAll: "Collapse all",
     collapse: "Collapse sidebar",

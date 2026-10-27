@@ -745,6 +745,7 @@ export default withEnglishFallback({
     importDbeaver: "Importuj DBeaver",
     importDatagrip: "Importuj DataGrip",
     importRdm: "Importuj RedisDesktopManager",
+    importAnotherRedis: "Importuj Another Redis Desktop Manager",
     export: "Eksportuj połączenia",
     collapseAll: "Zwiń wszystko",
     collapse: "Zwiń pasek boczny",

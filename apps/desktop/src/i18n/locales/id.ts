@@ -686,6 +686,7 @@ export default withEnglishFallback({
     importDbeaver: "Impor DBeaver",
     importDatagrip: "Impor DataGrip",
     importRdm: "Impor RedisDesktopManager",
+    importAnotherRedis: "Impor Another Redis Desktop Manager",
     export: "Ekspor Koneksi",
     collapseAll: "Ciutkan semua",
     collapse: "Ciutkan bilah sisi",

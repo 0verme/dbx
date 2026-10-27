@@ -1144,6 +1144,7 @@ export default withEnglishFallback({
     importDbeaver: "匯入 DBeaver",
     importDatagrip: "匯入 DataGrip",
     importRdm: "匯入 RedisDesktopManager",
+    importAnotherRedis: "匯入 Another Redis Desktop Manager",
     export: "匯出連線",
     collapseAll: "一鍵收合",
     collapse: "收合側邊欄",

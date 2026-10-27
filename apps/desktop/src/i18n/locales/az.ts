@@ -481,6 +481,7 @@ export default withEnglishFallback({
     importDbeaver: "DBeaver-i idxal et",
     importDatagrip: "DataGrip-i idxal et",
     importRdm: "RedisDesktopManager-i idxal et",
+    importAnotherRedis: "Another Redis Desktop Manager-i idxal et",
     export: "Əlaqələri ixrac et",
     collapseAll: "Hamısını yığ",
     collapse: "Yan paneli yığ",

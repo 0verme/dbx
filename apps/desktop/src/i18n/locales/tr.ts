@@ -481,6 +481,7 @@ export default withEnglishFallback({
     importDbeaver: "DBeaver İçe Aktar",
     importDatagrip: "DataGrip İçe Aktar",
     importRdm: "RedisDesktopManager içe aktar",
+    importAnotherRedis: "Another Redis Desktop Manager içe aktar",
     export: "Bağlantıları Dışa Aktar",
     collapseAll: "Tümünü daralt",
     collapse: "Kenar çubuğunu daralt",

@@ -1141,6 +1141,7 @@ export default withEnglishFallback({
     importDbeaver: "Импорт DBeaver",
     importDatagrip: "Импорт DataGrip",
     importRdm: "Импорт RedisDesktopManager",
+    importAnotherRedis: "Импорт Another Redis Desktop Manager",
     export: "Экспортировать подключения",
     collapseAll: "Свернуть всё",
     collapse: "Свернуть боковую панель",
