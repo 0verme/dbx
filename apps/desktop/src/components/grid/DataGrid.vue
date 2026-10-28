@@ -12431,9 +12431,15 @@ function transposeScrollElement(): HTMLElement | undefined {
 
 function transposeFieldTitle(item: { column: string; type: string; comment?: string }): string {
   const details = [item.column];
-  if (showTransposeFieldMetadata.value && showColumnTypesInHeader.value && item.type) details.push(`${t("grid.columnType")}: ${item.type}`);
-  if (showTransposeFieldMetadata.value && showTransposeColumnComments.value && item.comment) details.push(`${t("grid.columnComment")}: ${item.comment}`);
+  if (showColumnTypesInHeader.value && item.type) details.push(`${t("grid.columnType")}: ${item.type}`);
+  if (showTransposeColumnComments.value && item.comment) details.push(`${t("grid.columnComment")}: ${item.comment}`);
   return details.join("\n");
+}
+
+function toggleTransposeFieldMetadata() {
+  settingsStore.updateEditorSettings({
+    dataGridShowTransposeFieldMetadata: !settingsStore.editorSettings.dataGridShowTransposeFieldMetadata,
+  });
 }
 
 function toggleTransposeColumnSort() {
@@ -15608,6 +15614,19 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
                   {{ multiRowTranspose ? t("grid.transposeMultiRow") : t("grid.transposeSingleRow") }}
                 </span>
                 <span class="flex-1" />
+                <Button
+                  data-grid-transpose-toggle-metadata
+                  variant="ghost"
+                  size="icon"
+                  class="h-5 w-5"
+                  :class="{ 'bg-muted text-foreground': showTransposeFieldMetadata }"
+                  :disabled="transposeMetadataInInfoColumn"
+                  :title="t('settings.dataGridShowTransposeFieldMetadata')"
+                  :aria-label="t('settings.dataGridShowTransposeFieldMetadata')"
+                  @click="toggleTransposeFieldMetadata"
+                >
+                  <TableProperties class="w-3 h-3" />
+                </Button>
                 <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="transposeActivePosition <= 0" @click="transposeNav(-1)">
                   <ChevronLeft class="w-3 h-3" />
                 </Button>
@@ -15706,7 +15725,7 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
                           <span class="flex w-full min-w-0 items-center gap-1 overflow-hidden pr-5">
                             <KeyRound v-if="transposeColumnIndexKind(item.column) === 'primary'" data-grid-transpose-index-indicator class="h-3 w-3 shrink-0" :class="columnIndexColorClass('primary')" :title="transposeColumnIndexText('primary')" />
                             <Hash v-else-if="transposeColumnIndexKind(item.column)" data-grid-transpose-index-indicator class="h-3 w-3 shrink-0" :class="columnIndexColorClass(transposeColumnIndexKind(item.column)!)" :title="transposeColumnIndexText(transposeColumnIndexKind(item.column)!)" />
-                            <span class="min-w-0 flex-1 truncate font-medium leading-4">{{ item.column }}</span>
+                            <span data-grid-transpose-field-name class="min-w-0 flex-1 truncate font-medium leading-4">{{ item.column }}</span>
                           </span>
                           <template v-if="showTransposeFieldMetadata && showColumnTypesInHeader && item.type">
                             <span data-grid-transpose-type-line class="h-3 min-w-0 truncate text-[10px] font-normal leading-3 select-none" :class="typeColorClass(item.type)" :title="item.type">
@@ -15726,11 +15745,11 @@ useUpdateBlocker(() => (hasPendingChanges.value || hasPendingDataEditorDraft.val
                           >
                             <span class="text-muted-foreground">{{ t("grid.columnName") }}</span>
                             <span class="min-w-0 break-all font-mono select-text">{{ item.column }}</span>
-                            <template v-if="showTransposeFieldMetadata && showColumnTypesInHeader && item.type">
+                            <template v-if="showColumnTypesInHeader && item.type">
                               <span class="text-muted-foreground">{{ t("grid.columnType") }}</span>
                               <span class="min-w-0 break-all font-mono select-text" :class="typeColorClass(item.type)">{{ item.type }}</span>
                             </template>
-                            <template v-if="showTransposeFieldMetadata && showTransposeColumnComments && item.comment">
+                            <template v-if="showTransposeColumnComments && item.comment">
                               <span class="text-muted-foreground">{{ t("grid.columnComment") }}</span>
                               <span class="min-w-0 whitespace-pre-wrap break-words select-text">{{ item.comment }}</span>
                             </template>
