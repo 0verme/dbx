@@ -740,7 +740,19 @@ const singleKindFilter = computed<ObjectFilter | null>(() => (!showObjectFilter.
 // filter there and drops the database chip. See useToolbarOverflow for the
 // tier contract.
 const toolbarRef = ref<HTMLElement | null>(null);
-const { tier: toolbarTier } = useToolbarOverflow(toolbarRef, [() => props.database, () => selectedSchema.value, () => needsSchema.value, () => showObjectFilter.value, () => singleKindFilter.value, () => settingsStore.editorSettings.objectBrowserViewMode]);
+const { tier: toolbarTier } = useToolbarOverflow(toolbarRef, [
+  () => props.database,
+  () => selectedSchema.value,
+  () => needsSchema.value,
+  () => showObjectFilter.value,
+  () => singleKindFilter.value,
+  () => objectFilters.value.length,
+  () => objectCounts.value,
+  () => objectFilter.value,
+  () => canCreateSchemaIndex.value,
+  () => oracleInvalidObjectsSupported.value,
+  () => settingsStore.editorSettings.objectBrowserViewMode,
+]);
 const showToolbarOverflow = computed(() => toolbarTier.value >= 1);
 const showInlineSortAndView = computed(() => toolbarTier.value < 1);
 const showInlineCheckboxToggle = computed(() => toolbarTier.value < 1);
@@ -6000,7 +6012,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
         <DatabaseActionsMenu :connection="connection" :database="database" :catalog="catalog" />
       </div>
       <div class="flex flex-1 items-center gap-2">
-        <div class="relative min-w-[6rem] flex-1">
+        <div class="relative min-w-[12rem] flex-1">
           <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input v-model="search" data-object-search-input class="h-7 pl-8 pr-6 text-xs" :placeholder="isMongodb ? t('objects.searchCollections') : t('objects.search')" @keydown="onSearchKeydown" />
           <button v-if="search" type="button" class="absolute right-1.5 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground" :aria-label="t('common.clear')" @click="clearObjectSearch">
