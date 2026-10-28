@@ -1746,6 +1746,28 @@ async function startRenamingConnectionNode(connectionId: string) {
   store.selectedTreeNodeId = connectionId;
 }
 
+function expandSidebarNodePath(nodePath: TreeNode[]): void {
+  expandSidebarLocatePath(nodePath, store.canUseLoadedTreeNodeToggle);
+
+  // 表分组行同样是投影出的合成节点（不登记已加载子节点，上面的守卫会跳过），
+  // 折叠状态存在布局里，必须经布局 op 展开，否则下次投影又把它折叠回去。
+  for (const node of nodePath) {
+    if (node.type !== "table-vgroup" || !node.vgroupId) continue;
+    const group = store.tableVGroupLayoutFor(node)?.groups.find((current) => current.id === node.vgroupId);
+    if (group?.collapsed) store.toggleTableVGroupCollapsed(node, node.vgroupId);
+  }
+
+  // Connection groups never register loaded tree children, so the guard above
+  // skips them and a collapsed group keeps the target out of the visible flat
+  // tree. Reopen them through the layout op so the expansion is persisted and
+  // survives the next layout rebuild; flipping isExpanded directly would be
+  // reverted by that rebuild (issue #7387).
+  const collapsedGroupIds = nodePath.filter((node) => node.type === "connection-group" && !node.isExpanded).map((node) => node.id);
+  if (collapsedGroupIds.length > 0) {
+    store.expandConnectionGroups(collapsedGroupIds);
+  }
+}
+
 async function locateActiveTabInSidebar() {
   await locateTabInSidebar(activeTab.value, "smart");
 }
@@ -1840,25 +1862,7 @@ async function locateTabInSidebarTarget(tab: QueryTab | undefined | null, align:
     return;
   }
 
-  expandSidebarLocatePath(nodePath, store.canUseLoadedTreeNodeToggle);
-
-  // 表分组行同样是投影出的合成节点（不登记已加载子节点，上面的守卫会跳过），
-  // 折叠状态存在布局里，必须经布局 op 展开，否则下次投影又把它折叠回去。
-  for (const node of nodePath) {
-    if (node.type !== "table-vgroup" || !node.vgroupId) continue;
-    const group = store.tableVGroupLayoutFor(node)?.groups.find((current) => current.id === node.vgroupId);
-    if (group?.collapsed) store.toggleTableVGroupCollapsed(node, node.vgroupId);
-  }
-
-  // Connection groups never register loaded tree children, so the guard above
-  // skips them and a collapsed group keeps the target out of the visible flat
-  // tree. Reopen them through the layout op so the expansion is persisted and
-  // survives the next layout rebuild; flipping isExpanded directly would be
-  // reverted by that rebuild (issue #7387).
-  const collapsedGroupIds = nodePath.filter((node) => node.type === "connection-group" && !node.isExpanded).map((node) => node.id);
-  if (collapsedGroupIds.length > 0) {
-    store.expandConnectionGroups(collapsedGroupIds);
-  }
+  expandSidebarNodePath(nodePath);
 
   await nextTick();
 
@@ -1868,6 +1872,7 @@ async function locateTabInSidebarTarget(tab: QueryTab | undefined | null, align:
   store.selectedTreeNodeId = match.id;
   store.selectedTreeNodeIds = [match.id];
   store.treeSelectionAnchorId = match.id;
+  store.connectionMultiSelectActive = false;
   await nextTick();
 
   await scrollToSidebarNode(match.id, { align });
@@ -2506,10 +2511,29 @@ function currentTreeScroller(): HTMLElement | null {
 
 async function selectActiveTabSidebarNode(options: { scroll: boolean }) {
   if (!settingsStore.editorSettings.autoSelectActiveSidebarNode) return;
-  const match = findSidebarNodeForActiveTab(activeTab.value, flatNodes.value);
-  if (!match) return;
+  const tab = activeTab.value;
+  if (!tab) return;
 
-  store.selectedTreeNodeId = match.id;
+  let match = findSidebarNodeForActiveTab(tab, flatNodes.value);
+  if (!match) {
+    const target = activeTabSidebarTarget(tab);
+    const nodePath = target ? findNodePathForTarget(target, store.treeNodes) : null;
+    if (nodePath && nodePath.length > 0) {
+      expandSidebarNodePath(nodePath);
+      await nextTick();
+      if (activeTab.value?.id !== tab.id) return;
+      match = findSidebarNodeForActiveTab(tab, flatNodes.value);
+    }
+  }
+  if (!match) return;
+  if (activeTab.value?.id !== tab.id) return;
+
+  if (store.connectionMultiSelectActive || store.selectedTreeNodeId !== match.id || store.treeSelectionAnchorId !== match.id || store.selectedTreeNodeIds.length !== 1 || store.selectedTreeNodeIds[0] !== match.id) {
+    store.selectedTreeNodeId = match.id;
+    store.selectedTreeNodeIds = [match.id];
+    store.treeSelectionAnchorId = match.id;
+    store.connectionMultiSelectActive = false;
+  }
   if (!options.scroll) return;
 
   await nextTick();
