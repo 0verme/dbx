@@ -5965,6 +5965,20 @@ export default withEnglishFallback({
     compactCardWidth: "Ancho mínimo de tarjeta compacta",
     configureColumns: "Configurar columnas de visualización",
   },
+  postgresForeignTable: {
+    tableKind: "Tipo de tabla",
+    regularTable: "Tabla normal",
+    foreignTable: "Tabla externa",
+    server: "Servidor externo",
+    serverPlaceholder: "Seleccione o introduzca un servidor externo existente",
+    noServers: "No hay servidores externos disponibles. Cree primero un servidor externo y conceda el permiso USAGE antes de crear una tabla externa.",
+    optionsHelp: "Las opciones dependen del contenedor de datos externos. Con postgres_fdw, schema_name y table_name permiten vincular la tabla remota.",
+    optionName: "Nombre de la opción",
+    optionValue: "Valor de la opción",
+    addOption: "Añadir opción",
+    constraintsHelp: "Las tablas externas utilizan un servidor externo existente. Este editor no crea claves primarias, índices, claves foráneas ni columnas de identidad para tablas externas.",
+    removeUnsupported: "Elimine las claves primarias, los índices, las claves foráneas, las columnas de identidad y la configuración de particiones antes de seleccionar una tabla externa.",
+  },
   structureEditor: {
     mysqlDataTypeHelp: {
       tinyint: "Entero de 1 byte: con signo -128 a 127; sin signo 0 a 255.",

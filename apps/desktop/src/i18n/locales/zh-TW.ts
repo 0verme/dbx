@@ -5307,6 +5307,20 @@ export default withEnglishFallback({
     compactCardWidth: "緊湊卡片最小寬度",
     configureColumns: "設定顯示欄",
   },
+  postgresForeignTable: {
+    tableKind: "資料表類型",
+    regularTable: "一般資料表",
+    foreignTable: "外部資料表",
+    server: "外部伺服器",
+    serverPlaceholder: "選擇或輸入現有的外部伺服器",
+    noServers: "沒有可用的外部伺服器。請先建立外部伺服器並授予 USAGE 權限，再建立外部資料表。",
+    optionsHelp: "選項由外部資料包裝器決定。postgres_fdw 可透過 schema_name 和 table_name 對應遠端資料表。",
+    optionName: "選項名稱",
+    optionValue: "選項值",
+    addOption: "新增選項",
+    constraintsHelp: "外部資料表使用現有的外部伺服器。本編輯器不為外部資料表建立主鍵、索引、外鍵或識別欄位。",
+    removeUnsupported: "請先移除主鍵、索引、外鍵、識別欄位及分割設定，再選擇外部資料表。",
+  },
   structureEditor: {
     mysqlDataTypeHelp: {
       tinyint: "1 位元組整數：有號範圍 -128 至 127；無號範圍 0 至 255。",

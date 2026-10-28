@@ -5837,6 +5837,20 @@ export default withEnglishFallback({
     compactCardWidth: "コンパクトカードの最小幅",
     configureColumns: "表示列を設定",
   },
+  postgresForeignTable: {
+    tableKind: "テーブルの種類",
+    regularTable: "通常のテーブル",
+    foreignTable: "外部テーブル",
+    server: "外部サーバー",
+    serverPlaceholder: "既存の外部サーバーを選択または入力",
+    noServers: "利用可能な外部サーバーがありません。外部テーブルを作成する前に、外部サーバーを作成して USAGE 権限を付与してください。",
+    optionsHelp: "オプションは外部データラッパーによって異なります。postgres_fdw では schema_name と table_name でリモートテーブルを指定できます。",
+    optionName: "オプション名",
+    optionValue: "オプション値",
+    addOption: "オプションを追加",
+    constraintsHelp: "外部テーブルは既存の外部サーバーを使用します。このエディターでは、外部テーブルに主キー、インデックス、外部キー、IDENTITY 列を作成しません。",
+    removeUnsupported: "外部テーブルを選択する前に、主キー、インデックス、外部キー、IDENTITY 列、パーティション設定を削除してください。",
+  },
   structureEditor: {
     mysqlDataTypeHelp: {
       tinyint: "1 バイト整数。符号付きは -128～127、符号なしは 0～255 です。",

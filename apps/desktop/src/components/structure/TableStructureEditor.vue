@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PostgresForeignTableOptionsEditor from "@/components/structure/PostgresForeignTableOptionsEditor.vue";
+import { buildPostgresForeignTableOptions, emptyPostgresForeignTableDraft, restorePostgresForeignTableDraft, supportsPostgresForeignTableCreation } from "@/lib/table/postgresForeignTable";
 import { Compartment } from "@codemirror/state";
 import { keymap as codeMirrorKeymap } from "@codemirror/view";
 import { getStarRocksCapabilities } from "@/lib/table/starrocksCapabilities";
@@ -1677,6 +1679,18 @@ function onIndexColResize(e: MouseEvent, col: number) {
 
 const connection = computed(() => (props.connectionId ? store.getConfig(props.connectionId) : undefined));
 const databaseType = computed(() => tableStructureDatabaseTypeForConnection(connection.value));
+const postgresForeignTable = ref(emptyPostgresForeignTableDraft());
+const canCreateForeignTable = computed(() => !props.tableName && supportsPostgresForeignTableCreation(connection.value));
+const isCreatingForeignTable = computed(() => canCreateForeignTable.value && postgresForeignTable.value.enabled);
+
+function setCreateTableKind(kind: string) {
+  const foreign = kind === "foreign";
+  if (foreign && (columns.value.some((column) => !column.markedForDrop && (column.isPrimaryKey || column.extra.autoIncrement || column.extra.identity)) || indexes.value.some((index) => !index.markedForDrop) || foreignKeys.value.some((key) => !key.markedForDrop) || createPartitioningEnabled.value)) {
+    toast(t("postgresForeignTable.removeUnsupported"));
+    return;
+  }
+  postgresForeignTable.value.enabled = foreign;
+}
 const usesNativeMysqlIndexNames = computed(() => {
   const profile = connection.value?.driver_profile?.trim().toLowerCase();
   return databaseType.value === "mysql" && connection.value?.db_type === "mysql" && (!profile || profile === "mysql");
@@ -1684,7 +1698,10 @@ const usesNativeMysqlIndexNames = computed(() => {
 const supportsCharacterLengthUnits = computed(() => databaseType.value === "dameng" || databaseType.value === "oracle" || databaseType.value === "oceanbase-oracle");
 const usesMysql8SafeDefaults = computed(() => databaseType.value === "mysql" && connection.value?.db_type === "mysql" && connection.value.driver_profile === "mysql");
 const structureCapabilities = computed(() => getTableStructureCapabilities(databaseType.value, connection.value?.db_type, connection.value?.database_info?.productVersion, starrocksAlterContext.value?.model));
-const tableMetadataCapabilities = computed(() => getTableMetadataCapabilities(databaseType.value, { connectionType: connection.value?.db_type, exactIdentity: props.exactIdentity }));
+const tableMetadataCapabilities = computed(() => {
+  const capabilities = getTableMetadataCapabilities(databaseType.value, { connectionType: connection.value?.db_type, exactIdentity: props.exactIdentity });
+  return isCreatingForeignTable.value ? { ...capabilities, indexes: false, foreignKeys: false, constraints: false, partitions: false } : capabilities;
+});
 const structureDialect = computed(() => structureCapabilities.value.dialect);
 const isTableCommentDisabled = computed(() => !structureCapabilities.value.comment || (!isCreateMode.value && databaseType.value === "starrocks" && !getStarRocksCapabilities(connection.value?.database_info?.productVersion).tableComment));
 const dynamicDataTypeOptions = ref<string[]>([]);
@@ -2964,6 +2981,7 @@ function createCurrentDraft(initialized = true): TableStructureEditorDraft {
     originalMysqlTableCollation: originalMysqlTableCollation.value,
     physicalOptions: cloneDraftValue(physicalOptions.value),
     starrocksPhysicalOptions: cloneDraftValue(starrocksPhysicalOptions.value),
+    postgresForeignTable: canCreateForeignTable.value ? cloneDraftValue(postgresForeignTable.value) : undefined,
     starrocksSortColumns: starrocksSortColumns.value ? [...starrocksSortColumns.value] : undefined,
     tableOwner: tableOwner.value,
     originalTableOwner: originalTableOwner.value,
@@ -3047,6 +3065,7 @@ function restoreDraft(draft: TableStructureEditorDraft) {
   }
   ddlDraft.value = draft.ddlDraft ?? null;
   newTableName.value = draft.newTableName || "";
+  postgresForeignTable.value = restorePostgresForeignTableDraft(draft.postgresForeignTable);
   tableComment.value = draft.tableComment || "";
   originalTableComment.value = draft.originalTableComment || "";
   mysqlAutoIncrementValue.value = draft.mysqlAutoIncrementValue;
@@ -3225,6 +3244,7 @@ function hasPendingStructureChanges(includeExistingPrimaryKey = true, includeOra
   if (isCreateMode.value) {
     return (
       !!newTableName.value.trim() ||
+      isCreatingForeignTable.value ||
       !!tableComment.value.trim() ||
       mysqlTableEngine.value !== originalMysqlTableEngine.value ||
       hasTablePhysicalOptions(physicalOptions.value) ||
@@ -3739,7 +3759,11 @@ async function refreshSqlPreview() {
       isCreateMode.value
         ? createPartitioningEnabled.value
           ? api.buildCreatePartitionedTableSql({ options, partitioning: { kind: createPartitioningKind.value, columns: createPartitioningColumns.value, expression: createPartitioningExpression.value } })
-          : api.buildCreateTableSql(options, connection.value?.database_info?.productVersion, databaseType.value === "starrocks" ? buildStarRocksDialectOptions(starrocksPhysicalOptions.value) : undefined)
+          : api.buildCreateTableSql(
+              options,
+              connection.value?.database_info?.productVersion,
+              isCreatingForeignTable.value ? { postgresForeignTable: buildPostgresForeignTableOptions(postgresForeignTable.value) } : databaseType.value === "starrocks" ? buildStarRocksDialectOptions(starrocksPhysicalOptions.value) : undefined,
+            )
         : hasSqliteTypeChange.value
           ? api.previewSqliteTableStructureChange(props.connectionId, props.database, options)
           : databaseType.value === "starrocks"
@@ -3905,6 +3929,7 @@ function resetState() {
   ddlFetched.value = false;
   loadedMetadataFacets.clear();
   newTableName.value = "";
+  postgresForeignTable.value = emptyPostgresForeignTableDraft();
   tableComment.value = "";
   originalTableComment.value = "";
   mysqlAutoIncrementValue.value = undefined;
@@ -5003,6 +5028,13 @@ function applyColumnTemplate(templateId: string) {
     createId: uuid,
   });
   if (!templateColumns.length) return;
+  if (isCreatingForeignTable.value) {
+    for (const column of templateColumns) {
+      column.isPrimaryKey = false;
+      column.extra.autoIncrement = false;
+      column.extra.identity = undefined;
+    }
+  }
   const insertAt = resolveInsertColumnIndex(columns.value, selectedColumnId.value);
   columns.value.splice(insertAt, 0, ...templateColumns);
   const lastTemplateColumn = templateColumns[templateColumns.length - 1];
@@ -5881,6 +5913,7 @@ function isColumnCharsetDisabled(column: EditableStructureColumn): boolean {
 }
 
 function isPrimaryKeyDisabled(column: EditableStructureColumn): boolean {
+  if (isCreatingForeignTable.value) return true;
   if (column.markedForDrop) return true;
   if (isCreateMode.value || structureCapabilities.value.alterPrimaryKey) return false;
   if (!structureCapabilities.value.addPrimaryKey) return true;
@@ -8041,6 +8074,7 @@ watch(
     originalMysqlTableEngine,
     physicalOptions,
     starrocksPhysicalOptions,
+    postgresForeignTable,
     starrocksSortColumns,
     mysqlTableEngineLoading,
     mysqlTableEngineLoadError,
@@ -8255,9 +8289,21 @@ watch(
     />
 
     <div v-if="isCreateMode" class="flex shrink-0 items-center gap-2">
+      <template v-if="canCreateForeignTable">
+        <label class="shrink-0 font-medium text-muted-foreground">{{ t("postgresForeignTable.tableKind") }}</label>
+        <Select :model-value="isCreatingForeignTable ? 'foreign' : 'table'" :disabled="saving" @update:model-value="setCreateTableKind(String($event))">
+          <SelectTrigger data-create-table-kind class="w-36"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="table">{{ t("postgresForeignTable.regularTable") }}</SelectItem>
+            <SelectItem value="foreign">{{ t("postgresForeignTable.foreignTable") }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </template>
       <label class="shrink-0 font-medium text-muted-foreground">{{ t("structureEditor.tableName") }}</label>
       <Input v-model="newTableName" :placeholder="t('contextMenu.duplicateNamePlaceholder')" :class="[structureControlClass, 'max-w-[220px]']" />
     </div>
+
+    <PostgresForeignTableOptionsEditor v-if="isCreatingForeignTable" v-model="postgresForeignTable" :connection-id="props.connectionId" :database="props.database" :catalog="props.catalog" :disabled="saving" />
 
     <div class="flex shrink-0 items-center gap-2">
       <label class="shrink-0 font-medium text-muted-foreground">{{ t("structureEditor.comment") }}</label>
@@ -9066,6 +9112,7 @@ watch(
                             <template v-else-if="structureDialect === 'postgres'">
                               <Select
                                 :model-value="column.extra.identity?.generation ?? 'none'"
+                                :disabled="isCreatingForeignTable"
                                 @update:model-value="
                                   (value: any) => {
                                     const generation = String(value ?? '');
