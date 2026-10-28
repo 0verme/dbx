@@ -1455,6 +1455,7 @@ const structureDensityStyle = computed(() => {
     "--structure-cell-py": `${metric.cellPaddingY}px`,
     "--structure-header-py": `${metric.headerPaddingY}px`,
     "--structure-control-height": `${metric.controlHeight}px`,
+    "--structure-column-row-height": `${metric.controlHeight + metric.cellPaddingY * 2 + 1}px`,
     "--structure-control-px": `${metric.controlPaddingX}px`,
     "--structure-icon-size": `${metric.iconSize}px`,
     "--structure-checkbox-size": `${metric.checkboxSize}px`,
@@ -8639,7 +8640,10 @@ watch(
               <RecycleScroller
                 ref="columnsScrollerRef"
                 class="structure-column-virtual-scroller structure-table-scroller h-full overflow-auto"
-                :style="{ '--structure-column-table-width': columnTableWidth + 'px' }"
+                :style="{
+                  '--structure-column-table-width': columnTableWidth + 'px',
+                  '--structure-column-row-height': structureColumnRowHeight + 'px',
+                }"
                 :items="columnVirtualRows"
                 :item-size="columnVirtualItemSize"
                 :min-item-size="structureColumnRowHeight"
@@ -8692,8 +8696,8 @@ watch(
                     </thead>
                   </table>
                 </template>
-                <template #default="{ item: { column, index }, active }">
-                  <table class="structure-column-virtual-row-table border-separate border-spacing-0 text-[length:var(--structure-font-size)] leading-[var(--structure-line-height)]">
+                <template #default="{ item: { column, index, size }, active }">
+                  <table class="structure-column-virtual-row-table border-separate border-spacing-0 text-[length:var(--structure-font-size)] leading-[var(--structure-line-height)]" :style="{ height: (size || structureColumnRowHeight) + 'px' }">
                     <colgroup>
                       <col v-for="(width, columnIndex) in visibleColWidths" :key="columnIndex" :style="{ width: width + 'px' }" />
                     </colgroup>
@@ -8704,6 +8708,7 @@ watch(
                         :data-column-row-index="index"
                         :data-column-id="column.id"
                         :data-column-row-active="active ? 'true' : 'false'"
+                        :style="{ height: (size || structureColumnRowHeight) + 'px' }"
                         @mousedown="onColumnRowMouseDown($event)"
                         @click="onColumnRowClick(column, $event)"
                         @focusin="onColumnRowActivate(column)"
@@ -8866,7 +8871,8 @@ watch(
                               <SelectTrigger
                                 :aria-label="t('structureEditor.lengthUnit')"
                                 :title="t('structureEditor.lengthUnit')"
-                                class="structure-grid-control h-[var(--structure-control-height)] w-16 shrink-0 rounded-[6px] px-[var(--structure-control-px)] font-mono text-[length:var(--structure-font-size)] focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25"
+                                size="sm"
+                                class="structure-grid-control h-[var(--structure-control-height)] w-16 shrink-0 rounded-[6px] px-[var(--structure-control-px)] py-0 font-mono text-[length:var(--structure-font-size)] focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25"
                               >
                                 <SelectValue :placeholder="t('structureEditor.unitPlaceholder')" />
                               </SelectTrigger>
@@ -9127,7 +9133,7 @@ watch(
                                   }
                                 "
                               >
-                                <SelectTrigger class="structure-grid-control h-[var(--structure-control-height)] w-28 rounded-[6px] px-[var(--structure-control-px)] text-[length:var(--structure-font-size)] focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25">
+                                <SelectTrigger size="sm" class="structure-grid-control h-[var(--structure-control-height)] w-28 rounded-[6px] px-[var(--structure-control-px)] py-0 text-[length:var(--structure-font-size)] focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -9290,7 +9296,10 @@ watch(
                   </td>
                   <td :class="structureCellClass">
                     <Select v-if="indexTypeOptions.length > 0" :model-value="index.indexType || 'BTREE'" :disabled="!canEditIndexDraft(index)" data-index-type @update:model-value="(value: unknown) => onIndexTypeChange(index, value)">
-                      <SelectTrigger class="structure-grid-control h-[var(--structure-control-height)] w-full rounded-[6px] px-[var(--structure-control-px)] font-mono text-[length:var(--structure-font-size)] focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25">
+                      <SelectTrigger
+                        size="sm"
+                        class="structure-grid-control h-[var(--structure-control-height)] w-full rounded-[6px] px-[var(--structure-control-px)] py-0 font-mono text-[length:var(--structure-font-size)] focus-visible:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring/25"
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -10455,6 +10464,8 @@ watch(
 .structure-column-virtual-scroller :deep(.structure-column-virtual-row) {
   width: 100%;
   min-width: var(--structure-column-table-width);
+  min-height: var(--structure-column-row-height);
+  box-sizing: border-box;
 }
 
 .structure-column-virtual-scroller :deep(.structure-column-virtual-header-table),
@@ -10464,6 +10475,22 @@ watch(
   width: 100%;
   min-width: var(--structure-column-table-width);
   table-layout: fixed;
+  box-sizing: border-box;
+}
+
+.structure-column-virtual-scroller :deep(.structure-column-virtual-row-table) {
+  height: 100%;
+}
+
+.structure-column-virtual-scroller :deep(.structure-column-virtual-row-table tr) {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.structure-column-virtual-scroller :deep(.structure-column-virtual-row-table td) {
+  height: var(--structure-column-row-height);
+  box-sizing: border-box;
+  vertical-align: middle;
 }
 
 .structure-vertical-scrollbar {
@@ -10528,10 +10555,23 @@ watch(
 
 /* Editable values behave like grid cells, not a row of independent pill controls. */
 .structure-edit-grid :deep(.structure-grid-control) {
+  height: var(--structure-control-height);
+  min-height: var(--structure-control-height);
+  max-height: var(--structure-control-height);
+  padding-top: 0;
+  padding-bottom: 0;
   border-color: transparent;
   border-radius: 0;
   background-color: transparent;
   box-shadow: none;
+}
+
+.structure-edit-grid :deep(.structure-grid-control[data-slot="select-trigger"]) {
+  height: var(--structure-control-height);
+  min-height: var(--structure-control-height);
+  max-height: var(--structure-control-height);
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .structure-edit-grid > tbody > tr > td:hover,
