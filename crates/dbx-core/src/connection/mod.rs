@@ -8239,6 +8239,12 @@ pub fn connection_configs_pool_equivalent(a: &ConnectionConfig, b: &ConnectionCo
     // established database session.
     a.sidebar_auto_load_all_tables = false;
     b.sidebar_auto_load_all_tables = false;
+    a.show_database_links = None;
+    b.show_database_links = None;
+    a.show_native_jobs = None;
+    b.show_native_jobs = None;
+    a.show_user_admin = None;
+    b.show_user_admin = None;
     // A default browser filter does not change the established Redis session.
     a.redis_key_filter = None;
     b.redis_key_filter = None;
@@ -8268,6 +8274,9 @@ pub fn connection_configs_session_credentials_compatible(a: &ConnectionConfig, b
         config.visible_schemas = None;
         config.show_system_schemas = false;
         config.sidebar_auto_load_all_tables = false;
+        config.show_database_links = None;
+        config.show_native_jobs = None;
+        config.show_user_admin = None;
         config.color = None;
         config.docs_notes_path = None;
         config.connect_timeout_secs = 0;
@@ -9055,6 +9064,8 @@ mod tests {
             show_system_schemas: false,
             sidebar_auto_load_all_tables: false,
             show_database_links: None,
+            show_native_jobs: None,
+            show_user_admin: None,
             attached_databases: Vec::new(),
             init_script: None,
             color: None,
@@ -12764,6 +12775,8 @@ sleep 30
             show_system_schemas: false,
             sidebar_auto_load_all_tables: false,
             show_database_links: None,
+            show_native_jobs: None,
+            show_user_admin: None,
             database_info: None,
         }
     }

@@ -62,6 +62,9 @@ function mountBar(groupId: string, tabs: ReturnType<ReturnType<typeof useQuerySt
       messages: {
         en: {
           contextMenu: {
+            splitTab: "Split",
+            batchCloseTabs: "Close multiple tabs",
+            copyTabName: "Copy tab name",
             renameTab: "Rename",
             duplicateTab: "Duplicate",
             copyName: "Copy name",
@@ -876,7 +879,11 @@ describe("EditorGroupTabBar group behavior", () => {
 
     const menu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
     expect(menu).not.toBeNull();
-    const closeGroupItem = Array.from(menu.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("Close group"));
+    Array.from(menu.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("Close multiple tabs"))!
+      .click();
+    await settle();
+    const closeGroupItem = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
     expect(closeGroupItem).toBeDefined();
     closeGroupItem!.click();
     await settle();
@@ -908,7 +915,11 @@ describe("EditorGroupTabBar group behavior", () => {
     pgPill.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     await settle();
     const menu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
-    const closeGroupItem = Array.from(menu.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("Close group"));
+    Array.from(menu.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("Close multiple tabs"))!
+      .click();
+    await settle();
+    const closeGroupItem = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
     expect(closeGroupItem).toBeDefined();
     closeGroupItem!.click();
     await settle();

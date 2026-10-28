@@ -3116,8 +3116,8 @@ export async function saveConnections(configs: ConnectionConfig[], removedIds: s
   return invoke("save_connections", { configs, removedIds });
 }
 
-export async function loadConnections(): Promise<ConnectionConfig[]> {
-  return invoke("load_connections");
+export async function loadConnections(legacySidebarShowUserAdmin?: boolean): Promise<ConnectionConfig[]> {
+  return legacySidebarShowUserAdmin === undefined ? invoke("load_connections") : invoke("load_connections", { legacySidebarShowUserAdmin });
 }
 
 export async function loadTunnelProfiles(): Promise<TunnelProfile[]> {
