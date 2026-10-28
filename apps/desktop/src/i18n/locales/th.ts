@@ -2334,6 +2334,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "Query DuckDB ก่อนหน้ายังหยุดไม่เสร็จ โปรดลองอีกครั้งในไม่ช้า",
+    resultSessionRequiredForPaging: "คิวรีนี้แบ่งหน้าได้ด้วยเคอร์เซอร์ผลลัพธ์เท่านั้น และทรานแซกชันแบบ manual เปิดเคอร์เซอร์ไม่ได้ กรุณา commit ทรานแซกชันหรือปิดโหมดทรานแซกชันแบบ manual แล้วรันอีกครั้ง",
     statementExecutionRunning: "กำลังทำงาน {count} Statement | กำลังทำงาน {count} Statement",
     statementExecutionSucceeded: "สำเร็จ {count} Statement | สำเร็จ {count} Statement",
     statementExecutionFailed: "ล้มเหลว {count} Statement | ล้มเหลว {count} Statement",
@@ -3826,7 +3827,8 @@ export default withEnglishFallback({
     queued: "อยู่ในคิว",
     unknown: "ไม่สามารถยืนยันสถานะการส่งออกได้ คิวจึงหยุดรอ",
     executionModeHint: "การส่งออกทันทีอาจทำงานพร้อมกัน ส่วนรายการในคิวจะทำงานทีละรายการ",
-    streamingUnsupported: "ไม่รองรับการส่งออกแบบ Streaming สำหรับ Query นี้ ทำให้เรียบง่ายขึ้นหรือใช้ Driver ที่รองรับ",
+    streamingUnsupported: "การส่งออกแบบ Streaming แบ่งหน้ากลุ่มคิวรีนี้ไม่ได้ ส่งออกเฉพาะคำสั่ง SELECT เดียว หรือโหลดผลลัพธ์ทั้งหมดก่อนแล้วจึงส่งออก",
+    transactionUnsupported: "ทรานแซกชันแบบ manual ใช้เคอร์เซอร์ผลลัพธ์ไม่ได้ และคิวรีนี้แบ่งหน้าไม่ได้ กรุณา commit หรือ rollback ทรานแซกชันแล้วส่งออกอีกครั้ง",
     agentSessionMissing: "การส่งออกแบบ Streaming ต้องใช้เซสชันชุดผลลัพธ์ แต่ Driver นี้ไม่ส่ง session_id กลับมา",
     title: "กำลังส่งออกข้อมูลตาราง",
     fetching: "กำลังดึงข้อมูลจากฐานข้อมูล...",

@@ -2184,6 +2184,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "A consulta anterior do DuckDB ainda está sendo interrompida. Tente novamente em breve.",
+    resultSessionRequiredForPaging: "Esta consulta só pode ser paginada com um cursor de resultados, que uma transação manual não pode abrir. Confirme a transação ou desative o modo de transação manual e execute novamente.",
     pressToExecute: "Pressione {mod}+Enter para executar",
     pressToSaveSql: "Pressione {mod}+S para salvar o SQL",
     queryTimeoutError: "A consulta expirou ({seconds}s). Verifique se a conexão com o banco de dados está saudável.",
@@ -3566,7 +3567,8 @@ export default withEnglishFallback({
     queued: "Na fila",
     unknown: "Status da exportação desconhecido; a fila está bloqueada",
     executionModeHint: "As exportações imediatas podem ser paralelas; as da fila são executadas uma por vez.",
-    streamingUnsupported: "A exportação em streaming não é compatível com esta consulta. Simplifique-a ou use um driver compatível.",
+    streamingUnsupported: "A exportação em streaming não consegue paginar esta consulta. Exporte uma única instrução SELECT ou carregue o resultado completo antes de exportar.",
+    transactionUnsupported: "Uma transação manual não pode usar cursor de resultados e esta consulta não pode ser dividida em páginas. Confirme ou reverta a transação e exporte novamente.",
     agentSessionMissing: "A exportação em streaming requer uma sessão de conjunto de resultados, mas este driver não retornou session_id.",
     title: "Exportando Dados da Tabela",
     fetching: "Buscando dados do banco de dados...",

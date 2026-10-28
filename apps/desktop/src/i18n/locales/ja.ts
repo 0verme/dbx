@@ -2204,6 +2204,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "前回の DuckDB クエリはまだ停止処理中です。しばらくしてから再試行してください。",
+    resultSessionRequiredForPaging: "このクエリは結果カーソルでのみページ分割できますが、手動トランザクションではカーソルを開けません。トランザクションをコミットするか、手動トランザクションモードをオフにして再実行してください。",
     pressToExecute: "{mod}+Enter で実行",
     pressToSaveSql: "{mod}+S でSQLを保存",
     queryTimeoutError: "クエリがタイムアウトしました（{seconds}秒）。データベース接続が正常か確認してください。",
@@ -3590,7 +3591,8 @@ export default withEnglishFallback({
     queued: "待機中",
     unknown: "エクスポート状態を確認できないため、キューを停止しています",
     executionModeHint: "即時エクスポートは並列実行でき、キュー内のエクスポートは順番に実行されます。",
-    streamingUnsupported: "このクエリはストリーミングエクスポートに対応していません。クエリを簡略化するか、対応しているドライバーを使用してください。",
+    streamingUnsupported: "このクエリはページ分割できないため、ストリーミングエクスポートを続行できません。SELECT 文を 1 つだけエクスポートするか、先に結果を全件読み込んでからエクスポートしてください。",
+    transactionUnsupported: "手動トランザクションでは結果カーソルを使用できず、このクエリはページ分割もできません。トランザクションをコミットまたはロールバックしてから、もう一度エクスポートしてください。",
     agentSessionMissing: "ストリーミングエクスポートには結果セットのセッションが必要ですが、このドライバーは session_id を返しませんでした。",
     title: "テーブルデータをエクスポート中",
     fetching: "データベースからデータを取得中...",

@@ -1477,6 +1477,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "Önceki DuckDB sorgusu hâlâ durduruluyor. Lütfen birazdan tekrar deneyin.",
+    resultSessionRequiredForPaging: "Bu sorgu yalnızca sonuç imleciyle sayfalanabilir; elle yönetilen işlem imleç açamaz. İşlemi commit edin veya elle işlem modunu kapatıp sorguyu yeniden çalıştırın.",
     statementExecutionRunning: "{count} ifade çalışıyor | {count} ifade çalışıyor",
     statementExecutionSucceeded: "{count} ifade başarılı | {count} ifade başarılı",
     statementExecutionFailed: "{count} ifade başarısız | {count} ifade başarısız",
@@ -2755,7 +2756,8 @@ export default withEnglishFallback({
     queued: "Kuyruğa alındı",
     unknown: "Dışa aktarma durumu bilinmiyor; kuyruk engellendi",
     executionModeHint: "Anında dışa aktarmalar paralel çalışabilir; kuyruktaki dışa aktarmalar tek tek çalışır.",
-    streamingUnsupported: "Bu sorgu için akış tabanlı dışa aktarma desteklenmiyor. Sorguyu basitleştirin veya desteklenen bir sürücü kullanın.",
+    streamingUnsupported: "Akış tabanlı dışa aktarma bu sorguyu sayfalara bölemiyor. Yalnızca tek bir SELECT ifadesi aktarın veya önce tüm sonucu yükleyin.",
+    transactionUnsupported: "Elle yönetilen işlemde sonuç imleci kullanılamaz ve bu sorgu sayfalara bölünemiyor. İşlemi commit veya rollback edip yeniden aktarın.",
     agentSessionMissing: "Akış tabanlı dışa aktarma bir sonuç kümesi oturumu gerektirir, ancak bu sürücü session_id döndürmedi.",
     title: "Tablo Verisi Dışa Aktarılıyor",
     fetching: "Veritabanından veri alınıyor...",

@@ -2476,6 +2476,7 @@ export default {
   },
   editor: {
     duckdbDraining: "The previous DuckDB query is still stopping. Please try again shortly.",
+    resultSessionRequiredForPaging: "This query can only be paged through a result cursor, which a manual transaction cannot open. Commit the transaction, or turn off manual transaction mode and run it again.",
     statementExecutionRunning: "{count} statement running | {count} statements running",
     statementExecutionSucceeded: "{count} statement succeeded | {count} statements succeeded",
     statementExecutionFailed: "{count} statement failed | {count} statements failed",
@@ -3983,7 +3984,8 @@ export default {
     queued: "Queued",
     unknown: "Export status unknown; the queue is blocked",
     executionModeHint: "Immediate exports may run in parallel; queued exports run one at a time.",
-    streamingUnsupported: "Streaming export is unsupported for this query. Simplify it or use a supported driver.",
+    streamingUnsupported: "Streaming export cannot page through this query. Export a single SELECT statement, or load the full result first and export the loaded rows.",
+    transactionUnsupported: "A manual transaction cannot use a result cursor, and this query cannot be split into pages. Commit or roll back the transaction, then export again.",
     agentSessionMissing: "Streaming export needs a result-set session, but this driver returned no session_id.",
     title: "Exporting Table Data",
     fetching: "Fetching data from database...",

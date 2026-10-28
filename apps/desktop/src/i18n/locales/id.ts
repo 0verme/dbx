@@ -1746,6 +1746,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "Kueri DuckDB sebelumnya masih dalam proses penghentian. Silakan coba lagi sebentar lagi.",
+    resultSessionRequiredForPaging: "Kueri ini hanya dapat dipaginasi lewat kursor hasil, dan transaksi manual tidak dapat membuka kursor. Commit transaksinya atau matikan mode transaksi manual lalu jalankan ulang.",
     statementExecutionRunning: "{count} pernyataan sedang berjalan | {count} pernyataan sedang berjalan",
     statementExecutionSucceeded: "{count} pernyataan berhasil | {count} pernyataan berhasil",
     statementExecutionFailed: "{count} pernyataan gagal | {count} pernyataan gagal",
@@ -3088,7 +3089,8 @@ export default withEnglishFallback({
     queued: "Dalam antrean",
     unknown: "Status ekspor tidak diketahui; antrean terblokir",
     executionModeHint: "Ekspor langsung dapat berjalan paralel; ekspor dalam antrean berjalan satu per satu.",
-    streamingUnsupported: "Ekspor streaming tidak didukung untuk kueri ini. Sederhanakan kueri atau gunakan driver yang didukung.",
+    streamingUnsupported: "Ekspor streaming tidak dapat membagi kueri ini menjadi halaman. Ekspor satu pernyataan SELECT saja, atau muat seluruh hasil terlebih dahulu.",
+    transactionUnsupported: "Transaksi manual tidak dapat memakai kursor hasil, dan kueri ini tidak dapat dibagi menjadi halaman. Commit atau rollback transaksi, lalu ekspor lagi.",
     agentSessionMissing: "Ekspor streaming memerlukan sesi result-set, tetapi driver ini tidak mengembalikan session_id.",
     title: "Mengekspor Data Tabel",
     fetching: "Mengambil data dari database...",

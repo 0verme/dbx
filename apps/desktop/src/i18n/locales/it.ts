@@ -2185,6 +2185,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "La query DuckDB precedente è ancora in fase di arresto. Riprova a breve.",
+    resultSessionRequiredForPaging: "Questa query può essere impaginata solo tramite un cursore dei risultati, che una transazione manuale non può aprire. Esegui il commit della transazione oppure disattiva la modalità transazione manuale e riesegui la query.",
     pressToExecute: "Premi {mod}+Enter per eseguire",
     pressToSaveSql: "Premi {mod}+S per salvare SQL",
     queryTimeoutError: "Timeout della query ({seconds}s). Verifica se la connessione al database è integra.",
@@ -3568,7 +3569,8 @@ export default withEnglishFallback({
     queued: "In coda",
     unknown: "Stato dell'esportazione sconosciuto; la coda è bloccata",
     executionModeHint: "Le esportazioni immediate possono essere parallele; quelle in coda vengono eseguite una alla volta.",
-    streamingUnsupported: "L'esportazione in streaming non è supportata per questa query. Semplificala o usa un driver supportato.",
+    streamingUnsupported: "L'esportazione in streaming non riesce a impaginare questa query. Esporta una sola istruzione SELECT oppure carica prima l'intero risultato.",
+    transactionUnsupported: "Una transazione manuale non può usare un cursore dei risultati e questa query non è suddivisibile in pagine. Esegui commit o rollback della transazione, poi riprova.",
     agentSessionMissing: "L'esportazione in streaming richiede una sessione del set di risultati, ma questo driver non ha restituito session_id.",
     title: "Esportazione Dati Tabella",
     fetching: "Recupero dati dal database...",

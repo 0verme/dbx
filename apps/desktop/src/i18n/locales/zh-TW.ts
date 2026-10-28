@@ -2164,6 +2164,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "上一筆 DuckDB 查詢仍在停止，請稍後重試。",
+    resultSessionRequiredForPaging: "這條查詢只能靠結果集游標分頁，而手動交易內無法開啟游標。請先提交交易，或關閉手動交易模式後重新執行。",
     pressToExecute: "按 {mod}+Enter 執行查詢",
     pressToSaveSql: "按 {mod}+S 儲存 SQL",
     queryTimeoutError: "查詢逾時 ({seconds}s)，請檢查資料庫連線是否正常",
@@ -3548,7 +3549,8 @@ export default withEnglishFallback({
     queued: "排隊中",
     unknown: "無法確認匯出狀態，佇列已停止推進",
     executionModeHint: "立即匯出可並行；排隊匯出依序執行。",
-    streamingUnsupported: "目前查詢暫不支援串流匯出，請簡化查詢或使用支援的驅動程式。",
+    streamingUnsupported: "這條查詢無法拆分成分頁 SQL，串流匯出無法繼續。請只匯出單一 SELECT，或先把結果全部載入後再匯出。",
+    transactionUnsupported: "手動交易內無法使用結果游標，這條查詢又拆不出分頁 SQL。請先提交或回滾交易，再重新匯出。",
     agentSessionMissing: "串流匯出需要結果集工作階段，但目前驅動程式未回傳 session_id。",
     title: "匯出資料表資料",
     fetching: "正在從資料庫擷取資料...",

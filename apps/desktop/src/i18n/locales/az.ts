@@ -1478,6 +1478,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "Əvvəlki DuckDB sorğusu hələ dayandırılır. Bir az sonra yenidən cəhd edin.",
+    resultSessionRequiredForPaging: "Bu sorğu yalnız nəticə kursoru ilə səhifələnə bilər, əl ilə idarə olunan tranzaksiya isə kursor aça bilmir. Tranzaksiyanı təsdiqləyin və ya əl ilə tranzaksiya rejimini söndürüb yenidən icra edin.",
     statementExecutionRunning: "{count} ifadə icra olunur | {count} ifadə icra olunur",
     statementExecutionSucceeded: "{count} ifadə uğurla icra olundu | {count} ifadə uğurla icra olundu",
     statementExecutionFailed: "{count} ifadənin icrası uğursuz oldu | {count} ifadənin icrası uğursuz oldu",
@@ -2763,7 +2764,8 @@ export default withEnglishFallback({
     queued: "Növbədədir",
     unknown: "İxrac statusu bilinmir; növbə dayandırılıb",
     executionModeHint: "Dərhal ixraclar paralel işləyə bilər; növbəyə alınmış ixraclar bir-bir icra olunur.",
-    streamingUnsupported: "Bu sorğu üçün axınla ixrac dəstəklənmir. Sorğunu sadələşdirin və ya dəstəklənən drayverdən istifadə edin.",
+    streamingUnsupported: "Axınla ixrac bu sorğunu səhifələrə bölə bilmir. Yalnız bir SELECT ifadəsi ixrac edin və ya əvvəlcə bütün nəticəni yükləyin.",
+    transactionUnsupported: "Əl ilə idarə olunan tranzaksiyada nəticə kursoru istifadə edilə bilməz və bu sorğu səhifələrə bölünmür. Tranzaksiyanı təsdiqləyin və ya geri qaytarın, sonra yenidən ixrac edin.",
     agentSessionMissing: "Axınla ixrac üçün nəticə dəsti sessiyası tələb olunur, lakin bu drayver session_id qaytarmadı.",
     title: "Cədvəl məlumatları ixrac edilir",
     fetching: "Verilənlər bazasından məlumatlar alınır...",

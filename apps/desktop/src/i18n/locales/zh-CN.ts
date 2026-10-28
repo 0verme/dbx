@@ -2408,6 +2408,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "上一条 DuckDB 查询仍在停止，请稍后重试。",
+    resultSessionRequiredForPaging: "这条查询只能靠结果集游标分页，而手动事务内无法打开游标。请先提交事务，或关闭手动事务模式后重新执行。",
     statementExecutionRunning: "{count} 条语句正在执行",
     statementExecutionSucceeded: "{count} 条语句成功",
     statementExecutionFailed: "{count} 条语句失败",
@@ -3913,7 +3914,8 @@ export default withEnglishFallback({
     queued: "排队中",
     unknown: "无法确认导出状态，队列已停止推进",
     executionModeHint: "立即导出可并行；排队导出依次执行。",
-    streamingUnsupported: "当前查询暂不支持流式导出，请简化查询或使用受支持的驱动。",
+    streamingUnsupported: "这条查询无法拆成分页 SQL，流式导出无法继续。请只导出单条 SELECT，或先把结果全部加载后再导出。",
+    transactionUnsupported: "手动事务内不能用结果游标，这条查询又拆不出分页 SQL。请先提交或回滚事务，再重新导出。",
     agentSessionMissing: "流式导出需要结果集会话，但当前驱动未返回 session_id。",
     title: "导出表数据",
     fetching: "正在从数据库获取数据...",

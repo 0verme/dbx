@@ -2111,6 +2111,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "이전 DuckDB 쿼리가 아직 중지 중입니다. 잠시 후 다시 시도해 주세요.",
+    resultSessionRequiredForPaging: "이 쿼리는 결과 커서로만 페이지를 나눌 수 있지만 수동 트랜잭션에서는 커서를 열 수 없습니다. 트랜잭션을 커밋하거나 수동 트랜잭션 모드를 끄고 다시 실행하세요.",
     statementExecutionRunning: "{count}개 구문 실행 중",
     statementExecutionSucceeded: "{count}개 구문 성공",
     statementExecutionFailed: "{count}개 구문 실패",
@@ -3520,7 +3521,8 @@ export default withEnglishFallback({
     queued: "대기 중",
     unknown: "내보내기 상태를 확인할 수 없어 대기열이 중지되었습니다",
     executionModeHint: "즉시 내보내기는 병렬로 실행될 수 있으며, 대기열의 내보내기는 하나씩 실행됩니다.",
-    streamingUnsupported: "이 쿼리는 스트리밍 내보내기를 지원하지 않습니다. 쿼리를 단순화하거나 지원되는 드라이버를 사용하세요.",
+    streamingUnsupported: "이 쿼리는 페이지로 나눌 수 없어 스트리밍 내보내기를 계속할 수 없습니다. SELECT 문 하나만 내보내거나 먼저 결과 전체를 불러온 뒤 내보내세요.",
+    transactionUnsupported: "수동 트랜잭션에서는 결과 커서를 사용할 수 없고 이 쿼리는 페이지로 나눌 수도 없습니다. 트랜잭션을 커밋하거나 롤백한 뒤 다시 내보내세요.",
     agentSessionMissing: "스트리밍 내보내기에는 결과 집합 세션이 필요하지, 이 드라이버는 session_id를 반환하지 않았습니다.",
     title: "테이블 데이터 내보내는 중",
     fetching: "데이터베이스에서 데이터를 가져오는 중...",

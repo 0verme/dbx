@@ -1777,6 +1777,7 @@ export default withEnglishFallback({
   },
   editor: {
     duckdbDraining: "Poprzednie zapytanie DuckDB jest nadal zatrzymywane. Spróbuj ponownie za chwilę.",
+    resultSessionRequiredForPaging: "To zapytanie można podzielić na strony tylko za pomocą kursora wyników, którego transakcja ręczna nie może otworzyć. Zatwierdź transakcję lub wyłącz tryb transakcji ręcznej i uruchom zapytanie ponownie.",
     statementExecutionRunning: "Wykonywane instrukcje: {count}",
     statementExecutionSucceeded: "Instrukcje zakończone pomyślnie: {count}",
     statementExecutionFailed: "Instrukcje zakończone błędem: {count}",
@@ -3142,7 +3143,8 @@ export default withEnglishFallback({
     queued: "W kolejce",
     unknown: "Stan eksportu nieznany; kolejka jest wstrzymana",
     executionModeHint: "Eksporty natychmiastowe mogą działać równolegle; eksporty w kolejce są wykonywane pojedynczo.",
-    streamingUnsupported: "Eksport strumieniowy nie jest obsługiwany dla tego zapytania. Uprość je lub użyj zgodnego sterownika.",
+    streamingUnsupported: "Eksport strumieniowy nie może podzielić tego zapytania na strony. Wyeksportuj pojedynczą instrukcję SELECT lub najpierw wczytaj cały wynik.",
+    transactionUnsupported: "W transakcji ręcznej nie można użyć kursora wyników, a tego zapytania nie da się podzielić na strony. Zatwierdź lub wycofaj transakcję i wyeksportuj ponownie.",
     agentSessionMissing: "Eksport strumieniowy wymaga sesji zbioru wyników, ale sterownik nie zwrócił session_id.",
     title: "Aktualizacja zabezpieczeń danych",
     fetching: "Pobieranie danych z bazy...",
