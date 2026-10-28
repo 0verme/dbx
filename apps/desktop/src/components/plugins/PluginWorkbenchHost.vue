@@ -41,10 +41,11 @@ const props = withDefaults(
     plugin: InstalledPlugin;
     contribution: PluginUiContribution;
     context?: PluginWorkbenchContext;
+    active?: boolean;
     setTitle?: (title: string | null) => Promise<void> | void;
     getTitle?: () => Promise<string> | string;
   }>(),
-  { context: () => ({}) },
+  { context: () => ({}), active: true },
 );
 
 const emit = defineEmits<{
@@ -899,6 +900,20 @@ watch(
   () => bridge?.updateTheme(currentBridgeTheme()),
 );
 
+function notifyLayout(): void {
+  bridge?.notifyLayout();
+}
+
+watch(
+  () => props.active,
+  async (active) => {
+    if (active) {
+      await nextTick();
+      notifyLayout();
+    }
+  },
+);
+
 /** §8.3/§7.4 two-phase close: parents await this before removing the entry so
  * the plugin can release its workbench scope (PTY sessions, subscriptions);
  * the bridge bounds the wait and resolves false on legacy/hung plugins. */
@@ -906,7 +921,7 @@ function requestClose(): Promise<boolean> {
   return bridge ? bridge.requestWorkbenchClose() : Promise.resolve(false);
 }
 
-defineExpose({ requestClose });
+defineExpose({ requestClose, notifyLayout });
 
 onBeforeUnmount(() => {
   disposed = true;
