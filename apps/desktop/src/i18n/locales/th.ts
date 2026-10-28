@@ -3297,6 +3297,8 @@ export default withEnglishFallback({
     invertColumnVisibility: "กลับด้าน",
     resetColumnOrder: "รีเซ็ตลำดับ",
     showAllColumns: "แสดงทั้งหมด",
+    showSelectedColumns: "แสดงที่เลือก",
+    showSelectedColumnsHint: "แสดงเฉพาะฟิลด์ที่ตรงกับการค้นหาปัจจุบัน",
     viewOptions: "ตัวเลือกมุมมอง",
     resultRunDisplayMode: "แท็บผลลัพธ์",
     resultRunDisplayList: "List",

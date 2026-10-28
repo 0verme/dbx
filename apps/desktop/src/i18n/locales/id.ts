@@ -2594,6 +2594,8 @@ export default withEnglishFallback({
     invertColumnVisibility: "Balikkan",
     resetColumnOrder: "Atur ulang urutan",
     showAllColumns: "Tampilkan semua",
+    showSelectedColumns: "Tampilkan yang dipilih",
+    showSelectedColumnsHint: "Tampilkan hanya bidang yang cocok dengan pencarian saat ini.",
     viewOptions: "Opsi tampilan",
     resultRunDisplayMode: "Tab hasil",
     resultRunDisplayList: "Daftar",

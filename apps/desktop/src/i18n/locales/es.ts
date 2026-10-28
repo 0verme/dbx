@@ -3040,6 +3040,8 @@ export default withEnglishFallback({
     invertColumnVisibility: "Invertir",
     resetColumnOrder: "Restablecer orden",
     showAllColumns: "Mostrar todo",
+    showSelectedColumns: "Mostrar seleccionadas",
+    showSelectedColumnsHint: "Mostrar solo los campos que coinciden con la búsqueda actual.",
     viewOptions: "Opciones de vista",
     resultRunDisplayMode: "Pestañas de resultados",
     resultRunDisplayList: "Lista",

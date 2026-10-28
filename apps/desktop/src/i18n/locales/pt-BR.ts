@@ -2937,6 +2937,8 @@ export default withEnglishFallback({
     invertColumnVisibility: "Inverter",
     resetColumnOrder: "Redefinir ordem",
     showAllColumns: "Mostrar todas",
+    showSelectedColumns: "Mostrar selecionadas",
+    showSelectedColumnsHint: "Mostrar apenas os campos correspondentes à pesquisa atual.",
     viewOptions: "Opções de visualização",
     resultRunDisplayMode: "Abas de resultados",
     resultRunDisplayList: "Lista",

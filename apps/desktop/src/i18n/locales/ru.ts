@@ -3148,6 +3148,8 @@ export default withEnglishFallback({
     invertColumnVisibility: "Инвертировать",
     resetColumnOrder: "Сбросить порядок",
     showAllColumns: "Показать все",
+    showSelectedColumns: "Показать выбранные",
+    showSelectedColumnsHint: "Показывать только поля, соответствующие текущему поиску.",
     viewOptions: "Параметры вида",
     resultRunDisplayMode: "Вкладки результатов",
     resultRunDisplayList: "Список",

@@ -2938,6 +2938,8 @@ export default withEnglishFallback({
     invertColumnVisibility: "Inverti",
     resetColumnOrder: "Reimposta ordine",
     showAllColumns: "Mostra tutte",
+    showSelectedColumns: "Mostra selezionate",
+    showSelectedColumnsHint: "Mostra solo i campi che corrispondono alla ricerca corrente.",
     viewOptions: "Opzioni visualizzazione",
     resultRunDisplayMode: "Schede risultati",
     resultRunDisplayList: "Elenco",
