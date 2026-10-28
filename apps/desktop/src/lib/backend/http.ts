@@ -3449,6 +3449,9 @@ export async function importTableFile(request: TableImportRequest, onProgress: (
           rowsImported: progress.rowsImported,
           totalRows: progress.totalRows,
           elapsedMs: progress.elapsedMs,
+          rowsFailed: progress.rowsFailed ?? 0,
+          failures: progress.failures ?? [],
+          failuresTruncated: progress.failuresTruncated ?? false,
         };
         es.close();
         resolve(summary);

@@ -6375,6 +6375,15 @@ export interface TableImportRequest {
   retainSource?: boolean;
   conflictPolicy?: TableImportConflictPolicy;
   skipDuplicateRows?: boolean;
+  continueOnError?: boolean;
+}
+
+export interface TableImportFailure {
+  /** Target table, so a batch import can label each failed row. */
+  table: string;
+  /** 1-based data row number in the source (the header row is not counted). */
+  row: number;
+  error: string;
 }
 
 export interface TableImportSummary {
@@ -6382,6 +6391,10 @@ export interface TableImportSummary {
   rowsImported: number;
   totalRows: number;
   elapsedMs: number;
+  // Absent from older web backends, so the dialog treats them as "no failures".
+  rowsFailed?: number;
+  failures?: TableImportFailure[];
+  failuresTruncated?: boolean;
 }
 
 export interface TableImportProgress {
@@ -6395,6 +6408,9 @@ export interface TableImportProgress {
   totalBytes?: number;
   elapsedMs: number;
   error?: string | null;
+  rowsFailed?: number;
+  failures?: TableImportFailure[];
+  failuresTruncated?: boolean;
 }
 
 export async function previewTableImportFile(filePathOrRequest: string | File | TableImportPreviewRequest, options: Partial<TableImportPreviewRequest> = {}): Promise<TableImportPreview> {
