@@ -5590,7 +5590,11 @@ async function createDuckDbAttachedDatabaseFile() {
     }
     await connectionStore.ensureVisibleDatabase(node.connectionId, name);
     await connectionStore.loadDatabases(node.connectionId, { force: true });
-    connectionStore.selectedTreeNodeId = `${node.connectionId}:${name}`;
+    const nodeId = `${node.connectionId}:${name}`;
+    connectionStore.connectionMultiSelectActive = false;
+    connectionStore.selectedTreeNodeId = nodeId;
+    connectionStore.selectedTreeNodeIds = [nodeId];
+    connectionStore.treeSelectionAnchorId = nodeId;
     toast(t("contextMenu.createDuckDbFileSuccess", { name }), 3000);
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
@@ -5635,7 +5639,11 @@ async function attachSqliteDatabaseFile() {
     }
     await connectionStore.ensureVisibleDatabase(node.connectionId, name);
     await connectionStore.loadDatabases(node.connectionId, { force: true });
-    connectionStore.selectedTreeNodeId = `${node.connectionId}:${name}`;
+    const nodeId = `${node.connectionId}:${name}`;
+    connectionStore.connectionMultiSelectActive = false;
+    connectionStore.selectedTreeNodeId = nodeId;
+    connectionStore.selectedTreeNodeIds = [nodeId];
+    connectionStore.treeSelectionAnchorId = nodeId;
     toast(t("contextMenu.attachSqliteDatabaseSuccess", { name }), 3000);
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
