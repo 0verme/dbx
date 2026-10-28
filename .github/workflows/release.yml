@@ -257,7 +257,7 @@ jobs:
           sudo apt-get update
           # Bundle GTK input-method modules from the same Jammy ABI baseline
           # instead of loading potentially incompatible modules from the host.
-          sudo apt-get install -y fcitx5-frontend-gtk3 ibus-gtk3 libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev xdg-utils
+          sudo apt-get install -y fcitx5-frontend-gtk3 ibus-gtk3 libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev xdg-utils lld
 
       - name: Prepare Wayland-capable AppImage bundler
         if: startsWith(matrix.platform, 'ubuntu')
@@ -285,8 +285,10 @@ jobs:
           # Standard ARM runners have 16 GB RAM; parallel rustc of the heavy
           # workspace crates (dbx-core, dbx-mcp) plus linking peaks past what
           # the pool now tolerates and the runner is killed with a shutdown
-          # signal. Fewer parallel codegen units keep peak memory in bounds.
-          CARGO_BUILD_JOBS: ${{ (matrix.platform == 'ubuntu-22.04-arm' && '2') || '' }}
+          # signal. Serialize codegen on the ARM leg and link with lld, which
+          # holds far less memory than the default bfd linker.
+          CARGO_BUILD_JOBS: ${{ (matrix.platform == 'ubuntu-22.04-arm' && '1') || 'default' }}
+          RUSTFLAGS: ${{ (matrix.platform == 'ubuntu-22.04-arm' && '-C link-arg=-fuse-ld=lld') || '' }}
           APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos') && secrets.APPLE_SIGNING_IDENTITY || '' }}
           APPLE_ID: ${{ startsWith(matrix.platform, 'macos') && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ startsWith(matrix.platform, 'macos') && secrets.APPLE_PASSWORD || '' }}
