@@ -296,6 +296,56 @@ describe.each([
 });
 
 describe("ConnectionDialog deep-link edit confirmation", () => {
+  it.each([false, true])("prefills Kafka brokers and only saves on confirmation (SASL: %s)", async (sasl) => {
+    store.connect.mockResolvedValue(undefined);
+    backend.listInstalledAgentsLocal.mockResolvedValue([{ db_type: "kafka", installed: true }]);
+    const brokers = "broker-a.example.com:9092,[2001:db8::1]:19092";
+    const params = new URLSearchParams({ type: "kafka", name: "Example Kafka", bootstrap_servers: brokers });
+    if (sasl) {
+      params.set("security_protocol", "SASL_SSL");
+      params.set("sasl_mechanism", "SCRAM-SHA-512");
+      params.set("user", "app");
+      params.set("password", " secret+& ");
+    }
+    await mountNewDialog(`dbx://connection/new?${params}`);
+    expect([...document.querySelectorAll("input")].some((input) => input.value === brokers)).toBe(true);
+    if (sasl) expect([...document.querySelectorAll("input")].some((input) => input.value === " secret+& ")).toBe(true);
+    expect(store.addConnection).not.toHaveBeenCalled();
+    expect(store.connect).not.toHaveBeenCalled();
+    expect(backend.testConnectionWithInfo).not.toHaveBeenCalled();
+    const save = [...document.querySelectorAll("button")].find((button) => button.textContent?.trim() === i18n.global.t("connection.saveAndConnect"));
+    expect(save).toBeTruthy();
+    save!.click();
+    await settle();
+    expect(store.addConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db_type: "mq",
+        driver_profile: "kafka",
+        host: "broker-a.example.com",
+        port: 9092,
+        ssl: sasl,
+        username: "",
+        password: "",
+        external_config: expect.objectContaining({
+          systemKind: "kafka",
+          adminUrl: "",
+          auth: sasl ? { kind: "basic", username: "app", password: " secret+& " } : { kind: "none" },
+          extra: expect.objectContaining({ bootstrapServers: brokers, securityProtocol: sasl ? "SASL_SSL" : "PLAINTEXT", ...(sasl ? { saslMechanism: "SCRAM-SHA-512" } : {}) }),
+        }),
+      }),
+      null,
+    );
+  });
+
+  it("replaces a Kafka prefill when only the later broker changes", async () => {
+    const first = "dbx://connection/new?type=kafka&bootstrap_servers=a:9092,b:9092";
+    const props = await mountNewDialog(first);
+    props.prefillConfig = parseConnectionDeepLink("dbx://connection/new?type=kafka&bootstrap_servers=a:9092,c:9092");
+    await settle();
+    expect([...document.querySelectorAll("input")].some((input) => input.value === "a:9092,c:9092")).toBe(true);
+    expect(store.addConnection).not.toHaveBeenCalled();
+  });
+
   it("saves a new OceanBase connection with its explicitly entered port after switching mode", async () => {
     backend.listInstalledAgentsLocal.mockResolvedValue([{ db_type: "oceanbase-oracle", installed: true }]);
     await mountNewDialog();

@@ -6437,6 +6437,7 @@ function prefillDraftKey(draft: ConnectionDeepLinkDraft) {
     draft.oracleConnectionType,
     draft.useMongoUrl,
     draft.serviceConfig,
+    draft.mqConfig,
   ]);
 }
 
@@ -6498,6 +6499,7 @@ function applyConnectionDraftToForm(draft: ConnectionDeepLinkDraft) {
   } else if (draft.serviceConfig?.kind === "nacos") {
     hydrateNacosFields(connectionDeepLinkServiceHydrationValue(draft.serviceConfig));
   }
+  if (draft.mqConfig) hydrateMqFields(draft.mqConfig);
   oracleTnsAdminPath.value = parseOracleTnsConnectionString(form.value.connection_string)?.tnsAdmin || "";
   selectedType.value = draft.driverProfile;
   if (form.value.db_type === "h2") {
