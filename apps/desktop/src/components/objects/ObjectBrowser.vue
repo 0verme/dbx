@@ -89,7 +89,24 @@ import ObjectDependenciesPanel from "@/components/objects/ObjectDependenciesPane
 import { objectDependencyTarget, type ObjectDependencyTarget, type ObjectDetailsSection } from "@/lib/database/objectDependencyDetails";
 import type { SqlObjectNavigationTarget } from "@/lib/sql/sqlNavigation";
 import type { QueryTab } from "@/types/database";
-import type { ColumnInfo, ConnectionConfig, ConstraintInfo, ForeignKeyInfo, IndexInfo, ObjectBrowserViewMode, ObjectBrowserViewport, ObjectInfo, ObjectSourceKind, ObjectStatistics, PgTablePartitioning, SchemaIndexIdentity, TableInfoTab, TreeNode, TriggerInfo } from "@/types/database";
+import type {
+  ColumnInfo,
+  ConnectionConfig,
+  ConstraintInfo,
+  ForeignKeyInfo,
+  IndexInfo,
+  ObjectBrowserViewMode,
+  ObjectBrowserViewport,
+  ObjectInfo,
+  ObjectSourceKind,
+  ObjectStatistics,
+  PgTablePartitioning,
+  SchemaIndexIdentity,
+  TableInfoTab,
+  TableNameFilter,
+  TreeNode,
+  TriggerInfo,
+} from "@/types/database";
 import { sortTablesByFkDependency, type TableWithFk } from "@/lib/table/tableDependencySort";
 import { isSchemaAware, supportsTableVacuum, supportsTransfer } from "@/lib/database/databaseCapabilities";
 import { supportsAiAssistantContext, supportsDataDictionary, supportsSchemaDiagram, supportsTableImport, supportsTableStructureEditing, supportsTableTruncate } from "@/lib/database/databaseFeatureSupport";
@@ -194,6 +211,7 @@ import { formatShortcut } from "@/lib/editor/shortcutRegistry";
 import { batchTableEmptyFeedback, buildBatchTableEmptyPlan, runBatchTableEmpty, type BatchTableEmptyPlanItem } from "@/lib/sidebar/batchTableEmpty";
 import { runBatchTableDrop } from "@/lib/table/batchTableDrop";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { matchesTableNameFilter } from "@/lib/table/tableVGroup";
 import { filterSchemaNamesForConnection } from "@/lib/database/visibleDatabases";
 import {
   buildObjectBrowserRows,
@@ -659,9 +677,25 @@ const { addTask: addExportTask, updateTableExportTask } = exportTracker;
 const needsSchema = computed(() => isSchemaAware(props.connection.db_type) && !connectionUsesDatabaseObjectTreeMode(props.connection));
 const canDropTargetCascade = computed(() => dropTarget.value?.type === "TABLE" && supportsDropTableCascade(effectiveDatabaseType.value));
 const canTruncateTargetCascade = computed(() => !!truncateTarget.value && supportsTruncateTableCascade(effectiveDatabaseType.value));
-const objectCounts = computed(() => countObjectBrowserRowsByFilter(rows.value));
+const objectNameFilters = computed(() => {
+  const groupTypes = { TABLE: "group-tables", VIEW: "group-views", MATERIALIZED_VIEW: "group-materialized-views", PROCEDURE: "group-procedures", FUNCTION: "group-functions" } as const;
+  const filters: Partial<Record<ObjectBrowserRow["type"], TableNameFilter>> = {};
+  for (const [type, nodeKind] of Object.entries(groupTypes)) {
+    filters[type as keyof typeof groupTypes] = connectionStore.tableNameFilterForScope({
+      connectionId: props.connection.id,
+      database: props.database,
+      schema: connectionObjectTreeNodeSchema(props.connection, props.database, selectedSchema.value),
+      catalog: props.catalog,
+      nodeKind,
+    });
+  }
+  return filters;
+});
+// Keep cached metadata intact so clearing a saved filter restores rows immediately.
+const nameFilteredRows = computed(() => rows.value.filter((row) => matchesTableNameFilter(row.name, objectNameFilters.value[row.type])));
+const objectCounts = computed(() => countObjectBrowserRowsByFilter(nameFilteredRows.value));
 // Count direct search matches once; partition parents rendered only for context must not inflate badges.
-const objectSearchSummary = computed(() => summarizeObjectBrowserSearch(rows.value, search.value));
+const objectSearchSummary = computed(() => summarizeObjectBrowserSearch(nameFilteredRows.value, search.value));
 const canOpenStructureEditor = computed(() => supportsTableStructureEditing(tableStructureDatabaseType.value));
 const canCreateSchemaIndex = computed(() => supportsSchemaIndexes.value && !connectionIsEffectivelyReadOnly(props.connection));
 const canOpenDiagram = computed(() => !!props.database && supportsSchemaDiagram(effectiveDatabaseType.value));
@@ -940,7 +974,7 @@ const filteredRows = computed(() => groupedRows.value.rows);
 function partitionRowDepth(row: ObjectBrowserRow): number {
   return groupedRows.value.depths.get(row.id) ?? 0;
 }
-const selectableRows = computed(() => rows.value);
+const selectableRows = computed(() => nameFilteredRows.value);
 
 // ---- Grid (tile) view virtualization ----
 // The grid view chunks filteredRows into fixed-height rows and hands them to
@@ -1249,9 +1283,9 @@ function removePinnedObjectBrowserRows(rows: readonly ObjectBrowserRow[]) {
 }
 
 function groupedFilteredRows() {
-  if (usesServerObjectPaging.value) return { rows: rows.value, depths: new Map<string, number>() };
+  if (usesServerObjectPaging.value) return { rows: nameFilteredRows.value, depths: new Map<string, number>() };
   return groupObjectBrowserRows({
-    rows: rows.value.filter(rowMatchesObjectFilter),
+    rows: nameFilteredRows.value.filter(rowMatchesObjectFilter),
     matchingRows: objectSearchSummary.value.matchingRows.filter(rowMatchesObjectFilter),
     query: search.value.trim(),
     expandedPartitionParentIds: expandedPartitionParentIds.value,
@@ -6153,7 +6187,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
     <div v-else-if="error && !isSchemaIndexInfo" class="flex flex-1 items-center justify-center px-6 text-center text-sm text-destructive">
       {{ error }}
     </div>
-    <div v-else-if="filteredRows.length === 0 && !isEventEditor && !isSchemaIndexInfo" class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+    <div v-else-if="filteredRows.length === 0 && !isEventEditor && !isSchemaIndexInfo && !(usesServerObjectPaging && hasMoreObjects)" class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
       {{ t("objects.empty") }}
     </div>
     <div v-else class="flex min-h-0 min-w-0 flex-1" :class="{ 'event-editor-layout': isEventEditor }">
@@ -6428,7 +6462,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
           </RecycleScroller>
         </div>
         <div v-if="usesServerObjectPaging" class="flex shrink-0 items-center justify-between gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
-          <span>{{ t("objects.pagedOrder", { count: rows.length }) }}</span>
+          <span>{{ t("objects.pagedOrder", { count: nameFilteredRows.length }) }}</span>
           <Button v-if="hasMoreObjects" data-object-load-more variant="outline" size="sm" :disabled="loadingMoreObjects" @click="loadObjectPage(true)">
             <Loader2 v-if="loadingMoreObjects" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
             {{ t("tree.loadMore") }}
