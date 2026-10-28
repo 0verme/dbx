@@ -328,6 +328,53 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("TableStructureEditor column search", () => {
+  it("finds a column by its comment without changing its name", async () => {
+    const draft = draftWithColumns([{ name: "id", originalName: "id" }]);
+    draft.columns[0].comment = "Approval Type";
+    const root = await mountEditor(draft);
+    const search = root.querySelector<HTMLInputElement>('input[placeholder="structureEditor.searchColumns"]')!;
+    search.value = "approvaltype";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+
+    expect(root.querySelector('button[title="structureEditor.nextColumnMatch"]')?.textContent?.trim()).toBe("1");
+    expect(root.querySelector<HTMLInputElement>("[data-column-name-input]")?.value).toBe("id");
+  });
+
+  it.each(["pprovetype", "approveType", " APPROVETYPE ", "at", "approve_type"])("finds and navigates to an underscored column for %s", async (query) => {
+    const root = await mountEditor(
+      draftWithColumns([
+        { name: "id", originalName: "id" },
+        { name: "approve_type", originalName: "approve_type" },
+      ]),
+    );
+    const search = root.querySelector<HTMLInputElement>('input[placeholder="structureEditor.searchColumns"]')!;
+    search.value = query;
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+
+    const nextMatch = root.querySelector<HTMLButtonElement>('button[title="structureEditor.nextColumnMatch"]')!;
+    expect(nextMatch.textContent?.trim()).toBe("1");
+    const matchedInput = Array.from(root.querySelectorAll<HTMLInputElement>("[data-column-name-input]")).find((input) => input.value === "approve_type")!;
+    expect(matchedInput.closest("tr")?.classList.contains("structure-column-search-match")).toBe(true);
+    search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await nextTick();
+    expect(matchedInput.closest("tr")?.classList.contains("structure-column-search-current")).toBe(true);
+
+    search.value = "missing";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+    expect(nextMatch.textContent?.trim()).toBe("0");
+    expect(matchedInput.closest("tr")?.classList.contains("structure-column-search-match")).toBe(false);
+
+    search.value = "";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+    expect(root.querySelector('button[title="structureEditor.nextColumnMatch"]')).toBeNull();
+  });
+});
+
 describe("TableStructureEditor column name whitespace", () => {
   // MySQL rejects identifiers that end with a space (ERROR 1166 "Incorrect column
   // name"), so a pasted name carrying a trailing space produced an unexecutable
