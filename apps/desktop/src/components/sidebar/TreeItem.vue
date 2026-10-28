@@ -828,7 +828,7 @@ function measureTrailingCommentLayout() {
     trailingCommentMaxWidth.value = 0;
     return;
   }
-  trailingCommentMaxWidth.value = settingsStore.editorSettings.sidebarAllowHorizontalScroll ? sidebarRightCommentMaxWidthPx : trailingCommentAvailableWidth(container.clientWidth, leading.scrollWidth);
+  trailingCommentMaxWidth.value = usesFullWidthLabel.value ? sidebarRightCommentMaxWidthPx : trailingCommentAvailableWidth(container.clientWidth, leading.scrollWidth);
 }
 
 function scheduleTrailingCommentMeasure() {
@@ -873,7 +873,7 @@ function formattedObjectStorage(): string {
 const alignedCommentLabelWidth = computed(() => (settingsStore.editorSettings.sidebarObjectInfoMode === "comment-aligned" && activeNode.value.type !== "connection" ? props.commentLabelWidth : undefined));
 
 function alignedCommentLeadingStyle(): { width: string } | { maxWidth: string } | undefined {
-  if (!settingsStore.editorSettings.sidebarAllowHorizontalScroll && settingsStore.editorSettings.sidebarObjectInfoMode === "comment-and-size" && trailingComment.value) {
+  if (!usesFullWidthLabel.value && settingsStore.editorSettings.sidebarObjectInfoMode === "comment-and-size" && trailingComment.value) {
     // Reserve the inline comment's margin so a long name cannot push into the size column.
     return { maxWidth: "max(0px, calc(100% - 1rem))" };
   }
@@ -889,6 +889,7 @@ const usesFullWidthLabel = computed(() => usesFullWidthTreeLabel(activeNode.valu
 
 const isCompactSidebar = computed(() => settingsStore.editorSettings.sidebarDensity === "compact");
 
+const isConnectionRow = computed(() => activeNode.value.type === "connection" || activeNode.value.type === "connection-group");
 const rowWidthClass = computed(() => (usesFullWidthLabel.value ? "w-max min-w-full" : "w-full min-w-0 tree-row-viewport"));
 
 const labelWidthClass = computed(() => {
@@ -1658,7 +1659,17 @@ function onKeydown(event: KeyboardEvent) {
         >
           <div
             ref="trailingCommentLeadingRef"
-            :class="trailingComment ? (usesFullWidthLabel ? 'flex min-w-0 shrink-0 items-center gap-2' : 'flex max-w-full min-w-0 shrink-0 items-center gap-2') : formattedObjectStorage() ? 'flex min-w-0 flex-1 items-center gap-2' : 'contents'"
+            :class="
+              trailingComment
+                ? usesFullWidthLabel
+                  ? 'flex min-w-0 shrink-0 items-center gap-2'
+                  : isConnectionRow
+                    ? 'flex max-w-full min-w-0 shrink items-center gap-2'
+                    : 'flex max-w-full min-w-0 shrink-0 items-center gap-2'
+                : formattedObjectStorage()
+                  ? 'flex min-w-0 flex-1 items-center gap-2'
+                  : 'contents'
+            "
             :style="alignedCommentLeadingStyle()"
           >
             <input
@@ -1677,7 +1688,7 @@ function onKeydown(event: KeyboardEvent) {
               :class="[
                 labelWidthClass,
                 {
-                  'flex-1': node.type === 'connection' && !trailingComment,
+                  'flex-1': isConnectionRow && !trailingComment,
                   'tree-connection-label': node.type === 'connection' || node.type === 'connection-group',
                   'tree-object-label': node.type !== 'connection' && node.type !== 'connection-group',
                   'font-semibold': isLoginUserNode(),
