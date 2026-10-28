@@ -1006,7 +1006,7 @@ jobs:
       # Test binaries default to full debug info; the workspace-wide test build
       # then fills the runner disk during linking (mold: failed to write).
       # Backtraces stay usable via the minimal line tables.
-      CARGO_PROFILE_TEST_DEBUG: "line-tables"
+      CARGO_PROFILE_TEST_DEBUG: "line-tables-only"
       # Deep async export tests exceed the Rust test harness's default thread stack on Linux.
       RUST_MIN_STACK: 8388608
       RUSTC_WRAPPER: sccache
