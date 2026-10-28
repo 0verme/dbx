@@ -282,6 +282,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Standard ARM runners have 16 GB RAM; parallel rustc of the heavy
+          # workspace crates (dbx-core, dbx-mcp) plus linking peaks past what
+          # the pool now tolerates and the runner is killed with a shutdown
+          # signal. Fewer parallel codegen units keep peak memory in bounds.
+          CARGO_BUILD_JOBS: ${{ (matrix.platform == 'ubuntu-22.04-arm' && '2') || '' }}
           APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos') && secrets.APPLE_SIGNING_IDENTITY || '' }}
           APPLE_ID: ${{ startsWith(matrix.platform, 'macos') && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ startsWith(matrix.platform, 'macos') && secrets.APPLE_PASSWORD || '' }}
