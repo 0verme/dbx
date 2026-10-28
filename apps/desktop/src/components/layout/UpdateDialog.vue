@@ -17,9 +17,10 @@ import type { ComponentUpdateCategory } from "@/composables/useComponentUpdates"
 import { currentLocale } from "@/i18n";
 import { changelogLangFromLocale, createLatestRequestGuard, fetchChangelog, type ChangelogRelease } from "@/lib/app/changelog";
 import DriverInstallProgressCircle from "@/components/config/DriverInstallProgressCircle.vue";
+import ChangelogPanel from "@/components/settings/ChangelogPanel.vue";
 import { driverInstallProgressPercent, formatDriverInstallProgressText, type DriverInstallProgress } from "@/lib/connection/driverInstallProgressUi";
 
-type UpdateTab = "app" | ComponentUpdateCategory;
+type UpdateTab = "app" | "changelog" | ComponentUpdateCategory;
 
 const open = defineModel<boolean>("open", { required: true });
 
@@ -70,6 +71,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
+  "check-updates": [];
   "open-latest-release": [];
   "download-in-background": [];
   "cancel-download": [];
@@ -126,11 +128,12 @@ const tabs = computed(() => {
   if (props.jdbcUpdate?.update_available) available.push({ id: "jdbc", label: t("settings.updateJdbc"), count: 1 });
   if (mcpAvailable.value) available.push({ id: "mcp", label: t("settings.updateMcp"), count: 1 });
   if (props.pluginUpdates.length) available.push({ id: "plugins", label: t("settings.updatePlugins"), count: props.pluginUpdates.length });
+  available.push({ id: "changelog", label: t("settings.changelogTitle"), count: 0 });
   return available;
 });
 const totalUpdateCount = computed(() => tabs.value.reduce((total, tab) => total + tab.count, 0));
 const hasComponentUpdates = computed(() => props.driverUpdates.length > 0 || props.jdbcUpdate?.update_available === true || mcpAvailable.value || props.pluginUpdates.length > 0);
-const selectedCategory = computed<ComponentUpdateCategory | null>(() => (selectedTab.value === "app" ? null : selectedTab.value));
+const selectedCategory = computed<ComponentUpdateCategory | null>(() => (selectedTab.value === "app" || selectedTab.value === "changelog" ? null : selectedTab.value));
 const selectedCategoryHasUpdate = computed(() => {
   if (selectedTab.value === "drivers") return props.driverUpdates.length > 0;
   if (selectedTab.value === "jdbc") return props.jdbcUpdate?.update_available === true;
@@ -343,7 +346,7 @@ watch(
 
       <div class="flex min-h-0 flex-1 flex-col">
         <div v-if="tabs.length" class="px-5 pb-2.5 pt-1.5">
-          <div role="tablist" :aria-label="t('updates.centerTitle')" class="inline-flex h-9 w-full items-center gap-1">
+          <div role="tablist" :aria-label="t('updates.centerTitle')" class="inline-flex h-9 w-full items-center gap-1 overflow-x-auto">
             <button
               v-for="tab in tabs"
               :key="tab.id"
@@ -363,7 +366,8 @@ watch(
         </div>
 
         <div data-update-scroll-region class="min-h-0 flex-1 overflow-auto px-5 py-4 text-sm">
-          <template v-if="selectedTab === 'app'">
+          <ChangelogPanel v-if="selectedTab === 'changelog'" :checking-updates="checkingUpdates || isInstallingUpdate" @check-updates="emit('check-updates')" />
+          <template v-else-if="selectedTab === 'app'">
             <div class="space-y-3">
               <p v-if="updateInfo?.update_available">
                 {{
@@ -552,7 +556,7 @@ watch(
           </template>
         </DialogFooter>
 
-        <DialogFooter v-else data-update-footer class="mx-0 mb-0 min-w-0 rounded-none border-t px-[22px] pb-2.5 pt-2.5 sm:items-center sm:justify-end">
+        <DialogFooter v-else-if="selectedCategory" data-update-footer class="mx-0 mb-0 min-w-0 rounded-none border-t px-[22px] pb-2.5 pt-2.5 sm:items-center sm:justify-end">
           <template v-if="isAnyComponentUpdating">
             <Button variant="ghost" class="shrink-0" @click="handleOpenChange(false)">{{ t("updates.updateInBackground") }}</Button>
             <Button class="shrink-0" disabled>

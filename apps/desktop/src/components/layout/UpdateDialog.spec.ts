@@ -447,6 +447,43 @@ describe("UpdateDialog release notes safety", () => {
   });
 });
 
+describe("UpdateDialog changelog", () => {
+  it("shows the shared changelog even when the current version has no update", async () => {
+    const checkUpdates = vi.fn();
+    updateMocks.fetchChangelog.mockResolvedValue({
+      updatedAt: "2026-10-28",
+      releases: [{ tag: "v0.5.60", name: "DBX v0.5.60", date: "2026-10-28", sections: [{ type: "fixed", title: "Fixed", items: [{ title: "A useful fix", desc: "Details of the fix" }] }] }],
+    });
+    await mountDialog(0, {}, undefined, { updateInfo: null, "onCheck-updates": checkUpdates });
+
+    const changelogTab = document.body.querySelector<HTMLButtonElement>('[data-update-tab="changelog"]');
+    expect(changelogTab).not.toBeNull();
+    changelogTab?.click();
+    await flushDialog();
+    buttonWithText("0.5.60")?.click();
+    await flushDialog();
+
+    expect(document.body.textContent).toContain("A useful fix");
+    expect(document.body.textContent).toContain("Details of the fix");
+    expect(downloadButton()).toBeUndefined();
+    const checkButton = buttonWithText(i18n.global.t("updates.check"));
+    expect(checkButton).toBeDefined();
+    checkButton?.click();
+    expect(checkUpdates).toHaveBeenCalledOnce();
+  });
+
+  it("keeps client update actions available after returning from the changelog", async () => {
+    const { downloadInBackground } = await mountDialog(0);
+    document.body.querySelector<HTMLButtonElement>('[data-update-tab="changelog"]')?.click();
+    await flushDialog();
+    expect(downloadButton()).toBeUndefined();
+    document.body.querySelector<HTMLButtonElement>('[data-update-tab="app"]')?.click();
+    await flushDialog();
+    downloadButton()?.click();
+    expect(downloadInBackground).toHaveBeenCalledOnce();
+  });
+});
+
 describe("UpdateDialog older versions", () => {
   const release = (tag: string, date: string) => ({ tag, name: `DBX ${tag}`, date, sections: [] });
   const upToDateInfo = {
