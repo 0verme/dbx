@@ -2104,7 +2104,7 @@ class SqlCompletionProvider {
     }
 
     const emptyTableNameCompletion = !context.prefix && (context.suggestTables || context.exclusiveTableSuggestions);
-    if (!pendingJoinKeyword && !emptyTableNameCompletion && !context.tableAliasAfterCursor && context.referencedTables.length > 0 && !context.suggestColumns && !context.insertTable && supportsTableAliases(this.databaseType)) {
+    if (!pendingJoinKeyword && !emptyTableNameCompletion && !context.qualifier && !context.tableAliasAfterCursor && context.referencedTables.length > 0 && !context.suggestColumns && !context.insertTable && supportsTableAliases(this.databaseType)) {
       this.items.push(...buildAliasItems(context));
     }
 
@@ -3263,7 +3263,7 @@ function isColumnDataTypeContext(beforeToken: string, databaseType: DatabaseType
   return isCreateTableColumnTypeContext(beforeToken, databaseType) || isAlterTableColumnTypeContext(beforeToken, databaseType);
 }
 
-function removeActiveTableCompletionReference(referencedTables: SqlCompletionReferencedTable[], prefix: string, qualifier?: string): SqlCompletionReferencedTable[] {
+export function removeActiveTableCompletionReference(referencedTables: SqlCompletionReferencedTable[], prefix: string, qualifier?: string): SqlCompletionReferencedTable[] {
   const activeName = normalizeIdentifierPart(prefix);
   const activeQualifier = qualifier ? normalizeIdentifierPart(qualifier) : undefined;
   return referencedTables.filter((table) => {
@@ -5692,6 +5692,8 @@ function buildReferencedAliasItems(context: SqlCompletionContext, t?: SqlComplet
 }
 
 function buildAliasItems(context: SqlCompletionContext): SqlCompletionItem[] {
+  if (context.qualifier) return [];
+  const inTableCompletion = context.suggestTables || context.exclusiveTableSuggestions;
   const items: SqlCompletionItem[] = [];
   const existingAliases = new Set(context.referencedTables.map((ref) => ref.alias?.toLowerCase()).filter((alias): alias is string => !!alias));
   const seen = new Set<string>(existingAliases);
@@ -5700,6 +5702,9 @@ function buildAliasItems(context: SqlCompletionContext): SqlCompletionItem[] {
     if (context.prefix && !matchesPrefix(ref.name, context.prefix)) continue;
     const candidate = generateAlias(ref.name, seen);
     if (!candidate || seen.has(candidate.toLowerCase())) continue;
+    // When the user is typing a table name, never suggest an alias snippet that would
+    // replace the table name with an acronym (#13750).
+    if (inTableCompletion && candidate.toLowerCase() !== context.prefix.toLowerCase()) continue;
     // A relation that is also offered as a table candidate must not duplicate
     // itself as a self-named alias snippet (CTEs and short table names);
     // half-typed relations without columns keep theirs.
