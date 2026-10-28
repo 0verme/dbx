@@ -1966,6 +1966,23 @@ describe("useDataGridEditor saveChanges reload", () => {
     expect(editor.saveError.value).toBe("");
   });
 
+  it("routes multi-statement edits through executeBatch for external JDBC drivers inferred as a transactional dialect (#12657)", async () => {
+    mocks.getConfig.mockReturnValue({ id: "connection-1", db_type: "jdbc", database_info: { productName: "H2" } });
+    mocks.prepareDataGridSave.mockResolvedValue({
+      statements: ["DELETE FROM users WHERE id=1", "DELETE FROM users WHERE id=2"],
+      rollbackStatements: [],
+    });
+    mocks.executeBatch.mockResolvedValue({ affected_rows: 2 });
+    const { editor } = createSaveTestEditor({ databaseType: "h2" });
+    expect(editor.useTransaction.value).toBe(false);
+    editor.dirtyRows.value.set(0, new Map([[1, "alpha"]]));
+    editor.dirtyRows.value.set(1, new Map([[1, "beta"]]));
+    await editor.saveChanges();
+    expect(mocks.executeInTransaction).not.toHaveBeenCalled();
+    expect(mocks.executeBatch).toHaveBeenCalledWith("connection-1", "app", ["DELETE FROM users WHERE id=1", "DELETE FROM users WHERE id=2"], undefined);
+    expect(editor.saveError.value).toBe("");
+  });
+
   it("keeps both joined edits pending if the transaction fails", async () => {
     const targets = [
       { tableMeta: { tableName: "users", primaryKeys: ["id"], columns: [] }, sourceColumns: ["id", "name", undefined, undefined] },
