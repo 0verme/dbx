@@ -2463,7 +2463,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     if (exportCancelHandler) {
       exportCancelHandler.value = () => tracker.cancelTask(exportId);
     }
-    const ownsView = () => !scopeDisposed && currentExportViewId === exportId;
+    const ownsView = () => !task.removed && !scopeDisposed && currentExportViewId === exportId;
     const updateView = () => {
       if (ownsView()) {
         if (exportProgressState) exportProgressState.value = { ...exportProgressState.value, status: task.status, startedAt: task.startedAt, finishedAt: task.finishedAt, errorMessage: task.errorMessage };
@@ -2512,7 +2512,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
         });
         if (!terminalSeen) tracker.updateTableExportTask(exportId, progress);
         terminalSeen ||= progress.status === "Done" || progress.status === "Error" || progress.status === "Cancelled";
-        if (progress.status === "Done") {
+        if (progress.status === "Done" && !task.removed) {
           notifyExportSuccess(openAfterExport ? undefined : outputPath);
           if (openAfterExport && isTauriRuntime()) await api.openQueryResultTempFile(outputPath);
         }

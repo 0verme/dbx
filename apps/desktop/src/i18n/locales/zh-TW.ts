@@ -3541,6 +3541,9 @@ export default withEnglishFallback({
     tableDataPreviewLoadFailed: "載入完整文字失敗：{message}",
   },
   exportProgress: {
+    recoveryTitle: "刪除尚未確認結束的匯出？",
+    recoveryMessage: "背景匯出可能仍在執行。刪除工作會允許後續排隊匯出啟動，不會再次取消或重試原匯出。原工作後續寫入或清理可能覆寫、刪除相同路徑的檔案；繼續前請確保後續工作使用不同的輸出路徑。",
+    recoveryConfirm: "刪除並繼續佇列",
     connectionChanged: "匯出連線已變更，請重新發起匯出。",
     transactionUnavailable: "匯出交易已失效，請重新發起匯出。",
     executionMode: "執行方式",

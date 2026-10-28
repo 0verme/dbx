@@ -3688,6 +3688,10 @@ export default withEnglishFallback({
     pageProbeDescription: "Esta página muestra como máximo {count} filas; se lee como máximo 1 fila adicional para determinar si hay una página siguiente.",
   },
   exportProgress: {
+    recoveryTitle: "¿Eliminar la exportación cuyo final no se ha confirmado?",
+    recoveryMessage:
+      "Es posible que la exportación en segundo plano siga ejecutándose. Al eliminar esta tarea, se permitirá iniciar las exportaciones posteriores de la cola; no se volverá a cancelar ni a reintentar la exportación original. La tarea original podría escribir más adelante en un archivo de la misma ruta o eliminarlo durante la limpieza, sobrescribiéndolo o borrándolo. Antes de continuar, asegúrate de que las tareas posteriores usen una ruta de salida diferente.",
+    recoveryConfirm: "Eliminar y continuar la cola",
     connectionChanged: "La conexión de exportación ha cambiado. Inicie una nueva exportación.",
     transactionUnavailable: "La transacción de exportación ya no está disponible. Inicie una nueva exportación.",
     executionMode: "Ejecución",

@@ -3561,6 +3561,10 @@ export default withEnglishFallback({
     pageProbeDescription: "Questa pagina mostra al massimo {count} righe; viene letta al massimo 1 riga aggiuntiva per determinare se esiste una pagina successiva.",
   },
   exportProgress: {
+    recoveryTitle: "Eliminare l'esportazione di cui non è stata confermata la fine?",
+    recoveryMessage:
+      "L'esportazione in background potrebbe essere ancora in esecuzione. Eliminare questa attività consentirà l'avvio delle successive esportazioni in coda; non annullerà né riproverà l'esportazione originale. L'attività originale potrebbe in seguito scrivere o eseguire la pulizia di un file nello stesso percorso, sovrascrivendolo o eliminandolo. Prima di continuare, assicurati che le attività successive usino un percorso di output diverso.",
+    recoveryConfirm: "Elimina e continua la coda",
     connectionChanged: "La connessione di esportazione è cambiata. Avvia una nuova esportazione.",
     transactionUnavailable: "La transazione di esportazione non è più disponibile. Avvia una nuova esportazione.",
     executionMode: "Esecuzione",

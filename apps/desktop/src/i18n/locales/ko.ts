@@ -3513,6 +3513,10 @@ export default withEnglishFallback({
     pageProbeDescription: "이 페이지에는 최대 {count}행이 표시되며, 다음 페이지가 있는지 판단하기 위해 최대 1행을 추가로 읽습니다.",
   },
   exportProgress: {
+    recoveryTitle: "완료 여부가 확인되지 않은 내보내기를 삭제할까요?",
+    recoveryMessage:
+      "백그라운드 내보내기가 아직 실행 중일 수 있습니다. 이 작업을 삭제하면 이후 대기 중인 내보내기가 시작되지만, 원래 내보내기를 다시 취소하거나 재시도하지는 않습니다. 원래 작업이 나중에 같은 경로의 파일에 쓰거나 정리 작업으로 삭제하여 파일을 덮어쓰거나 삭제할 수 있습니다. 계속하기 전에 이후 작업이 다른 출력 경로를 사용하도록 하세요.",
+    recoveryConfirm: "삭제하고 대기열 계속 진행",
     connectionChanged: "내보내기 연결이 변경되었습니다. 새로 내보내세요.",
     transactionUnavailable: "내보내기 트랜잭션을 더 이상 사용할 수 없습니다. 새로 내보내세요.",
     executionMode: "실행 방식",

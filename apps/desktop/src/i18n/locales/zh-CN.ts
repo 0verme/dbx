@@ -3906,6 +3906,9 @@ export default withEnglishFallback({
     victoriaMetricsTruncatedHint: "结果超过加载上限，仅加载前 {count} 行。右下角每页行数只调整已加载数据的分页显示；请缩短查询时间范围或增加筛选条件以获取完整结果。",
   },
   exportProgress: {
+    recoveryTitle: "删除未确认结束的导出？",
+    recoveryMessage: "后台导出可能仍在运行。删除任务会允许后续排队导出启动，不会再次取消或重试原导出。原任务后续写入或清理可能覆盖、删除同路径文件；继续前请确保后续任务使用不同输出路径。",
+    recoveryConfirm: "删除并继续队列",
     connectionChanged: "导出连接已变化，请重新发起导出。",
     transactionUnavailable: "导出事务已失效，请重新发起导出。",
     executionMode: "执行方式",

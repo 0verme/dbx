@@ -3976,6 +3976,10 @@ export default {
     cut: "Cut",
   },
   exportProgress: {
+    recoveryTitle: "Remove unconfirmed export?",
+    recoveryMessage:
+      "The background export may still be running. Deleting this task will let later queued exports start; it will not cancel or retry the original export. The original task may later write to or clean up a file at the same path, potentially overwriting or deleting it. Before continuing, ensure later tasks use a different output path.",
+    recoveryConfirm: "Delete and continue queue",
     connectionChanged: "The export connection changed. Start a new export.",
     transactionUnavailable: "The export transaction is no longer available. Start a new export.",
     executionMode: "Execution",

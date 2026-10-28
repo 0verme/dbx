@@ -3559,6 +3559,10 @@ export default withEnglishFallback({
     pageProbeDescription: "Esta página exibe no máximo {count} linhas, com leitura adicional de no máximo 1 linha para determinar se há uma próxima página.",
   },
   exportProgress: {
+    recoveryTitle: "Excluir a exportação cuja conclusão não foi confirmada?",
+    recoveryMessage:
+      "A exportação em segundo plano ainda pode estar em execução. Excluir esta tarefa permitirá que as próximas exportações da fila sejam iniciadas; isso não cancelará nem tentará novamente a exportação original. A tarefa original poderá gravar posteriormente em um arquivo no mesmo caminho ou removê-lo durante a limpeza, sobrescrevendo-o ou excluindo-o. Antes de continuar, confirme que as próximas tarefas usarão um caminho de saída diferente.",
+    recoveryConfirm: "Excluir e continuar a fila",
     connectionChanged: "A conexão de exportação mudou. Inicie uma nova exportação.",
     transactionUnavailable: "A transação de exportação não está mais disponível. Inicie uma nova exportação.",
     executionMode: "Execução",

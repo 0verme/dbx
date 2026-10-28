@@ -4064,8 +4064,10 @@ async function exportTableData(
           task.totalRows = result.rows.length;
           task.finishedAt = Date.now();
         }
-        toast(t("grid.exported"));
-        void autoRevealExportedPathIfConfigured(filePath);
+        if (!task?.removed) {
+          toast(t("grid.exported"));
+          void autoRevealExportedPathIfConfigured(filePath);
+        }
         return "settled";
       }
       let columns: string[] | undefined;
@@ -4125,7 +4127,7 @@ async function exportTableData(
       const terminalProgress = await (native ? api.startTableExport(request, onProgress, true) : api.startTableExport(request, onProgress));
       if (native && terminalProgress.status !== "Done" && terminalProgress.status !== "Error" && terminalProgress.status !== "Cancelled") throw new SnapshotCompletionError("unknown", "Export completion was not confirmed");
       updateTableExportTask(currentTask.exportId, terminalProgress);
-      if (terminalProgress.status === "Done") {
+      if (terminalProgress.status === "Done" && !task.removed) {
         toast(t("grid.exported"));
       }
       return "settled";
@@ -4140,7 +4142,7 @@ async function exportTableData(
         task.errorMessage = e?.message || String(e);
         task.finishedAt = unknown ? undefined : Date.now();
       }
-      toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+      if (!task?.removed) toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
       return unknown ? "unknown" : "settled";
     } finally {
       if (native && task) {
