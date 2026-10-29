@@ -5074,10 +5074,12 @@ function connectionConfigForSubmit(id: string, generatedName = "", validatePlugi
   // be significant, and file-path hosts (SQLite/DuckDB/H2 file mode) keep
   // their exact value for the same reason.
   const usesLocalFilePathHost = isLocalFileTypeDb(config.db_type) && (config.db_type !== "h2" || h2ConnectionModeForConfig(config) === "file");
-  if (!usesLocalFilePathHost) {
+  if (!usesLocalFilePathHost && typeof config.host === "string") {
     config.host = config.host.trim();
   }
-  config.username = config.username.trim();
+  if (typeof config.username === "string") {
+    config.username = config.username.trim();
+  }
   config.database = config.database?.trim() || undefined;
   if (isCloudflareD1Connection(config)) {
     normalizeCloudflareD1Connection(config);
@@ -5307,8 +5309,6 @@ function connectionConfigForSubmit(id: string, generatedName = "", validatePlugi
     if (parsed.portExplicit && parsed.port !== undefined) {
       config.port = parsed.port;
       setSqlServerPortExplicit(config, true);
-      form.value.host = parsed.host;
-      form.value.port = parsed.port;
     }
     if (!connectionUpdateExternalConfigPreserved(config)) config.external_config = sqlServerPortExplicitFromConfig(config) ? { portExplicit: true } : undefined;
   } else if (supportsGaussdbIdentifierQuoteStyle(config)) {
@@ -5427,12 +5427,10 @@ function connectionConfigForSubmit(id: string, generatedName = "", validatePlugi
       // pasted into the field) are stored as the index the backend connects with.
       const database = normalizeRedisDatabaseValue(config.database);
       config.database = database;
-      form.value.database = database || "";
     }
     {
       const templates = normalizeRedisKeyTemplates(redisKeyTemplatesText.value);
       config.redis_key_templates = templates.length > 0 ? templates : undefined;
-      form.value.redis_key_templates = templates;
     }
   }
   if (config.db_type === "zookeeper") {
@@ -5845,7 +5843,7 @@ function parseEtcdEndpoint(value: string): { scheme?: string; host: string; port
 }
 
 function isOracleSysUser(config: Pick<ConnectionConfig, "db_type" | "username">): boolean {
-  return config.db_type === "oracle" && config.username.trim().toLowerCase() === "sys";
+  return config.db_type === "oracle" && typeof config.username === "string" && config.username.trim().toLowerCase() === "sys";
 }
 
 function resetTestState() {
@@ -10944,7 +10942,7 @@ function openExternalUrl(url: string) {
                       </p>
                     </div>
                   </div>
-                  <div v-show="form.db_type === 'redis'" class="grid grid-cols-4 items-center gap-4">
+                  <div v-if="form.db_type === 'redis'" class="grid grid-cols-4 items-center gap-4">
                     <Label :class="connectionLabelSmallClass">{{ t("settings.redisScanPageSize") }}</Label>
                     <div class="col-span-3 flex flex-col gap-1">
                       <Select :model-value="String(form.redis_scan_page_size ?? REDIS_SCAN_PAGE_SIZE_DEFAULT)" @update:model-value="form.redis_scan_page_size = Number($event)">
