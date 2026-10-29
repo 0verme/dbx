@@ -4410,6 +4410,7 @@ export default withEnglishFallback({
     searchDatabases: "Cerca database…",
     noDatabasesFound: "Nessun database trovato",
     toolApproval: {
+      allArguments: "Tutti gli argomenti",
       prompt: "{plugin} vuole eseguire {tool} su {connection}. Controlla gli argomenti qui sotto.",
       approve: "Consenti una volta",
       deny: "Nega",
